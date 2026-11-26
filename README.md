@@ -218,6 +218,7 @@ PDF では約物と罫線の区切りを後続の最初の行と同じ段に置�
 ページの任意の位置にテキストフレームを置き、その中に文字を組める（[root ADR 0438](docs/adr/0438-place-text-frames-anywhere-on-a-page.md)）。
 フレームの位置と形（矩形か閉じたパス）は `style.toml` の `[frames.名前]` に書き、マスターページの `frames` に挙げるか、原稿に `@frame 名前` と段落を書いて置く。
 マスターページが置くフレームは `wrap = "around"` で本文を避けられる。
+本文の行はフレームの分だけ短くなり、表、コードブロック、図版はフレームを越えた位置に送られる（[root ADR 0456](docs/adr/0456-keep-every-block-off-around-frames.md)）。
 HTML と EPUB は `@frame` の段落をその位置の `aside` に書き、マスターページのフレームの文字は書かない。
 規則は [docs/specifications.md](docs/specifications.md) の「テキストフレーム」の節にある。
 
@@ -864,16 +865,17 @@ x86-64 では、さらに次のことを行う。
   プルリクエストでは `--quick` で小さな入力だけを検査し、`main` への push とリリースではすべての入力を検査する（[docs/adr/0029](./docs/adr/0029-environment-variation-determinism-test.md)、[docs/adr/0038](./docs/adr/0038-env-determinism-quick-on-pull-requests.md)）。
 
 ジョブは、アーキテクチャごとに複数のランナーに分かれる（[docs/adr/0140](./docs/adr/0140-ci-split-test-runners-and-visual-pdfs-first.md)、[docs/adr/0155](./docs/adr/0155-split-aarch64-test-runner.md)）。
-x86-64 では同じコミットを六つのランナーでビルドする。
-`tests-driver-a` と `tests-driver-b` が golem-driver のテストのスイートを二つに分けて、`tests-rest` がそのほかのスイートを（振り分けは `scripts/ci/test-suites.sh` が `.cabal` から決める）受け持つ（[docs/adr/0416](./docs/adr/0416-shorten-the-build-of-the-pull-request-ci.md)）。
+x86-64 では同じコミットを七つのランナーでビルドする。
+`tests-driver-a` と `tests-driver-b` が golem-driver のテストのスイートを二つに分けて、`tests-rest-a` と `tests-rest-b` がそのほかのスイートを二つに分けて（振り分けは `scripts/ci/test-suites.sh` が `.cabal` から決める）受け持つ（[docs/adr/0416](./docs/adr/0416-shorten-the-build-of-the-pull-request-ci.md)、[docs/adr/0457](./docs/adr/0457-split-the-tests-rest-runner-in-two.md)）。
 `tests-driver-a` は golem-driver-pdf-test、golem-driver-cli-test、golem-driver-global-test を、`tests-driver-b` は golem-driver-page-test、golem-driver-output-test、golem-driver-parallel-test を走らせる。
+`tests-rest-a` は golem-emet-test と golem-parser-test を、`tests-rest-b` はそのほかのスイートを走らせる。
 `outputs` は、ほかのジョブが待つ成果物（`editors-lsp` の golem、見た目の回帰テストの PDF（`visual` を待たせないよう最初に組む）、`wasm` と比べるネイティブの一覧、`verapdf` の PDF）を作る。
 `outputs-checks` は、そのほかの出力の手順（epubcheck、決定性の検査の出力、マニュアル）を、`env` は環境を変える検査を受け持つ（[docs/adr/0395](./docs/adr/0395-bring-the-pull-request-ci-under-five-minutes.md)）。
-aarch64 では四つのランナーでビルドし、x86-64 と同じく `tests-driver-a`、`tests-driver-b`、`tests-rest` がテストのスイートを、`outputs` が決定性の検査の出力を受け持つ。
+aarch64 では五つのランナーでビルドし、x86-64 と同じく `tests-driver-a`、`tests-driver-b`、`tests-rest-a`、`tests-rest-b` がテストのスイートを、`outputs` が決定性の検査の出力を受け持つ。
 
 ランナーは、自分が使うものだけを組む（`scripts/ci/build-targets.sh`、[docs/adr/0395](./docs/adr/0395-bring-the-pull-request-ci-under-five-minutes.md)）。
 テストのランナーは自分が走らせるテストのスイートを、出力と環境の検査のランナーは実行ファイルの `golem` だけを組む。
-`tests-rest` は、`peg-hs` と、テストのスイートが組まない `golem` のほかの、ネイティブで組める実行ファイルも組む。
+`tests-rest-a` は `peg-hs` も、`tests-rest-b` はテストのスイートが組まない `golem` のほかの、ネイティブで組める実行ファイルも組む。
 `dist-newstyle` を保存するジョブ `cache-dist` は、保存するキャッシュがすべてを含むよう `cabal build all` で組む。
 `ci` は `cache-dist` を待たないので、`cabal build all` はプルリクエストの CI の時間に入らない（[docs/adr/0416](./docs/adr/0416-shorten-the-build-of-the-pull-request-ci.md)）。
 ビルドの計画を読む検査（`scripts/ci/test-only-deps.sh` と `scripts/ci/doc-deps.sh`）がどのランナーでもすべての部品を見るよう、計画を `cabal build all` のものに作り直し、組んだときの計画と要素の一覧が等しいことを `scripts/ci/same-plan.sh` で確かめる。

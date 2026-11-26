@@ -1,6 +1,6 @@
 # ADR 0451: `@import` で、並べた名前を名前空間なしで取り込めるようにする
 
-Status: superseded [{"part":"名前が重なったとき","by":["docs/adr/0455-resolve-variable-imports-through-the-import-graph.md"],"kind":"supplement"},{"part":"ツール","by":["docs/adr/0454-rename-set-variables-in-the-language-server.md"],"kind":"supplement"}]
+Status: superseded [{"part":"名前が重なったとき","by":["docs/adr/0455-resolve-variable-imports-through-the-import-graph.md"],"kind":"supplement"},{"part":"名前が重なったとき","by":["docs/adr/0453-override-built-in-commands-by-listed-imports-and-plugins.md"],"kind":"replace"},{"part":"ツール","by":["docs/adr/0454-rename-set-variables-in-the-language-server.md"],"kind":"supplement"}]
 
 ## 文脈
 

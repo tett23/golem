@@ -16,6 +16,7 @@ import Golem.Doc.IR (Block (..), BlockBody (..), Document (..), Inline, InlineF 
 import Golem.Driver
 import Golem.Eval.Builtin (BuiltinInline (..), builtinName, unPluginCommandName)
 import Golem.Eval.File (EvalResult (..), PluginHook (..))
+import Golem.Evaluate.Lint (lintProject)
 import Golem.Evaluate.Plugins (LoadedPlugins (..), loadPlugins)
 import Golem.Plugin (HostContext (..), maxDataBytes, watToWasm)
 import Golem.Plugin.Lock (defaultCacheDir, lockPlugins, renderLock)
@@ -291,6 +292,54 @@ blockCommandTests =
         case map blockBody bs of
           [BulletList [ListItem _ [_, Block _ (Just "t") Nothing (Paragraph _ [Text _ "表"])]]] -> pure ()
           other -> assertFailure (show other)
+  ]
+
+{- | Overriding the built-in block commands (root ADR 0453): block-overrides
+of the manifest, its errors, and a plugin's override with a listed import.
+-}
+blockOverrideTests :: [TestTree]
+blockOverrideTests =
+  [ testCase "root ADR 0453 I4: @separator calls the plugin of block-overrides" $
+      withBlockProject [("sp", "block-separator.wat", "block-overrides = [\"separator\"]\n")] "@separator\n" $ \tmp -> do
+        (bs, ds) <- blocksOf tmp
+        ds @?= []
+        [[t | Paragraph _ is <- [blockBody b], Text _ t <- is] | b <- bs] @?= [["表"]],
+    testCase "root ADR 0453 I7: a built-in block command not in block-overrides is G06007 once" $
+      withBlockProject [("sp", "block-separator.wat", "")] "本文\n" $ \tmp -> do
+        r <- build (defaultOptions tmp)
+        atManifestTop r >>= (@?= [(DiagnosticCode "G06007", "組み込みのブロックコマンドと衝突しています（block-overrides で宣言してください）: sp.@separator")]),
+    testCase "root ADR 0453 I7: a fixed built-in block command is G06007 once" $
+      withBlockProject [("bb", "block-builtins.wat", "block-overrides = [\"separator\"]\n")] "本文\n" $ \tmp -> do
+        r <- build (defaultOptions tmp)
+        atManifestTop r >>= (@?= [(DiagnosticCode "G06007", "上書きできない組み込みのブロックコマンドと衝突しています: bb.@frame")]),
+    testCase "root ADR 0453 I7: a fixed name in block-overrides is G06008 once" $
+      withBlockProject [("bb", "block-builtins.wat", "block-overrides = [\"separator\", \"frame\"]\n")] "本文\n" $ \tmp -> do
+        r <- build (defaultOptions tmp)
+        atManifestTop r >>= (@?= [(DiagnosticCode "G06008", "上書きできる組み込みのブロックコマンドではありません: bb.@frame")]),
+    testCase "root ADR 0453 I7: a name the plugin does not provide in block-overrides is G06008 once" $
+      withBlockProject [("gr", "grid.wat", "block-overrides = [\"toc\"]\n")] "本文\n" $ \tmp -> do
+        r <- build (defaultOptions tmp)
+        atManifestTop r >>= (@?= [(DiagnosticCode "G06008", "プラグインが提供していないブロックコマンドを block-overrides に書いています: gr.@toc")]),
+    testCase "root ADR 0453 I7: block-overrides is no key of overrides, nor overrides of block-overrides" $ do
+      withBlockProject [("sp", "block-separator.wat", "overrides = [\"separator\"]\n")] "本文\n" $ \tmp -> do
+        r <- build (defaultOptions tmp)
+        ds <- atManifestTop r
+        sort (map fst ds) @?= [DiagnosticCode "G06007", DiagnosticCode "G06008"]
+      withPlugins [("ov", "override-ruby.wat")] (pluginDeclOf "ov" "block-overrides = [\"ruby\"]\n") $ \tmp -> do
+        r <- build (defaultOptions tmp)
+        ds <- atManifestTop r
+        sort (map fst ds) @?= [DiagnosticCode "G06007", DiagnosticCode "G06008"],
+    testCase "root ADR 0453 I5: a plugin's override and a listed name are G02271 once, and @separator calls the plugin" $
+      withBlockProject [("sp", "block-separator.wat", "block-overrides = [\"separator\"]\n")] "@import f.emet { separator }\n\n@separator\n" $ \tmp -> do
+        BS.writeFile (tmp </> "f.emet") "pub block separator :: Blocks\nseparator = Block.paragraph (Inline.text \"EMET\")\n"
+        (bs, ds) <- blocksOf tmp
+        ds @?= [(DiagnosticCode "G02271", "プラグインのコマンドと同じ名前は取り込めません: separator")]
+        [[t | Paragraph _ is <- [blockBody b], Text _ t <- is] | b <- bs] @?= [["表"]],
+    testCase "root ADR 0453: golem lint counts a call of an overridden name as a use of the listed name (G05003)" $
+      withBlockProject [] "@import f.emet { toc, bibliography }\n\n@toc\n" $ \tmp -> do
+        BS.writeFile (tmp </> "f.emet") "pub block toc :: Blocks\ntoc = Block.paragraph (Inline.text \"T\")\n\npub block bibliography :: Blocks\nbibliography = Block.paragraph (Inline.text \"B\")\n"
+        (_, ds) <- lintProject Dev False True tmp
+        [(diagCode d, diagMessage d) | d <- ds, diagCode d `elem` [DiagnosticCode "G05003", DiagnosticCode "G02270"]] @?= [(DiagnosticCode "G05003", "使われていない import の名前です: bibliography")]
   ]
 
 {- | A one-chapter project, a.gm, for PDF, HTML and EPUB with the fake
@@ -1155,6 +1204,7 @@ pluginTests =
     <> autoTcyTests
     <> tsvTableTests
     <> blockCommandTests
+    <> blockOverrideTests
     <> pluginFigureTests
     <> [ testCase "a filter runs over the declared files and keeps the output" $ do
            plain <- buildAndRead Dev "build/text/horizontal/chapters/01.txt"

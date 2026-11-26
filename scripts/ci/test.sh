@@ -1704,12 +1704,12 @@ if grep -qF "QUICK: \${{ github.event_name == 'pull_request' && '--quick' || '' 
 # ---------------------------------------------------------------- ci.yml and the parts of build
 # (docs/adr/0045-split-x86-build-and-pull-request-cache.md)
 
-# x86-64 builds six times: three runners for the tests (the suites of
-# golem-driver in two, and the rest), one for the outputs, one for the
-# artifacts, one for the environment check; aarch64 builds four times, for
-# the tests in three and for the outputs. No runner of build saves
+# x86-64 builds seven times: four runners for the tests (the suites of
+# golem-driver in two, and the rest in two), one for the outputs, one for
+# the artifacts, one for the environment check; aarch64 builds five times,
+# for the tests in four and for the outputs. No runner of build saves
 # dist-newstyle: cache-dist does (docs/adr/0045, docs/adr/0097,
-# docs/adr/0140, root ADR 0416)
+# docs/adr/0140, root ADR 0416, root ADR 0457)
 # the runner, part, tests, outputs, artifacts, env, suites and build of
 # each row of the matrix; build is the last key of a row
 matrix_rows() {
@@ -1721,17 +1721,20 @@ matrix_rows() {
 }
 # the x86-64 outputs are split in two runners: outputs makes the artifacts
 # that other jobs wait for, outputs-checks the rest (docs/adr/0395); the
-# tests of golem-driver are split in two runners (root ADR 0416)
+# tests of golem-driver are split in two runners (root ADR 0416), and the
+# other tests in two runners (root ADR 0457)
 if [ "$(matrix_rows "$CI_YML")" = "ubuntu-24.04 tests-driver-a true false false false driver-a driver-a
 ubuntu-24.04 tests-driver-b true false false false driver-b driver-b
-ubuntu-24.04 tests-rest true false false false rest rest
+ubuntu-24.04 tests-rest-a true false false false rest-a rest-a
+ubuntu-24.04 tests-rest-b true false false false rest-b rest-b
 ubuntu-24.04 outputs false false true false none golem
 ubuntu-24.04 outputs-checks false true false false none golem
 ubuntu-24.04 env false false false true none golem
 ubuntu-24.04-arm tests-driver-a true false false false driver-a driver-a
 ubuntu-24.04-arm tests-driver-b true false false false driver-b driver-b
-ubuntu-24.04-arm tests-rest true false false false rest rest
-ubuntu-24.04-arm outputs false true false false none golem" ]; then ok; else ng "ci.yml: the matrix of build has three runners of the tests on each architecture, the outputs of both in two runners on x86-64, and the environment check of x86-64 (docs/adr/0155, docs/adr/0395, root ADR 0416)"; fi
+ubuntu-24.04-arm tests-rest-a true false false false rest-a rest-a
+ubuntu-24.04-arm tests-rest-b true false false false rest-b rest-b
+ubuntu-24.04-arm outputs false true false false none golem" ]; then ok; else ng "ci.yml: the matrix of build has four runners of the tests on each architecture, the outputs of both in two runners on x86-64, and the environment check of x86-64 (docs/adr/0155, docs/adr/0395, root ADR 0416, root ADR 0457)"; fi
 # no runner of build has save (root ADR 0416)
 if awk '$0 == "  build:" { on = 1; next } on && /^  [a-z]/ { on = 0 } on' "$CI_YML" | grep -q '^            save:'; then ng "ci.yml: no row of the matrix of build has save (root ADR 0416)"; else ok; fi
 # the step that starts at a line that matches $1 has a line that matches $2
@@ -1747,14 +1750,14 @@ if step_has "$TEST_STEP" 'cabal test $(sh scripts/ci/test-suites.sh "$SUITES")' 
 fi
 if [ "$(grep -cE '^ +(- run: )?cabal test ' "$CI_YML")" = 1 ]; then ok; else ng "ci.yml: one step runs cabal test"; fi
 # the generated parser is checked where the suites of golem-parser run
-if step_if "name: Generated parser matches the grammar" "if: matrix.tests && matrix.suites == 'rest'"; then ok; else ng "ci.yml: the generated parser is checked on the runners of tests-rest, which build peg-hs"; fi
+if step_if "name: Generated parser matches the grammar" "if: matrix.tests && matrix.suites == 'rest-a'"; then ok; else ng "ci.yml: the generated parser is checked on the runners of tests-rest-a, which build peg-hs (root ADR 0457)"; fi
 if step_if "name: Outputs for the determinism check" "if: matrix.outputs"; then ok; else ng "ci.yml: the outputs are made on the runners of the outputs"; fi
 # the lines of the job $1 of ci.yml
 job_lines() { awk -v j="  $1:" '$0 == j { on = 1; next } on && /^  [a-z]/ { on = 0 } on' "$CI_YML"; }
 # the generated modules of golem-driver are checked in the same way, right
 # after the parser (docs/adr/0203)
 EMBEDDED_STEP="name: Generated modules match VERSION and docs/diagnostics.md"
-if step_if "$EMBEDDED_STEP" "if: matrix.tests && matrix.suites == 'rest'" &&
+if step_if "$EMBEDDED_STEP" "if: matrix.tests && matrix.suites == 'rest-a'" &&
   step_has "$EMBEDDED_STEP" "sh scripts/gen-embedded.sh" &&
   step_has "$EMBEDDED_STEP" "git diff --exit-code modules/golem-driver/src/Golem/Driver/Version/Embedded.hs modules/golem-evaluate/src/Golem/Evaluate/Explain/Embedded.hs" &&
   [ "$(awk '/^      - name: / { print }' "$CI_YML" | grep -A1 -F "name: Generated parser matches the grammar" | sed -n 2p)" = "      - $EMBEDDED_STEP" ]; then ok; else
@@ -5109,17 +5112,19 @@ run bt driver "$TS"
 expect "build-targets: an unknown part" 2
 # the runners of the outputs and the environment check build golem; the
 # runners of the tests build the suites they run; none builds all, which
-# cache-dist builds (docs/adr/0395, root ADR 0416)
+# cache-dist builds (docs/adr/0395, root ADR 0416, root ADR 0457)
 if [ "$(matrix_rows "$CI_YML" | awk '{ print $1, $2, $8 }')" = "ubuntu-24.04 tests-driver-a driver-a
 ubuntu-24.04 tests-driver-b driver-b
-ubuntu-24.04 tests-rest rest
+ubuntu-24.04 tests-rest-a rest-a
+ubuntu-24.04 tests-rest-b rest-b
 ubuntu-24.04 outputs golem
 ubuntu-24.04 outputs-checks golem
 ubuntu-24.04 env golem
 ubuntu-24.04-arm tests-driver-a driver-a
 ubuntu-24.04-arm tests-driver-b driver-b
-ubuntu-24.04-arm tests-rest rest
-ubuntu-24.04-arm outputs golem" ]; then ok; else ng "ci.yml: the runners build their targets, and none builds all (docs/adr/0395, root ADR 0416)"; fi
+ubuntu-24.04-arm tests-rest-a rest-a
+ubuntu-24.04-arm tests-rest-b rest-b
+ubuntu-24.04-arm outputs golem" ]; then ok; else ng "ci.yml: the runners build their targets, and none builds all (docs/adr/0395, root ADR 0416, root ADR 0457)"; fi
 if ci_step "name: cabal build (docs/adr/0395)" | grep -qF 'cabal build $(sh scripts/ci/build-targets.sh "$TARGETS")' &&
   ci_step "name: cabal build (docs/adr/0395)" | grep -qxF '          TARGETS: ${{ matrix.build }}'; then ok; else
   ng "ci.yml: cabal build builds the targets of build-targets.sh for the runner (docs/adr/0395)"
@@ -5264,6 +5269,108 @@ run sh "$HERE/ci-checks.sh" "$CC/small.yml" "$TS"
 expect "ADR 0395 A1: a step is listed with the runners whose row of the matrix meets its if" 0 "$(cat "$CC/small.txt")"
 run sh "$HERE/ci-checks.sh" "$CC/unknown.yml" "$TS"
 if [ "$CODE" = 1 ] && grep -qF 'steps.x.outputs.y' "$WORK/err"; then ok; else ng "ADR 0395 A1: an if with a term that the list cannot decide fails"; fi
+
+# ---------------------------------------------------------------- root ADR 0457
+# (docs/adr/0457-split-the-tests-rest-runner-in-two.md)
+
+# tests-rest is split in two runners on each architecture: rest-a runs the
+# suites of REST_A of test-suites.sh and builds peg-hs, rest-b every other
+# suite of rest and the executables but golem. R57 is a tree of modules with
+# a suite of each part, a suite of golem-driver and executables
+R57=$WORK/r57/modules
+mkdir -p "$R57/golem-emet" "$R57/golem-parser" "$R57/golem-pdf" "$R57/golem-driver" "$R57/golem-plain"
+printf 'cabal-version: 3.0\nname: golem-emet\n\nlibrary\n\ntest-suite golem-emet-test\n  type: exitcode-stdio-1.0\n' >"$R57/golem-emet/golem-emet.cabal"
+printf 'cabal-version: 3.0\nname: golem-parser\n\nlibrary\n\ntest-suite golem-parser-test\n  type: exitcode-stdio-1.0\n' >"$R57/golem-parser/golem-parser.cabal"
+printf 'cabal-version: 3.0\nname: golem-pdf\n\nlibrary\n\ntest-suite golem-pdf-test\n  type: exitcode-stdio-1.0\n' >"$R57/golem-pdf/golem-pdf.cabal"
+printf 'cabal-version: 3.0\nname: golem-driver\n\nlibrary\n\ntest-suite golem-driver-pdf-test\n  type: exitcode-stdio-1.0\n' >"$R57/golem-driver/golem-driver.cabal"
+printf 'cabal-version: 3.0\nname: golem-plain\n\nlibrary\n\nexecutable plain-tool\n  main-is: M.hs\n\nexecutable wasm-only\n  main-is: W.hs\n  if !arch(wasm32)\n    buildable: False\n\nexecutable golem\n  main-is: G.hs\n' >"$R57/golem-plain/golem-plain.cabal"
+: >"$WORK/in"
+# split_rest SCRIPTS MODULES fails, with the reason on stderr, unless
+# SCRIPTS/test-suites.sh puts each suite of rest of MODULES in exactly one
+# of rest-a and rest-b, and the two together are rest (I1, I2)
+split_rest() {
+  sh "$1/test-suites.sh" rest "$2" | LC_ALL=C sort >"$WORK/r57-rest" || return 1
+  sh "$1/test-suites.sh" rest-a "$2" >"$WORK/r57-a" || return 1
+  sh "$1/test-suites.sh" rest-b "$2" >"$WORK/r57-b" || return 1
+  [ -s "$WORK/r57-rest" ] || { echo "rest is empty" >&2; return 1; }
+  d=$(LC_ALL=C sort "$WORK/r57-a" "$WORK/r57-b" | uniq -d)
+  [ -z "$d" ] || { echo "in both rest-a and rest-b: $d" >&2; return 1; }
+  [ "$(cat "$WORK/r57-a" "$WORK/r57-b" | LC_ALL=C sort)" = "$(cat "$WORK/r57-rest")" ] || { echo "rest-a and rest-b are not rest" >&2; return 1; }
+}
+run split_rest "$HERE" "$R57"
+expect "root ADR 0457 I1: test-suites: each suite of rest is in exactly one of rest-a and rest-b" 0
+run test_suites rest-a "$R57"
+expect "root ADR 0457 I1: test-suites: rest-a has the suites of REST_A" 0 "golem-emet:test:golem-emet-test
+golem-parser:test:golem-parser-test"
+run test_suites rest-b "$R57"
+expect "root ADR 0457 I1: test-suites: rest-b has the other suites of rest" 0 "golem-pdf:test:golem-pdf-test"
+run split_rest "$HERE" "$HERE/../../modules"
+expect "root ADR 0457 I2: test-suites: rest-a and rest-b of modules/ are rest, split in two" 0
+run test_suites rest-a
+expect "root ADR 0457 I1: tests-rest-a runs golem-emet-test and golem-parser-test" 0 "golem-emet:test:golem-emet-test
+golem-parser:test:golem-parser-test"
+# I3: a new suite that REST_A does not list is in rest-b
+printf '\ntest-suite golem-pdf-new-test\n  type: exitcode-stdio-1.0\n' >>"$R57/golem-pdf/golem-pdf.cabal"
+run test_suites rest-b "$R57"
+expect "root ADR 0457 I3: test-suites: a new suite not in REST_A is in rest-b" 0 "golem-pdf:test:golem-pdf-test
+golem-pdf:test:golem-pdf-new-test"
+# copies of the scripts with another REST_A: with a name in no module, and
+# with a suite of golem-driver
+mkdir -p "$WORK/r57/none" "$WORK/r57/driver"
+sed 's/^REST_A="\(.*\)"$/REST_A="\1 golem-no-such-test"/' "$HERE/test-suites.sh" >"$WORK/r57/none/test-suites.sh"
+cp "$HERE/build-targets.sh" "$WORK/r57/none/build-targets.sh"
+sed 's/^REST_A="\(.*\)"$/REST_A="\1 golem-driver-pdf-test"/' "$HERE/test-suites.sh" >"$WORK/r57/driver/test-suites.sh"
+if grep -q '^REST_A=".* golem-no-such-test"$' "$WORK/r57/none/test-suites.sh" &&
+  grep -q '^REST_A=".* golem-driver-pdf-test"$' "$WORK/r57/driver/test-suites.sh"; then ok; else
+  ng "root ADR 0457 I2: test-suites.sh has a line REST_A=\"...\""
+fi
+run split_rest "$WORK/r57/none" "$R57"
+expect "root ADR 0457 I2: test-suites: a name of REST_A in no module leaves rest-a and rest-b rest" 0
+run split_rest "$WORK/r57/driver" "$R57"
+if [ "$CODE" = 0 ] && ! grep -q '^golem-driver:' "$WORK/r57-a" "$WORK/r57-b"; then ok; else
+  ng "root ADR 0457 I1: test-suites: a suite of golem-driver in REST_A is in neither rest-a nor rest-b"
+fi
+# build_rest SCRIPTS MODULES fails, with the reason on stderr, unless the
+# targets of rest-a and rest-b of SCRIPTS/build-targets.sh together are
+# those of rest, each has the suites of its part, and rest-a has peg-hs
+# (I4, I5)
+build_rest() {
+  sh "$1/build-targets.sh" rest "$2" | LC_ALL=C sort >"$WORK/r57-brest" || return 1
+  sh "$1/build-targets.sh" rest-a "$2" | LC_ALL=C sort >"$WORK/r57-ba" || return 1
+  sh "$1/build-targets.sh" rest-b "$2" | LC_ALL=C sort >"$WORK/r57-bb" || return 1
+  [ -s "$WORK/r57-brest" ] || { echo "rest builds nothing" >&2; return 1; }
+  [ "$(LC_ALL=C sort -u "$WORK/r57-ba" "$WORK/r57-bb")" = "$(cat "$WORK/r57-brest")" ] || { echo "rest-a and rest-b do not build what rest builds" >&2; return 1; }
+  for p in a b; do
+    sh "$1/test-suites.sh" "rest-$p" "$2" | LC_ALL=C sort >"$WORK/r57-s$p" || return 1
+    [ -z "$(LC_ALL=C comm -23 "$WORK/r57-s$p" "$WORK/r57-b$p")" ] || { echo "rest-$p does not build its suites" >&2; return 1; }
+  done
+  grep -qx 'peg-cli:exe:peg-hs' "$WORK/r57-ba" || { echo "rest-a does not build peg-hs" >&2; return 1; }
+}
+run build_rest "$HERE" "$R57"
+expect "root ADR 0457 I4: build-targets: rest-a and rest-b build what rest builds" 0
+run build_rest "$HERE" "$HERE/../../modules"
+expect "root ADR 0457 I5: build-targets: rest-a and rest-b of modules/ build their suites, and rest-a builds peg-hs" 0
+run bt rest-a "$R57"
+expect "root ADR 0457 I5: build-targets: rest-a builds the suites of rest-a and peg-hs" 0 "$(test_suites rest-a "$R57")
+peg-cli:exe:peg-hs"
+run bt rest-b "$R57"
+expect "root ADR 0457 I4: build-targets: rest-b builds the suites of rest-b and the executables but golem and those not buildable" 0 "$(test_suites rest-b "$R57")
+golem-plain:exe:plain-tool"
+printf '\nexecutable plain-new-tool\n  main-is: N.hs\n' >>"$R57/golem-plain/golem-plain.cabal"
+run bt rest-b "$R57"
+if [ "$CODE" = 0 ] && grep -qx 'golem-plain:exe:plain-new-tool' "$WORK/out"; then ok; else ng "root ADR 0457 I4: build-targets: a new executable is built on rest-b"; fi
+run bt rest-a "$R57"
+if [ "$CODE" = 0 ] && ! grep -q ':exe:plain' "$WORK/out"; then ok; else ng "root ADR 0457 I4: build-targets: rest-a builds no executable but peg-hs"; fi
+run build_rest "$WORK/r57/none" "$R57"
+expect "root ADR 0457 I4: build-targets: a name of REST_A in no module leaves rest-a and rest-b what rest builds" 0
+# I6: the two checks of the generated modules run on tests-rest-a alone,
+# which runs the suites of rest-a and builds peg-hs, on each architecture
+if step_if "name: Generated parser matches the grammar" "if: matrix.tests && matrix.suites == 'rest-a'" &&
+  step_if "name: Generated modules match VERSION and docs/diagnostics.md" "if: matrix.tests && matrix.suites == 'rest-a'"; then ok; else
+  ng "root ADR 0457 I6: ci.yml: the checks of the generated parser and modules run where suites is rest-a"
+fi
+if [ "$(matrix_rows "$CI_YML" | awk '$7 == "rest-a" { print $1, $2, $8 }')" = "ubuntu-24.04 tests-rest-a rest-a
+ubuntu-24.04-arm tests-rest-a rest-a" ]; then ok; else ng "root ADR 0457 I6: ci.yml: suites is rest-a on tests-rest-a of each architecture alone, which builds rest-a"; fi
 
 # ---------------------------------------------------------------- the libraries of golem-html and golem-unicode
 # (docs/adr/0411 I5)

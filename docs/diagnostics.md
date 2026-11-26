@@ -6337,25 +6337,27 @@ TSV の途中の空の行は消す。
 
 ## G02270
 
-組み込みのコマンドと同じ名前は取り込めません
+上書きできない組み込みのコマンドと同じ名前は取り込めません
 
 - 重大度: エラー
 - 状態: 使用中
 
 ### 意味
 
-`@import パス { … }` で並べた名前が、その名前を使う場所（インラインのコマンドかブロックコマンド）の組み込みのコマンドの名前と同じである。
-組み込みのコマンドは、名前空間なしで評価が組み込みとして扱うすべての名前（`@import`、`@set`、`@toc`、`[strong]` など）である。
+`@import パス { … }` で並べた名前が、その名前を使う場所（インラインのコマンドかブロックコマンド）の、上書きできない組み込みのコマンドの名前と同じである。
+上書きできない組み込みのコマンドは、評価、ページ分割、参照、チャネルの仕組みがその意味を前提にするもの（`@import`、`@set`、`@style`、`@frame`、`[link]`、`[note]` など）で、一覧は仕様書の「プラグイン」の節の「種類」の表にある。
+上書きできる組み込みのコマンド（`@toc`、`[strong]` など）と同じ名前は、このコードにならず、取り込んだ関数がそのファイルの中で組み込みのコマンドを上書きする（[root ADR 0453](adr/0453-override-built-in-commands-by-listed-imports-and-plugins.md)）。
 その名前はその場所には取り込まず、名前空間なしの参照は組み込みのコマンドを指す。
 位置は、`@import` の行のその名前である。
 
-- メッセージ: `組み込みのコマンドと同じ名前は取り込めません: <名前>`
+- メッセージ: `上書きできない組み込みのコマンドと同じ名前は取り込めません: <名前>`
 - 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
-- ADR: [docs/adr/0451](adr/0451-import-listed-names-without-a-namespace.md)
+- ADR: [docs/adr/0451](adr/0451-import-listed-names-without-a-namespace.md)、[root ADR 0453](adr/0453-override-built-in-commands-by-listed-imports-and-plugins.md)
 
 ### 主な原因
 
-- `.emet` の `pub block "toc"` などを、名前を並べて取り込んだ。
+- `.emet` の `pub block "set"` や `pub inline "link"` などを、名前を並べて取り込んだ。
+- インラインとブロックの両方で公開された名前（`pub inline "index"` と `pub block "index"` など）を並べ、どちらかの場所で上書きできない名前だった。上書きできる場所には取り込まれる。
 
 ### 直し方
 
@@ -6372,16 +6374,19 @@ TSV の途中の空の行は消す。
 ### 意味
 
 `@import パス { … }` で並べた名前が、その名前を使う場所（インラインのコマンドかブロックコマンド）の、プロジェクトが宣言したプラグインのコマンドの名前と同じである。
+プラグインが `overrides` か `block-overrides` で上書きを宣言した組み込みのコマンドも、プラグインのコマンドとして数える（[root ADR 0453](adr/0453-override-built-in-commands-by-listed-imports-and-plugins.md)）。
+同じ組み込みのコマンドを、プラグインと名前を並べた取り込みの両方が上書きしたとき、どちらを呼ぶかを評価が探す順で決めないためである。
 その名前はその場所には取り込まず、名前空間なしの参照はプラグインのコマンドを指す。
 位置は、`@import` の行のその名前である。
 
 - メッセージ: `プラグインのコマンドと同じ名前は取り込めません: <名前>`
 - 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
-- ADR: [docs/adr/0451](adr/0451-import-listed-names-without-a-namespace.md)
+- ADR: [docs/adr/0451](adr/0451-import-listed-names-without-a-namespace.md)、[root ADR 0453](adr/0453-override-built-in-commands-by-listed-imports-and-plugins.md)
 
 ### 主な原因
 
 - プラグインのコマンドと同じ名前の `.emet` の関数を、名前を並べて取り込んだ。
+- プラグインが上書きを宣言した組み込みのコマンド（`overrides = ["ruby"]` の `ruby` など）と同じ名前を、名前を並べて取り込んだ。
 
 ### 直し方
 
@@ -10339,11 +10344,12 @@ plugins.lock にないプラグインです
 チャネルの宣言の形の誤りは `チャネルの宣言の形が不正です`、データの名前の誤りは `データの名前が不正です: <名前>` と `データの名前が重複しています: <名前>` になる。
 文脈の名前を二度書いた宣言は `文脈の名前が重複しています: <名前>` になる。
 Golem が渡せない文脈の名前は、このコードではなく [G06105](#g06105) になる。
-ブロックコマンドの名前の誤りは、形の誤りが `ブロックコマンドの名前が不正です: <名前>`、二度書いた名前が `ブロックコマンドの名前が重複しています: <名前>`、組み込みのブロックコマンドの名前が `組み込みのブロックコマンドの名前です: <名前>` になる。
+ブロックコマンドの名前の誤りは、形の誤りが `ブロックコマンドの名前が不正です: <名前>`、二度書いた名前が `ブロックコマンドの名前が重複しています: <名前>` になる。
+組み込みのブロックコマンドと同じ名前は、このコードではなく [G06007](#g06007) になる（[root ADR 0453](adr/0453-override-built-in-commands-by-listed-imports-and-plugins.md)）。
 
 - メッセージ: `<名前>: <理由>`
 - 段階とモジュール: プラグイン（golem-evaluate の `Golem.Evaluate.Plugins`）
-- ADR: [golem-plugin ADR 0003](golem-plugin/adr/0003-plugin-diagnostic-codes.md)、[docs/adr/0107](adr/0107-named-describe-fields.md)、[docs/adr/0121](adr/0121-host-context-in-plugin-requests.md)、[docs/adr/0122](adr/0122-block-commands-in-plugins.md)
+- ADR: [golem-plugin ADR 0003](golem-plugin/adr/0003-plugin-diagnostic-codes.md)、[docs/adr/0107](adr/0107-named-describe-fields.md)、[docs/adr/0121](adr/0121-host-context-in-plugin-requests.md)、[docs/adr/0122](adr/0122-block-commands-in-plugins.md)、[root ADR 0453](adr/0453-override-built-in-commands-by-listed-imports-and-plugins.md)
 
 ### 主な原因
 
@@ -10389,21 +10395,26 @@ Golem が渡せない文脈の名前は、このコードではなく [G06105](#
 ### 意味
 
 プラグインが組み込みのコマンドと同じ名前のコマンドを提供し、そのプラグインの `overrides` にその名前がない。
-組み込みのコマンドが上書きできるものなら一つ目の文言、上書きできないもの（`note` など）なら二つ目の文言になる。
+ブロックコマンドでは、プラグインが組み込みのブロックコマンドと同じ名前のブロックコマンドを提供し、`block-overrides` にその名前がない（[root ADR 0453](adr/0453-override-built-in-commands-by-listed-imports-and-plugins.md)）。
+インラインでは、組み込みのコマンドが上書きできるものなら一つ目の文言、上書きできないもの（`[note]` など）なら二つ目の文言になる。
+ブロックでは、上書きできるもの（`@separator` など）なら三つ目の文言、上書きできないもの（`@frame` など）なら四つ目の文言になる。
+提供した名前ごとに一つ出す。
+`overrides` か `block-overrides` に書いた名前は、上書きできない名前でも、このコードではなく [G06008](#g06008) になる。
 位置は `manifest.toml` の先頭である。
 
-- メッセージ: `組み込みのコマンドと衝突しています（overrides で宣言してください）: <プラグイン>.<コマンド>`、`上書きできない組み込みのコマンドと衝突しています: <プラグイン>.<コマンド>`
+- メッセージ: `組み込みのコマンドと衝突しています（overrides で宣言してください）: <プラグイン>.<コマンド>`、`上書きできない組み込みのコマンドと衝突しています: <プラグイン>.<コマンド>`、`組み込みのブロックコマンドと衝突しています（block-overrides で宣言してください）: <プラグイン>.@<名前>`、`上書きできない組み込みのブロックコマンドと衝突しています: <プラグイン>.@<名前>`
 - 段階とモジュール: プラグイン（golem-evaluate の `Golem.Evaluate.Plugins`）
-- ADR: [golem-plugin ADR 0003](golem-plugin/adr/0003-plugin-diagnostic-codes.md)
+- ADR: [golem-plugin ADR 0003](golem-plugin/adr/0003-plugin-diagnostic-codes.md)、[root ADR 0453](adr/0453-override-built-in-commands-by-listed-imports-and-plugins.md)
 
 ### 主な原因
 
 - プラグインのコマンドが組み込みのコマンドと同じ名前で、上書きを宣言していない。
 - プラグインが、上書きできない組み込みのコマンドと同じ名前のコマンドを提供している。
+- プラグインのブロックコマンドが、組み込みのブロックコマンド（`@separator`、`@frame` など）と同じ名前である。
 
 ### 直し方
 
-上書きできるコマンドを上書きするなら、`manifest.toml` のプラグインの `overrides` にコマンドを書く。
+上書きできるコマンドを上書きするなら、`manifest.toml` のプラグインの `overrides`（ブロックコマンドなら `block-overrides`）にその名前を書く。
 上書きできないコマンドと衝突するなら、そのプラグインを外す。
 
 ## G06008
@@ -10416,22 +10427,23 @@ overrides に書けない名前です
 ### 意味
 
 プラグインの `overrides` に、そのプラグインが提供していないコマンドか、上書きできる組み込みのコマンドでない名前がある。
-`overrides` の一つの名前について、高々一つ出す。
+ブロックコマンドの `block-overrides` も同じく、そのプラグインが提供していないブロックコマンドか、上書きできる組み込みのブロックコマンド（`toc`、`index`、`bibliography`、`printings`、`separator`）でない名前を書くと、このコードになる（[root ADR 0453](adr/0453-override-built-in-commands-by-listed-imports-and-plugins.md)）。
+`overrides` と `block-overrides` の一つの名前について、高々一つ出す。
 提供していなければ一つ目の文言、提供していても上書きできる組み込みのコマンドでなければ（組み込みでない名前か、上書きできない組み込みのコマンド）二つ目の文言になる。
 位置は `manifest.toml` の先頭である。
 
-- メッセージ: `プラグインが提供していないコマンドを overrides に書いています: <プラグイン>.<コマンド>`、`上書きできる組み込みのコマンドではありません: <プラグイン>.<コマンド>`
+- メッセージ: `プラグインが提供していないコマンドを overrides に書いています: <プラグイン>.<コマンド>`、`上書きできる組み込みのコマンドではありません: <プラグイン>.<コマンド>`、`プラグインが提供していないブロックコマンドを block-overrides に書いています: <プラグイン>.@<名前>`、`上書きできる組み込みのブロックコマンドではありません: <プラグイン>.@<名前>`
 - 段階とモジュール: プラグイン（golem-evaluate の `Golem.Evaluate.Plugins`）
-- ADR: [golem-plugin ADR 0003](golem-plugin/adr/0003-plugin-diagnostic-codes.md)
+- ADR: [golem-plugin ADR 0003](golem-plugin/adr/0003-plugin-diagnostic-codes.md)、[root ADR 0453](adr/0453-override-built-in-commands-by-listed-imports-and-plugins.md)
 
 ### 主な原因
 
-- `overrides` に、そのプラグインが提供していないコマンドを書いた。
-- `overrides` に、組み込みでない名前か、上書きできない組み込みのコマンドを書いた。
+- `overrides` か `block-overrides` に、そのプラグインが提供していないコマンドを書いた。
+- `overrides` か `block-overrides` に、組み込みでない名前か、上書きできない組み込みのコマンドを書いた。
 
 ### 直し方
 
-`overrides` からその名前を外す。
+`overrides` か `block-overrides` からその名前を外す。
 
 ## G06009
 
@@ -10872,6 +10884,7 @@ PDF を書かない。
 
 回り込む図版の脇の行の長さが、本文の文字の大きさの 8 字分に満たない。
 `width` が読めない場合は、評価の [G02133](#g02133) であり、このコードではない（[docs/adr/0190](adr/0190-non-wrapping-figure-width.md)）。
+脇の行は、`wrap = "around"` のフレームの下ではフレームでも短くなるが、このコードは図版の除外だけで 8 字に満たないときに出し、そのときその脇の段落に [G07138](#g07138) は出さない（[root ADR 0456](adr/0456-keep-every-block-off-around-frames.md)）。
 
 - メッセージ: `回り込む図版の幅が不正です。行の残りを本文の 8 字分以上にしてください: <幅>`
 - 段階とモジュール: レイアウト（golem-typeset の `Golem.Typeset`）
@@ -12789,17 +12802,21 @@ PDF をターゲットに含む `golem build` だけで出す。
 
 PDF の組版で、`wrap = "around"` のフレームが短くした本文の行の長さが、本文の文字の大きさ（版面の格子の文字の大きさ）の 8 字に満たない。
 回り込む図版の [G07022](#g07022) とは原因が違うので、別のコードにする。
+回り込む図版の脇の行では、図版の除外だけなら 8 字以上だが、行の各側で図版の除外とフレームの切る量の大きいほうを引くと 8 字に満たないときに出す（[root ADR 0456](adr/0456-keep-every-block-off-around-frames.md)）。
+図版の除外だけで 8 字に満たないときは [G07022](#g07022) であり、このコードは出さない。
+表の行はフレームを越えた位置に送るので、このコードの対象にしない。
 位置は、その行の段落である。
 同じ段落の行は一件にまとめる。
 PDF をターゲットに含む `golem build` だけで出す。
 
 - メッセージ: `回り込むフレームで短くした本文の行が、本文の文字の大きさの 8 字に満たなくなります`
 - 段階とモジュール: レイアウト（golem-typeset の `Golem.Typeset.Flow`）
-- ADR: [root ADR 0438](adr/0438-place-text-frames-anywhere-on-a-page.md)
+- ADR: [root ADR 0438](adr/0438-place-text-frames-anywhere-on-a-page.md)、[root ADR 0456](adr/0456-keep-every-block-off-around-frames.md)
 
 ### 主な原因
 
 - フレームが段の行長の大部分にかかっている。
+- 回り込む図版の脇の行に、反対の側からフレームがかかっている。
 
 ### 直し方
 
@@ -12889,6 +12906,35 @@ PDF をターゲットに含む `golem build` だけで出す。
 ### 直し方
 
 フレームの高さか位置を変えるか、`@need-lines` などでページの割り付けを決める。
+
+## G07142
+
+回り込むフレームのまわりに、このブロックを置ける空きがありません
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+PDF の組版で、行を短くできないブロック（表、コードブロック、図版）を、`wrap = "around"` のフレームと重ならない位置に置けない。
+フレームと重なる範囲を持つ空の段で、フレームが無ければその段に収まるブロックの、分けられない最小の部分（図版の全体、表の見出しの行と最初の行、コードブロックの最初の部分）を、フレームと重ならずに置ける位置がその段に一つも無いときに出す。
+そのブロックは置かず、ほかのブロックは組んで diagnostic を集める。
+フレームが無くても空の段に収まらないブロックは、フレームが無いときと同じく置き、このコードを出さない。
+位置は、そのブロックである。
+PDF をターゲットに含む `golem build` だけで出す。
+
+- メッセージ: `回り込むフレームのまわりに、このブロックを置ける空きがありません`
+- 段階とモジュール: レイアウト（golem-layout の `Golem.Layout.Paginate`、golem-typeset の `Golem.Typeset.Flow`）
+- ADR: [root ADR 0456](adr/0456-keep-every-block-off-around-frames.md)
+
+### 主な原因
+
+- 図版が、段のうちフレームの前と後のどちらの空きよりも長い。
+- 段の長さいっぱいの図版を、回り込むフレームのあるページに置こうとした。図版は段に収まるように縮めるが、フレームの外の空きに合わせては縮めない。
+
+### 直し方
+
+図版の `width` を小さくするか、フレームの位置か高さを変えて、フレームの前か後に十分な空きを作る。
 
 ## G08001
 

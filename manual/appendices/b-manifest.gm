@@ -147,9 +147,12 @@ chapters = [
 | キー | 意味 |
 |:---|:---|
 | [code: url] | 配布物の URL です（文字列、必須）。[code: https://] で始め、バージョンを固定した URL を書きます。 |
-| [code: overrides] | このプラグインで置き換える組み込みのコマンドの名前です（文字列の配列）。 |
+| [code: overrides] | このプラグインで置き換える組み込みのインラインのコマンドの名前です（文字列の配列）。 |
+| [code: block-overrides] | このプラグインで置き換える組み込みのブロックコマンドの名前です（文字列の配列）。 |
 
-[code: overrides] に書けるのは、[code: strong]、[code: bold]、[code: italic]、[code: code]、[code: ruby]、[code: kenten]、[code: color]、[code: style]、[code: tcy]、[code: number-text] です。
+[code: overrides] に書けるのは、[code: strong]、[code: bold]、[code: italic]、[code: code]、[code: ruby]、[code: kenten]、[code: color]、[code: style]、[code: warichu]、[code: upright]、[code: tcy]、[code: number-text] の十二です。
+[code: block-overrides] に書けるのは、[code: toc]、[code: index]、[code: bibliography]、[code: printings]、[code: separator] の五つです。
+二つのキーに分かれているのは、[code: style] や [code: index] のように、インラインのコマンドとブロックコマンドの両方にある名前があるからです。
 
 @nonumber
 ## [code: \[\[filters\]\]]

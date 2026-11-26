@@ -163,7 +163,7 @@ fonts "$WORK/specimens-vertical"
 copy specimens-vertical-marks-japanese "$FIX/specimens/vertical"
 fonts "$WORK/specimens-vertical-marks-japanese"
 awk '{ print } $0 == "[page]" { print "bleed = \"3mm\"" }' "$FIX/specimens/vertical/style.toml" >"$WORK/specimens-vertical-marks-japanese/style.toml"
-# the specimen of the text frames: a circle, a star, a master page and @frame (root ADR 0437 A1, root ADR 0438 A1)
+# the specimen of the text frames: a circle, a star, a master page, @frame and the blocks past the frames of wrap around (root ADR 0437 A1, root ADR 0438 A1, root ADR 0456 A1)
 copy specimens-frames "$FIX/specimens/frames"
 fonts "$WORK/specimens-frames"
 if ! grep -qx 'bleed = "3mm"' "$WORK/specimens-vertical-marks-japanese/style.toml"; then

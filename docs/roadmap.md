@@ -45,6 +45,7 @@ v0.1.0-rc4 と v1.0.0 のどちらで扱うかは、まだ決めていない。
   - **ページ分割の Lean 検証（未実装）**：[ADR 0352](adr/0352-prove-pagination-in-lean.md) に従い、既存の Alloy モデルの 42 コマンドを Lean の定理または具体例に対応付ける。境界入力でモデルの結果とレイアウトエンジンの出力を照合する。
   - **ページ分割の残りの要素**：罫線、コード、段の切り替え、手での制御、表、回り込む図版を、改ページの列挙の要素に足す。表と回り込む図版も含め、本文の各行と図版がそれぞれ一度ずつ出力されることを確かめる（[golem-layout ADR 0025](golem-layout/adr/0025-need-lines-and-blank-lines-after-figures-sent-on.md)）。
   - **画像の実効解像度と診断の境界**：整数の ppi がしきい値を下回る場合に G09006 が出ることを調べる。実効解像度が 1 ppi の入力に対し、しきい値 0、1、2 で native CLI を各 3 回動かすと、G09006 はそれぞれ 0、0、1 件だった。同じ述語を wasm32 のプリフライトのテストでも検査する。
+- **プルリクエストの CI の時間の記録（未実装）**：tests-rest の脚を二つに分けた後の、プルリクエストの CI の 20 回の中央値を `docs/ci-timings/` に記録する（[root ADR 0457](adr/0457-split-the-tests-rest-runner-in-two.md) の A1）。記録したら、0457 を実装済みにする。中央値が 300 秒を超えたら、0457 の「測る」の節のとおり、次の手を新しい ADR で決める。
 
 ### 記法と設定の値
 
@@ -196,6 +197,7 @@ v3 の GUI は、次の原則に従って作る。
 
 - **閉じたパスのテキストフレームの見本**：[root ADR 0437](adr/0437-paths-and-the-box-model.md) の A1（円と星形の閉じたパスのテキストフレームを持つ見本を組み、文字が形の内側に置かれていることを PDF で目で確かめる）が残っている。見本は、見た目の回帰テストの入力 `specimens-frames` の 3 ページ目（マスターページ `shapes` の円と星形のフレーム）である。
 - **テキストフレームの見本**：[root ADR 0438](adr/0438-place-text-frames-anywhere-on-a-page.md) の A1（扉の飾りの文と回り込むフレーム（マスターページが置くフレーム）と、章の引用（`@frame`）を持つ見本を組み、フレームの位置と本文の回り込みを PDF で目で確かめる）が残っている。見本は、見た目の回帰テストの入力 `specimens-frames` の 1 ページ目と 2 ページ目である。
+- **回り込むフレームのまわりのブロックの見本**：[root ADR 0456](adr/0456-keep-every-block-off-around-frames.md) の A1（回り込むフレームと、表、コードブロック、図版、回り込む図版の脇の段落、見出しを持つ見本を組み、どれもフレームと重ならないことと、送った後の空きが組版として不自然でないことを PDF で目で確かめる）が残っている。見本は、見た目の回帰テストの入力 `specimens-frames` の 4 ページ目から 9 ページ目（`chapters/03-blocks.gm`。表、コードブロック、見出し、図版、フレームと反対の側の回り込む図版、同じ側の回り込む図版の順）である。
 - **エディタ向けの構文の定義の読み込み**：`tools/editors/README.md` の読み込ませ方のうち、Visual Studio Code の手順（手元の拡張機能の `package.json` を VS Code が読むこと）を、実際のエディタで確かめていない。文法そのものは、VS Code と同じ `vscode-textmate` で読む `vscode-tmgrammar-test` が、CI の `editors` ジョブで確かめている。Neovim の手順のうち nvim-treesitter を使わないものは CI の `editors-lsp` ジョブが、Helix の手順は `editors` ジョブが確かめる。nvim-treesitter で GitHub から入れる手順は、Neovim 0.12.6 と nvim-treesitter の main ブランチの `e289100` で、ヘッドレスで確かめた（[docs/adr/0170](adr/0170-emet-editor-support.md)、[docs/adr/0171](adr/0171-neovim-setup-from-github-and-emet-lsp.md)、[docs/adr/0231](adr/0231-run-the-lsp-and-the-editor-grammars-in-headless-neovim-and-helix.md)）。
 - **画面で読む PDF の見え方**：`pdf-screen` で組んだマニュアルを Acrobat Reader と macOS のプレビューで開き、リンクが押せること、`[figures]` の `color` で置き換えた PDF の図版を除いて色が HTML の出力と同じに見えること、塗り足しとトンボが無いことを、手で確かめていない。版、ページの寸法、リンクの注釈、色の値、図版の色は、golem-pdf と golem-driver のテストが確かめる（[root ADR 0431](adr/0431-plain-pdf-1-7-target.md) の A1、[root ADR 0445](adr/0445-keep-the-cmyk-recoloring-of-pdf-figures-in-pdf-screen.md)）。
 - **CIDSystemInfo と異体字**（v1.0.0 のリリースで確かめる）：Adobe-Japan1 の ROS を持つ実際のフォント（小塚明朝 Pr6N など）で組んだ PDF を Acrobat のプリフライトにかけ、IVS の異体字が出ることと、InDesign の書き出しと同じであることを確かめていない。リポジトリにそうしたフォントがないためである（[golem-pdf ADR 0006](golem-pdf/adr/0006-cid-system-info.md)）。フォントの `ROS` が `CIDSystemInfo` に写ることは、`ROS` を Adobe-Japan1-7 に書き換えた Source Han Sans のサブセットで、golem-font と golem-driver のテストが確かめる（[docs/adr/0232](adr/0232-check-inks-fonts-figures-links-and-epubs-structurally-in-ci.md)）。
@@ -242,14 +244,19 @@ v1 より後のバージョンのための事項には、そのバージョン�
 
 ### その他の未決事項
 
-- **プルリクエストの CI の時間の予算**：[root ADR 0416](adr/0416-shorten-the-build-of-the-pull-request-ci.md) の後の 20 回の中央値は 330 秒で、予算の 300 秒を 30 秒超えている（[記録](ci-timings/2026-11-26-pull-request-ci-after-adr-0416.md)）。0416 の「測る」の節のとおり、時間のかかる経路を測り直し、次の手を新しい ADR で決めるかを、メンテナーが決める。
 - **テキストフレームの実装で ADR に無かった判断**：[root ADR 0438](adr/0438-place-text-frames-anywhere-on-a-page.md) の実装で、ADR に書いていない次の扱いを決めた。メンテナーが、そのまま認めるか、ADR で直すかを決める。
-  - 回り込むフレームは、表、コード、回り込む図版の横の段落の行を短くしない。これらのブロックでは、0438 の不変条件 I4 が成り立たない。
   - `@frame` の中の段落の注を、PDF に置かない。
   - 同じページに同じフレームが二つあるとき（G07140）は、どちらも置かない。
   - フレームの中では、段落スタイルの字下げを使わない。
   - フレームの線を、タグを付けない装飾（アーティファクト）として描く。
   - ADR の表に無い diagnostics を足した。`@frame` の書き方の誤りは G02255 と G02256 にした。フレームのまわりの行を短くする計算が収まらないときは G07141 にした。
+- **回り込むフレームのまわりのブロックの実装で ADR に無かった判断**：[root ADR 0456](adr/0456-keep-every-block-off-around-frames.md) の実装で、ADR に書いていない次の扱いを決めた。メンテナーが、そのまま認めるか、ADR で直すかを決める。
+  - 「フレームが無ければその段に収まる」かは、ブロックの全体ではなく、分けられない最小の部分（図版の全体、表の見出しの行と最初の行、コードブロックの最初の部分）で判断する。長い表は段の区切りで分けて置けるからである。
+  - 図版の行の方向の範囲は、キャプションのある回り込まない図版では段の幅とし、キャプションの無い図版と回り込む図版では画像の幅とする。キャプションの行の長さを、ページ分割の前に求めないためである。
+  - 格子に揃える版面の置けない範囲は、版面の格子の文字の大きさの仮想ボディがフレームと重なる格子の行とし、表の文字の大きさは使わない。
+  - 段の区切りで繰り返した表の見出しの行が、次の段でフレームと重なるときも、見出しの行と次の行をフレームの後から置く。置けなければ、段の始まりに置く。
+  - G07142 になった回り込む図版の脇の段落は、段の行長で組み直さず、除外の幅で短くした行のまま置く。G07142 で PDF は書かないので、組み直しても出力に現れないからである。
+  - ページ、見開きの保持（`keep-parts`）の中の表は、送らない。保持の中の表は別の組み方で置くからである。
 - **名前を並べる `@import` で残った扱い**：[root ADR 0451](adr/0451-import-listed-names-without-a-namespace.md) の実装で、次のことが残った。
   - G02270 は `@separator` を組み込みのコマンドとして数える。しかし、プラグインが定義できない組み込みのブロックのコマンドの一覧には `@separator` が無いので、プラグインはまだ `@separator` を定義できる。どちらに揃えるかを決める。
   - 言語サーバーには `@set` の変数の名前を変える機能が無い。そのため、ADR の名前の変更は、取り込んだ関数にだけ当てはまる。

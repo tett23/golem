@@ -68,7 +68,9 @@ data PhysicalSettings = PhysicalSettings
     -- | the unit and source of the book part being placed, other than column (root ADR 0401)
     physicalRetention :: !(Maybe (KeepParts, Golem.Syntax.SrcSpan)),
     -- | the spans of the keep-with-next of the visible separators (root ADR 0398 I7)
-    physicalHeld :: !(Set Golem.Syntax.SrcSpan)
+    physicalHeld :: !(Set Golem.Syntax.SrcSpan),
+    -- | the areas of each column that a block that cannot be shortened is not placed over (root ADR 0456)
+    physicalAvoid :: AvoidAt Sp
   }
 
 data PhysicalFailure
@@ -275,8 +277,12 @@ beginPhysicalWrap cfg (PhysicalCursor st) ident extent labels marks
   | extent > physicalCapacity cfg = Left (PhysicalFigureTooTall ident)
   | otherwise =
       let ready = fit cfg st extent
-          start = psUsed ready
-       in Right (PhysicalCursor (checkWaits (putSlot ready 0 (SWrapped ident) labels marks)), PhysicalWrap (psPage ready) (psColumn ready) (start + extent))
+       in -- past the frames of wrap around it overlaps (root ADR 0456)
+          case spotIn cfg ready ident (psUsed ready) extent of
+            SpotAt start -> Right (PhysicalCursor (checkWaits (putSlot ready {psUsed = start} 0 (SWrapped ident) labels marks)), PhysicalWrap (psPage ready) (psColumn ready) (start + extent))
+            SpotNone -> beginPhysicalWrap cfg (PhysicalCursor (nextColumn cfg ready)) ident extent labels marks
+            -- left out: no exclusion, its side lines are set to the measure of the column
+            SpotUnplaced -> Right (PhysicalCursor (checkWaits ready {psUnmet = psUnmet ready <> [UnplacedBlock ident]}), PhysicalWrap (psPage ready) (psColumn ready) (psUsed ready))
 
 {- | Resolve the preceding holding group with the figure as its lookahead,
 then open the exclusion at the exact committed anchor. The placeholder
@@ -370,9 +376,31 @@ nextPage cfg st =
 -- | A turned figure waits for the next page, and the figures after it with it (golem-driver ADR 0034).
 placeDeferred :: PhysicalSettings -> PhysicalState -> PhysicalState
 placeDeferred cfg st = case psDeferred st of
-  WaitingFigure ident extent labels marks : later
-    | extent <= room cfg st -> placeDeferred cfg ((putSlot st extent (SFigure ident) labels marks) {psDeferred = later})
+  WaitingFigure ident extent labels marks : later -> case spotIn cfg st ident (psUsed st) extent of
+    -- off the frames of wrap around (root ADR 0456)
+    SpotAt v
+      | v /= psUsed st || extent <= room cfg st -> placeDeferred cfg ((putSlot st {psUsed = v} extent (SFigure ident) labels marks) {psDeferred = later})
+    SpotUnplaced -> placeDeferred cfg st {psDeferred = later, psUnmet = psUnmet st <> [UnplacedBlock ident]}
+    _ -> st
   _ -> st
+
+{- | The place of the least part of extent @extent@ of the block @ident@
+from position @u@ of the column (root ADR 0456): there without an area of
+the frames of wrap around it overlaps; past them when it fits there, as at
+the top of a column, without the space before it; left out of an empty
+column that it fits without the frames but past them not, and there as
+before in one it does not fit without them either; elsewhere, in a later
+column.
+-}
+spotIn :: PhysicalSettings -> PhysicalState -> Int -> Sp -> Sp -> Spot Sp
+spotIn cfg st ident u extent
+  | v == u = SpotAt u
+  | fitsAt v = SpotAt v
+  | empty st = if fitsAt u then SpotUnplaced else SpotAt u
+  | otherwise = SpotNone
+  where
+    v = clearFrom (physicalAvoid cfg (psPage st) (psColumn st) (psSet st) ident) u extent
+    fitsAt w = extent <= limit cfg st - w - psNotesUsed st
 
 {- | The turned figures waiting at the start of a new page each take a page
 of their own, without notes; the notes carried go on to the next page of
@@ -963,20 +991,30 @@ placeFlow cfg st = \case
         Right st {psDeferred = psDeferred st <> [WaitingFigure ident extent labels marks]}
     | extent + psPendingSpace st > room cfg st && not (empty st) ->
         Right st {psDeferred = psDeferred st <> [WaitingFigure ident extent labels marks], psPendingSpace = 0, psBlankActive = False}
-    | otherwise -> Right (putSlot (fit cfg st extent) extent (SFigure ident) labels marks)
-  FWrapped ident extent labels marks beside -> do
+    | otherwise ->
+        let ready = fit cfg st extent
+         in Right $ case spotIn cfg ready ident (psUsed ready) extent of
+              SpotAt v -> putSlot ready {psUsed = v} extent (SFigure ident) labels marks
+              -- left out of an empty column by the frames of wrap around (root ADR 0456)
+              SpotUnplaced -> ready {psUnmet = psUnmet ready <> [UnplacedBlock ident]}
+              SpotNone -> ready {psDeferred = psDeferred ready <> [WaitingFigure ident extent labels marks], psPendingSpace = 0, psBlankActive = False}
+  flow@(FWrapped ident extent labels marks beside) -> do
     let beforeLine line = Map.findWithDefault 0 (lbId line) (physicalWrappedBefore cfg)
+        ready = fit cfg st extent
     if extent > physicalCapacity cfg
       then Left (PhysicalFigureTooTall ident)
-      else do
-        let start = fit cfg st extent
-            origin = psUsed start
-            withFigure = putSlot start 0 (SWrapped ident) labels marks
-            count = fittingWrapped cfg withFigure (origin + extent) beside
-            (alongside, later) = splitAt count beside
-        placed <- foldl' (\acc line -> acc >>= \s -> putWrappedLine cfg (origin + extent) (s {psUsed = psUsed s + beforeLine line}) line) (Right withFigure) alongside
-        let afterFigure = placed {psUsed = max (psUsed placed) (origin + extent)}
-        if null later then Right afterFigure else placeWrappedOverflow cfg (nextColumn cfg afterFigure) later
+      else case spotIn cfg ready ident (psUsed ready) extent of
+        SpotNone -> placeFlow cfg (nextColumn cfg ready) flow
+        SpotUnplaced -> placeLines cfg defaultKeep False ready {psUnmet = psUnmet ready <> [UnplacedBlock ident]} beside
+        SpotAt v -> do
+          let start = ready {psUsed = v}
+              origin = psUsed start
+              withFigure = putSlot start 0 (SWrapped ident) labels marks
+              count = fittingWrapped cfg withFigure (origin + extent) beside
+              (alongside, later) = splitAt count beside
+          placed <- foldl' (\acc line -> acc >>= \s -> putWrappedLine cfg (origin + extent) (s {psUsed = psUsed s + beforeLine line}) line) (Right withFigure) alongside
+          let afterFigure = placed {psUsed = max (psUsed placed) (origin + extent)}
+          if null later then Right afterFigure else placeWrappedOverflow cfg (nextColumn cfg afterFigure) later
   FHeading _ recto extent lines' ->
     let firstId = maybe 0 lbId (safeHead lines')
         headingState = if recto then parityStart cfg odd st else st
@@ -1783,9 +1821,13 @@ placeHeading cfg st firstId extent lines'
     required = headingNeed cfg st extent lines'
 
 placeCode :: PhysicalSettings -> PhysicalState -> CodeGeometry -> Sp -> Int -> Bool -> [LineBox] -> Either PhysicalFailure PhysicalState
-placeCode cfg st0 geometry caption first continued = go st0 True
+placeCode cfg st0 geometry caption first continued rows0 = go st0 True rows0
   where
     pitch = physicalPagePitch cfg
+    ident = maybe 0 lbId (safeHead rows0)
+    areasOf st = physicalAvoid cfg (psPage st) (psColumn st) (psSet st) ident
+    -- the areas of the frames of wrap around that end the room of the column from a position before its end (root ADR 0456)
+    cutsRoom st p = [a | (a, b) <- areasOf st, b > p, a < limit cfg st - psNotesUsed st]
     go st isFirst rows = case rows of
       [] -> Right st
       firstRow : _ ->
@@ -1795,19 +1837,29 @@ placeCode cfg st0 geometry caption first continued = go st0 True
             spanOf n = captionLength + fromIntegral (codeSpan geometry (n + if continued && n < total then 1 else 0)) * pitch
             minimumExtent = spanOf minimumRows
             boundarySpace = if empty st then 0 else psPendingSpace st
-            fittingRows = length (takeWhile (\n -> spanOf n + boundarySpace <= room cfg st) [1 .. total])
+            origin = psUsed st + boundarySpace
+            before = minimum (room cfg st - boundarySpace : [max 0 (a - origin) | a <- cutsRoom st origin])
+            fittingRows = length (takeWhile (\n -> spanOf n <= before) [1 .. total])
             count = if fittingRows >= minimumRows then fittingRows else 0
          in if minimumExtent > physicalCapacity cfg
               then Left (PhysicalCodeTooTall (lbId firstRow))
               else
                 if count == 0
-                  then go (nextColumn cfg st) isFirst rows
+                  then
+                    if null (cutsRoom st origin)
+                      then go (nextColumn cfg st) isFirst rows
+                      else case spotIn cfg st ident origin minimumExtent of
+                        -- past the frame, as at the top of a column (root ADR 0456)
+                        SpotAt v | v /= origin -> go st {psUsed = v, psPendingSpace = 0, psBlankActive = False, psBlankSpans = []} isFirst rows
+                        SpotUnplaced -> Right st {psUnmet = psUnmet st <> [UnplacedBlock ident]}
+                        _ -> go (nextColumn cfg st) isFirst rows
                   else
                     let (here, later) = splitAt count rows
                         gridLines = codeSpan geometry (count + if continued && not (null later) then 1 else 0)
                         ready = fit cfg st (spanOf count)
                         placed = putSlot ready (spanOf count) (SCode (lbId firstRow) count gridLines) (concatMap lbLabels here) (concatMap lbMarks here)
-                     in if null later then Right placed else go (nextColumn cfg placed) False later
+                     in -- the next part past a frame in the column, or in the next column
+                        if null later then Right placed else go (if null (cutsRoom placed (psUsed placed)) then nextColumn cfg placed else placed) False later
 
 {- | Reserve each indivisible table part before accepting its notes. A
 header's note cannot consume the space needed by the first body row.
@@ -1857,10 +1909,16 @@ placeTable cfg st0 ident before header rows caption below = do
             else do
               mapM_ (checkTableNotes cfg) (firstPart : remainingParts)
               let ready = tableReady cfg st0 before firstPart
-                  start = ready {psUsed = psUsed ready + if empty ready then 0 else before}
+                  start0 = ready {psUsed = psUsed ready + if empty ready then 0 else before}
                   reserve = fromIntegral (length header + length firstRow) * pitch
-              placedCaption <- if below then Right start else placeTableLinesReserved cfg reserve start caption
-              placeTableRows cfg ident header rows caption below placedCaption
+                  continue start = do
+                    placedCaption <- if below then Right start else placeTableLinesReserved cfg reserve start caption
+                    placeTableRows cfg ident header rows caption below placedCaption
+              -- the header row and the first row off the frames of wrap around (root ADR 0456)
+              case spotIn cfg start0 ident (psUsed start0) minimumExtent of
+                SpotAt v -> continue start0 {psUsed = v}
+                SpotUnplaced -> Right ready {psUnmet = psUnmet ready <> [UnplacedBlock ident]}
+                SpotNone -> placeTable cfg (nextColumn cfg ready) ident before header rows caption below
 
 {- | A table within page or spread retention (root ADR 0377 and root ADR
 0401): whole rows go on in the next column, the header and the first row
@@ -1959,27 +2017,40 @@ placeTableRows cfg ident header rows caption below startingState = do
   let headerStart = psUsed startingState
       following = fromMaybe [] (safeHead rows) <> (if below && length rows <= 1 then caption else [])
   withHeader <- placeTableLinesReserved cfg (fromIntegral (length following) * pitch) startingState header
-  go headerStart withHeader rows
+  go headerStart True withHeader rows
   where
     pitch = physicalPagePitch cfg
-    finish start st =
-      let segment = TableSegment ident start (if null header then Nothing else Just (start + fromIntegral (length header - 1) * pitch)) (psUsed st - pitch)
-       in st {psTables = psTables st <> [segment]}
-    go start st [] = if below then placeTableLinesReserved cfg 0 (finish start st) caption else Right (finish start st)
-    go start st (row : rest) = do
+    -- a part of the table, with the header row or not
+    finish start headed st
+      | psUsed st <= start = st
+      | otherwise =
+          let segment = TableSegment ident start (if null header || not headed then Nothing else Just (start + fromIntegral (length header - 1) * pitch)) (psUsed st - pitch)
+           in st {psTables = psTables st <> [segment]}
+    go start headed st [] = if below then placeTableLinesReserved cfg 0 (finish start headed st) caption else Right (finish start headed st)
+    go start headed st (row : rest) = do
       let lastCaption = if below && null rest then caption else []
           withLastCaption = row <> lastCaption
-          firstRow = psUsed st == start + fromIntegral (length header) * pitch
-      if tableNeed cfg st True withLastCaption <= room cfg st || firstRow
-        then do
-          placed <- placeTableLinesReserved cfg (fromIntegral (length lastCaption) * pitch) st row
-          go start placed rest
-        else do
-          let fresh = nextColumn cfg (finish start st)
-              repeated = [line {lbNotes = [], lbLabels = [], lbMarks = []} | line <- header]
-              ready = tableReady cfg fresh 0 (repeated <> withLastCaption)
-          withHeader <- placeTableLinesReserved cfg (fromIntegral (length withLastCaption) * pitch) ready repeated
-          go (psUsed ready) withHeader (row : rest)
+          firstRow = psUsed st == start + (if headed then fromIntegral (length header) * pitch else 0)
+          -- a row over a frame of wrap around goes on past it in the column, without the header row again (root ADR 0456)
+          past = clearFrom (physicalAvoid cfg (psPage st) (psColumn st) (psSet st) ident) (psUsed st) (fromIntegral (length withLastCaption) * pitch)
+          moved = (finish start headed st) {psUsed = past}
+      if past /= psUsed st && tableNeed cfg moved True withLastCaption <= room cfg moved
+        then go past False moved (row : rest)
+        else
+          if past == psUsed st && (tableNeed cfg st True withLastCaption <= room cfg st || firstRow)
+            then do
+              placed <- placeTableLinesReserved cfg (fromIntegral (length lastCaption) * pitch) st row
+              go start headed placed rest
+            else do
+              let fresh = nextColumn cfg (finish start headed st)
+                  repeated = [line {lbNotes = [], lbLabels = [], lbMarks = []} | line <- header]
+                  ready0 = tableReady cfg fresh 0 (repeated <> withLastCaption)
+                  -- the header row again and the row off the frames (root ADR 0456)
+                  ready = case spotIn cfg ready0 ident (psUsed ready0) (fromIntegral (length repeated + length withLastCaption) * pitch) of
+                    SpotAt v -> ready0 {psUsed = v}
+                    _ -> ready0
+              withHeader <- placeTableLinesReserved cfg (fromIntegral (length withLastCaption) * pitch) ready repeated
+              go (psUsed ready) True withHeader (row : rest)
 
 breakAt :: PhysicalSettings -> BreakKind -> PhysicalState -> PhysicalState
 breakAt cfg kind st = case kind of

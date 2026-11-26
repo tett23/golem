@@ -298,6 +298,8 @@ data PdfUaPart = PdfUa1
 data PluginDecl = PluginDecl
   { pdSource :: !PluginSource,
     pdOverrides :: ![Text],
+    -- | the built-in block commands the plugin overrides (root ADR 0453)
+    pdBlockOverrides :: ![Text],
     -- | the data the project passes to the plugin: names and project-relative paths (docs/adr/0105)
     pdData :: !(Map Text FilePath)
   }
@@ -804,13 +806,13 @@ instance FromValue TextTable where
 -- | url or path, exactly one of them (docs/adr/0109).
 instance FromValue PluginDecl where
   fromValue v = do
-    (u, p, o, d) <- parseTableFromValue ((,,,) <$> optKey "url" <*> optKey "path" <*> optKey "overrides" <*> optKey "data") v
+    (u, p, o, bo, d) <- parseTableFromValue ((,,,,) <$> optKey "url" <*> optKey "path" <*> optKey "overrides" <*> optKey "block-overrides" <*> optKey "data") v
     src <- case (u, p) of
       (Just x, Nothing) -> pure (PluginUrl x)
       (Nothing, Just x) -> pure (PluginPath (T.unpack x))
       (Just _, Just _) -> failAt (valueAnn v) "プラグインには url と path のどちらか一方だけを書きます"
       (Nothing, Nothing) -> failAt (valueAnn v) "プラグインには url か path のどちらかを書きます"
-    pure (PluginDecl src (fromMaybe [] o) (maybe Map.empty (Map.map T.unpack) d))
+    pure (PluginDecl src (fromMaybe [] o) (fromMaybe [] bo) (maybe Map.empty (Map.map T.unpack) d))
 
 instance FromValue FilterDecl where
   fromValue v = do

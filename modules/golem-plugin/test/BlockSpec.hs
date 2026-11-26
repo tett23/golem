@@ -109,10 +109,11 @@ blockTests =
           ["Grid", "", "1a", "a_b", "a b"],
       testCase "a block command named twice is bad output" $
         fixed (described ["grid", "grid"]) (TList [TList [], TList []]) >>= badOutput "ブロックコマンドの名前が重複しています: grid" . void,
-      testCase "a block command with the name of a built-in block command, attribute or setting is bad output" $
+      -- golem-evaluate checks them against block-overrides, as G06007 (root ADR 0453)
+      testCase "root ADR 0453 I7: a block command with the name of a built-in block command, attribute or setting is no bad output" $
         mapM_
-          (\n -> fixed (described [n]) (TList [TList [], TList []]) >>= badOutput ("組み込みのブロックコマンドの名前です: " <> n) . void)
-          ["table", "figure", "label", "manifest", "style-def", "set", "import"],
+          (\n -> fixed (described [n]) (TList [TList [], TList []]) >>= either (assertFailure . show) (\p -> pluginBlocks p @?= [n]))
+          ["table", "figure", "label", "manifest", "style-def", "set", "import", "separator", "toc"],
       testCase "the request of a block command is [2, name, args, body, span, context, data]" $ do
         p <- echo
         let body = [Block bodySpan Nothing Nothing (Paragraph Nothing [Text bodySpan "x"])]

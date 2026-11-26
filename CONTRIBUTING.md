@@ -215,7 +215,7 @@ golem-layout のテストは `-threaded` で作り、入力をプロセッサの
 列挙のテストの予算は、範囲ごとに 10 秒、すべての範囲の和で 30 秒である（[ADR 0281](./docs/adr/0281-budgets-of-the-exhaustive-tests-and-what-moves-to-the-nightly-job.md)）。
 時間は、x86-64 のランナーで、範囲ごとにテストの実行ファイルを直接 `-p` で走らせた壁時計の時間で量る（[ADR 0286](./docs/adr/0286-leave-the-start-of-cabal-out-of-the-time-of-an-enumeration-area.md)）。
 `cabal test` が計画を立てて組み上げを確かめる時間は、範囲の重さによらないので含めない。
-`tests-rest` のログの tasty の時間は、ほかのテストスイートと同時に走った時間なので使わない。
+`tests-rest-a` と `tests-rest-b` のログの tasty の時間は、ほかのテストスイートと同時に走った時間なので使わない。
 `enum.yml` の範囲の段の前の段「The time of each area on the settings of pull requests」が、上限の変数を渡さずに範囲ごとに走らせ、時間と和の表をジョブの要約に書く（`scripts/ci/enum-timings.sh`）。
 予算を超えても、この段は落ちない。
 手元で量るときは、先に `cabal build golem-layout-test` を走らせてから `sh scripts/ci/enum-timings.sh` を走らせる。
