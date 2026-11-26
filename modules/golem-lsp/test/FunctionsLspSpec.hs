@@ -79,6 +79,7 @@ withFunctionsOf chapterText act = withSystemTempDirectory "golem-lsp-functions" 
           ("v.gm", "@set price = 1\n"),
           ("fn/book.emet", TE.encodeUtf8 bookEmet),
           ("fn/lib.emet", TE.encodeUtf8 libEmet),
+          ("fn/over.emet", TE.encodeUtf8 overEmet),
           ("w.tsv", "w\n")
         ]
   forM_ files $ \(p, bytes) -> createDirectoryIfMissing True (takeDirectory (tmp </> p)) >> BS.writeFile (tmp </> p) bytes
@@ -142,6 +143,7 @@ functionsLspTests =
           formatting ws' "fn/lib.emet" @?= Just libEmet,
       renameTests,
       listedTests,
+      overrideTests,
       testCase "hover: the type of a local name in a .emet (docs/adr/0170)" $
         withFunctions $ \_ ws -> do
           hover ws "fn/book.emet" (offsetIn bookEmet "twice n" 6) @?= Just "n :: Nat"
@@ -200,6 +202,37 @@ renameTests =
           ws' <- updateFile ws "fn/book.emet" broken
           edits <- either (assertFailure . show) pure (renameEmet ws' (Just manifestText) "fn/book.emet" (offsetIn broken "total ::" 0) "amount")
           lookup "a.gm" (applyAll edits [("a.gm", chapter)]) @?= Just (T.replace "book.total(" "book.amount(" chapter)
+    ]
+
+-- | fn/over.emet: a block command toc and an inline command strong, names of built-in commands (root ADR 0453).
+overEmet :: Text
+overEmet = "pub block toc :: Blocks\ntoc = Block.paragraph (Inline.text \"T\")\n\npub inline strong :: Inlines -> Inlines\nstrong xs = xs\n"
+
+-- | The chapter that overrides @toc and [strong] by the names it lists.
+overChapter :: Text
+overChapter = "@import fn/over.emet { toc, strong }\n\n@toc\n\n[strong: a]\n"
+
+-- | The names listed by @import over built-in commands (root ADR 0453): definition and completion.
+overrideTests :: TestTree
+overrideTests =
+  testGroup
+    "the names listed by @import over built-in commands (root ADR 0453)"
+    [ testCase "root ADR 0453 I1: the chapter that overrides built-in commands has no diagnostics" $
+        withFunctionsOf overChapter $
+          \_ ws -> codesOf ws "a.gm" @?= [],
+      testCase "root ADR 0453 I1: definition from an overridden name goes to the listed function" $
+        withFunctionsOf overChapter $ \_ ws -> do
+          map (\l -> (locPath l, locStart l)) (definition ws "a.gm" (offsetIn overChapter "@toc" 2)) @?= [("fn/over.emet", offsetIn overEmet "toc ::" 0)]
+          map (\l -> (locPath l, locStart l)) (definition ws "a.gm" (offsetIn overChapter "[strong" 2)) @?= [("fn/over.emet", offsetIn overEmet "strong ::" 0)],
+      testCase "root ADR 0453 I1: completion gives an overridden name once" $
+        withFunctionsOf overChapter $ \_ ws -> do
+          let at text = do
+                ws' <- updateFile ws "a.gm" text
+                pure (map cmpLabel (completions ws' "a.gm" (BS.length (TE.encodeUtf8 text))))
+          block <- at (overChapter <> "\n@")
+          length (filter (== "toc") block) @?= 1
+          inline <- at (overChapter <> "\n[")
+          length (filter (== "strong") inline) @?= 1
     ]
 
 -- | The names listed by @import (root ADR 0451): completion, definition, references and renaming.

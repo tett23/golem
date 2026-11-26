@@ -26,7 +26,7 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Golem.Doc.IR (ChannelDecl (..), Document (..))
-import Golem.Eval.Builtin (BuiltinInline (..), OverridableBuiltin, PluginCommandName, parseBuiltin, pluginCommandName)
+import Golem.Eval.Builtin (BuiltinInline (..), OverridableBlock, OverridableBuiltin, PluginCommandName, builtinBlockCommands, parseBuiltin, parseOverridableBlock, pluginCommandName)
 import Golem.Eval.File (PluginBlockCommand (..), PluginCommand (..), PluginHook (..), noPlugins)
 import Golem.Plugin
 import Golem.Plugin.Lock
@@ -183,6 +183,16 @@ loadPlugins root overlay cacheDir mfid lfid lockText (FileId dataBase) context f
           collisionMessage (c, n)
             | Just (Overridable _) <- parseBuiltin c = "組み込みのコマンドと衝突しています（overrides で宣言してください）: " <> n <> "." <> c
             | otherwise = "上書きできない組み込みのコマンドと衝突しています: " <> n <> "." <> c
+          -- the same for the block commands and block-overrides (root ADR 0453)
+          checkedBlockOverrides = [((n, o), blockOverrideTarget o n p) | (n, decl, p) <- plugins, o <- pdBlockOverrides decl]
+          blockOverrideTarget o n p
+            | o `notElem` pluginBlocks p = Left ("プラグインが提供していないブロックコマンドを block-overrides に書いています: " <> n <> ".@" <> o)
+            | Just b <- parseOverridableBlock o = Right b
+            | otherwise = Left ("上書きできる組み込みのブロックコマンドではありません: " <> n <> ".@" <> o)
+          (undeclaredBlocks, keyedBlocks) = partitionEithers (mapMaybe (blockKey checkedBlockOverrides) [(c, name, p) | (name, _, p) <- plugins, c <- pluginBlocks p])
+          blockCollisionMessage (c, n)
+            | Just _ <- parseOverridableBlock c = "組み込みのブロックコマンドと衝突しています（block-overrides で宣言してください）: " <> n <> ".@" <> c
+            | otherwise = "上書きできない組み込みのブロックコマンドと衝突しています: " <> n <> ".@" <> c
           -- the channels of the plugins (golem-doc ADR 0007): G06012 for a name declared twice, reserved or malformed
           declared = [(channelName d, (name, d)) | (name, _, p) <- plugins, d <- pluginChannels p]
           channelProviders = Map.fromListWith (flip (<>)) [(c, [n]) | (c, (n, _)) <- declared]
@@ -193,6 +203,8 @@ loadPlugins root overlay cacheDir mfid lfid lockText (FileId dataBase) context f
               <> [err "G06006" ("複数のプラグインが同じブロックコマンドを提供しています: @" <> c <> "（" <> T.intercalate "、" ns <> "）") | (c, ns) <- blockCollisions]
               <> [err "G06007" (collisionMessage u) | u <- undeclared]
               <> [err "G06008" m | (_, Left m) <- checkedOverrides]
+              <> [err "G06007" (blockCollisionMessage u) | u <- undeclaredBlocks]
+              <> [err "G06008" m | (_, Left m) <- checkedBlockOverrides]
               <> [diagnostic code Error (fromMaybe (mkSpan mfid 0 0) spanAt) message | Just (code, spanAt, message) <- map filterError (manifestFilters manifest)]
               <> [err "G06012" ("複数のプラグインが同じチャネルを宣言しています: " <> c <> "（" <> T.intercalate "、" ns <> "）") | (c, ns) <- channelCollisions]
               <> [err "G06012" (n <> ": このチャネルの名前は使えません: " <> c) | (n, c) <- badChannels]
@@ -207,7 +219,8 @@ loadPlugins root overlay cacheDir mfid lfid lockText (FileId dataBase) context f
                 PluginHook
                   { phOverrides = Map.fromList [(o, call pname p c) | (Left o, (c, pname, p)) <- keyed],
                     phCommands = Map.fromList [(k, call pname p c) | (Right k, (c, pname, p)) <- keyed],
-                    phBlocks = Map.fromList [(c, callBlock pname p c) | (pname, _, p) <- plugins, c <- pluginBlocks p],
+                    phBlocks = Map.fromList [(c, callBlock pname p c) | (Right c, (_, pname, p)) <- keyedBlocks],
+                    phBlockOverrides = Map.fromList [(o, callBlock pname p c) | (Left o, (c, pname, p)) <- keyedBlocks],
                     phChannels = Map.fromList [(c, d) | (c, (_, d)) <- declared],
                     phApplyFilters = applyFilters,
                     phContextNames = sort (nubOrd [c | (_, _, p) <- plugins, c <- pluginContextNames p])
@@ -299,6 +312,22 @@ commandKey checked x@(c, n, _) = case pluginCommandName c of
     Just (Right o) -> Just (Right (Left o, x))
     Just (Left _) -> Nothing
     Nothing -> Just (Left (c, n))
+
+{- | The key of a block command a plugin provides (root ADR 0453): Right
+with Right for a name of its own, or Left for a declared override; Left
+with (command, plugin) for an undeclared built-in name (G06007), or
+Nothing for a declared name that G06008 reports.
+-}
+blockKey ::
+  [((Text, Text), Either Text OverridableBlock)] ->
+  (Text, Text, p) ->
+  Maybe (Either (Text, Text) (Either OverridableBlock Text, (Text, Text, p)))
+blockKey checked x@(c, n, _)
+  | c `notElem` builtinBlockCommands = Just (Right (Right c, x))
+  | otherwise = case lookup (n, c) checked of
+      Just (Right o) -> Just (Right (Left o, x))
+      Just (Left _) -> Nothing
+      Nothing -> Just (Left (c, n))
 
 {- | The name of a channel a plugin may declare (golem-doc ADR 0007): a
 lowercase ASCII letter, then lowercase letters, digits and -, and not one

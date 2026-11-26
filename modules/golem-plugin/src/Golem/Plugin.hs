@@ -73,7 +73,6 @@ import Foreign.C.Types
 import Golem.Doc.Cbor
 import Golem.Doc.IR hiding (abiVersion)
 import Golem.Doc.Validate (captionErrors, langErrors, linkErrors, validateCommandBlocks, validateDocument)
-import Golem.Eval.Builtin (builtinBlockCommands)
 import Golem.Eval.Value (PluginArg (..), Value (..))
 import Golem.Syntax
 import Golem.Syntax.Sha256 (sha256)
@@ -404,11 +403,10 @@ decodeDescription b = do
     fields = ["commands", "filters", "channels", "data", "context", "blocks"]
     blockNames ns = case [n | n <- ns, not (dataName n)] of
       (n : _) -> Left (BadOutput ("ブロックコマンドの名前が不正です: " <> n))
+      -- a name of a built-in block command is checked against block-overrides by golem-evaluate (G06007, root ADR 0453)
       [] -> case [n | (i, n) <- zip [0 :: Int ..] ns, n `elem` take i ns] of
         (n : _) -> Left (BadOutput ("ブロックコマンドの名前が重複しています: " <> n))
-        [] -> case [n | n <- ns, n `elem` builtinBlockCommands] of
-          (n : _) -> Left (BadOutput ("組み込みのブロックコマンドの名前です: " <> n))
-          [] -> Right ns
+        [] -> Right ns
     contextOf ns = case [n | (i, n) <- zip [0 :: Int ..] ns, n `elem` take i ns] of
       (n : _) -> Left (BadOutput ("文脈の名前が重複しています: " <> n))
       [] -> case filter (`notElem` contextNames) ns of

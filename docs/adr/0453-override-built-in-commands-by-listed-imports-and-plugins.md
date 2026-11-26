@@ -1,6 +1,6 @@
 # ADR 0453: 組み込みのコマンドを、名前を並べた取り込みとプラグインで上書きできるようにする
 
-Status: accepted-pending
+Status: accepted
 
 ## 文脈
 

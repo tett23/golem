@@ -29,16 +29,16 @@ book =
         Map.fromList
           [ ("tax-included", inline "TAX"),
             ("x", inline "XI"),
-            -- the names of a built-in inline command and of a plugin's
-            ("strong", inline "S"),
+            -- the names of a fixed built-in inline command (root ADR 0453) and of a plugin's
+            ("link", inline "S"),
             ("pc", inline "P")
           ],
       fnBlock =
         Map.fromList
           [ ("x", block "XB"),
             ("word-table", block "WT"),
-            -- @toc is built in, @grid a plugin's
-            ("toc", block "TOC"),
+            -- @frame is built in and fixed (root ADR 0453), @grid a plugin's
+            ("frame", block "FRAME"),
             ("grid", block "G")
           ],
       fnExpr =
@@ -65,7 +65,7 @@ ctx :: EvalContext
 ctx =
   baseCtx
     { ctxFunctions = FunctionTable (Map.fromList [("functions/book.emet", book), ("functions/other.emet", book)]) False Set.empty,
-      ctxImports = Map.fromList [("common/values.gm", Map.fromList [("price", VInt 100), ("toc", VString "T"), ("rate", VNat 8)])],
+      ctxImports = ResolvedImports (Map.fromList [("common/values.gm", Map.fromList [("price", VInt 100), ("toc", VString "T"), ("rate", VNat 8)])]),
       ctxPlugins = plugins
     }
 
@@ -125,10 +125,10 @@ tests =
         texts ctx "@import functions/book.emet * as book\n@import functions/book.emet { total }\n\n[= total([1]) + book.total([2])]\n" @?= ["3"]
         codes ctx "@import functions/book.emet * as book\n@import functions/book.emet { total }\n\n[= total([1]) + book.total([2])]\n" @?= [],
       testCase "root ADR 0451 I3: a built-in command's name is G02270, at the name" $ do
-        sites "@import functions/book.emet { toc }\n" @?= [("G02270", "toc")]
-        sites "@import functions/book.emet { strong }\n" @?= [("G02270", "strong")],
+        sites "@import functions/book.emet { frame }\n" @?= [("G02270", "frame")]
+        sites "@import functions/book.emet { link }\n" @?= [("G02270", "link")],
       testCase "root ADR 0451 I3: the built-in command keeps its name" $
-        [t | Paragraph _ is <- resultBodies (evalResult ctx "@import functions/book.emet { strong }\n\n[strong: a]\n"), CharStyle _ "strong" xs <- is, Text _ t <- xs] @?= ["a"],
+        [u | Paragraph _ is <- resultBodies (evalResult ctx "@import functions/book.emet { link }\n\n[link \"https://example.com/\": a]\n"), Link _ u _ <- is] @?= ["https://example.com/"],
       testCase "root ADR 0451 I3: a plugin command's name is G02271" $ do
         sites "@import functions/book.emet { grid }\n" @?= [("G02271", "grid")]
         sites "@import functions/book.emet { pc }\n" @?= [("G02271", "pc")],
@@ -146,7 +146,7 @@ tests =
         sites "@import common/values.gm { toc }\n\n[= toc]\n" @?= []
         texts ctx "@import common/values.gm { toc }\n\n[= toc]\n" @?= ["T"],
       testCase "root ADR 0451 I3, I7: each kind of clash gives its code once at each name" $ do
-        let clashes = ["@import functions/book.emet { toc, grid, total, total }\n@import functions/other.emet { total }\n"]
+        let clashes = ["@import functions/book.emet { frame, grid, total, total }\n@import functions/other.emet { total }\n"]
         mapM_ (\src -> sort (map fst (sites src)) @?= ["G02270", "G02271", "G02272", "G02272", "G02272", "G02273"]) clashes,
       testCase "root ADR 0451 I4: a reserved name is G02275 alone" $ do
         sites "@import functions/book.emet { meta }\n" @?= [("G02275", "meta")]
@@ -168,6 +168,6 @@ tests =
         unplaced "@import common/values.gm { price }\n@set price = 1\n" @?= unplaced "@set price = 1\n@import common/values.gm { price }\n",
       testCase "root ADR 0451 I8: a .emet that could not be loaded reports nothing for its names" $ do
         let unloaded = ctx {ctxFunctions = (ctxFunctions ctx) {ftUnloaded = True}}
-        codes unloaded "@import functions/book.emet { total, nothing, toc }\n\n[= total([1])][x 1]\n\n@word-table\n" @?= ["G02022", "G02009"]
+        codes unloaded "@import functions/book.emet { total, nothing, frame }\n\n[= total([1])][x 1]\n\n@word-table\n" @?= ["G02022", "G02009"]
         codes unloaded "@import functions/book.emet { total, x, word-table }\n\n[= total([1])][x 1]\n\n@word-table\n" @?= []
     ]

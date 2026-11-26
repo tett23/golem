@@ -1872,6 +1872,8 @@ G01010 から G01023 に当たらない構文エラーの既定のコードで�
 ### 意味
 
 式が、定義されていない変数、名前空間、要素を参照した。
+プロジェクトの外のファイル（マニフェストの届かないファイル）の評価では、変数のファイルの取り込みを解かないので、変数のファイルから取り込んだ名前の式での参照（名前を並べた名前と、名前空間を通した名前）にこのコードを出さない（[root ADR 0455](adr/0455-resolve-variable-imports-through-the-import-graph.md)）。
+ただし、その参照を含む式で `@set` した変数は定義されないので、その変数の参照はこのコードになる。
 
 - メッセージ: `未定義の名前 <名前> です`、`未定義の名前空間 <名前空間> です`、`名前がありません`
 - 段階とモジュール: 評価（golem-eval の `Golem.Eval.Expr`）
@@ -6335,25 +6337,27 @@ TSV の途中の空の行は消す。
 
 ## G02270
 
-組み込みのコマンドと同じ名前は取り込めません
+上書きできない組み込みのコマンドと同じ名前は取り込めません
 
 - 重大度: エラー
 - 状態: 使用中
 
 ### 意味
 
-`@import パス { … }` で並べた名前が、その名前を使う場所（インラインのコマンドかブロックコマンド）の組み込みのコマンドの名前と同じである。
-組み込みのコマンドは、名前空間なしで評価が組み込みとして扱うすべての名前（`@import`、`@set`、`@toc`、`[strong]` など）である。
+`@import パス { … }` で並べた名前が、その名前を使う場所（インラインのコマンドかブロックコマンド）の、上書きできない組み込みのコマンドの名前と同じである。
+上書きできない組み込みのコマンドは、評価、ページ分割、参照、チャネルの仕組みがその意味を前提にするもの（`@import`、`@set`、`@style`、`@frame`、`[link]`、`[note]` など）で、一覧は仕様書の「プラグイン」の節の「種類」の表にある。
+上書きできる組み込みのコマンド（`@toc`、`[strong]` など）と同じ名前は、このコードにならず、取り込んだ関数がそのファイルの中で組み込みのコマンドを上書きする（[root ADR 0453](adr/0453-override-built-in-commands-by-listed-imports-and-plugins.md)）。
 その名前はその場所には取り込まず、名前空間なしの参照は組み込みのコマンドを指す。
 位置は、`@import` の行のその名前である。
 
-- メッセージ: `組み込みのコマンドと同じ名前は取り込めません: <名前>`
+- メッセージ: `上書きできない組み込みのコマンドと同じ名前は取り込めません: <名前>`
 - 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
-- ADR: [docs/adr/0451](adr/0451-import-listed-names-without-a-namespace.md)
+- ADR: [docs/adr/0451](adr/0451-import-listed-names-without-a-namespace.md)、[root ADR 0453](adr/0453-override-built-in-commands-by-listed-imports-and-plugins.md)
 
 ### 主な原因
 
-- `.emet` の `pub block "toc"` などを、名前を並べて取り込んだ。
+- `.emet` の `pub block "set"` や `pub inline "link"` などを、名前を並べて取り込んだ。
+- インラインとブロックの両方で公開された名前（`pub inline "index"` と `pub block "index"` など）を並べ、どちらかの場所で上書きできない名前だった。上書きできる場所には取り込まれる。
 
 ### 直し方
 
@@ -6370,16 +6374,19 @@ TSV の途中の空の行は消す。
 ### 意味
 
 `@import パス { … }` で並べた名前が、その名前を使う場所（インラインのコマンドかブロックコマンド）の、プロジェクトが宣言したプラグインのコマンドの名前と同じである。
+プラグインが `overrides` か `block-overrides` で上書きを宣言した組み込みのコマンドも、プラグインのコマンドとして数える（[root ADR 0453](adr/0453-override-built-in-commands-by-listed-imports-and-plugins.md)）。
+同じ組み込みのコマンドを、プラグインと名前を並べた取り込みの両方が上書きしたとき、どちらを呼ぶかを評価が探す順で決めないためである。
 その名前はその場所には取り込まず、名前空間なしの参照はプラグインのコマンドを指す。
 位置は、`@import` の行のその名前である。
 
 - メッセージ: `プラグインのコマンドと同じ名前は取り込めません: <名前>`
 - 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
-- ADR: [docs/adr/0451](adr/0451-import-listed-names-without-a-namespace.md)
+- ADR: [docs/adr/0451](adr/0451-import-listed-names-without-a-namespace.md)、[root ADR 0453](adr/0453-override-built-in-commands-by-listed-imports-and-plugins.md)
 
 ### 主な原因
 
 - プラグインのコマンドと同じ名前の `.emet` の関数を、名前を並べて取り込んだ。
+- プラグインが上書きを宣言した組み込みのコマンド（`overrides = ["ruby"]` の `ruby` など）と同じ名前を、名前を並べて取り込んだ。
 
 ### 直し方
 
@@ -6499,6 +6506,7 @@ TSV の途中の空の行は消す。
 `.emet` では、`pub inline` と `pub block` のコマンドの名前（文字列で名前を書いたものはその名前）と `pub fn` の関数の名前が公開された名前で、変数のファイルでは `@set` の変数の名前である。
 この名前の重なりは調べない。
 `.emet` のどれかの読み込みか型の検査に誤りがあるときは、`.emet` から並べた名前にこのコードを出さない。
+プロジェクトの外のファイル（マニフェストの届かないファイル）の評価では、変数のファイルの取り込みを解かないので、変数のファイルから並べた名前にもこのコードを出さない（[root ADR 0455](adr/0455-resolve-variable-imports-through-the-import-graph.md)）。
 位置は、`@import` の行のその名前である。
 
 - メッセージ: `<パス> が公開していない名前です: <名前>`
@@ -10336,11 +10344,12 @@ plugins.lock にないプラグインです
 チャネルの宣言の形の誤りは `チャネルの宣言の形が不正です`、データの名前の誤りは `データの名前が不正です: <名前>` と `データの名前が重複しています: <名前>` になる。
 文脈の名前を二度書いた宣言は `文脈の名前が重複しています: <名前>` になる。
 Golem が渡せない文脈の名前は、このコードではなく [G06105](#g06105) になる。
-ブロックコマンドの名前の誤りは、形の誤りが `ブロックコマンドの名前が不正です: <名前>`、二度書いた名前が `ブロックコマンドの名前が重複しています: <名前>`、組み込みのブロックコマンドの名前が `組み込みのブロックコマンドの名前です: <名前>` になる。
+ブロックコマンドの名前の誤りは、形の誤りが `ブロックコマンドの名前が不正です: <名前>`、二度書いた名前が `ブロックコマンドの名前が重複しています: <名前>` になる。
+組み込みのブロックコマンドと同じ名前は、このコードではなく [G06007](#g06007) になる（[root ADR 0453](adr/0453-override-built-in-commands-by-listed-imports-and-plugins.md)）。
 
 - メッセージ: `<名前>: <理由>`
 - 段階とモジュール: プラグイン（golem-evaluate の `Golem.Evaluate.Plugins`）
-- ADR: [golem-plugin ADR 0003](golem-plugin/adr/0003-plugin-diagnostic-codes.md)、[docs/adr/0107](adr/0107-named-describe-fields.md)、[docs/adr/0121](adr/0121-host-context-in-plugin-requests.md)、[docs/adr/0122](adr/0122-block-commands-in-plugins.md)
+- ADR: [golem-plugin ADR 0003](golem-plugin/adr/0003-plugin-diagnostic-codes.md)、[docs/adr/0107](adr/0107-named-describe-fields.md)、[docs/adr/0121](adr/0121-host-context-in-plugin-requests.md)、[docs/adr/0122](adr/0122-block-commands-in-plugins.md)、[root ADR 0453](adr/0453-override-built-in-commands-by-listed-imports-and-plugins.md)
 
 ### 主な原因
 
@@ -10386,21 +10395,26 @@ Golem が渡せない文脈の名前は、このコードではなく [G06105](#
 ### 意味
 
 プラグインが組み込みのコマンドと同じ名前のコマンドを提供し、そのプラグインの `overrides` にその名前がない。
-組み込みのコマンドが上書きできるものなら一つ目の文言、上書きできないもの（`note` など）なら二つ目の文言になる。
+ブロックコマンドでは、プラグインが組み込みのブロックコマンドと同じ名前のブロックコマンドを提供し、`block-overrides` にその名前がない（[root ADR 0453](adr/0453-override-built-in-commands-by-listed-imports-and-plugins.md)）。
+インラインでは、組み込みのコマンドが上書きできるものなら一つ目の文言、上書きできないもの（`[note]` など）なら二つ目の文言になる。
+ブロックでは、上書きできるもの（`@separator` など）なら三つ目の文言、上書きできないもの（`@frame` など）なら四つ目の文言になる。
+提供した名前ごとに一つ出す。
+`overrides` か `block-overrides` に書いた名前は、上書きできない名前でも、このコードではなく [G06008](#g06008) になる。
 位置は `manifest.toml` の先頭である。
 
-- メッセージ: `組み込みのコマンドと衝突しています（overrides で宣言してください）: <プラグイン>.<コマンド>`、`上書きできない組み込みのコマンドと衝突しています: <プラグイン>.<コマンド>`
+- メッセージ: `組み込みのコマンドと衝突しています（overrides で宣言してください）: <プラグイン>.<コマンド>`、`上書きできない組み込みのコマンドと衝突しています: <プラグイン>.<コマンド>`、`組み込みのブロックコマンドと衝突しています（block-overrides で宣言してください）: <プラグイン>.@<名前>`、`上書きできない組み込みのブロックコマンドと衝突しています: <プラグイン>.@<名前>`
 - 段階とモジュール: プラグイン（golem-evaluate の `Golem.Evaluate.Plugins`）
-- ADR: [golem-plugin ADR 0003](golem-plugin/adr/0003-plugin-diagnostic-codes.md)
+- ADR: [golem-plugin ADR 0003](golem-plugin/adr/0003-plugin-diagnostic-codes.md)、[root ADR 0453](adr/0453-override-built-in-commands-by-listed-imports-and-plugins.md)
 
 ### 主な原因
 
 - プラグインのコマンドが組み込みのコマンドと同じ名前で、上書きを宣言していない。
 - プラグインが、上書きできない組み込みのコマンドと同じ名前のコマンドを提供している。
+- プラグインのブロックコマンドが、組み込みのブロックコマンド（`@separator`、`@frame` など）と同じ名前である。
 
 ### 直し方
 
-上書きできるコマンドを上書きするなら、`manifest.toml` のプラグインの `overrides` にコマンドを書く。
+上書きできるコマンドを上書きするなら、`manifest.toml` のプラグインの `overrides`（ブロックコマンドなら `block-overrides`）にその名前を書く。
 上書きできないコマンドと衝突するなら、そのプラグインを外す。
 
 ## G06008
@@ -10413,22 +10427,23 @@ overrides に書けない名前です
 ### 意味
 
 プラグインの `overrides` に、そのプラグインが提供していないコマンドか、上書きできる組み込みのコマンドでない名前がある。
-`overrides` の一つの名前について、高々一つ出す。
+ブロックコマンドの `block-overrides` も同じく、そのプラグインが提供していないブロックコマンドか、上書きできる組み込みのブロックコマンド（`toc`、`index`、`bibliography`、`printings`、`separator`）でない名前を書くと、このコードになる（[root ADR 0453](adr/0453-override-built-in-commands-by-listed-imports-and-plugins.md)）。
+`overrides` と `block-overrides` の一つの名前について、高々一つ出す。
 提供していなければ一つ目の文言、提供していても上書きできる組み込みのコマンドでなければ（組み込みでない名前か、上書きできない組み込みのコマンド）二つ目の文言になる。
 位置は `manifest.toml` の先頭である。
 
-- メッセージ: `プラグインが提供していないコマンドを overrides に書いています: <プラグイン>.<コマンド>`、`上書きできる組み込みのコマンドではありません: <プラグイン>.<コマンド>`
+- メッセージ: `プラグインが提供していないコマンドを overrides に書いています: <プラグイン>.<コマンド>`、`上書きできる組み込みのコマンドではありません: <プラグイン>.<コマンド>`、`プラグインが提供していないブロックコマンドを block-overrides に書いています: <プラグイン>.@<名前>`、`上書きできる組み込みのブロックコマンドではありません: <プラグイン>.@<名前>`
 - 段階とモジュール: プラグイン（golem-evaluate の `Golem.Evaluate.Plugins`）
-- ADR: [golem-plugin ADR 0003](golem-plugin/adr/0003-plugin-diagnostic-codes.md)
+- ADR: [golem-plugin ADR 0003](golem-plugin/adr/0003-plugin-diagnostic-codes.md)、[root ADR 0453](adr/0453-override-built-in-commands-by-listed-imports-and-plugins.md)
 
 ### 主な原因
 
-- `overrides` に、そのプラグインが提供していないコマンドを書いた。
-- `overrides` に、組み込みでない名前か、上書きできない組み込みのコマンドを書いた。
+- `overrides` か `block-overrides` に、そのプラグインが提供していないコマンドを書いた。
+- `overrides` か `block-overrides` に、組み込みでない名前か、上書きできない組み込みのコマンドを書いた。
 
 ### 直し方
 
-`overrides` からその名前を外す。
+`overrides` か `block-overrides` からその名前を外す。
 
 ## G06009
 

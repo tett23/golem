@@ -25,10 +25,13 @@ module Golem.Eval.Expr
 where
 
 import Data.Char (isAlphaNum, isAscii)
+import Data.Foldable (traverse_)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (isJust)
 import Data.Ratio (denominator, numerator, (%))
+import Data.Set (Set)
+import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
 import GHC.Num.Integer (integerLog2)
@@ -44,12 +47,16 @@ data Env = Env
     -- | the namespaces of the .emet a file imports (docs/adr/0162)
     envFunctions :: !(Map Name FunctionRef),
     -- | the pub fn an @import lists, called without a namespace (root ADR 0451)
-    envListed :: !(Map Name FunctionRef)
+    envListed :: !(Map Name FunctionRef),
+    -- | the names an @import of a variable file lists that the evaluation does not resolve (root ADR 0455)
+    envUnresolvedVars :: !(Set Name),
+    -- | the namespaces of such @import lines; references through them report nothing
+    envUnresolvedNamespaces :: !(Set Name)
   }
 
 -- | An environment of variables and namespaces of variables, without functions.
 plainEnv :: Map Name Value -> Map Name (Map Name Value) -> Env
-plainEnv vars nss = Env vars nss Map.empty Map.empty
+plainEnv vars nss = Env vars nss Map.empty Map.empty Set.empty Set.empty
 
 -- | The namespace and the name of @ns.f@, a function of a .emet (docs/adr/0162).
 splitNamespace :: Name -> Maybe (Name, Name)
@@ -133,9 +140,11 @@ evalExpr env le@(Located _ e) = case e of
   EVar [n] -> case Map.lookup n (envVars env) of
     Just v -> pure v
     Nothing
+      | Set.member n (envUnresolvedVars env) -> unresolved le n
       | n == "pi" -> pure (VRat piValue)
       | n == "e" -> pure (VRat eValue)
       | otherwise -> err "G02002" le ("未定義の名前 " <> n <> " です")
+  EVar (ns : rest) | Set.member ns (envUnresolvedNamespaces env) -> unresolved le (T.intercalate "." (ns : rest))
   EVar (ns : rest) -> case Map.lookup ns (envNamespaces env) of
     Nothing -> err "G02002" le ("未定義の名前空間 " <> ns <> " です")
     Just m -> lookupMember le (VHash m) rest
@@ -151,6 +160,7 @@ evalExpr env le@(Located _ e) = case e of
   ECall f args | Just (ns, name) <- splitNamespace f -> do
     vs <- traverse (evalExpr env) args
     callFunction env le ns name vs
+  ECall f args | Set.member f (envUnresolvedVars env) -> traverse_ (evalExpr env) args >> unresolved le f
   ECall f args | Just ref <- Map.lookup f (envListed env) -> do
     vs <- traverse (evalExpr env) args
     callRef le f ref f vs
@@ -334,6 +344,14 @@ callRef le qualified ref name vs = case ref of
     Nothing -> case Map.lookup name (fnOthers fns) of
       Just why -> err "G02002" le (qualified <> " は pub fn ではないので、式からは呼べません（" <> why <> "）")
       Nothing -> err "G02002" le ("未定義の関数 " <> qualified <> " です")
+
+{- | A reference to a variable of an @import the evaluation does not
+resolve, outside a project (root ADR 0455): it carries 'unloadedFact', as
+a call of a function of a .emet that could not be loaded, and is not
+reported.
+-}
+unresolved :: Located Expr -> Name -> Eval Value
+unresolved le n = Left ((diagnostic "G02002" Error (locSpan le) ("取り込みを解いていない変数です: " <> n)) {diagFacts = [unloadedFact]})
 
 call :: Located Expr -> Name -> [Value] -> Eval Value
 call le f args = case (f, args) of
