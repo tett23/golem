@@ -70,7 +70,7 @@ import Golem.Parser.Read (checkTableText)
 import Golem.Parser.SourceSettings
 import Golem.Project.Imports (ImportForm (..), ImportSite (..), ListedName (..), importNames, importSite, importsOf)
 import Golem.Project.Paths (PathError (..), normalizeRelative, pathErrorMessage)
-import Golem.Project.Style (Dim (..), LineBreaks (..), LocalStyles (..), ParaStyleDef (..), Sp (..), Style (stOutlines, stPrintingsFormat), kentenShapeNames, noLocalStyles, paraLineBreaks, paraStyle, parseAki, parseDim, renderPrintingTemplate, withLocalStyles)
+import Golem.Project.Style (Dim (..), LineBreaks (..), LocalStyles (..), LocalValue (..), ParaStyleDef (..), Sp (..), Style (stOutlines, stParaStyles, stPrintingsFormat), StyleKind (..), checkLocalStyles, kentenShapeNames, localStyleDefWithValues, noLocalStyles, overPara, paraLineBreaks, paraStyle, paraStyleKeys, parseAki, parseDim, renderPrintingTemplate, withLocalStyles)
 import Golem.Syntax
 import Golem.Syntax.LanguageTag (isLanguageTag)
 import Golem.Syntax.Sha256 (sha256)
@@ -136,6 +136,8 @@ data EvalContext = EvalContext
     ctxSource :: !SourceSettings,
     -- | style.toml as read, which the @style-def of a file is laid over (docs/adr ADR 0014)
     ctxStyle :: !Style,
+    -- | the styles of the @style-def of the file, for the keys of @style (root ADR 0467)
+    ctxLocalStyles :: !LocalStyles,
     -- | the functions of the .emet of the project (docs/adr/0162)
     ctxFunctions :: !FunctionTable
   }
@@ -384,10 +386,11 @@ the styles based on it.
 -}
 withFileStyles :: LocalStyles -> EvalContext -> EvalContext
 withFileStyles local ctx
-  | local == noLocalStyles = ctx
+  | local == noLocalStyles = ctx {ctxLocalStyles = local}
   | otherwise =
       ctx
-        { ctxCharStyles = Set.union (Map.keysSet (lsCharStyles local)) (ctxCharStyles ctx),
+        { ctxLocalStyles = local,
+          ctxCharStyles = Set.union (Map.keysSet (lsCharStyles local)) (ctxCharStyles ctx),
           ctxParaStyles = Map.union (paraLineBreaks (withLocalStyles (ctxStyle ctx) local)) (ctxParaStyles ctx)
         }
 
@@ -1283,12 +1286,13 @@ data CommandKind
   deriving stock (Eq)
 
 {- | The paragraph style a @style passes to the blocks of its body (root
-ADR 0460): the line of the @style, the name (Nothing after G02047, as
-body), and whether the style keeps its lines.
+ADR 0460): the line of the @style, the name and the keys of its named
+arguments (root ADR 0467; Nothing after G02047, as body), and whether the
+style keeps its lines.
 -}
 data Passed = Passed
   { psCommand :: !SrcSpan,
-    psName :: !(Maybe Text),
+    psRef :: !(Maybe StyleRef),
     psKeeps :: !Bool
   }
 
@@ -1454,11 +1458,30 @@ isLangCommand = \case
   A.Located _ (A.BlockCommand (A.Located _ "lang") _ _) -> True
   _ -> False
 
--- | @style with the name of a paragraph style that keeps its lines.
+{- | @style with the name of a paragraph style that keeps its lines, or
+with line-breaks="keep" among its named arguments (root ADR 0467).
+-}
 keepsLinesStyle :: Map Text LineBreaks -> A.Located A.Block -> Bool
 keepsLinesStyle paraStyles = \case
-  A.Located _ (A.BlockCommand (A.Located _ "style") [A.Located _ (A.Positional v)] _) | Just n <- nameArg v -> Map.lookup n paraStyles == Just KeepLines
+  A.Located _ (A.BlockCommand (A.Located _ "style") args _)
+    | [v] <- [v | A.Located _ (A.Positional v) <- args],
+      Just n <- nameArg v ->
+        argumentLineBreaks args (Map.lookup n paraStyles) == Just KeepLines
   _ -> False
+
+{- | The line-breaks of the named arguments of @style over those of its
+style (root ADR 0467): keep or join written once, as a word or a string.
+-}
+argumentLineBreaks :: [A.Located A.Argument] -> Maybe LineBreaks -> Maybe LineBreaks
+argumentLineBreaks args own = case [v | A.Located _ (A.Keyword (A.Located _ "line-breaks") v) <- args] of
+  [v] | Just "keep" <- nameOrString v -> Just KeepLines
+  [v] | Just "join" <- nameOrString v -> Just JoinLines
+  _ -> own
+  where
+    nameOrString = \case
+      A.Word w -> Just w
+      A.StringLit t -> Just t
+      _ -> Nothing
 
 {- | The attributes on the first of the blocks (docs/adr ADR 0005, golem-eval
 ADR 0003): its label, the attributes of its kind (G02013 for the others),
@@ -1501,7 +1524,7 @@ are as they are.
 -}
 evalStyled :: EvalContext -> Passed -> A.Located A.Block -> M [Block]
 evalStyled ctx ps lb@(A.Located sp b) = case b of
-  A.Paragraph is -> styledParagraph ctx sp (psName ps) is
+  A.Paragraph is -> styledParagraph ctx sp (psRef ps) is
   A.BulletList items -> one . BulletList <$> mapM (fmap (ListItem Nothing) . inner) items
   A.OrderedList items -> one . OrderedList <$> mapM (fmap (ListItem Nothing) . inner) items
   A.DefList gs -> one . DefList <$> mapM (\(A.DefGroup ts ds) -> DefGroup <$> mapM (evalInlines ctx False) ts <*> mapM inner ds) gs
@@ -1523,24 +1546,23 @@ cells of its tables (docs/adr/0262). An unknown style is G02047.
 -}
 styledOutput :: EvalContext -> Passed -> Block -> M Block
 styledOutput ctx ps b = case blockBody b of
-  Paragraph Nothing is -> case psName ps of
-    Just n
-      | Map.notMember n (ctxParaStyles ctx) -> err "G02047" (blockSpan b) ("定義されていない段落スタイルです: " <> n) >> pure b
-      | n == "body" -> pure b
-      | otherwise -> pure b {blockBody = Paragraph (Just n) is}
+  Paragraph Nothing is -> case psRef ps of
+    Just r
+      | Map.notMember (styleRefName r) (ctxParaStyles ctx) -> err "G02047" (blockSpan b) ("定義されていない段落スタイルです: " <> styleRefName r) >> pure b
+      | otherwise -> pure b {blockBody = Paragraph (paragraphRef r) is}
     Nothing -> pure b
   BulletList items -> (\xs -> b {blockBody = BulletList xs}) <$> mapM item items
   OrderedList items -> (\xs -> b {blockBody = OrderedList xs}) <$> mapM item items
   DefList gs -> (\xs -> b {blockBody = DefList xs}) <$> mapM (\(DefGroup ts ds) -> DefGroup ts <$> mapM (mapM (styledOutput ctx ps)) ds) gs
   TableBlock t
     | Nothing <- tableStyle t,
-      Just n <- psName ps,
-      Map.notMember n (ctxParaStyles ctx) ->
-        err "G02047" (psCommand ps) ("定義されていない段落スタイルです: " <> n) >> pure b
+      Just r <- psRef ps,
+      Map.notMember (styleRefName r) (ctxParaStyles ctx) ->
+        err "G02047" (psCommand ps) ("定義されていない段落スタイルです: " <> styleRefName r) >> pure b
     | Nothing <- tableStyle t,
-      Just n <- psName ps,
-      n /= "table" ->
-        pure b {blockBody = TableBlock t {tableStyle = Just n}}
+      Just r <- psRef ps,
+      r /= "table" ->
+        pure b {blockBody = TableBlock t {tableStyle = Just r}}
   _ -> pure b
   where
     item (ListItem n bs) = ListItem n <$> mapM (styledOutput ctx ps) bs
@@ -1905,10 +1927,10 @@ applyAttr ctx (label, body) (A.Located sp cmd) = case cmd of
     -- the paragraph style of the cells of a table (docs/adr/0262)
     ("style", TableBlock t) ->
       styleName ctx sp args >>= \case
-        Just n
-          | Map.notMember n (ctxParaStyles ctx) -> err "G02047" sp ("定義されていない段落スタイルです: " <> n) >> pure (label, body)
-          | n == "table" -> pure (label, body)
-          | otherwise -> pure (label, TableBlock t {tableStyle = Just n})
+        Just r
+          | Map.notMember (styleRefName r) (ctxParaStyles ctx) -> err "G02047" sp ("定義されていない段落スタイルです: " <> styleRefName r) >> pure (label, body)
+          | r == "table" -> pure (label, body)
+          | otherwise -> pure (label, TableBlock t {tableStyle = Just r})
         Nothing -> pure (label, body)
     ("column-widths", TableBlock t) -> (\ws -> (label, TableBlock t {tableWidths = ws})) <$> columnWidths sp (length (tableHeader t)) args
     -- the language goes to any block, after the other attributes (docs/adr ADR 0187)
@@ -2166,15 +2188,69 @@ validLabel l = not (T.null l) && T.all (\c -> c `elem` ("-_" :: String) || isAsc
 
 -- ------------------------------------------------------------------ paragraph styles
 
-{- | The name of the paragraph style of @style; G02047 and body when it is
-not one name. code is the style of code blocks: G02066 and body
+{- | The paragraph style of @style: the name, and the keys of its named
+arguments over it (root ADR 0467, 'styleKeys'); G02047 and body when it
+has not one name. code is the style of code blocks: G02066 and body
 (golem-driver ADR 0017).
 -}
-styleName :: EvalContext -> SrcSpan -> [A.Located A.Argument] -> M (Maybe Text)
-styleName _ sp = \case
+styleName :: EvalContext -> SrcSpan -> [A.Located A.Argument] -> M (Maybe StyleRef)
+styleName ctx sp args = case [a | a@(A.Located _ arg) <- args, not (isKeywordArg arg)] of
   [A.Located _ (A.Positional v)] | nameArg v == Just "code" -> err "G02066" sp "code はコードブロックの段落スタイルです。コードは ``` か @listing で書きます" >> pure Nothing
-  [A.Located _ (A.Positional v)] | Just n <- nameArg v -> pure (Just n)
+  [A.Located _ (A.Positional v)] | Just n <- nameArg v -> Just . StyleRef n <$> styleKeys ctx sp n args
   _ -> err "G02047" sp "@style には段落スタイルの名前を一つ書きます" >> pure Nothing
+  where
+    isKeywordArg = \case
+      A.Keyword {} -> True
+      _ -> False
+
+{- | The keys of the named arguments of @style (root ADR 0467): the keys
+of a paragraph style that @style-def takes but based-on, each value
+checked as @style-def checks it, with its codes. based-on and any other
+name is G02288 at its argument; a value that is no word nor string is
+G02116; a key written twice, which the reading of the arguments has
+reported (G02077), is left out as @style-def leaves it out. A wrong key is
+left out and the others take effect. The keys are then checked together
+as a definition of the style with them over it; an error there is at the
+@style, and leaves every key out.
+-}
+styleKeys :: EvalContext -> SrcSpan -> Text -> [A.Located A.Argument] -> M (Map Text StyleValue)
+styleKeys ctx sp name args = do
+  let kws = [(k, ksp, v) | A.Located ksp (A.Keyword (A.Located _ k) v) <- args]
+      keys = [k | (k, _, _) <- kws]
+      twice k = length (filter (== k) keys) > 1
+  read' <- fmap catMaybes . forM kws $ \(k, ksp, v) ->
+    if k == "based-on" || k `notElem` paraStyleKeys
+      then err "G02288" ksp ("@style の名前付き引数に書けない名前です: " <> k) >> pure Nothing
+      else case localValue v of
+        Nothing -> report (notWordDiagnostic ksp) >> pure Nothing
+        Just lv
+          | twice k -> pure Nothing
+          | otherwise -> case localStyleDefWithValues (ctxStyle ctx) ParagraphKind [(k, lv)] of
+              Left ms -> mapM_ (\(code, m) -> report (styleDefValueDiagnostic "@style" code ksp m)) ms >> pure Nothing
+              Right _ -> pure (Just (k, lv, ()))
+  let local = ctxLocalStyles ctx
+      own = Map.lookup name (lsParaStyles local) <|> Map.lookup name (stParaStyles (ctxStyle ctx))
+      before = checkLocalStyles (ctxStyle ctx) local
+      wrong = case localStyleDefWithValues (ctxStyle ctx) ParagraphKind [(k, lv) | (k, lv, _) <- read'] of
+        Right (Right overrides) ->
+          let over = local {lsParaStyles = Map.insert name (maybe overrides (overPara overrides) own) (lsParaStyles local)}
+           in [(code, m) | c@(code, _, m) <- checkLocalStyles (ctxStyle ctx) over, c `notElem` before, code /= "G03100"]
+        Right (Left _) -> []
+        Left ms -> ms
+      keysOf = Map.fromList [(k, styleValue lv) | (k, lv, _) <- read']
+  if null read' || Map.notMember name (ctxParaStyles ctx) || null wrong
+    then pure keysOf
+    else mapM_ (\(code, m) -> err code sp m) wrong >> pure Map.empty
+  where
+    styleValue = \case
+      LocalWord w -> StyleWord w
+      LocalString t -> StyleString t
+
+{- | The style of a paragraph of @style (root ADR 0467): body without keys
+is Nothing, as before the ADR.
+-}
+paragraphRef :: StyleRef -> Maybe StyleRef
+paragraphRef r = if r == "body" then Nothing else Just r
 
 {- | The body form of @style (docs/adr ADR 0005): the blocks of the body in
 order, with the paragraph style passed to them (root ADR 0460,
@@ -2187,10 +2263,10 @@ styleBody ctx sp headerEnd args body
   | null body && spanEnd sp <= headerEnd + 1 = err "G02010" sp "@style の後にブロックがありません" >> pure []
   | null body = err "G02046" sp "@style の本体に段落がありません" >> pure []
   | otherwise = do
-      name <- styleName ctx sp args
-      let keeps = maybe False (\n -> Map.lookup n (ctxParaStyles ctx) == Just KeepLines) name
+      ref <- styleName ctx sp args
+      let keeps = maybe False (\r -> argumentLineBreaks args (Map.lookup (styleRefName r) (ctxParaStyles ctx)) == Just KeepLines) ref
       -- the blocks without paragraphs or tables, breaks and separators among them, are put out as they are
-      bs <- concat <$> mapM (evalStyled ctx (Passed sp name keeps)) body
+      bs <- concat <$> mapM (evalStyled ctx (Passed sp ref keeps)) body
       unless (hasParagraphOrTable bs) $ err "G02046" sp "@style の本体に段落がありません"
       pure bs
 
@@ -2199,21 +2275,27 @@ is G02047 and the paragraph is body. With line-breaks = "keep" each line
 of the source is a line, joined by 'LineBreak'; a paragraph with no line
 left is dropped.
 -}
-styledParagraph :: EvalContext -> SrcSpan -> Maybe Text -> [A.Located A.Inline] -> M [Block]
-styledParagraph ctx sp mname is = case mname of
+styledParagraph :: EvalContext -> SrcSpan -> Maybe StyleRef -> [A.Located A.Inline] -> M [Block]
+styledParagraph ctx sp mref is = case mref of
   Nothing -> joined Nothing
-  Just name -> case Map.lookup name (ctxParaStyles ctx) of
-    Nothing -> err "G02047" sp ("定義されていない段落スタイルです: " <> name) >> joined Nothing
-    Just JoinLines -> joined (styleOf name)
+  Just ref -> case keysLineBreaks ref <$> Map.lookup (styleRefName ref) (ctxParaStyles ctx) of
+    Nothing -> err "G02047" sp ("定義されていない段落スタイルです: " <> styleRefName ref) >> joined Nothing
+    Just JoinLines -> joined (paragraphRef ref)
     Just KeepLines -> do
       mapM_ escapedIndent (linesOf Nothing is)
       mapM_ (escapedTrailing . snd) (linesOf Nothing is)
       ls <- filter (not . null . snd) <$> mapM (\(bsp, l) -> (bsp,) <$> evalInlines ctx False (A.plainEscapes (trimLine l))) (linesOf Nothing is)
       pure $ case ls of
         [] -> []
-        ((_, first) : rest) -> [block sp (Paragraph (styleOf name) (first <> concat [LineBreak bsp : l | (bsp, l) <- rest]))]
+        ((_, first) : rest) -> [block sp (Paragraph (paragraphRef ref) (first <> concat [LineBreak bsp : l | (bsp, l) <- rest]))]
   where
-    styleOf n = if n == "body" then Nothing else Just n
+    -- the line-breaks of the keys over those of the style (root ADR 0467)
+    keysLineBreaks r own = case Map.lookup "line-breaks" (styleRefKeys r) of
+      Just (StyleWord "keep") -> KeepLines
+      Just (StyleString "keep") -> KeepLines
+      Just (StyleWord "join") -> JoinLines
+      Just (StyleString "join") -> JoinLines
+      _ -> own
     {- G02064: an escaped space or tab at the start of a line is dropped
     as the plain ones are (golem-syntax ADR 0002). The line starts with
     the escape (golem-parser ADR 0010). -}
