@@ -200,6 +200,17 @@ tests =
         formatted "@import f.emet %%注%% as f\n" @?= "@import f.emet %%注%% as f\n",
       testCase "root ADR 0451 I5: formatting the imports is idempotent" $
         mapM_ (\src -> formatted (formatted src) @?= formatted src) ["@import a.gm as v\n", "@import f.emet {a,b}\n", "@import \"x.gm\"  as  w\n\n@import f.emet{ c }\n"],
+      testCase "root ADR 0458 I6: an item with an alias is written a as b" $ do
+        formatted "@import f.emet {a as b}\n" @?= "@import f.emet { a as b }\n"
+        formatted "@import f.emet {  a   as   b ,c,d as e}\n" @?= "@import f.emet { a as b, c, d as e }\n"
+        formatted "@import f.emet { as as b, c as as }\n" @?= "@import f.emet { as as b, c as as }\n",
+      testCase "root ADR 0458 I6: an alias written as the original name is dropped" $ do
+        formatted "@import f.emet { total as total }\n" @?= "@import f.emet { total }\n"
+        formatted "@import f.emet { as as as, a }\n" @?= "@import f.emet { as, a }\n",
+      testCase "root ADR 0458 I6: a malformed list with as is left alone" $
+        mapM_ (\src -> formatted src @?= src) ["@import f.emet { a as }\n", "@import f.emet { a as b as c }\n", "@import f.emet { as as }\n"],
+      testCase "root ADR 0458 I6: formatting the aliases is idempotent" $
+        mapM_ (\src -> formatted (formatted src) @?= formatted src) ["@import f.emet {a as b,c}\n", "@import f.emet { x as x }\n"],
       testCase "Golem ADR 0339 I5: missing quotes prevent rewriting" $
         case format "[cmd key=x%%注%%]\n" of
           Unformattable ds -> map diagCode ds @?= [DiagnosticCode "G01102"]

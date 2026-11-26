@@ -160,17 +160,18 @@ unusedVariables input =
           (ns, target, _) <- usageImports (flUsage g),
           target == path
         ]
-        -- a variable listed by @import and used by its name (root ADR 0451)
+        -- a variable listed by @import and used by its name or its alias (root ADR 0451, root ADR 0458)
         || or
-          [ v `Set.member` usageListedRefs (flUsage g)
+          [ a `Set.member` usageListedRefs (flUsage g)
           | g <- liFiles input,
-            (n, target, _) <- usageListed (flUsage g),
+            (a, n, target, _) <- usageListed (flUsage g),
             target == path,
             n == v
           ]
 
 {- | G05003: an import whose namespace is never referenced, and a name an
-import lists that the file never uses, at the name (root ADR 0451).
+import lists that the file never uses, counted by its alias and reported
+at it (root ADR 0451, root ADR 0458).
 -}
 unusedImports :: LintInput -> [Diagnostic]
 unusedImports input =
@@ -181,7 +182,7 @@ unusedImports input =
   ]
     <> [ diagnostic "G05003" Error sp ("使われていない import の名前です: " <> n)
        | f <- liFiles input,
-         (n, _, sp) <- usageListed (flUsage f),
+         (n, _, _, sp) <- usageListed (flUsage f),
          not (n `Set.member` usageListedRefs (flUsage f))
        ]
 

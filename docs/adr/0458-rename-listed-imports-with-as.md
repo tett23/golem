@@ -1,6 +1,6 @@
 # ADR 0458: 名前を並べた取り込みで、`as` で別名を付けられるようにする
 
-Status: accepted-pending
+Status: accepted
 
 ## 文脈
 

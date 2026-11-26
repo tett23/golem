@@ -107,7 +107,9 @@ format src0 =
 
 {- | The two forms of @import (root ADR 0451): the form without @*@,
 @path as ns@, is written @path * as ns@, and a list of names is written
-@{ a, b }@, a space inside the braces and after each comma. This is the
+@{ a, b }@, a space inside the braces and after each comma. An item with
+an alias is written @a as b@, one space on each side of @as@, and one
+whose alias is its original name is written @a@ (root ADR 0458). This is the
 one rewriting that changes the AST, so it is applied before the rules.
 An @import with anything but spaces between its words (a comment), with
 a body, or of another form is left as it is.
@@ -150,12 +152,17 @@ importForms src =
         | isMark c -> Left c : pieces rest
         | otherwise -> let (n, rest') = T.break isMark w in Right n : pieces rest'
     isMark c = c == '{' || c == '}' || c == ','
+    -- an item is read by place, as golem-project reads it (root ADR 0458)
     listed = \case
-      Left '{' : Right n : rest -> (n :) <$> more rest
+      Left '{' : rest -> item rest
+      _ -> Nothing
+    item = \case
+      Right n : Right "as" : Right a : rest -> ((if a == n then n else n <> " as " <> a) :) <$> more rest
+      Right n : rest -> (n :) <$> more rest
       _ -> Nothing
     more = \case
       [Left '}'] -> Just []
-      Left ',' : Right n : rest -> (n :) <$> more rest
+      Left ',' : rest -> item rest
       _ -> Nothing
     splice edits =
       let go from = \case

@@ -396,9 +396,11 @@ handlers encVar rootVar plotVar wikiVar moveWorkspace wsVar gen watchVar lock di
               else
                 fmap
                   (toEditWith enc (layoutLines ws styleText))
-                  ( let -- a variable of @set, after the layout values and before the labels (root ADR 0454)
-                        variableOrLabel = case F.renameVariable ws styleText p off newName of
-                          Left F.NotAVariable -> F.renameLabel ws p off newName
+                  ( let -- an alias of a list, then a variable of @set, after the layout values and before the labels (root ADR 0454, root ADR 0458)
+                        variableOrLabel = case F.renameAlias ws styleText p off newName of
+                          Left F.NotAnAlias -> case F.renameVariable ws styleText p off newName of
+                            Left F.NotAVariable -> F.renameLabel ws p off newName
+                            result -> result
                           result -> result
                      in case styleText of
                           Just t -> case F.renameLayoutValue ws t p off newName of

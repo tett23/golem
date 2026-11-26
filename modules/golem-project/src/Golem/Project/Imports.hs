@@ -6,6 +6,8 @@ deterministic evaluation order.
 module Golem.Project.Imports
   ( ImportSite (..),
     ImportForm (..),
+    ListedName (..),
+    listedName,
     importNamespace,
     importNames,
     ImportGraph (..),
@@ -37,12 +39,28 @@ data ImportSite = ImportSite
   deriving stock (Eq, Show)
 
 {- | The two forms of @\@import@ (root ADR 0451): @path * as ns@, with the
-namespace and its span, and @path { a, b }@, with each name and its span.
+namespace and its span, and @path { a, b as c }@, with each item.
 -}
 data ImportForm
   = ImportAll !Text !SrcSpan
-  | ImportNames ![(Text, SrcSpan)]
+  | ImportNames ![ListedName]
   deriving stock (Eq, Show)
+
+{- | An item of a list of names (root ADR 0458): the original name the
+source gives and its span, and the alias the file uses and its span. An
+item without @as@ has its original name and span as its alias.
+-}
+data ListedName = ListedName
+  { lnName :: !Text,
+    lnNameSpan :: !SrcSpan,
+    lnAlias :: !Text,
+    lnAliasSpan :: !SrcSpan
+  }
+  deriving stock (Eq, Show)
+
+-- | An item without an alias.
+listedName :: Text -> SrcSpan -> ListedName
+listedName n sp = ListedName n sp n sp
 
 -- | The namespace of an import of the form @* as ns@.
 importNamespace :: ImportSite -> Maybe Text
@@ -50,8 +68,8 @@ importNamespace s = case isForm s of
   ImportAll ns _ -> Just ns
   ImportNames _ -> Nothing
 
--- | The names an import of the form @{ … }@ lists, with their spans.
-importNames :: ImportSite -> [(Text, SrcSpan)]
+-- | The items an import of the form @{ … }@ lists.
+importNames :: ImportSite -> [ListedName]
 importNames s = case isForm s of
   ImportAll _ _ -> []
   ImportNames ns -> ns
@@ -86,7 +104,7 @@ importSite sp args = case args of
     _ -> malformed
   _ -> malformed
   where
-    malformed = Left (diagnostic "G03009" Error sp "@import は「@import パス * as 名前空間」か「@import パス { 名前, … }」の形で書きます")
+    malformed = Left (diagnostic "G03009" Error sp "@import は「@import パス * as 名前空間」か「@import パス { 名前, 名前 as 別名, … }」の形で書きます")
     pathOf = \case
       Positional (Word p) -> Just p
       Positional (StringLit p) -> Just p
@@ -96,11 +114,14 @@ importSite sp args = case args of
       Positional (Word p) -> p
       _ -> ""
 
-{- | The names of a list in braces (root ADR 0451): the words split at
-@{@, @}@ and @,@ must be @{@, a name, then @,@ and a name any times, and
-@}@. A name's span is its place in its word.
+{- | The items of a list in braces (root ADR 0451, root ADR 0458): the
+words split at @{@, @}@ and @,@ must be @{@, an item, then @,@ and an item
+any times, and @}@. An item is read by place: its first piece is the
+original name, even @as@; a second piece @as@ marks the alias, which is
+the third piece, even @as@; then @,@ or @}@ must come. A name's span is
+its place in its word.
 -}
-listedNames :: [Located Argument] -> Maybe [(Text, SrcSpan)]
+listedNames :: [Located Argument] -> Maybe [ListedName]
 listedNames args = traverse word args >>= open . concatMap pieces
   where
     word = \case
@@ -118,11 +139,15 @@ listedNames args = traverse word args >>= open . concatMap pieces
                  in Right (n, mkSpan (spanFile wsp) off (off + len)) : go (off + len) rest'
     isMark c = c == '{' || c == '}' || c == ','
     open = \case
-      Left '{' : Right n : rest -> (n :) <$> more rest
+      Left '{' : rest -> item rest
+      _ -> Nothing
+    item = \case
+      Right (n, nsp) : Right ("as", _) : Right (a, asp) : rest -> (ListedName n nsp a asp :) <$> more rest
+      Right (n, nsp) : rest -> (listedName n nsp :) <$> more rest
       _ -> Nothing
     more = \case
       [Left '}'] -> Just []
-      Left ',' : Right n : rest -> (n :) <$> more rest
+      Left ',' : rest -> item rest
       _ -> Nothing
 
 {- | Cycles found by a depth-first search over files and edges in order,
