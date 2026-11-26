@@ -1,6 +1,7 @@
 -- | Source-line numbering before the renderers wrap lines (root ADR 0384).
 module Golem.Evaluate.Verse (numberVerseDocument, numberVerseLines) where
 
+import Data.Map.Strict qualified as Map
 import Data.Text qualified as T
 import Golem.Assemble (inlineText)
 import Golem.Doc.IR
@@ -11,11 +12,13 @@ import Golem.Syntax (SrcSpan)
 numberVerseDocument :: Style -> Document -> Document
 numberVerseDocument style doc = doc {docBlocks = map block (docBlocks doc)}
   where
+    values r = [(k, case v of StyleWord w -> LocalWord w; StyleString t -> LocalString t) | (k, v) <- Map.toAscList (styleRefKeys r)]
     block b = b {blockBody = body (blockSpan b) (blockBody b)}
     body sp = \case
       Paragraph st is ->
         let content = map inline is
-            numbered = case paraStyle style st of
+            -- the keys of @style over the style (root ADR 0467)
+            numbered = case paraStyleWith style (styleRefNameOf st) (maybe [] values st) of
               Just d | psLineBreaks d == Just KeepLines, Just interval <- psLineNumberInterval d -> numberVerseLines sp interval content
               _ -> content
          in Paragraph st numbered

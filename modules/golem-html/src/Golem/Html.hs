@@ -15,6 +15,7 @@ module Golem.Html
     HtmlFeatures (..),
     noFeatures,
     HtmlLocalStyles (..),
+    anonymousStyleNumbers,
     Face (..),
     noFace,
     HtmlCode (..),
@@ -126,7 +127,14 @@ data HtmlConfig = HtmlConfig
     -- | the generic-family of each role that has one, as CSS writes it (docs/adr/0423)
     hcGenericFamilies :: !(Map Text Text),
     -- | full-width character cells in em, without changing glyph size (root ADR 0380)
-    hcCharacterAdvance :: !(Maybe Text)
+    hcCharacterAdvance :: !(Maybe Text),
+    {- | the paragraph styles without a name of the book, with the keys of
+    @style over a style (root ADR 0467), resolved with style.toml -}
+    hcAnonymousStyles :: !(Map StyleRef HtmlParaStyle),
+    -- | those of each file with styles of its own, resolved with its styles (root ADR 0467)
+    hcLocalAnonymousStyles :: !(Map FileId (Map StyleRef HtmlParaStyle)),
+    -- | the font and size of the cells of the tables in a paragraph style without a name (root ADR 0467)
+    hcAnonymousTableFaces :: !(Map StyleRef Face)
   }
 
 {- | A rule before or after a paragraph or a heading as CSS (golem-driver
@@ -370,6 +378,9 @@ data Ctx = Ctx
     cHere :: FilePath,
     -- | the paragraph styles of the page: those of its file over those of style.toml (docs/adr ADR 0014)
     cParaStyles :: Map Text HtmlParaStyle,
+    {- | the number of each paragraph style without a name in the book and
+    the style as the page resolves it (root ADR 0467) -}
+    cAnonymous :: Map StyleRef (Int, HtmlParaStyle),
     -- | the depth of the list around (0 outside lists; golem-driver ADR 0013)
     cListDepth :: Int,
     -- | the notes of the chapter of the page (golem-driver ADR 0026)
@@ -513,7 +524,9 @@ page :: HtmlConfig -> FileTable -> Book -> Map SrcSpan [(Int, Text, Text)] -> Ch
 page cfg ft book pageBreaks notes endnotes (Document fid bs) =
   let here = pageBase ft fid
       local = Map.lookup fid (hcLocalStyles cfg)
-      c = Ctx cfg ft book here (maybe id (Map.union . hlParaStyles) local (hcParaStyles cfg)) 0 notes endnotes (citeIds book) (maybe id (Map.union . hlCharStyles) local (hcCharStyles cfg)) False pageBreaks
+      anonymous = Map.union (Map.findWithDefault Map.empty fid (hcLocalAnonymousStyles cfg)) (hcAnonymousStyles cfg)
+      numbered = Map.fromList [(r, (n, ps)) | (r, n) <- Map.toList (anonymousStyleNumbers book), Just ps <- [Map.lookup r anonymous]]
+      c = Ctx cfg ft book here (maybe id (Map.union . hlParaStyles) local (hcParaStyles cfg)) numbered 0 notes endnotes (citeIds book) (maybe id (Map.union . hlCharStyles) local (hcCharStyles cfg)) False pageBreaks
       -- a page with styles of its own has the class of its position (docs/adr ADR 0014)
       classes = ["vertical" | hcVertical cfg] <> ["file-" <> tshow n | Just _ <- [local], (n, Document fid' _) <- zip [1 :: Int ..] (bookDocs book), fid' == fid]
       body = topBlocks c bs <> notesSection c <> endnotesSection c
@@ -639,7 +652,7 @@ topBlocks c = go Nothing Nothing 0 False
       Nothing -> Nothing
     separatorSpace _ = Nothing
     styleOf = \case
-      Block _ _ _ (Paragraph st _) -> Map.lookup (fromMaybe "body" st) (cParaStyles c) >>= \ps -> Just (fromMaybe "body" st, ps)
+      Block _ _ _ (Paragraph st _) -> (maybe "body" styleRefName st,) <$> paraStyleOf c st
       _ -> Nothing
     boxOf x = styleOf x >>= \(name, ps) -> (\hb -> (name, hbKey hb)) <$> hpsBox ps
     -- a paragraph of a style with page-break other than any starts a box of its own
@@ -719,14 +732,14 @@ openingSelector sel ps = sel <> "[data-opening]" <> (if hpsKeepLines ps then " >
 blockHtml :: Ctx -> Block -> [Node]
 blockHtml c (Block sp lbl blang body) = case body of
   Paragraph st is ->
-    let cls = maybe [] (\n -> [("class", "ps-" <> n)]) st
+    let cls = maybe [] (\r -> [("class", styleClasses c r)]) st
         -- the lines of a paragraph that keeps them, each a span; br is for readers without CSS (docs/adr ADR 0005).
         -- A hard break elsewhere is a br, so that text-indent stays on the first line (docs/adr ADR 0016)
         content
           | keepsLines c st = intercalate [el "br" [] [], nl] [[el "span" [("class", "line")] (inlines c l)] | l <- splitAtLineBreaks is]
           | otherwise = inlines c is
         -- a paragraph of a style with opening-indent = "half" that starts with an opening bracket, outside lists, which have no indent (root ADR 0469)
-        opening = [("data-opening", "") | cListDepth c == 0, isJust (Map.lookup (fromMaybe "body" st) (cParaStyles c) >>= hpsOpeningHalf), opensWithBracket blang is]
+        opening = [("data-opening", "") | cListDepth c == 0, isJust (paraStyleOf c st >>= hpsOpeningHalf), opensWithBracket blang is]
      in [el "p" (idAttr lbl <> cls <> opening) content, nl] <> sidenotes c blang is
   Heading l _ is ->
     let tag = "h" <> T.pack (show l)
@@ -760,7 +773,7 @@ blockHtml c (Block sp lbl blang body) = case body of
           AlignDefault -> []
         row tag cells = [el "tr" [] (zipWith (\a x -> el tag (cls a) (inlines c x)) (al <> repeat AlignDefault) cells), nl]
         -- the paragraph style of the cells, the built-in table without a class (docs/adr/0262)
-        styleClass = maybe [] (\n -> [("class", "ps-" <> n)]) (tableStyle t)
+        styleClass = maybe [] (\r -> [("class", styleClasses c r)]) (tableStyle t)
         -- the caption, the first child whichever side it is on (docs/adr/0262)
         caption = case tableCaption t of
           Just is -> [el "caption" [] (titledNodes (hcLanguage (cCfg c)) (cBook c) (spanFile sp) Nothing True (Map.lookup sp (bookTables (cBook c))) (foldMap inlineText is) (inlines c is)), nl]
@@ -910,8 +923,29 @@ item c value (ListItem _ bs) =
   ]
 
 -- | Whether the paragraph style keeps the lines of its paragraphs (docs/adr ADR 0005).
-keepsLines :: Ctx -> Maybe Text -> Bool
-keepsLines c st = maybe False hpsKeepLines (Map.lookup (fromMaybe "body" st) (cParaStyles c))
+keepsLines :: Ctx -> Maybe StyleRef -> Bool
+keepsLines c st = maybe False hpsKeepLines (paraStyleOf c st)
+
+{- | The paragraph style of a paragraph on its page: a style without a name
+(root ADR 0467) as the page resolves it, another by its name.
+-}
+paraStyleOf :: Ctx -> Maybe StyleRef -> Maybe HtmlParaStyle
+paraStyleOf c = \case
+  Just r | Just (_, ps) <- Map.lookup r (cAnonymous c) -> Just ps
+  st -> Map.lookup (maybe "body" styleRefName st) (cParaStyles c)
+
+{- | The classes of a paragraph style (root ADR 0467): ps-NAME, and pso-N
+of the style without a name numbered N.
+-}
+styleClasses :: Ctx -> StyleRef -> Text
+styleClasses c r = "ps-" <> styleRefName r <> maybe "" (\(n, _) -> " pso-" <> tshow n) (Map.lookup r (cAnonymous c))
+
+{- | The paragraph styles without a name of a book numbered from 1 in the
+order they first come in it (root ADR 0467): of its paragraphs and of the
+cells of its tables, the documents in their order.
+-}
+anonymousStyleNumbers :: Book -> Map StyleRef Int
+anonymousStyleNumbers book = Map.fromList (zip (keyedStyleRefs (concatMap docBlocks (bookDocs book))) [1 ..])
 
 toc :: Ctx -> Maybe Int -> [Node]
 toc c depth =
@@ -1601,6 +1635,9 @@ css cfg book =
       <> [faceRule (tableCellSelector name) f | (name, f) <- Map.toAscList (hcTableFaces cfg), isJust (faFont f) || isJust (faSize f)]
       -- paragraph styles (docs/adr ADR 0005); body is the plain p
       <> concat [paraRules name ps | (name, ps) <- Map.toAscList (hcParaStyles cfg), name /= "code"]
+      -- the paragraph styles without a name (root ADR 0467), after those of their names
+      <> anonymousRules "" (anonymousOf (hcAnonymousStyles cfg))
+      <> [faceRule (tableCellSelector key) f | (r, f) <- Map.toAscList (hcAnonymousTableFaces cfg), Just key <- [anonymousKey r], isJust (faFont f) || isJust (faSize f)]
       -- the spaces before and after (docs/adr/0189)
       <> spaceRules outside True allStyles [(a, b) | a <- allStyles, b <- allStyles]
       -- the boxes of paragraph styles (docs/adr/0271)
@@ -1634,7 +1671,42 @@ css cfg book =
       <> ["[data-break-before=\"avoid\"] { page-break-before: avoid; break-before: avoid; }" | hcNoBreak cfg]
       -- the styles of the files, last, under the class of their pages (docs/adr ADR 0014)
       <> concat [localRules n l | (n, fid) <- zip [1 :: Int ..] docs, Just l <- [Map.lookup fid (hcLocalStyles cfg)]]
+      -- the styles without a name as the files with styles of their own resolve them (root ADR 0467)
+      <> concat [anonymousRules ("body.file-" <> tshow n <> " ") (anonymousOf a) | (n, fid) <- zip [1 :: Int ..] docs, Just a <- [Map.lookup fid (hcLocalAnonymousStyles cfg)], Map.member fid (hcLocalStyles cfg)]
   where
+    numbers = anonymousStyleNumbers book
+    -- the key of a style without a name: NAME.pso-N, so that p.ps-KEY is p.ps-NAME.pso-N
+    anonymousKey r = (\n -> styleRefName r <> ".pso-" <> tshow n) <$> Map.lookup r numbers
+    anonymousOf m = [(key, ps) | (r, ps) <- sortOn (\(r, _) -> Map.lookup r numbers) (Map.toList m), Just key <- [anonymousKey r]]
+    {- the rules of the styles without a name (root ADR 0467): every property
+    the rule of a paragraph style handles, as a property left out would keep
+    the value of the rule of its name; the space between two paragraphs of
+    the same style; and the spaces of the pairs with the other styles -}
+    anonymousRules pre styles =
+      concat
+        [ [ rule
+              (pre <> "p.ps-" <> key)
+              ( [ "font-family: " <> maybe "inherit" fontStack (hpsFont ps),
+                  "margin-block: " <> marginOf ps
+                ]
+                  <> ["line-height: " <> L.ptText (hppPitch physical) <> "pt" | Just physical <- [hpsPhysical ps]]
+                  <> ["margin-block-start: " <> spaceText ps (spaceBefore ps) | spaceBefore ps > 0]
+                  <> [ "padding-inline-start: " <> hpsIndent ps,
+                       "text-indent: " <> hpsFirstLineIndent ps,
+                       "padding-inline-end: " <> hpsEndIndent ps
+                     ]
+                  <> hpsAlign ps
+                  <> featureDecls (hpsFeatures ps)
+                  <> hpsBreaks ps
+              ),
+            rule (pre <> "p.ps-" <> key <> " + p.ps-" <> key) ["margin-block-start: " <> (if spaceBetween ps > 0 then spaceText ps (spaceBetween ps) else if spaceBefore ps > 0 || spaceAfter ps > 0 then "0" else marginOf ps)]
+          ]
+            <> [rule (openingSelector (pre <> "p.ps-" <> key) ps) ["text-indent: " <> openingTextIndent f] | Just f <- [hpsOpeningHalf ps]]
+            <> ruleRules (pre <> "p.ps-" <> key) (hpsRuleBefore ps) (hpsRuleAfter ps)
+        | (key, ps) <- styles
+        ]
+        <> spaceRules (const (T.dropWhileEnd (== ' ') pre)) False styles [(a, b) | a <- styles <> allStyles, b <- styles <> allStyles, fst a `elem` map fst styles || fst b `elem` map fst styles]
+    marginOf ps = if hpsKeepLines ps || isJust (hpsPhysical ps) then "0" else "1em"
     hasEndnotes = not (all (null . documentEndnotes) (bookDocs book))
     separatorPitch = maybe "1lh" ((<> "pt") . L.ptText) (hcSeparatorPitch cfg)
     docs = [fid | Document fid _ <- bookDocs book]

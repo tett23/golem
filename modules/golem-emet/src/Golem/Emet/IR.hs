@@ -27,6 +27,7 @@ where
 
 import Control.Monad.State.Strict
 import Data.Foldable (toList)
+import Data.Map.Strict qualified as Map
 import Data.Maybe (fromMaybe, isNothing)
 import Data.Sequence (Seq)
 import Data.Sequence qualified as Seq
@@ -203,13 +204,27 @@ encodeInline = \case
       LocRange a b -> con "LocRange" [nat (max 0 a), nat (max 0 b)]
       LocText t -> con "LocText" [str t]
 
+-- | Whether a paragraph style has keys of @style (root ADR 0467).
+hasKeys :: StyleRef -> Bool
+hasKeys = not . Map.null . styleRefKeys
+
+-- | The keys of a paragraph style as a List StyleKey, in the order of the keys (root ADR 0467).
+styleKeysR :: StyleRef -> Result
+styleKeysR r = RList [con "StyleKey" [str k, value v] | (k, v) <- Map.toAscList (styleRefKeys r)]
+  where
+    value = \case
+      StyleWord w -> con "StyleWord" [str w]
+      StyleString t -> con "StyleString" [str t]
+
 encodeBlocks :: [Block] -> Enc Result
 encodeBlocks = listE encodeBlock
 
 encodeBlock :: Block -> Enc Result
 encodeBlock (Block sp lbl blang body) = do
   (c, fs) <- case body of
-    Paragraph st xs -> encodeInlines xs >>= \b -> pure ("Paragraph", [maybeR str st, b])
+    -- a style with keys (root ADR 0467) is a KeyedParagraph; one without keys is as before
+    Paragraph (Just r) xs | hasKeys r -> encodeInlines xs >>= \b -> pure ("KeyedParagraph", [str (styleRefName r), styleKeysR r, b])
+    Paragraph st xs -> encodeInlines xs >>= \b -> pure ("Paragraph", [maybeR (str . styleRefName) st, b])
     Heading lv (HeadingAttrs toc n nonum notoc) xs -> do
       t <- maybeE encodeInlines toc
       b <- encodeInlines xs
@@ -221,7 +236,11 @@ encodeBlock (Block sp lbl blang body) = do
       c <- maybeE encodeInlines cap
       hs <- listE encodeInlines h
       rs <- listE (listE encodeInlines) rows
-      pure ("TableBlock", [con "Table" [RList (map alignment al), RList (map columnWidth ws), c, bool nonum, maybeR str st, hs, rs]])
+      let table = con "Table" [RList (map alignment al), RList (map columnWidth ws), c, bool nonum, maybeR (str . styleRefName) st, hs, rs]
+      pure $ case st of
+        -- the cells in a style with keys (root ADR 0467)
+        Just r | hasKeys r -> ("KeyedTableBlock", [table, styleKeysR r])
+        _ -> ("TableBlock", [table])
     CodeBlock (Code lang nums file cap diff ls nonum) -> do
       c <- maybeE encodeInlines cap
       cls <- mapM codeLine ls
@@ -461,7 +480,17 @@ blockD :: Ctx -> Result -> Dec Block
 blockD cx = \case
   RCon c fs -> case c of
     "Paragraph" -> one 2 $ \case
-      [st, xs] -> Paragraph <$> maybeD strD st <*> inls xs
+      [st, xs] -> Paragraph <$> maybeD (fmap styleNamed . strD) st <*> inls xs
+      _ -> arity
+    "KeyedParagraph" -> one 3 $ \case
+      [n, ks, xs] -> (\r is -> Paragraph (Just r) is) <$> keyedD n ks <*> inls xs
+      _ -> arity
+    "KeyedTableBlock" -> one 2 $ \case
+      [t, ks] -> do
+        table <- tableD t
+        case tableStyle table of
+          Just r -> (\r' -> TableBlock table {tableStyle = Just r'}) <$> keyedD (str (styleRefName r)) ks
+          Nothing -> bad "キーを持つ表の段落スタイルがありません"
       _ -> arity
     "Heading" -> one 3 $ \case
       [lv, attrs, xs] -> Heading <$> smallD lv <*> headingAttrs attrs <*> inls xs
@@ -497,6 +526,21 @@ blockD cx = \case
   where
     inls = inlinesD cx
     blocks = listD (blockD cx)
+    -- a paragraph style and its keys, each key once (root ADR 0467)
+    keyedD n ks = do
+      name <- strD n
+      pairs <- listD keyD ks
+      let names = map fst pairs
+      if length names /= Map.size (Map.fromList pairs)
+        then bad ("段落スタイルのキーを二度書いています: " <> name)
+        else pure (StyleRef name (Map.fromList pairs))
+    keyD = \case
+      RCon "StyleKey" [k, v] -> (,) <$> strD k <*> valueD v
+      r -> bad ("段落スタイルのキーではない値です: " <> shown r)
+    valueD = \case
+      RCon "StyleWord" [w] -> StyleWord <$> strD w
+      RCon "StyleString" [t] -> StyleString <$> strD t
+      r -> bad ("段落スタイルのキーの値ではない値です: " <> shown r)
     headingAttrs = \case
       RCon "HeadingAttrs" [t, n, nonum, notoc] -> HeadingAttrs <$> maybeD inls t <*> maybeD natD n <*> boolD nonum <*> boolD notoc
       r -> bad ("見出しの属性ではない値です: " <> shown r)
@@ -513,7 +557,7 @@ blockD cx = \case
       RCon "AlignRight" [] -> pure AlignRight
       r -> bad ("揃えではない値です: " <> shown r)
     tableD = \case
-      RCon "Table" [al, ws, cap, nonum, st, h, rows] -> Table <$> listD alignment al <*> listD columnWidthD ws <*> maybeD inls cap <*> boolD nonum <*> maybeD strD st <*> listD inls h <*> listD (listD inls) rows
+      RCon "Table" [al, ws, cap, nonum, st, h, rows] -> Table <$> listD alignment al <*> listD columnWidthD ws <*> maybeD inls cap <*> boolD nonum <*> maybeD (fmap styleNamed . strD) st <*> listD inls h <*> listD (listD inls) rows
       r -> bad ("表ではない値です: " <> shown r)
     columnWidthD = \case
       RCon "ColumnAuto" [] -> pure ColumnAuto

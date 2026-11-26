@@ -28,6 +28,7 @@ library
     Golem.DocGen
   build-depends:
     , base          >=4.20 && <4.21
+    , containers    >=0.6  && <0.8
     , golem-doc
     , golem-length
     , golem-parser

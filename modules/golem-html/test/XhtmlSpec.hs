@@ -72,7 +72,10 @@ cfg0 =
       hcEmbedFonts = True,
       hcFontLicenses = [],
       hcGenericFamilies = Map.empty,
-      hcCharacterAdvance = Nothing
+      hcCharacterAdvance = Nothing,
+      hcAnonymousStyles = Map.empty,
+      hcLocalAnonymousStyles = Map.empty,
+      hcAnonymousTableFaces = Map.empty
     }
 
 -- | A book of one document, a.gm, with nothing assembled.
@@ -416,7 +419,7 @@ boxed key = plainPara {hpsBox = Just (HtmlBox key ["background-color: rgb(230, 2
 
 -- | A paragraph of a style.
 styled :: Int -> Text -> Block
-styled n st = Block (at n) Nothing Nothing (Paragraph (Just st) [txt "x"])
+styled n st = Block (at n) Nothing Nothing (Paragraph (Just (styleNamed st)) [txt "x"])
 
 boxTests :: [TestTree]
 boxTests =

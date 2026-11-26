@@ -1423,10 +1423,10 @@ blocksIn :: EvalContext -> Text -> [Block]
 blocksIn c = resultBlocks . evalResult c
 
 -- | Each block as its paragraph style and text, or its constructor.
-shapes :: EvalContext -> Text -> [(Maybe Text, [Text])]
+shapes :: EvalContext -> Text -> [(Maybe StyleRef, [Text])]
 shapes c = map (shapeOf . blockBody) . blocksIn c
 
-shapeOf :: BlockBody -> (Maybe Text, [Text])
+shapeOf :: BlockBody -> (Maybe StyleRef, [Text])
 shapeOf = \case
   Paragraph st is -> (st, stripSpans is)
   Heading _ _ is -> (Just "#", stripSpans is)

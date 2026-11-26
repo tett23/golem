@@ -21,7 +21,7 @@ import Golem.Eval.File
 import Golem.Eval.Functions (noFunctions)
 import Golem.Parser (parseAst)
 import Golem.Parser.SourceSettings (ParagraphSeparator (..), SourceSettings (..))
-import Golem.Project.Style (defaultStyle)
+import Golem.Project.Style (defaultStyle, noLocalStyles)
 import Golem.Syntax
 
 -- | File 1 at ch/01.gm in dev, with nothing declared, no assets and no plugins.
@@ -44,6 +44,7 @@ baseCtx =
       -- the tests are written in the blank-line style, the default before docs/adr/0193
       ctxSource = SourceSettings BlankLineSeparated,
       ctxStyle = defaultStyle,
+      ctxLocalStyles = noLocalStyles,
       ctxFunctions = noFunctions
     }
 

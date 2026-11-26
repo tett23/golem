@@ -143,7 +143,7 @@ block c ind (Block sp _ _ body) = case body of
   -- a line break is a newline and the nesting indent (docs/adr ADR 0005); the first line starts
   -- with the first indent, each line after a line break with the second (docs/adr ADR 0006, 0049)
   Paragraph st is ->
-    let (first, rest) = if cInList c then (0, 0) else cFirstLine c st
+    let (first, rest) = if cInList c then (0, 0) else cFirstLine c (styleRefNameOf st)
         lead n = indentBy ind <> indentBy n
      in lead first <> T.intercalate ("\n" <> lead rest) (map (inlines c) (splitAtLineBreaks is)) <> sidenotes is
   Heading l _ is ->

@@ -4,7 +4,6 @@ module NoteSpec (tests) where
 import Codec.CBOR.Term (Term (..), encodeTerm)
 import Codec.CBOR.Write (toStrictByteString)
 import Data.ByteString qualified as BS
-import Data.Text (Text)
 import Golem.Doc.Cbor
 import Golem.Doc.IR
 import Golem.Doc.Validate
@@ -22,7 +21,7 @@ import Test.Tasty.HUnit
 sp :: SrcSpan
 sp = SrcSpan (FileId 0) 0 1
 
-para :: Maybe Text -> [Inline] -> Block
+para :: Maybe StyleRef -> [Inline] -> Block
 para st is = Block sp Nothing Nothing (Paragraph st is)
 
 docOf :: [Inline] -> Document

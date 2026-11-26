@@ -70,7 +70,7 @@ import Golem.Parser.Read (checkTableText)
 import Golem.Parser.SourceSettings
 import Golem.Project.Imports (ImportForm (..), ImportSite (..), ListedName (..), importNames, importSite, importsOf)
 import Golem.Project.Paths (PathError (..), normalizeRelative, pathErrorMessage)
-import Golem.Project.Style (Dim (..), LineBreaks (..), LocalStyles (..), LocalValue (..), ParaStyleDef (..), Sp (..), Style (stOutlines, stParaStyles, stPrintingsFormat), StyleKind (..), checkLocalStyles, kentenShapeNames, localStyleDefWithValues, noLocalStyles, overPara, paraLineBreaks, paraStyle, paraStyleKeys, parseAki, parseDim, renderPrintingTemplate, withLocalStyles)
+import Golem.Project.Style (Dim (..), LineBreaks (..), LocalStyles (..), LocalValue (..), ParaStyleDef (..), Sp (..), Style (stOutlines, stParaStyles, stPrintingsFormat), StyleKind (..), checkLocalStyles, kentenShapeNames, localStyleDefWithValues, noLocalStyles, overPara, paraLineBreaks, paraStyleKeys, paraStyleWith, parseAki, parseDim, renderPrintingTemplate, withLocalStyles)
 import Golem.Syntax
 import Golem.Syntax.LanguageTag (isLanguageTag)
 import Golem.Syntax.Sha256 (sha256)
@@ -366,7 +366,8 @@ nextStyled ctx style = go Nothing
       out <- evalBlock ctx (normalizeBlock b')
       let next' = case reverse out of
             [] -> next
-            Block {blockBody = Paragraph st _} : _ -> paraStyle style st >>= psNextStyle
+            -- the next-style of the keys of @style over that of the style (root ADR 0467)
+            Block {blockBody = Paragraph st _} : _ -> paraStyleWith style (styleRefNameOf st) (maybe [] refValues st) >>= psNextStyle
             _ -> Nothing
       (out <>) <$> go next' bs
     implicit = \case
@@ -1184,8 +1185,8 @@ nameErrors ctx is bs =
   where
     -- the paragraph style of a paragraph and of the cells of a table (docs/adr/0262)
     paraStyleOf (Block _ _ _ body) = case body of
-      Paragraph (Just x) _ -> [x]
-      TableBlock Table {tableStyle = Just x} -> [x]
+      Paragraph (Just x) _ -> [styleRefName x]
+      TableBlock Table {tableStyle = Just x} -> [styleRefName x]
       _ -> []
     universeBlocks = concatMap (\b -> b : universeBlocks (innerBlocks b))
     innerBlocks (Block _ _ _ body) = case body of
@@ -2252,6 +2253,10 @@ is Nothing, as before the ADR.
 paragraphRef :: StyleRef -> Maybe StyleRef
 paragraphRef r = if r == "body" then Nothing else Just r
 
+-- | The keys of a paragraph style as the values @style-def reads (root ADR 0467).
+refValues :: StyleRef -> [(Text, LocalValue)]
+refValues r = [(k, case v of StyleWord w -> LocalWord w; StyleString t -> LocalString t) | (k, v) <- Map.toAscList (styleRefKeys r)]
+
 {- | The body form of @style (docs/adr ADR 0005): the blocks of the body in
 order, with the paragraph style passed to them (root ADR 0460,
 'evalStyled'). G02046 when the result has neither a paragraph nor a
@@ -2347,13 +2352,18 @@ hardLines ctx sp is = do
       (l, []) -> [(before, l)]
       (l, A.Located bsp _ : rest) -> (before, l) : splitHard (Just bsp) rest
 
--- | Paragraph styles a filter made up (docs/adr ADR 0005).
+{- | Paragraph styles a filter made up (docs/adr ADR 0005), and the keys of
+a style that @style could not take (G02288, root ADR 0467).
+-}
 unknownParaStyles :: EvalContext -> Document -> [Diagnostic]
 unknownParaStyles ctx (Document _ bs) = concatMap go bs
   where
+    ref sp r =
+      [diagnostic "G02047" Error sp ("定義されていない段落スタイルです: " <> styleRefName r) | Map.notMember (styleRefName r) (ctxParaStyles ctx)]
+        <> [diagnostic "G02288" Error sp ("@style の名前付き引数に書けない名前です: " <> k) | k <- Map.keys (styleRefKeys r), k == "based-on" || k `notElem` paraStyleKeys]
     go (Block sp _ _ body) = case body of
-      Paragraph (Just n) _ | Map.notMember n (ctxParaStyles ctx) -> [diagnostic "G02047" Error sp ("定義されていない段落スタイルです: " <> n)]
-      TableBlock Table {tableStyle = Just n} | Map.notMember n (ctxParaStyles ctx) -> [diagnostic "G02047" Error sp ("定義されていない段落スタイルです: " <> n)]
+      Paragraph (Just r) _ -> ref sp r
+      TableBlock Table {tableStyle = Just r} -> ref sp r
       BulletList items -> concatMap (concatMap go . itemBlocks) items
       OrderedList items -> concatMap (concatMap go . itemBlocks) items
       DefList gs -> concatMap (concatMap (concatMap go) . dgDefs) gs

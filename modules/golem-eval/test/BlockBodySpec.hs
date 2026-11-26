@@ -84,7 +84,7 @@ eraseSpans input = case input of
     dropPrefix p s = if take (length p) s == p then Just (drop (length p) s) else Nothing
 
 -- | The paragraphs at any depth with their styles and texts.
-paragraphs :: EvalContext -> Text -> [(Maybe Text, Text)]
+paragraphs :: EvalContext -> Text -> [(Maybe StyleRef, Text)]
 paragraphs c s = concatMap go (resultBodies (evalResult c (src s)))
   where
     go = \case

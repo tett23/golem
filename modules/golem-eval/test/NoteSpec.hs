@@ -19,7 +19,7 @@ lineCtx :: EvalContext
 lineCtx = ctx {ctxSource = SourceSettings LineSeparated}
 
 -- | The bodies of the notes of a source, each paragraph its text and its style, with the codes of the diagnostics.
-notesOf :: EvalContext -> Text -> ([[(Maybe Text, Text)]], [Text])
+notesOf :: EvalContext -> Text -> ([[(Maybe StyleRef, Text)]], [Text])
 notesOf c src =
   let (ds, r) = evalSource c src
    in ([map para body | b <- resultBodies r, Note _ _ _ body <- inlinesOf b], map diagCodeText ds)
