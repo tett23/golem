@@ -25,6 +25,7 @@ import System.Exit (ExitCode (..))
 import System.FilePath ((</>))
 import System.IO.Temp (withSystemTempDirectory)
 import System.Process (readProcessWithExitCode)
+import StyleRefSpec qualified
 import TableSpec qualified
 import Test.Tasty
 import Test.Tasty.HUnit
@@ -45,7 +46,7 @@ cddlValidator = do
 
 tests :: TestTree
 tests =
-  testGroup "golem-doc" [cbor, CborExprSpec.tests, verticalNumbers, int64Tests, LinkSpec.tests, LangSpec.tests, ResolvedSpec.tests, TableSpec.tests, NoteSpec.tests, CiteSpec.tests, IndexSpec.tests, headingLevelTests]
+  testGroup "golem-doc" [cbor, CborExprSpec.tests, verticalNumbers, int64Tests, LinkSpec.tests, LangSpec.tests, ResolvedSpec.tests, TableSpec.tests, StyleRefSpec.tests, NoteSpec.tests, CiteSpec.tests, IndexSpec.tests, headingLevelTests]
 
 -- | The levels of a heading are 1 to 6 (docs/adr/0188).
 headingLevelTests :: TestTree

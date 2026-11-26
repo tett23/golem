@@ -380,7 +380,7 @@ data Ctx = Ctx
     cParaStyles :: Map Text HtmlParaStyle,
     {- | the number of each paragraph style without a name in the book and
     the style as the page resolves it (root ADR 0467) -}
-    cAnonymous :: Map StyleRef (Int, HtmlParaStyle),
+    cAnonymous :: Map StyleRef (Int, Maybe HtmlParaStyle),
     -- | the depth of the list around (0 outside lists; golem-driver ADR 0013)
     cListDepth :: Int,
     -- | the notes of the chapter of the page (golem-driver ADR 0026)
@@ -525,7 +525,7 @@ page cfg ft book pageBreaks notes endnotes (Document fid bs) =
   let here = pageBase ft fid
       local = Map.lookup fid (hcLocalStyles cfg)
       anonymous = Map.union (Map.findWithDefault Map.empty fid (hcLocalAnonymousStyles cfg)) (hcAnonymousStyles cfg)
-      numbered = Map.fromList [(r, (n, ps)) | (r, n) <- Map.toList (anonymousStyleNumbers book), Just ps <- [Map.lookup r anonymous]]
+      numbered = Map.fromList [(r, (n, Map.lookup r anonymous)) | (r, n) <- Map.toList (anonymousStyleNumbers book)]
       c = Ctx cfg ft book here (maybe id (Map.union . hlParaStyles) local (hcParaStyles cfg)) numbered 0 notes endnotes (citeIds book) (maybe id (Map.union . hlCharStyles) local (hcCharStyles cfg)) False pageBreaks
       -- a page with styles of its own has the class of its position (docs/adr ADR 0014)
       classes = ["vertical" | hcVertical cfg] <> ["file-" <> tshow n | Just _ <- [local], (n, Document fid' _) <- zip [1 :: Int ..] (bookDocs book), fid' == fid]
@@ -931,7 +931,7 @@ keepsLines c st = maybe False hpsKeepLines (paraStyleOf c st)
 -}
 paraStyleOf :: Ctx -> Maybe StyleRef -> Maybe HtmlParaStyle
 paraStyleOf c = \case
-  Just r | Just (_, ps) <- Map.lookup r (cAnonymous c) -> Just ps
+  Just r | Just (_, Just ps) <- Map.lookup r (cAnonymous c) -> Just ps
   st -> Map.lookup (maybe "body" styleRefName st) (cParaStyles c)
 
 {- | The classes of a paragraph style (root ADR 0467): ps-NAME, and pso-N
