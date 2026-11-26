@@ -11,6 +11,7 @@ import CompressedNoteMarksSpec (compressedNoteMarksTests)
 import EndnotesSpec (endnoteTests)
 import FigureSpec
 import FileSpacesSpec (fileSpacesTests)
+import FitCharactersSpec (fitCharactersTests)
 import FramesSpec (framesTests)
 import Golem.TestSupport.PackageDirectory (enterPackageDirectory)
 import Golem.TestSupport.Skipped (defaultMainReportingSkips)
@@ -88,6 +89,7 @@ tests =
       testGroup "figures of zero extent across the lines (root ADR 0440)" zeroExtentFigureTests,
       testGroup "PDF sidenotes (ADR 0006)" sidenoteTests,
       testGroup "text frames (root ADR 0438)" framesTests,
+      testGroup "fit-characters (root ADR 0466)" fitCharactersTests,
       testGroup "blocks around the frames of wrap around (root ADR 0456)" aroundBlocksTests,
       testGroup "notes of more than one paragraph (docs/adr/0263)" notesTests,
       pageStartsTests,

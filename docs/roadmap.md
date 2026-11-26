@@ -71,10 +71,9 @@ v0.1.0-rc4 と v1.0.0 のどちらで扱うかは、まだ決めていない。
 - **組版の自由の原則に反する箇所**：仕様書の「設計原則」の「組版の自由」に反し、スタイルを当てる手段のない文字を直す（[ADR 0177](adr/0177-note-mark-style-and-numerals.md) の「原則に反する今の箇所」）。それぞれ、組むものの範囲と既定の見た目を決め直す必要があるので、別々の ADR で直す。網羅したとは言えず、読んだ範囲で見つけたものである。
   - **HTML と EPUB のキャプションと傍注の段落の組み方（未決）**：`caption` と `sidenote` の字下げ、`space-between`、`line-breaks` は、PDF だけに当たる。HTML と EPUB の `figcaption` と傍注の CSS には、書体と大きさだけを書く。ADR は部品の内幅と行数で組み方を決め、HTML と EPUB に触れていない。CSS にも出すかを決める。 [Golem ADR 0367](adr/0367-caption-sidenote-paragraphs.md)。
 - **段落スタイルの拡張（未実装）**：[root ADR 0374](adr/0374-paragraph-style-controls.md) のうち `next-style`、`initial-style`、`opening-indent` と、[root ADR 0397](adr/0397-paragraph-line-pitch-and-dimensional-spacing.md) が変更した行送りを除く部分を、機能ごとの ADR に分けた。
-  - **ドロップキャップ（未実装）**：`drop-lines` と `drop-gap`。 [root ADR 0465](adr/0465-drop-caps.md)。
-  - **字取り（未実装）**：`fit-characters` と、`drop-lines` との併用の誤り。 [root ADR 0466](adr/0466-fit-characters.md)。
+  - **ドロップキャップ（未実装）**：`drop-lines` と `drop-gap`。 [root ADR 0465](adr/0465-drop-caps.md)。今の `drop-lines` は、値の検査と、`fit-characters` との併用の誤り（G03301、[root ADR 0466](adr/0466-fit-characters.md)）のためにだけ読む。
   - **段落ごとの上書き（未実装）**：`@style` の名前付き引数。 [root ADR 0467](adr/0467-override-paragraph-style-keys-with-style-arguments.md)。
-  - **見出しとリストへの段落スタイル（未実装）**：`[headings.<階層>]` の `paragraph-style` と、本体の形の `@style` のリスト。 [root ADR 0468](adr/0468-paragraph-styles-for-headings-and-lists.md)。
+  - **見出しとリストへの段落スタイル（未実装）**：`[headings.<階層>]` の `paragraph-style` と、本体の形の `@style` のリスト。 [root ADR 0468](adr/0468-paragraph-styles-for-headings-and-lists.md)。`paragraph-style` で結び付けた見出しへの `fit-characters` の適用（[root ADR 0466](adr/0466-fit-characters.md)）も、この実装で行う。
 
 - **縦中横とルビの内部の字間**：縦中横の中の文字、ルビの親文字と読みのそれぞれに、書き手が字間を指定できるようにする。外側の箱どうしのトラッキングは [Golem ADR 0370](adr/0370-tracking-inline-boxes.md) で扱う。
 

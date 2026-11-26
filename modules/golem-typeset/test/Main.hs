@@ -3,6 +3,7 @@ module Main (main) where
 import BoxSpec (boxTests)
 import CcittSpec (ccittTests)
 import FigureColorSpec (figureColorTests)
+import FitCharactersSpec (fitCharactersTests)
 import FitFigureSpec (fitFigureTests)
 import GlyphRunsSpec (glyphRunsTests)
 import Golem.TestSupport.PackageDirectory (enterPackageDirectory)
@@ -58,5 +59,6 @@ tests =
       testGroup "the shape and the colour of the wrap mark of inline code (golem-layout ADR 0042)" wrapMarkTests,
       testGroup "the boxes of paragraph styles (docs/adr/0271)" boxTests,
       noBreakProductTests,
-      openingIndentTests
+      openingIndentTests,
+      fitCharactersTests
     ]
