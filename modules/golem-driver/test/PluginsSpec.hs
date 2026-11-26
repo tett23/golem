@@ -14,7 +14,7 @@ import Data.Text.IO qualified as TIO
 import Golem.Assemble (Book (..), inlineText)
 import Golem.Doc.IR (Block (..), BlockBody (..), Document (..), Inline, InlineF (..), ListItem (..), NumberStyle (..), RubySegment (..), Table (..))
 import Golem.Driver
-import Golem.Eval.Builtin (BuiltinInline (..), builtinName, unPluginCommandName)
+import Golem.Eval.Builtin (builtinName, unPluginCommandName)
 import Golem.Eval.File (EvalResult (..), PluginHook (..))
 import Golem.Evaluate.Lint (lintProject)
 import Golem.Evaluate.Plugins (LoadedPlugins (..), loadPlugins)
@@ -1372,9 +1372,10 @@ pluginTests =
              r <- build (defaultOptions tmp)
              atManifestTop r >>= (@?= g06008 "プラグインが提供していないコマンドを overrides に書いています: identity.xyz")
            -- note and link may be overridden since root ADR 0471
+           -- (the chapters then call the plugin, which answers nothing: diagnostics of their own)
            withPlugins [("names", "builtin-names.wat")] (pluginDeclOf "names" "overrides = [\"note\", \"ruby\", \"link\"]\n") $ \tmp -> do
              r <- build (defaultOptions tmp)
-             atManifestTop r >>= (@?= []),
+             filter (`elem` [DiagnosticCode "G06007", DiagnosticCode "G06008"]) (map diagCode (brDiagnostics r)) @?= [],
          -- docs/adr ADR 0031, root ADR 0471
          testCase "root ADR 0471 I5: overrides = [\"code\"], [\"aki\"] and [\"cite\"] load" $ do
            withPlugins [("cd", "override-code.wat")] (pluginDeclOf "cd" "overrides = [\"code\"]\n") $ \tmp -> do
