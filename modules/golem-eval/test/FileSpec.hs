@@ -681,11 +681,11 @@ styleTests =
         map stripped (body "@style nope\nx\n") @?= [(Nothing, ["x"])]
         errs "@style\n  x\n" @?= ["G02047"]
         errs "@verse\n  A\n" @?= ["G02009"]
-        errs "@style verse\n  - a\n" @?= ["G02045"]
+        errs "@style verse\n  - a\n" @?= []
         errs "@style verse\n  %% c %%\n" @?= ["G02046"]
         errs "@style verse\n" @?= ["G02010"],
       testCase "a style on a block that is not a paragraph" $ do
-        errs "@style quote\n# 見出し\n" @?= ["G02013"]
+        errs "@style quote\n# 見出し\n" @?= ["G02046"]
         case body "@style quote\n# 見出し\n" of
           [Heading 1 _ _] -> pure ()
           other -> assertFailure (show other),
@@ -1035,7 +1035,7 @@ spreadTests =
       testCase "a paragraph after @style with two spreads is as without @style (ADR 0143)" $ do
         let paras src = [(st, stripSpans is) | Paragraph st is <- body src]
         paras "@style *[[\"a\"]] **[{b: 1}]\na\n" @?= [(Nothing, ["a"])]
-        paras "@style *[[\"a\"]] **[{b: 1}]\n  a\n\nb\n" @?= [(Nothing, ["b"])],
+        paras "@style *[[\"a\"]] **[{b: 1}]\n  a\n\nb\n" @?= [(Nothing, ["a"]), (Nothing, ["b"])],
       testCase "G02114: @style decides the lines of its body before the evaluation" $ do
         errs "@style *[[\"note\"]]\na\n" @?= ["G02114"]
         errs "@style *[[\"note\"]]\n  a\n" @?= ["G02114"]
@@ -1393,7 +1393,7 @@ settingsTests =
         map stripped bs @?= [(Nothing, ["a"]), (Nothing, ["b"])],
       testCase "@manifest and @style-def together, without a blank line" $ do
         let (bs, ds, _) = runS sctx "@manifest paragraph-separator=line\n@style-def paragraph letter\n@style letter\na\nb\n"
-        map stripped bs @?= [(Just "letter", ["a"]), (Nothing, ["b"])]
+        map stripped bs @?= [(Just "letter", ["a"]), (Just "letter", ["b"])]
         ds @?= [],
       testCase "a filter may give the paragraph styles of the file" $ do
         let hook = noPlugins {phApplyFilters = \_ (Document f bs) -> Right (Document f (bs <> [Block (mkSpan f 0 1) Nothing Nothing (Paragraph (Just "letter") [])]), [])}
@@ -1584,7 +1584,7 @@ breakTests =
             "= t\n  @page-break\n",
             "@figure images/a.png alt=a\n  @page-break\n"
           ]
-        errs "@style quote\n  @page-break\n" @?= ["G02045"]
+        errs "@style quote\n  @page-break\n" @?= ["G02059", "G02046"]
     ]
   where
     shape :: BlockBody -> Text
@@ -1725,8 +1725,8 @@ blankLineTests =
             "= t\n  @blank-line\n"
           ]
         msgs "- あ\n\n  @blank-line\n  い\n" @?= [("G02093", "@blank-line は文書の最上位にだけ置けます")],
-      testCase "@blank-line in the body of @style is G02045" $
-        errs "@style verse\n  あ\n\n  @blank-line\n" @?= ["G02045"],
+      testCase "@blank-line in the body of @style is G02093 (root ADR 0460)" $
+        errs "@style verse\n  あ\n\n  @blank-line\n" @?= ["G02093"],
       testCase "in an attribute group, the blank lines go before the target and the attributes skip them" $ do
         labelled "@blank-line\n@label x\n# 見出し\n" @?= ([(Nothing, "blank 1"), (Just "x", "heading")], [])
         labelled "@label x\n@blank-line\n# 見出し\n" @?= ([(Nothing, "blank 1"), (Just "x", "heading")], [])

@@ -58,6 +58,8 @@ data SyntaxKind
   | KDot
   | KStar
   | KFence
+  | -- | the ::: of the lines around a body (root ADR 0459)
+    KDivMark
   | KCodeText
   | KWord
   | KExprOpen
@@ -87,6 +89,8 @@ data SyntaxKind
   | NBlockCommand
   | NAttributed
   | NCommandBody
+  | -- | the blocks between ::: lines a block command takes as its body (root ADR 0459)
+    NDiv
   | NBlankLines
   | NSeparatorLine
   | NDefGroup

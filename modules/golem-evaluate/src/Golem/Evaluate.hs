@@ -200,8 +200,13 @@ evaluateProjectWith files overlay profile root = do
               -- style.toml, which the context comes from, when a plugin asks for it: the LSP watches it (docs/adr/0121)
               contextFiles = Set.fromList ["style.toml" | not (null (phContextNames hook))]
               -- no G02022 after the plugins failed to load (golem-plugin ADR 0003), nor G02090 (golem-doc ADR 0007),
-              -- nor G02009 for their block commands (docs/adr/0122)
-              quiet = if null pluginErrors then id else \r -> r {erDiagnostics = filter ((`notElem` [DiagnosticCode "G02022", DiagnosticCode "G02090", DiagnosticCode "G02009"]) . diagCode) (erDiagnostics r)}
+              -- nor G02009 for their block commands (docs/adr/0122), nor G02011 and G02123 for the
+              -- commands written in a row with such a block command (root ADR 0459)
+              quiet = if null pluginErrors then id else \r -> r {erDiagnostics = dropUnknown (erDiagnostics r)}
+              dropUnknown ds =
+                let unknown = [diagSpan d | d <- ds, diagCode d == DiagnosticCode "G02009"]
+                    inRow d = diagCode d `elem` [DiagnosticCode "G02011", DiagnosticCode "G02123"] && any (spanContains (diagSpan d)) unknown
+                 in filter (\d -> diagCode d `notElem` [DiagnosticCode "G02022", DiagnosticCode "G02090", DiagnosticCode "G02009"] && not (inRow d)) ds
           if hasErrors synDiags
             then do
               loaded <- loadAssets files overlay project
@@ -686,6 +691,7 @@ assetRefs (A.File _ bs) = concatMap blk bs
     blk (A.Located _ b) = case b of
       A.BlockCommand (A.Located _ name) args body -> cmd name args <> concatMap blk body
       A.Attributed cs t -> concatMap blk cs <> maybe [] blk t
+      A.Fenced inner -> concatMap blk inner
       A.BulletList items -> concatMap (concatMap blk) items
       A.OrderedList items -> concatMap (concatMap blk) items
       A.DefList gs -> concatMap (concatMap (concatMap blk) . A.dgDefs) gs
