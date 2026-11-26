@@ -1,6 +1,6 @@
 # ADR 0003: 評価の診断コード G02001 から G02043
 
-Status: superseded [{"by":["docs/adr/0027-exhaustive-command-dispatch-by-types.md"],"part":"到達しない G02022 の枝の扱い"},{"by":["docs/golem-parser/adr/0013-splat-after-keyword-arguments.md"],"part":"G02077"},{"by":["docs/golem-eval/adr/0004-tsv-tables.md"],"part":"G02033 と G02034 の `@table` の条件の改めと G02035 の廃止"},{"by":["docs/golem-parser/adr/0011-number-shorthand.md"],"part":"G02078"},{"by":["docs/golem-driver/adr/0019-pdf-kenten-shapes.md"],"part":"G02039 の圏点の形の一覧"},{"by":["docs/golem-fmt/adr/0002-remove-verse-migration.md"],"part":"`@verse` の G02009 への移行と G02048 の廃止"},{"by":["docs/adr/0113-closed-range-literal.md"],"part":"G02037 を `lines` の範囲がファイルの行を外れることだけにしたの"}]
+Status: superseded [{"by":["docs/adr/0027-exhaustive-command-dispatch-by-types.md"],"part":"到達しない G02022 の枝の扱い"},{"by":["docs/golem-parser/adr/0013-splat-after-keyword-arguments.md"],"part":"G02077"},{"by":["docs/golem-eval/adr/0004-tsv-tables.md"],"part":"G02033 と G02034 の `@table` の条件の改めと G02035 の廃止"},{"by":["docs/golem-parser/adr/0011-number-shorthand.md"],"part":"G02078"},{"by":["docs/golem-driver/adr/0019-pdf-kenten-shapes.md"],"part":"G02039 の圏点の形の一覧"},{"by":["docs/golem-fmt/adr/0002-remove-verse-migration.md"],"part":"`@verse` の G02009 への移行と G02048 の廃止"},{"by":["docs/adr/0113-closed-range-literal.md"],"part":"G02037 を `lines` の範囲がファイルの行を外れることだけにしたの"},{"part":"ブロックコマンドと属性（`Golem.Eval.File`）","by":["docs/adr/0462-breaks-in-command-bodies-and-repeated-commands.md"],"kind":"replace"}]
 
 ## 文脈
 

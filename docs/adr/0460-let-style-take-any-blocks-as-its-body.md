@@ -1,6 +1,6 @@
 # ADR 0460: `@style` の本体に、段落のほかのブロックも置けるようにする
 
-Status: accepted
+Status: superseded [{"part":"本体のブロック","by":["docs/adr/0462-breaks-in-command-bodies-and-repeated-commands.md"],"kind":"supplement"}]
 
 ## 文脈
 

@@ -1,6 +1,6 @@
 # ADR 0372: 番号と題の区切りを段落スタイルで選ぶ
 
-Status: accepted-pending
+Status: superseded-pending [{"part":null,"by":["docs/adr/0463-title-formats-for-numbered-headings-and-captions.md"],"kind":"supplement"}]
 
 ## 文脈
 

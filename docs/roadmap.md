@@ -33,7 +33,7 @@ v0.1.0-rc4 と v1.0.0 のどちらで扱うかは、まだ決めていない。
 
 - **IR と ABI の設計と妥当性の検査**：意味論の IR とプラグインの ABI を設計し、その設計が妥当であることを検査する。どちらも v1.0.0 の後に変えると互換を壊すので、v1.0.0 の前に扱う。検査の方法は、着手するときに ADR で決める。記法、IR、ABI を変えるほかの項目は、この項目の後に扱う。
 - **余白などのブロックの命令が重なったときの AST から IR への変換**：`@blank-line`、`@need-lines`、`@page-lines`、`@page-break`、`@column-break`、`@no-page-break` など、余白や改ページを決めるブロックの命令が、ほかのブロックを挟まずに複数並んだときに、AST をどの IR に変換するかを一般の規則として定める。今は `@blank-line` どうしの足し合わせ、`@blank-line` と改ページの組み合わせ（G04010）など、組み合わせごとに個別に決めているだけで（[docs/adr/0046](adr/0046-blank-line-command.md)、[docs/adr/0030](adr/0030-manual-page-break-control.md)）、決めていない組み合わせの変換は定義されていない。段落スタイルの分割禁止と連動（[ADR 0261](adr/0261-keep-options-of-paragraph-styles.md)）は改ページの手での制御と同じ仕組みで組んだ。
-- **パス（未実装）**：閉じていないパスの上に文字を置けるようにする。字ごとの位置と回転を有理数で決める方法を ADR で決める。図版の輪郭の書き方と、輪郭に沿う回り込みも ADR で決める（[Golem ADR 0382](adr/0382-figure-extent-and-captions.md) の輪郭の指定）。円と星形の閉じたパスのテキストフレームの見本を目で確かめる受けいれ条件 A1 は、「手で確かめる項目」の「閉じたパスのテキストフレームの見本」に移した（[root ADR 0437](adr/0437-paths-and-the-box-model.md)）。
+- **パス（未実装）**：閉じていないパスの上に文字を置けるようにする。字ごとの位置と回転を有理数で決める方法を ADR で決める。図版の輪郭の書き方と、輪郭に沿う回り込みは [root ADR 0464](adr/0464-wrap-text-along-figure-outlines.md) で決めた。円と星形の閉じたパスのテキストフレームの見本を目で確かめる受けいれ条件 A1 は、「手で確かめる項目」の「閉じたパスのテキストフレームの見本」に移した（[root ADR 0437](adr/0437-paths-and-the-box-model.md)）。
 
 ### テストと CI
 
@@ -54,6 +54,9 @@ v0.1.0-rc4 と v1.0.0 のどちらで扱うかは、まだ決めていない。
 
 ### diagnostics とビルドの結果
 
+- **続いて起きる診断を箇所ごとに出す（未実装）**：読めない `.emet` の名前、`@import` どうしで重なった名前、マニフェストの無いファイルで取り込んだ名前、プラグインの誤りのときの未知のコマンドの、呼び出しと参照ごとに診断を出し、呼ぶ先の分からない名前のあるまとまりでも G02011 と G02123 を出す。 [root ADR 0461](adr/0461-report-the-diagnostics-that-follow-from-another-error.md)。
+- **本体の中の改ページと二度書いたコマンド（未実装）**：結果をその場に置く本体（`@style`、`@lang`、関数）の中の改ページ、行アキ、区切りを許し、入れ物を作る本体（`@frame`、注）の中では一つずつ報告する。二度書いたコマンドは、どれも最後に書いたものを残す。 [root ADR 0462](adr/0462-breaks-in-command-bodies-and-repeated-commands.md)。
+
 - **一つのコードに一つの原因に合わせたコードの分割**：[Golem ADR 0356](adr/0356-diagnostic-cause-audit.md) の [監査の記録](audits/2026-11-17-diagnostic-cause-audit.md) は、異なる原因を一つにまとめたコードを 62 件挙げ、候補ごとに分け方を提案した。どの提案を採るかを決め、ADR を作成してコードを分ける（仕様書の「設計原則」の「一つのコードに一つの原因」）。コードを分けると、書き手や CI がコードで引いていた扱いが変わるので、1.0.0 の前に済ませる。
 - **diagnostics の判定の近似の監査**：数値による診断の境界と、追加の近似を調べる手順を定めた。 [Golem ADR 0322](adr/0322-check-numeric-diagnostic-boundaries.md)（採択）。
 - **`golem check` が G01012 を二度出す件**：check と HTML ビルドで見出しの各位置を照合する回帰テストを定めた。 [Golem ADR 0323](adr/0323-heading-level-diagnostic-occurrences.md)（採択）。
@@ -68,14 +71,14 @@ v0.1.0-rc4 と v1.0.0 のどちらで扱うかは、まだ決めていない。
 
 - **組版の自由の原則に反する箇所**：仕様書の「設計原則」の「組版の自由」に反し、スタイルを当てる手段のない文字を直す（[ADR 0177](adr/0177-note-mark-style-and-numerals.md) の「原則に反する今の箇所」）。それぞれ、組むものの範囲と既定の見た目を決め直す必要があるので、別々の ADR で直す。網羅したとは言えず、読んだ範囲で見つけたものである。
   - **HTML と EPUB のキャプションと傍注の段落の組み方（未決）**：`caption` と `sidenote` の字下げ、`space-between`、`line-breaks` は、PDF だけに当たる。HTML と EPUB の `figcaption` と傍注の CSS には、書体と大きさだけを書く。ADR は部品の内幅と行数で組み方を決め、HTML と EPUB に触れていない。CSS にも出すかを決める。 [Golem ADR 0367](adr/0367-caption-sidenote-paragraphs.md)。
-- **見出しの番号と題の区切りを書く場所（未決）**：ADR は番号と題のあいだの区切りを段落スタイルの `number-title-separator` で決めるとするが、見出しには段落スタイルが当たらない（下の「段落スタイルの拡張」の「見出しとリストへの適用の方法」）。今は、見出しの区切りを `[headings.<階層>]` の `number-title-separator` に書き、図版、コードブロック、表のキャプションの区切りを段落スタイル `caption` に書く。見出しに段落スタイルを結び付ける方法を決めるときに、見出しの区切りを書く場所も決める。 [Golem ADR 0372](adr/0372-number-title-separator.md)。
-- **段落スタイルの拡張（未実装）**：ドロップキャップ（`drop-lines`）と字取り（`fit-characters`）、`@style` の名前付き引数による段落ごとの上書き、見出しとリストへの段落スタイルの適用（[docs/adr/0005](adr/0005-character-and-paragraph-styles.md)、[docs/adr/0006](adr/0006-paragraph-indent.md)）。ADR のうち `next-style`、`initial-style`、`opening-indent` と、後の ADR が変更した行送りを除く部分であり、次の未決事項を決めてから組む。 [root ADR 0374](adr/0374-paragraph-style-controls.md)、[root ADR 0397](adr/0397-paragraph-line-pitch-and-dimensional-spacing.md)。
-  - **ドロップキャップの組み方（未決）**：ADR は「先頭 1 書記素を指定行数の高さで置き、その行だけ本文幅を減らす」と書く。指定行数の高さの字の脇では、その行数の行を短くしないと重なるので、「その行だけ」と食い違う。字の大きさの決め方（最初の行の字面の上端から最後の行のベースラインまでか）、字と本文のあいだの空き、HTML と EPUB の写し方も決まっていない。
-  - **字取りの範囲（未決）**：ADR は「指定字数の幅に字間を均等配分する」と書くが、段落の字数が指定字数を超えるとき、段落が二行以上になるとき、字取りを当てる段落の種類（見出しか、本文の段落か）を書いていない。
-  - **`drop-lines` と `fit-characters` の併用の誤りのコード（未決）**：ADR は併用を設定位置で拒むとするが、コードを決めていない。原因ごとにコードを分ける決まりから、新しいコードが要るかを決める。
-  - **段落ごとの上書きのキー（未決）**：`@style body line-pitch="16pt"` の名前付き引数に、どの段落スタイルのキーを書けるか（ADR の六つのキーだけか、`@style-def` と同じすべてのキーか）と、意味の IR での持ち方を決める。ADR の不変条件 1 の「段落ごとの指定」は、これが決まってから検査できる。
-  - **見出しとリストへの適用の方法（未決）**：見出しは段落スタイルでなく `[headings.<階層>]` で組み、リストの項目の段落は `body` で組む。ADR は「見出しとリストを含む段落」にキーを指定するとするが、見出しとリストにどの段落スタイルを結び付けるか（`[headings.<階層>]` にキーを足すか、段落スタイルの名前を指す欄を設けるか）を書いていない。
-  - **HTML と EPUB の始め括弧の字下げ（未決）**：`opening-indent` は PDF だけに当たる。HTML と EPUB で、段落ごとに先頭の字を見て `text-indent` を変えるかを決める。
+- **見出しとキャプションの題の書式（未実装）**：番号のある見出しとキャプションの `title-format` に、`{number}`、`{title}`、`{separator}` と変数の差し込みを書けるようにする。見出しの区切りと書式は `[headings.<階層>]` に書く。 [root ADR 0463](adr/0463-title-formats-for-numbered-headings-and-captions.md)。
+- **始め括弧の字下げの下限（未実装）**：[root ADR 0374](adr/0374-paragraph-style-controls.md) は、`opening-indent = "half"` で 1 行目の字下げから半角分を引いた値の下限を 0 とする。PDF の実装は、段落の始まりの字下げを負にした値を下限にしていて、0 を下回ることがある。メンテナーは 2026-11-26 に、下限は 0 で、ただし 1 行目の字下げそのものは負（ぶら下げ）になりうると決めた。PDF の組版を、1 行目の字下げを f として `max(min(f, 0), f - 半角)` に直す。HTML と EPUB の同じ規則は [root ADR 0469](adr/0469-opening-indent-in-html-and-epub.md) で決める。
+- **段落スタイルの拡張（未実装）**：[root ADR 0374](adr/0374-paragraph-style-controls.md) のうち `next-style`、`initial-style`、`opening-indent` と、[root ADR 0397](adr/0397-paragraph-line-pitch-and-dimensional-spacing.md) が変更した行送りを除く部分を、機能ごとの ADR に分けた。
+  - **ドロップキャップ（未実装）**：`drop-lines` と `drop-gap`。 [root ADR 0465](adr/0465-drop-caps.md)。
+  - **字取り（未実装）**：`fit-characters` と、`drop-lines` との併用の誤り。 [root ADR 0466](adr/0466-fit-characters.md)。
+  - **段落ごとの上書き（未実装）**：`@style` の名前付き引数。 [root ADR 0467](adr/0467-override-paragraph-style-keys-with-style-arguments.md)。
+  - **見出しとリストへの段落スタイル（未実装）**：`[headings.<階層>]` の `paragraph-style` と、本体の形の `@style` のリスト。 [root ADR 0468](adr/0468-paragraph-styles-for-headings-and-lists.md)。
+  - **HTML と EPUB の始め括弧の字下げ（未実装）**：`data-opening` の段落の字下げ。 [root ADR 0469](adr/0469-opening-indent-in-html-and-epub.md)。
 
 - **縦中横とルビの内部の字間**：縦中横の中の文字、ルビの親文字と読みのそれぞれに、書き手が字間を指定できるようにする。外側の箱どうしのトラッキングは [Golem ADR 0370](adr/0370-tracking-inline-boxes.md) で扱う。
 
@@ -85,8 +88,8 @@ v0.1.0-rc4 と v1.0.0 のどちらで扱うかは、まだ決めていない。
 ### 本の部品の拡張
 
 - **図版とキャプションの拡張（未実装）**：複数のページに分ける、見開きに置くといった扱い、ページの端や塗り足しの領域まで伸ばす図版、矩形以外の形の回り込み、キャプションの位置（画像の上、横）と揃え、画像とキャプションのあいだの空き、図番号とキャプションの本文で書体や大きさを変えること（[golem-driver ADR 0010](golem-driver/adr/0010-caption-style.md)、[golem-driver ADR 0005](golem-driver/adr/0005-pdf-wrapped-figures.md)、[golem-pdf ADR 0004](golem-pdf/adr/0004-crop-marks-and-bleed.md)、[golem-layout ADR 0004](golem-layout/adr/0004-wrapped-figures.md)）。矩形以外の形の回り込みは「パス」の後に扱う。 [Golem ADR 0382](adr/0382-figure-extent-and-captions.md)。
-  - **輪郭に沿った回り込み**：矩形でない形の回り込みは、上の「パス」の項目の ADR を待ってから実装する（[Golem ADR 0382](adr/0382-figure-extent-and-captions.md) の輪郭の指定）。
-- **参考文献のスタイル（未実装）**：雑誌や出版社ごとに決まった参考文献の書式を守れるように、書き手が文献スタイルを自作し、投稿先の雑誌ごとに指定できるようにする。TeX（BibTeX と biblatex）の文献のスタイルと同等のことができるのを目指す。v0.1.0-rc3 で欄を増やした書式（[golem-doc ADR 0005](golem-doc/adr/0005-bibliography-fields.md)）を既定のスタイルとして引き継ぐ。着手するときに ADR を作成する。本文の引用の印の書式（今は番号の書式の一種類だけ）を選べるようにすること、引用の前置きと後置き、`page` のほかの位置の種類（`chapter` など）、文献ごとの頁を一つの印に書く記法（biblatex の `\cites`）、引用の印の文言（`p.` と「頁」の選び方）、著者名の順の一覧、書誌のぶら下げ字下げもこの項目で決める（[golem-doc ADR 0002](golem-doc/adr/0002-document-assembly.md)、[golem-driver ADR 0007](golem-driver/adr/0007-pdf-index-and-bibliography.md)）。意味論 IR の引用はそれらの値をすでに持ち、今は出力の前の検査で止める（[docs/adr/0266](adr/0266-citation-locators-and-multiple-keys.md)）。 [Golem ADR 0385](adr/0385-bibliography-and-citation-styles.md)。
+  - **輪郭に沿った回り込み（未実装）**：`style.toml` の `[outlines.<名前>]` と `@figure` の `outline` で、輪郭に沿って本文を回り込ませる。 [root ADR 0464](adr/0464-wrap-text-along-figure-outlines.md)。
+- **参考文献のスタイル（未実装）**：雑誌や出版社ごとに決まった参考文献の書式を守れるように、書き手が文献スタイルを自作し、投稿先の雑誌ごとに指定できるようにする。TeX（BibTeX と biblatex）の文献のスタイルと同等のことができるのを目指す。v0.1.0-rc3 で欄を増やした書式（[golem-doc ADR 0005](golem-doc/adr/0005-bibliography-fields.md)）を既定のスタイルとして引き継ぐ。着手するときに ADR を作成する。本文の引用の印の書式（今は番号の書式の一種類だけ）を選べるようにすること、引用の前置きと後置き、`page` のほかの位置の種類（`chapter` など）、文献ごとの頁を一つの印に書く記法（biblatex の `\cites`）、引用の印の文言（`p.` と「頁」の選び方）、著者名の順の一覧、書誌のぶら下げ字下げもこの項目で決める（[golem-doc ADR 0002](golem-doc/adr/0002-document-assembly.md)、[golem-driver ADR 0007](golem-driver/adr/0007-pdf-index-and-bibliography.md)）。意味論 IR の引用はそれらの値をすでに持ち、今は出力の前の検査で止める（[docs/adr/0266](adr/0266-citation-locators-and-multiple-keys.md)）。 [Golem ADR 0385](adr/0385-bibliography-and-citation-styles.md)。 スタイルの書き方、決まった名前、注の引用、見本の論文は [root ADR 0470](adr/0470-bibliography-styles-by-name-and-by-declaration.md) で決めた。
 
 ### マニュアル
 
@@ -240,8 +243,6 @@ v1 より後のバージョンのための事項には、そのバージョン�
 各 ADR に書いた方式を出発点とし、変更を決めた場合は、その ADR の状態に従って決定を記録する。
 
 - **換算ページ数と実際の折り返し**：換算に使う 1 行文字数と 1 ページ行数を任意に指定できること、本文をマスターフレームに限定することは決まった。換算時に実際の版面の折り返しを引き継ぐかは未決である。現案は段落と明示改行を保ち、指定した字数で折り返し直す。[Golem ADR 0355](adr/0355-manuscript-statistics.md)
-- **段落スタイルの拡張の採択単位**：行送り、次スタイル、先頭文字スタイル、ドロップキャップ、字取り、始め括弧の字下げを一括で採択した。実装を機能ごとの修正 ADR に分ける必要があるかは、着手時に判断する。行数と字数の型を「0 より大きい自然数」とすることは決まった。[Golem ADR 0374](adr/0374-paragraph-style-controls.md)
-- **投稿用の文献スタイルを照合する雑誌**：書き手が投稿先に合わせて文献スタイルを自作できることは v1 の目標である。どの雑誌のどの投稿規定と書誌例を v1 の受け入れ例に採るかは未決である。[Golem ADR 0385](adr/0385-bibliography-and-citation-styles.md)
 
 ### その他の未決事項
 
