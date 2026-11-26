@@ -20,6 +20,7 @@ import FeaturesSpec qualified
 import FilesSpec qualified
 import FontLicensesSpec qualified
 import FramesSpec qualified
+import OutlinesSpec qualified
 import FunctionsSpec qualified
 import GenericFontsSpec qualified
 import Golem.Assemble (NoteNumbering (..))
@@ -974,6 +975,7 @@ tests =
       ColophonSpec.tests,
       PathDataSpec.pathDataTests,
       FramesSpec.tests,
+      OutlinesSpec.tests,
       FeaturesSpec.tests,
       GenericFontsSpec.tests,
       FontLicensesSpec.tests,

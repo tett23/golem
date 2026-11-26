@@ -16,8 +16,10 @@ module Golem.Geometry.Polygon
     splitCurve,
     flatPieces,
     flattenPath,
+    flattenPathWith,
     insidePolygons,
     stripInside,
+    reachInBox,
   )
 where
 
@@ -69,7 +71,16 @@ line and of each flat piece of each curve. A subpath of no segment is no
 polygon.
 -}
 flattenPath :: Path -> [[RPoint]]
-flattenPath (Path subs) = [polygon s | s <- subs, not (null (subSegments s))]
+flattenPath = flattenPathWith (\(Sp x, Sp y) -> (toRational x, toRational y))
+
+{- | The polygons of a path whose points are first mapped by an affine
+function (root ADR 0464): an outline in the units of its image, scaled to
+the size the image is placed at. An affine map takes a cubic curve to the
+curve of the mapped control points, so the curves are flattened after the
+map, within 'flattenTolerance2' of sp.
+-}
+flattenPathWith :: (Point -> RPoint) -> Path -> [[RPoint]]
+flattenPathWith rp (Path subs) = [polygon s | s <- subs, not (null (subSegments s))]
   where
     polygon (SubPath start segs _) = rp start : go (rp start) segs
     go _ [] = []
@@ -78,8 +89,6 @@ flattenPath (Path subs) = [polygon s | s <- subs, not (null (subSegments s))]
       CurveTo a b e ->
         let ps = [p3 | (_, _, _, p3) <- flatPieces (q, rp a, rp b, rp e)]
          in ps <> go (rp e) rest
-    rp :: Point -> RPoint
-    rp (Sp x, Sp y) = (toRational x, toRational y)
 
 -- | The edges of polygons, each closed back to its start; edges of no length are left out.
 edgesOf :: [[RPoint]] -> [(RPoint, RPoint)]
@@ -234,3 +243,46 @@ dedupe = \case
   a : b : rest | a == b -> dedupe (b : rest)
   a : rest -> a : dedupe rest
   [] -> []
+
+{- | The furthest x of the region inside polygons by the fill rule within
+the box from x0 to x1 and from y0 to y1, edges included (root ADR 0464):
+Nothing when the region does not meet the box.
+
+The furthest point of the region in the box is on the boundary of their
+common part: a vertex in the box, a point where an edge crosses a side of
+the box, or a corner of the box inside the region. Along an edge the x is
+furthest at an end of the part of the edge in the box, and along a side of
+the box inside the region at an edge or at a corner, so these points are
+all that need looking at.
+-}
+reachInBox :: FillRule -> [[RPoint]] -> (Rational, Rational) -> (Rational, Rational) -> Maybe Rational
+reachInBox rule polys (x0, x1) (y0, y1)
+  | x0 > x1 || y0 > y1 = Nothing
+  | null candidates = Nothing
+  | otherwise = Just (maximum candidates)
+  where
+    es = edgesOf polys
+    inBox (x, y) = x0 <= x && x <= x1 && y0 <= y && y <= y1
+    vertices = [x | poly <- polys, length poly > 1, p@(x, _) <- poly, inBox p]
+    -- the part of each edge on a side of the box across the lines: its furthest x within the box
+    onSideY y =
+      [ x
+      | ((ax, ay), (bx, by)) <- es,
+        min ay by <= y,
+        y <= max ay by,
+        x <- if ay == by then [min x1 (max ax bx) | max ax bx >= x0, min ax bx <= x1] else [ax + (bx - ax) * (y - ay) / (by - ay)],
+        x0 <= x,
+        x <= x1
+      ]
+    -- an edge that meets a side of the box along the lines there
+    onSideX x =
+      [ x
+      | ((ax, ay), (bx, by)) <- es,
+        min ax bx <= x,
+        x <= max ax bx,
+        let (lo, hi) = if ax == bx then (min ay by, max ay by) else let y = ay + (by - ay) * (x - ax) / (bx - ax) in (y, y),
+        lo <= y1,
+        hi >= y0
+      ]
+    corners = [x | x <- [x0, x1], y <- [y0, y1], insidePolygons rule polys (x, y)]
+    candidates = vertices <> onSideY y0 <> onSideY y1 <> onSideX x0 <> onSideX x1 <> corners
