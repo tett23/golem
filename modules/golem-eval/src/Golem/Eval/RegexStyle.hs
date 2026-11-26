@@ -27,7 +27,7 @@ import Data.Maybe (fromMaybe, isJust)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Golem.Doc.IR
-import Golem.Project.Style (ParaStyleDef (..), RegexStyleDef (..), Style (..), paraStyle)
+import Golem.Project.Style (LocalValue (..), ParaStyleDef (..), RegexStyleDef (..), Style (..), paraStyle, paraStyleWith)
 import Golem.Regex (Regex, compile, matches)
 import Golem.Syntax
 
@@ -69,7 +69,7 @@ applyRegexStyles rules d
     -- forced: the paragraph style of the paragraphs of a caption
     block forced b = b {blockBody = body forced (blockBody b)}
     body forced = \case
-      Paragraph st is -> Paragraph st (paragraph (rulesOf (fromMaybe (fromMaybe "body" st) forced)) is)
+      Paragraph st is -> Paragraph st (paragraph (rulesOf (fromMaybe (fromMaybe "body" (styleRefNameOf st)) forced)) is)
       Heading level attrs is -> Heading level attrs (paragraph (rulesOf "body") is)
       BulletList items -> BulletList (map item items)
       OrderedList items -> OrderedList (map item items)
@@ -77,7 +77,7 @@ applyRegexStyles rules d
       FigureBlock fig -> FigureBlock fig {figCaption = map (block (Just "caption")) (figCaption fig)}
       FrameBlock name bs -> FrameBlock name (map (block Nothing) bs)
       TableBlock t ->
-        let cell = paragraph (rulesOf (fromMaybe "table" (tableStyle t)))
+        let cell = paragraph (rulesOf (fromMaybe "table" (styleRefNameOf (tableStyle t))))
          in TableBlock t {tableHeader = map cell (tableHeader t), tableRows = map (map cell) (tableRows t)}
       other -> other
     item i = i {itemBlocks = map (block Nothing) (itemBlocks i)}
@@ -114,8 +114,11 @@ applyInitialStyles :: Style -> Document -> Document
 applyInitialStyles style d = d {docBlocks = map block (docBlocks d)}
   where
     block b = case blockBody b of
-      Paragraph st is | Just c <- paraStyle style st >>= psInitialStyle -> b {blockBody = Paragraph st (initialStyled c is)}
+      Paragraph st is | Just c <- refStyle st >>= psInitialStyle -> b {blockBody = Paragraph st (initialStyled c is)}
       _ -> b
+    -- the style of a paragraph, the keys of @style over it (root ADR 0467)
+    refStyle st = paraStyleWith style (styleRefNameOf st) (maybe [] refValues st)
+    refValues r = [(k, case v of StyleWord w -> LocalWord w; StyleString t -> LocalString t) | (k, v) <- Map.toAscList (styleRefKeys r)]
 
 {- | The inlines with their first character wrapped in a character style:
 a base character and the combining characters after it (golem-driver

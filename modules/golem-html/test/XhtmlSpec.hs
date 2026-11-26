@@ -72,7 +72,10 @@ cfg0 =
       hcEmbedFonts = True,
       hcFontLicenses = [],
       hcGenericFamilies = Map.empty,
-      hcCharacterAdvance = Nothing
+      hcCharacterAdvance = Nothing,
+      hcAnonymousStyles = Map.empty,
+      hcLocalAnonymousStyles = Map.empty,
+      hcAnonymousTableFaces = Map.empty
     }
 
 -- | A book of one document, a.gm, with nothing assembled.
@@ -416,7 +419,7 @@ boxed key = plainPara {hpsBox = Just (HtmlBox key ["background-color: rgb(230, 2
 
 -- | A paragraph of a style.
 styled :: Int -> Text -> Block
-styled n st = Block (at n) Nothing Nothing (Paragraph (Just st) [txt "x"])
+styled n st = Block (at n) Nothing Nothing (Paragraph (Just (styleNamed st)) [txt "x"])
 
 boxTests :: [TestTree]
 boxTests =
@@ -1092,7 +1095,7 @@ langTests =
     ]
 
 xhtmlTests :: TestTree
-xhtmlTests = testGroup "XHTML and CSS (golem-html ADR 0001)" (tests <> [indexPageTests, langTests, pageBreakTests, genericFontTests, fontLicenseTests, openingIndentTests, fitCharactersTests])
+xhtmlTests = testGroup "XHTML and CSS (golem-html ADR 0001)" (tests <> [indexPageTests, langTests, pageBreakTests, genericFontTests, fontLicenseTests, openingIndentTests, fitCharactersTests, styleArgumentTests])
 
 {- | The table of root ADR 0469 I2, the same as in the tests of golem-typeset:
 a paragraph, the language of its block, and whether its first character
@@ -1219,6 +1222,56 @@ pageBreakTests = testCase "root ADR 0386 I1: each page-list destination occurs o
       body = maybe "" bodyOf (lookup "a.xhtml" (sitePages (renderXhtmlWithPageBreaks cfg0 ft book anchors)))
   [T.takeWhile (/= '"') piece | piece <- drop 1 (T.splitOn "id=\"" body)] @?= ["GolemFixedPage-1", "GolemFixedPage-2"]
   assertBool "body text retains its order" ("日本<span" `T.isInfixOf` body && "></span>語句" `T.isInfixOf` body)
+
+-- | A paragraph in a style with keys (root ADR 0467).
+keyedPara :: Int -> Text -> [(Text, Text)] -> Block
+keyedPara n name kvs = Block (at n) Nothing Nothing (Paragraph (Just (StyleRef name (Map.fromList [(k, StyleString v) | (k, v) <- kvs]))) [txt "x"])
+
+-- | The style without a name of a name and keys.
+keyedRef :: Text -> [(Text, Text)] -> StyleRef
+keyedRef name kvs = StyleRef name (Map.fromList [(k, StyleString v) | (k, v) <- kvs])
+
+-- | The CSS of a config over a book.
+cssOf :: HtmlConfig -> Book -> [Text]
+cssOf cfg book = T.lines (siteCss (renderXhtml cfg ft book))
+
+{- | The classes and the CSS of the styles without a name (root ADR 0467):
+ps-NAME and pso-N, numbered from 1 in the order of the document.
+-}
+styleArgumentTests :: TestTree
+styleArgumentTests =
+  testGroup
+    "the paragraph styles without a name (root ADR 0467)"
+    [ testCase "root ADR 0467 I1: a paragraph without keys has the class of its name alone" $ do
+        let html = bodyA cfg0 (bookOf [styled 1 "quote", para 2 [txt "y"]])
+        assertBool (T.unpack html) ("<p class=\"ps-quote\">x</p>" `T.isInfixOf` html)
+        assertBool (T.unpack html) (not ("pso-" `T.isInfixOf` html)),
+      testCase "root ADR 0467 I5: styles without a name are numbered in the order they first come, equal ones alike" $ do
+        let book = bookOf [keyedPara 1 "body" [("line-pitch", "16pt")], keyedPara 2 "quote" [("indent", "1zw")], keyedPara 3 "body" [("line-pitch", "16pt")], keyedPara 4 "body" [("line-pitch", "18pt")]]
+            html = bodyA cfg0 book
+        anonymousStyleNumbers book @?= Map.fromList [(keyedRef "body" [("line-pitch", "16pt")], 1), (keyedRef "quote" [("indent", "1zw")], 2), (keyedRef "body" [("line-pitch", "18pt")], 3)]
+        T.count "class=\"ps-body pso-1\"" html @?= 2
+        T.count "class=\"ps-quote pso-2\"" html @?= 1
+        T.count "class=\"ps-body pso-3\"" html @?= 1,
+      testCase "root ADR 0467 I2: the CSS of a style without a name is a rule p.ps-NAME.pso-N with its declarations" $ do
+        let ref = keyedRef "quote" [("indent", "3zw")]
+            ps = plainPara {hpsIndent = "3em"}
+            cfg = cfg0 {hcParaStyles = Map.fromList [("body", plainPara), ("quote", plainPara)], hcAnonymousStyles = Map.singleton ref ps}
+            css = cssOf cfg (bookOf [keyedPara 1 "quote" [("indent", "3zw")], keyedPara 2 "quote" [("indent", "3zw")]])
+            own = [l | l <- css, "p.ps-quote.pso-1 {" `T.isPrefixOf` l]
+        assertBool (show css) (any ("padding-inline-start: 3em" `T.isInfixOf`) own)
+        assertBool (show css) (any ("p.ps-quote.pso-1 + p.ps-quote.pso-1 {" `T.isPrefixOf`) css),
+      testCase "root ADR 0467 I5: the space between two paragraphs of the same style without a name is its space-between" $ do
+        let ref = keyedRef "body" [("space-between", "2")]
+            ps = plainPara {hpsSpaceBetween = 2}
+            cfg = cfg0 {hcParaStyles = Map.singleton "body" plainPara, hcAnonymousStyles = Map.singleton ref ps}
+            css = cssOf cfg (bookOf [keyedPara 1 "body" [("space-between", "2")], keyedPara 2 "body" [("space-between", "2")]])
+        assertBool (show css) (any (\l -> "p.ps-body.pso-1 + p.ps-body.pso-1 {" `T.isPrefixOf` l && "margin-block-start: 2em" `T.isInfixOf` l) css),
+      testCase "root ADR 0467 I2: a table in a style without a name has both classes" $ do
+        let t = (plainTable [AlignDefault] [[txt "a"]] []) {tableStyle = Just (keyedRef "quote" [("line-pitch", "16pt")])}
+            html = bodyA cfg0 (bookOf [Block (at 1) Nothing Nothing (TableBlock t)])
+        assertBool (T.unpack html) ("<table class=\"ps-quote pso-1\">" `T.isInfixOf` html)
+    ]
 
 -- | The width and the spacing of a paragraph style of fit-characters in HTML and EPUB (root ADR 0466).
 fitCharactersTests :: TestTree

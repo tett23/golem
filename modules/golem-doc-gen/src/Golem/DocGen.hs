@@ -8,6 +8,7 @@ test suite of this package (docs/adr/0197).
 module Golem.DocGen (genDocument, genInline, genExpr, genInt64) where
 
 import Data.List (nub)
+import Data.Map.Strict qualified as Map
 import Data.Text (Text)
 import Data.Void (Void)
 import Golem.Doc.IR
@@ -155,7 +156,7 @@ genBlock =
     <*> Gen.maybe genText
     <*> Gen.recursive
       Gen.choice
-      [ Paragraph <$> Gen.maybe genText <*> inl,
+      [ Paragraph <$> Gen.maybe genStyleRef <*> inl,
         Heading <$> Gen.int (Range.linear 1 3) <*> attrs <*> inl,
         CodeBlock <$> genCode,
         ChannelOutput <$> Gen.choice [Gen.element [TocOutput 2, IndexOutput, BibliographyOutput], CustomOutput <$> genText <*> Gen.maybe genText],
@@ -166,11 +167,20 @@ genBlock =
         DefList <$> Gen.list (Range.linear 1 2) (DefGroup <$> Gen.list (Range.linear 1 2) inl <*> Gen.list (Range.linear 1 2) (Gen.list (Range.linear 0 2) genBlock)),
         FigureBlock <$> (Figure <$> genText <*> Gen.maybe genText <*> genText <*> Gen.maybe Gen.enumBounded <*> Gen.maybe genText <*> Gen.list (Range.linear 0 1) genBlock <*> Gen.maybe (Gen.integral (Range.linear 1 9)) <*> Gen.bool <*> Gen.bool <*> Gen.maybe genText),
         -- a text frame of paragraphs (root ADR 0438)
-        FrameBlock <$> Gen.element ["quote", "a", "side-1"] <*> Gen.list (Range.linear 0 2) (Block <$> genSpan <*> Gen.maybe genText <*> Gen.maybe genText <*> (Paragraph <$> Gen.maybe genText <*> inl))
+        FrameBlock <$> Gen.element ["quote", "a", "side-1"] <*> Gen.list (Range.linear 0 2) (Block <$> genSpan <*> Gen.maybe genText <*> Gen.maybe genText <*> (Paragraph <$> Gen.maybe genStyleRef <*> inl))
       ]
   where
     inl = Gen.list (Range.linear 0 3) genInline
     attrs = HeadingAttrs <$> Gen.maybe inl <*> Gen.maybe genNat <*> Gen.bool <*> Gen.bool
+
+{- | A paragraph style (root ADR 0467): a name alone, or a name with keys
+other than based-on and their words or strings.
+-}
+genStyleRef :: Gen StyleRef
+genStyleRef =
+  StyleRef
+    <$> genText
+    <*> (Map.fromList <$> Gen.list (Range.linear 0 2) ((,) <$> Gen.element ["line-pitch", "space-before", "next-style", "indent"] <*> Gen.choice [StyleWord <$> genText, StyleString <$> genText]))
 
 {- | A table of two columns (docs/adr/0262): no widths or one for each,
 every width above 0, nonumber only with a caption, the built-in table as
@@ -184,7 +194,7 @@ genTable = do
     <*> Gen.choice [pure [], Gen.list (Range.singleton 2) width]
     <*> pure cap
     <*> maybe (pure False) (const Gen.bool) cap
-    <*> Gen.maybe (Gen.filter (/= "table") genText)
+    <*> Gen.maybe (Gen.filter (/= "table") genStyleRef)
     <*> Gen.list (Range.singleton 2) inl
     <*> Gen.list (Range.linear 0 2) (Gen.list (Range.singleton 2) inl)
   where

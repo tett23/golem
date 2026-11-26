@@ -33,7 +33,7 @@ ctxOf :: Style -> EvalContext
 ctxOf s = baseCtx {ctxStyle = s, ctxCharStyles = Map.keysSet (stCharStyles s), ctxParaStyles = paraLineBreaks s}
 
 -- | The paragraphs of a source: the paragraph style of each and its inlines, without their spans.
-paragraphs :: Style -> Text -> [(Maybe Text, [Text])]
+paragraphs :: Style -> Text -> [(Maybe StyleRef, [Text])]
 paragraphs s src = [(st, map shape is) | Paragraph st is <- resultBodies (evalResult (ctxOf s) src)]
 
 -- | An inline without its span: text as itself, a character style as <name:...>, others by kind.
@@ -90,7 +90,7 @@ nextStyleTests =
               expected = case written <|> childNext <|> parentNext <|> bodyNext of
                 Just "body" -> Nothing
                 other -> other
-          (written, childNext, parentNext, bodyNext, map fst (paragraphs s src)) @?= (written, childNext, parentNext, bodyNext, [Just "child", expected]),
+          (written, childNext, parentNext, bodyNext, map fst (paragraphs s src)) @?= (written, childNext, parentNext, bodyNext, [Just "child", styleNamed <$> expected]),
       testCase "ADR 0374 I1: inv1_paragraph_style_controls_case_3: a style written on the paragraph wins over the next-style of the paragraph before" $ do
         let s = styleOf "[paragraph-styles.lead]\nnext-style = \"after\"\n\n[paragraph-styles.after]\n\n[paragraph-styles.other]\n"
         map fst (paragraphs s "@style lead\n一\n\n@style other\n二\n") @?= [Just "lead", Just "other"]

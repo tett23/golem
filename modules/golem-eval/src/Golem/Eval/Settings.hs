@@ -10,6 +10,10 @@ module Golem.Eval.Settings
     fileSettings,
     fileStyles,
     fileHyphenationExceptions,
+    keywordArgs,
+    localValue,
+    notWordDiagnostic,
+    styleDefValueDiagnostic,
   )
 where
 
@@ -83,6 +87,13 @@ keywordArgs args =
           | (i, (k, sp, v)) <- zip [0 :: Int ..] kws
           ]
    in (values, diags)
+
+{- | An error of a value of a paragraph or a character style, of @style-def
+or of the keys of @style (root ADR 0467): an aki amount in a dimension is
+G03020 (docs/adr ADR 0019); the other codes are those of the reading.
+-}
+styleDefValueDiagnostic :: Text -> Text -> SrcSpan -> Text -> Diagnostic
+styleDefValueDiagnostic owner code sp m = err (if "アキの量の指定が正しくありません" `T.isPrefixOf` m then "G03020" else code) sp (owner <> " の値が不正です: " <> m)
 
 -- | A value or a positional argument written as a word or a string.
 localValue :: A.ArgValue -> Maybe LocalValue
@@ -303,7 +314,7 @@ fileStyles style header =
                       | not (null [() | Def _ k' n _ <- defs, k' == k, n == name]) -> (defs, ds <> [err "G02053" sp ("同じ名前のスタイルを二度定義しています: " <> name)])
                       | otherwise -> case localStyleDefWithValues style k [(key, v) | (key, _, v) <- kvs] of
                           -- an aki amount in a dimension is G03020 (docs/adr ADR 0019); kerning, tracking and baseline shift G03021 (docs/adr/0020)
-                          Left ms -> (defs, ds <> [err (if "アキの量の指定が正しくありません" `T.isPrefixOf` m then "G03020" else code) (valueSite sp code m kvs) ("@style-def の値が不正です: " <> m) | (code, m) <- ms])
+                          Left ms -> (defs, ds <> [styleDefValueDiagnostic "@style-def" code (valueSite sp code m kvs) m | (code, m) <- ms])
                           Right d -> (defs <> [Def sp k name (sited sp d)], ds)
             _ -> (defs, ds <> errs)
     -- the kind and the name, as a word or a string literal (docs/adr ADR 0132)

@@ -84,7 +84,7 @@ eraseSpans input = case input of
     dropPrefix p s = if take (length p) s == p then Just (drop (length p) s) else Nothing
 
 -- | The paragraphs at any depth with their styles and texts.
-paragraphs :: EvalContext -> Text -> [(Maybe Text, Text)]
+paragraphs :: EvalContext -> Text -> [(Maybe StyleRef, Text)]
 paragraphs c s = concatMap go (resultBodies (evalResult c (src s)))
   where
     go = \case
@@ -266,7 +266,7 @@ styleTests =
         ir ctx "本文[note n]\n\n@style quote\n  @note n\n    注\n\n  二\n" @?= ir ctx "本文[note n]\n\n@note n\n  注\n\n@style quote\n  二\n"
     ]
   where
-    unstyled = replace "Paragraph (Just \"quote\")" "Paragraph Nothing"
+    unstyled = replace "Paragraph (Just (StyleRef {styleRefName = \"quote\", styleRefKeys = fromList []}))" "Paragraph Nothing"
     unstyledHeading = ir ctx "# 見出し\n\n@style quote\n  一\n"
     replace from to s = T.unpack (T.replace from to (T.pack s))
 

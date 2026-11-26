@@ -83,6 +83,8 @@ module Golem.Project.Style
     LocalValue (..),
     localStyleDef,
     localStyleDefWithValues,
+    anonymousParaDef,
+    paraStyleWith,
     layoutValueNames,
     layoutValueSites,
     withLocalStyles,
@@ -167,6 +169,7 @@ import Data.Bifunctor (bimap)
 import Data.Bifunctor qualified as Bifunctor
 import Data.ByteString qualified as BS
 import Data.Char (isAsciiLower, isAsciiUpper, isDigit, isLetter)
+import Data.Either (isRight)
 import Data.Foldable (asum, toList)
 import Data.List (find, nub, nubBy, sortOn)
 import Data.List.NonEmpty (NonEmpty (..))
@@ -4356,6 +4359,33 @@ localStyleDefWithValues style kind kvs = do
           Just (CountKind, QuantityCount n) -> Right n
           Just (actual, _) -> Left [("G03258", "値 " <> T.strip part <> " の種類が違います: 要求 count、実際 " <> kindText actual)]
           Nothing -> Left [("G03257", "値の名前がありません: " <> T.strip part)]
+
+{- | The definition of a paragraph style without a name (root ADR 0467):
+the keys of the named arguments of @style, based on the named style, as
+@style-def paragraph t based-on=name with the keys would define t. A key
+that cannot be read is left out, as the evaluation has reported it.
+-}
+anonymousParaDef :: Style -> Text -> [(Text, LocalValue)] -> ParaStyleDef
+anonymousParaDef style name kvs =
+  let readable = [kv | kv <- kvs, isRight (localStyleDefWithValues style ParagraphKind [kv])]
+      defOf xs = case localStyleDefWithValues style ParagraphKind xs of
+        Right (Right d) -> Just d
+        _ -> Nothing
+   in case defOf readable <|> defOf [] of
+        Just d -> d {psBasedOn = Just name}
+        -- no keys are always read
+        Nothing -> error "anonymousParaDef: no keys"
+
+{- | A paragraph style resolved through based-on, as 'paraStyle', with the
+keys of @style over it (root ADR 0467); without keys it is 'paraStyle'.
+-}
+paraStyleWith :: Style -> Maybe Text -> [(Text, LocalValue)] -> Maybe ParaStyleDef
+paraStyleWith style name [] = paraStyle style name
+paraStyleWith style name kvs =
+  let n = fromMaybe "body" name
+      -- no style name has +, so the key names no style of the book
+      key = n <> "+"
+   in paraStyle style {stParaStyles = Map.insert key (anonymousParaDef style n kvs) (stParaStyles style)} (Just key)
 
 -- | Names of declarations that a style key can accept (ADR 0346).
 layoutValueNames :: Style -> StyleKind -> Text -> [Text]

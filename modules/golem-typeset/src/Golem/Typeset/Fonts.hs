@@ -328,15 +328,54 @@ codeLocalStyles hasCode fonts ls =
   let st = codeStyles hasCode fonts defaultStyle {stParaStyles = lsParaStyles ls, stCharStyles = lsCharStyles ls}
    in ls {lsParaStyles = stParaStyles st, lsCharStyles = stCharStyles st}
 
--- | The input of the PDF with the styles code as the PDF uses them (golem-driver ADR 0017).
+{- | The input of the PDF with the styles code as the PDF uses them
+(golem-driver ADR 0017), and the paragraph styles without a name as styles
+of their files ('anonymousInput', root ADR 0467).
+-}
 codeInput :: PdfInput -> PdfInput
-codeInput inp =
-  let fonts = stFonts (piStyle inp)
+codeInput inp0 =
+  let inp = anonymousInput inp0
+      fonts = stFonts (piStyle inp)
       hasCode = bookHasCode (docStyle inp) (piBook inp)
    in inp
         { piStyle = codeStyles hasCode fonts (piStyle inp),
           piLocalStyles = Map.map (codeLocalStyles hasCode fonts) (piLocalStyles inp)
         }
+
+{- | The paragraph styles without a name (root ADR 0467) as styles that
+their files define: the N-th of the book, in the order the paragraphs and
+the cells of the tables first take it, is NAME+N, based on NAME with the
+keys of @style, as @style-def paragraph NAME+N based-on=NAME with the keys
+would define it. No name of a style has +, so NAME+N names no other
+style. The paragraphs and the tables then name NAME+N, so that the PDF
+sets them in it and two of them are in the same style when their names
+and keys are equal.
+-}
+anonymousInput :: PdfInput -> PdfInput
+anonymousInput inp = case keyedStyleRefs (concatMap docBlocks (bookDocs book)) of
+  [] -> inp
+  refs ->
+    let names = Map.fromList [(r, styleRefName r <> "+" <> T.pack (show n)) | (r, n) <- zip refs [1 :: Int ..]]
+        rename r = maybe r styleNamed (Map.lookup r names)
+        defsOf fid =
+          Map.fromList
+            [ (name, anonymousParaDef (docStyle inp fid) (styleRefName r) (refValues r))
+            | r <- keyedStyleRefs (concatMap docBlocks [d | d@(Document f _) <- bookDocs book, f == fid]),
+              Just name <- [Map.lookup r names]
+            ]
+        fids = [fid | Document fid _ <- bookDocs book]
+        locals =
+          Map.unionWith
+            (\new old -> old {lsParaStyles = Map.union (lsParaStyles new) (lsParaStyles old)})
+            (Map.fromList [(fid, noLocalStyles {lsParaStyles = defs}) | fid <- fids, let defs = defsOf fid, not (Map.null defs)])
+            (piLocalStyles inp)
+     in inp
+          { piBook = book {bookDocs = [Document fid (mapStyleRefs rename bs) | Document fid bs <- bookDocs book]},
+            piLocalStyles = locals
+          }
+  where
+    book = piBook inp
+    refValues r = [(k, case v of StyleWord w -> LocalWord w; StyleString t -> LocalString t) | (k, v) <- Map.toAscList (styleRefKeys r)]
 
 {- | G08008 (golem-driver ADR 0017): the book has code, [fonts.code] is
 missing and a style code names the role code; at the top of @fid@.

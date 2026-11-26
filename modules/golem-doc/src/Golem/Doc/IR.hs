@@ -12,6 +12,12 @@ module Golem.Doc.IR
     Document (..),
     Block (..),
     BlockBody (..),
+    StyleRef (..),
+    StyleValue (..),
+    styleNamed,
+    styleRefNameOf,
+    mapStyleRefs,
+    keyedStyleRefs,
     BreakKind (..),
     PageControl (..),
     keepsPageBreak,
@@ -76,6 +82,9 @@ module Golem.Doc.IR
 where
 
 import Data.Int (Int64)
+import Data.Map.Strict (Map)
+import Data.Map.Strict qualified as Map
+import Data.String (IsString (..))
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Void (Void)
@@ -127,7 +136,7 @@ data Block = Block
 
 data BlockBody
   = -- | a paragraph and its paragraph style; Nothing is body (docs/adr ADR 0005)
-    Paragraph !(Maybe Text) [Inline]
+    Paragraph !(Maybe StyleRef) [Inline]
   | Heading !Int HeadingAttrs [Inline]
   | BulletList [ListItem]
   | OrderedList [ListItem]
@@ -149,6 +158,73 @@ data BlockBody
   | -- | a text frame named in style.toml, holding paragraphs; it takes no room in the flow (root ADR 0438)
     FrameBlock !Text [Block]
   deriving stock (Eq, Show)
+
+{- | The paragraph style of a paragraph or of the cells of a table (root
+ADR 0467): the name of the style and the keys of the named arguments of
+@style over it, a table of key and value. A reference with no keys is the
+style itself, as before the ADR; one with keys is a style without a name
+based on the named one. Two references are the same style when the names
+and the tables are equal.
+-}
+data StyleRef = StyleRef
+  { styleRefName :: !Text,
+    styleRefKeys :: !(Map Text StyleValue)
+  }
+  deriving stock (Eq, Ord, Show)
+
+-- | A value of a key of 'StyleRef', as written: a word or a string (root ADR 0467).
+data StyleValue = StyleWord !Text | StyleString !Text
+  deriving stock (Eq, Ord, Show)
+
+-- | A name written as a string literal is the style without keys.
+instance IsString StyleRef where
+  fromString = styleNamed . T.pack
+
+-- | The style of this name without keys.
+styleNamed :: Text -> StyleRef
+styleNamed n = StyleRef n Map.empty
+
+-- | The name of the paragraph style of a reference; Nothing stays Nothing.
+styleRefNameOf :: Maybe StyleRef -> Maybe Text
+styleRefNameOf = fmap styleRefName
+
+{- | Each paragraph style of the blocks, of their lists, definitions,
+figure captions and frames too: those of the paragraphs and of the cells
+of the tables (root ADR 0467).
+-}
+mapStyleRefs :: (StyleRef -> StyleRef) -> [Block] -> [Block]
+mapStyleRefs f = map blk
+  where
+    blk b = b {blockBody = body (blockBody b)}
+    body = \case
+      Paragraph st is -> Paragraph (f <$> st) is
+      TableBlock t -> TableBlock t {tableStyle = f <$> tableStyle t}
+      BulletList items -> BulletList [i {itemBlocks = map blk (itemBlocks i)} | i <- items]
+      OrderedList items -> OrderedList [i {itemBlocks = map blk (itemBlocks i)} | i <- items]
+      DefList gs -> DefList [DefGroup ts (map (map blk) ds) | DefGroup ts ds <- gs]
+      FigureBlock fig -> FigureBlock fig {figCaption = map blk (figCaption fig)}
+      FrameBlock name bs -> FrameBlock name (map blk bs)
+      other -> other
+
+{- | The paragraph styles with keys of the blocks, in the order of the
+blocks, each once (root ADR 0467): the styles without a name, as
+'mapStyleRefs' finds them.
+-}
+keyedStyleRefs :: [Block] -> [StyleRef]
+keyedStyleRefs = foldl (\seen r -> if r `elem` seen then seen else seen <> [r]) [] . concatMap blk
+  where
+    blk b = case blockBody b of
+      Paragraph st _ -> keyed st
+      TableBlock t -> keyed (tableStyle t)
+      BulletList items -> concatMap (concatMap blk . itemBlocks) items
+      OrderedList items -> concatMap (concatMap blk . itemBlocks) items
+      DefList gs -> concatMap (concatMap (concatMap blk) . dgDefs) gs
+      FigureBlock fig -> concatMap blk (figCaption fig)
+      FrameBlock _ bs -> concatMap blk bs
+      _ -> []
+    keyed = \case
+      Just r | not (Map.null (styleRefKeys r)) -> [r]
+      _ -> []
 
 {- | A manual control of page breaks (docs/adr ADR 0030): no break
 between the blocks around, go on in the next column unless this many
@@ -202,7 +278,7 @@ data Table = Table
     tableCaption :: !(Maybe [Inline]),
     tableNoNumber :: !Bool,
     -- | the paragraph style of the cells; Nothing is the built-in table
-    tableStyle :: !(Maybe Text),
+    tableStyle :: !(Maybe StyleRef),
     tableHeader :: ![[Inline]],
     tableRows :: ![[[Inline]]]
   }

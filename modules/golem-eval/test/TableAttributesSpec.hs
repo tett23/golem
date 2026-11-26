@@ -31,7 +31,7 @@ both :: Text -> [Text]
 both attrs = [attrs <> "| a | b |\n|---|---|\n| 1 | 2 |\n", attrs <> "@table t.csv\n"]
 
 -- | The fields the attributes set, without spans.
-fields :: Table -> ([ColumnWidth], Maybe [Text], Bool, Maybe Text)
+fields :: Table -> ([ColumnWidth], Maybe [Text], Bool, Maybe StyleRef)
 fields t = (tableWidths t, map plain <$> tableCaption t, tableNoNumber t, tableStyle t)
   where
     plain = \case

@@ -27,6 +27,7 @@ library
     , base          >=4.20 && <4.21
     , bytestring    >=0.11 && <0.13
     , cborg         >=0.2  && <0.3
+    , containers    >=0.6  && <0.8
     , golem-length
     , golem-parser
     , golem-syntax
@@ -38,7 +39,7 @@ test-suite golem-doc-test
   type:             exitcode-stdio-1.0
   hs-source-dirs:   test
   main-is:          Main.hs
-  other-modules:    CborExprSpec CiteSpec IndexSpec LangSpec LinkSpec NoteSpec ResolvedSpec TableSpec
+  other-modules:    CborExprSpec CiteSpec IndexSpec LangSpec LinkSpec NoteSpec ResolvedSpec StyleRefSpec TableSpec
   build-depends:
     , base
     , bytestring

@@ -753,6 +753,15 @@ htmlConfig dev embed e book missing bib =
       hcSidenoteFace = sidenoteFace style,
       -- the faces of the cells of tables: table, and the styles given to tables (docs/adr/0262)
       hcTableFaces = tableFaces style,
+      -- the paragraph styles without a name (root ADR 0467)
+      hcAnonymousStyles = Map.fromList [(r, ps) | r <- anonymous, Just ps <- [htmlAnonymousStyle style r]],
+      hcLocalAnonymousStyles =
+        Map.fromList
+          [ (fid, Map.fromList [(r, ps) | r <- keyedStyleRefs bs, Just ps <- [htmlAnonymousStyle (docStyles e fid) r]])
+          | Document fid bs <- bookDocs book,
+            Map.member fid (localStylesOf e)
+          ],
+      hcAnonymousTableFaces = Map.fromList [(r, anonymousFace r) | r <- anonymous],
       hcTableCaptionBelow = stTableCaption style == CaptionBelow,
       hcIndexSectionHeadings = indexSectionHeadings style,
       hcRubyMonoAlign = rubyAlignCss (rdMonoAlign ruby),
@@ -815,9 +824,11 @@ htmlConfig dev embed e book missing bib =
     sidenoteFace st = let d = paraStyle st (Just "sidenote") in Face (d >>= psFont) (cssFontSize st <$> (d >>= psSize))
     tableFace st n = let d = paraStyle st (Just n) in Face (d >>= psFont) (cssFontSize st <$> (d >>= psSize))
     forParagraphs = if "table" `elem` paragraphStyles then id else Map.delete "table"
-    paragraphStyles = [n | Document _ bs <- bookDocs book, Block _ _ _ (Paragraph (Just n) _) <- universeOf bs]
+    paragraphStyles = [styleRefName n | Document _ bs <- bookDocs book, Block _ _ _ (Paragraph (Just n) _) <- universeOf bs]
+    anonymous = keyedStyleRefs (concatMap docBlocks (bookDocs book))
+    anonymousFace r = let d = paraStyleWith style (Just (styleRefName r)) (anonymousValues r) in Face (d >>= psFont) (cssFontSize style <$> (d >>= psSize))
     tableFaces st = Map.fromList [(n, tableFace st n) | n <- "table" : tableStyles]
-    tableStyles = Set.toList (Set.fromList [n | Document _ bs <- bookDocs book, Block _ _ _ (TableBlock Table {tableStyle = Just n}) <- universeOf bs])
+    tableStyles = Set.toList (Set.fromList [n | Document _ bs <- bookDocs book, Block _ _ _ (TableBlock Table {tableStyle = Just (StyleRef n _)}) <- universeOf bs])
     universeOf = concatMap (\b -> b : universeOf (innerOf (blockBody b)))
     innerOf = \case
       BulletList items -> concatMap itemBlocks items

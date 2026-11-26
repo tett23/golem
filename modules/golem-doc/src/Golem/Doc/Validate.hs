@@ -16,6 +16,7 @@ where
 
 import Data.Char (isAsciiLower, isDigit)
 import Data.List (nub)
+import Data.Map.Strict qualified as Map
 import Data.Maybe (isJust, isNothing)
 import Data.Ratio (denominator, numerator)
 import Data.Text (Text)
@@ -81,6 +82,7 @@ blocksAt fileSize allowed top0 = concatMap (blockAt top0)
     bodyErrors = \case
       Paragraph st is ->
         ["段落スタイル body は null で表します" | st == Just "body"]
+          <> styleRefErrors st
           <> concatMap (inlineErrors fileSize allowed) is
           <> breakErrors True is
       Heading l a is ->
@@ -131,6 +133,7 @@ tableErrors t =
     <> ["表の列の幅は 0 より大きい値です" | any nonPositive ws]
     <> ["キャプションのない表は番号を持たないので、@nonumber は要りません" | tableNoNumber t, isNothing (tableCaption t)]
     <> ["表の段落スタイル table は null で表します" | tableStyle t == Just "table"]
+    <> styleRefErrors (tableStyle t)
   where
     h = tableHeader t
     ws = tableWidths t
@@ -361,3 +364,7 @@ inlineSpan = \case
   Link s _ _ -> s
   Lang s _ _ -> s
   Resolved s _ _ _ -> s
+
+-- | The keys of a paragraph style (root ADR 0467): based-on is the name, never a key.
+styleRefErrors :: Maybe StyleRef -> [Text]
+styleRefErrors st = ["段落スタイルのキーに based-on は書けません" | Just r <- [st], Map.member "based-on" (styleRefKeys r)]

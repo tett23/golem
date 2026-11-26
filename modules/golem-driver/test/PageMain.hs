@@ -39,6 +39,7 @@ import ReuseSpec
 import SeparatorSpec (visibleSeparatorTests)
 import SinglePageSpec qualified
 import SoftHyphenSpec (softHyphenTests)
+import StyleArgumentsPdfSpec (styleArgumentsPdfTests)
 import StylesSpec
 import Test.Tasty
 import TitleFormatSpec (titleFormatTests)
@@ -126,6 +127,7 @@ tests =
       WrapOutlineSpec.tests,
       testGroup "root ADR 0398: visible separators" visibleSeparatorTests,
       testGroup "the alignment, spaces and end indent of paragraph styles (docs/adr/0189)" alignSpaceTests,
+      testGroup "the named arguments of @style in the PDF (root ADR 0467)" styleArgumentsPdfTests,
       testGroup "the spaces of paragraph styles redefined in files (docs/adr/0217)" fileSpacesTests,
       testGroup "the compositions reused between the rounds of page references (docs/adr ADR 0251)" reuseTests
     ]

@@ -33,6 +33,7 @@ import Control.Monad (when, (>=>))
 import Data.Bifunctor (first)
 import Data.ByteString (ByteString)
 import Data.ByteString.Lazy qualified as BL
+import Data.Map.Strict qualified as Map
 import Data.Maybe (isNothing, listToMaybe)
 import Data.Ratio (denominator, numerator, (%))
 import Data.String (IsString (..))
@@ -100,7 +101,7 @@ blockT (Block sp lbl lang body) = TList [spanT sp, opt text lbl, opt text lang, 
 
 bodyT :: BlockBody -> Term
 bodyT = \case
-  Paragraph st is -> tagged 10 [opt text st, inlinesTerm is]
+  Paragraph st is -> tagged 10 [opt styleRefT st, inlinesTerm is]
   Heading l a is -> tagged 1 [int l, attrsT a, inlinesTerm is]
   BulletList items -> tagged 2 [list itemT items]
   OrderedList items -> tagged 3 [list itemT items]
@@ -116,6 +117,19 @@ bodyT = \case
   Separator name -> tagged 15 [text name]
   FrameBlock name bs -> tagged 16 [text name, list blockT bs]
 
+{- | A paragraph style (root ADR 0467): its name alone without keys, as
+before the ADR; with keys, the name and the keys in the order of their
+names, each a key and its value, a word [0, text] or a string [1, text].
+-}
+styleRefT :: StyleRef -> Term
+styleRefT (StyleRef n ks)
+  | Map.null ks = text n
+  | otherwise = TList [text n, TList [TList [text k, valueT v] | (k, v) <- Map.toAscList ks]]
+  where
+    valueT = \case
+      StyleWord w -> TList [int (0 :: Int), text w]
+      StyleString t -> TList [int (1 :: Int), text t]
+
 pageControlT :: PageControl -> Term
 pageControlT = \case
   NoBreak -> TList [int (0 :: Int)]
@@ -126,7 +140,7 @@ pageControlT = \case
 -- | A table (docs/adr/0262).
 tableT :: Table -> Term
 tableT (Table al ws cap nn st h rows) =
-  TList [list (int . fromEnum) al, list columnWidthT ws, opt inlinesTerm cap, TBool nn, opt text st, list inlinesTerm h, list (list inlinesTerm) rows]
+  TList [list (int . fromEnum) al, list columnWidthT ws, opt inlinesTerm cap, TBool nn, opt styleRefT st, list inlinesTerm h, list (list inlinesTerm) rows]
 
 -- | The width of a column: auto, zw, sp or percent (docs/adr/0262).
 columnWidthT :: ColumnWidth -> Term
@@ -427,7 +441,7 @@ termBody t =
   asList t >>= \case
     (tag : fs) ->
       asIntI tag >>= \case
-        10 | [st, is] <- fs -> Paragraph <$> asOpt asText st <*> termInlinesE is
+        10 | [st, is] <- fs -> Paragraph <$> asOpt termStyleRef st <*> termInlinesE is
         1 | [l, a, is] <- fs -> Heading <$> asIntI l <*> termAttrs a <*> termInlinesE is
         2 | [xs] <- fs -> BulletList <$> (asList xs >>= traverse termItem)
         3 | [xs] <- fs -> OrderedList <$> (asList xs >>= traverse termItem)
@@ -464,10 +478,35 @@ termTable t =
         <*> (asList ws >>= traverse termColumnWidth)
         <*> asOpt termInlinesE cap
         <*> asBool nn
-        <*> asOpt asText st
+        <*> asOpt termStyleRef st
         <*> (asList h >>= traverse termInlinesE)
         <*> (asList rows >>= traverse (asList >=> traverse termInlinesE))
     _ -> bad "表"
+
+{- | A paragraph style (root ADR 0467): a name, or a name and its keys,
+at least one, in the order of their names, each key once.
+-}
+termStyleRef :: Term -> D StyleRef
+termStyleRef = \case
+  TString n -> Right (styleNamed n)
+  TList [n, TList ks@(_ : _)] -> do
+    name <- asText n
+    pairs <- traverse key ks
+    let names = map fst pairs
+    if and (zipWith (<) names (drop 1 names))
+      then Right (StyleRef name (Map.fromList pairs))
+      else bad "段落スタイルのキーの順"
+  _ -> bad "段落スタイル"
+  where
+    key t =
+      asList t >>= \case
+        [k, v] -> (,) <$> asText k <*> value v
+        _ -> bad "段落スタイルのキー"
+    value t =
+      asList t >>= \case
+        [k, w] | Right 0 <- asIntI k -> StyleWord <$> asText w
+        [k, w] | Right 1 <- asIntI k -> StyleString <$> asText w
+        _ -> bad "段落スタイルのキーの値"
 
 termColumnWidth :: Term -> D ColumnWidth
 termColumnWidth t =

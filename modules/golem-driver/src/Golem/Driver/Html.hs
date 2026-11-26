@@ -5,6 +5,8 @@ the styles into the types of golem-html, with lengths as CSS strings.
 module Golem.Driver.Html
   ( htmlCharStyles,
     htmlParaStyles,
+    htmlAnonymousStyle,
+    anonymousValues,
     htmlRule,
     htmlFeatures,
     rubyAlignCss,
@@ -19,6 +21,7 @@ import Data.Map.Strict qualified as Map
 import Data.Maybe (fromMaybe, isJust, isNothing)
 import Data.Text (Text)
 import Data.Text qualified as T
+import Golem.Doc.IR (StyleRef (..), StyleValue (..))
 import Golem.Html
 import Golem.Length qualified as L
 import Golem.Project.Feature (normalFeatures)
@@ -42,6 +45,20 @@ htmlCharStyles style =
             Just PositionSubscript -> Just "sub"
             _ -> Nothing
     ]
+
+{- | A paragraph style without a name (root ADR 0467), resolved for CSS as
+'htmlParaStyles' resolves the style that @style-def paragraph NAME+
+based-on=NAME with the keys would define; no name of a style has +.
+-}
+htmlAnonymousStyle :: Style -> StyleRef -> Maybe HtmlParaStyle
+htmlAnonymousStyle style r =
+  let key = styleRefName r <> "+"
+      st = style {stParaStyles = Map.insert key (anonymousParaDef style (styleRefName r) (anonymousValues r)) (stParaStyles style)}
+   in Map.lookup key (htmlParaStyles st)
+
+-- | The keys of a paragraph style without a name as @style-def reads them (root ADR 0467).
+anonymousValues :: StyleRef -> [(Text, LocalValue)]
+anonymousValues r = [(k, case v of StyleWord w -> LocalWord w; StyleString t -> LocalString t) | (k, v) <- Map.toAscList (styleRefKeys r)]
 
 -- | The paragraph styles of a style, resolved for CSS (docs/adr ADR 0005, 0006).
 htmlParaStyles :: Style -> Map Text HtmlParaStyle

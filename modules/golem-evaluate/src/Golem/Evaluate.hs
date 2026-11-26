@@ -412,6 +412,7 @@ reeval profile project style assets citeKeys hook table acc fid sf =
             ctxPlugins = hook,
             ctxSource = sourceSettingsOf project fid,
             ctxStyle = style,
+            ctxLocalStyles = noLocalStyles,
             ctxFunctions = table
           }
    in evalFile ctx (sfAst sf)
@@ -429,7 +430,7 @@ evaluateLoose path text =
       (ast, _, synDiags) = parseAst fid text
       -- a file outside the project knows the built-in styles only (docs/adr ADR 0005)
       -- the imports of variable files are not resolved, as those of the .emet (root ADR 0455)
-      ctx = EvalContext fid path Dev Map.empty Map.empty UnresolvedImports Set.empty (Map.keysSet (stCharStyles defaultStyle)) (paraLineBreaks defaultStyle) "sesame" Set.empty Map.empty noPlugins defaultSourceSettings defaultStyle noFunctions
+      ctx = EvalContext fid path Dev Map.empty Map.empty UnresolvedImports Set.empty (Map.keysSet (stCharStyles defaultStyle)) (paraLineBreaks defaultStyle) "sesame" Set.empty Map.empty noPlugins defaultSourceSettings defaultStyle noLocalStyles noFunctions
       res = evalFile ctx ast
       syntax = checkText fid text <> synDiags
    in res {erDiagnostics = if hasErrors syntax then syntax else syntax <> erDiagnostics res}

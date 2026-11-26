@@ -3071,11 +3071,12 @@ unitsOf lang book geom indexSet styleOf pageOf bib sections = concat (snd (mapAc
       (_, BlankLines _) -> 0
       (_, ForcedBreak _) -> 0
       (_, PageControl _) -> 0
-      (Paragraph s1 _, Paragraph s2 _) | s1 == s2 -> paragraphSpace style s2 psSpaceBetween psSpaceBetweenDim
+      -- the styles without a name are named by now ('anonymousInput', root ADR 0467)
+      (Paragraph s1 _, Paragraph s2 _) | s1 == s2 -> paragraphSpace style (styleRefNameOf s2) psSpaceBetween psSpaceBetweenDim
       _ -> max (spaceOf psSpaceAfter psSpaceAfterDim a) (spaceOf psSpaceBefore psSpaceBeforeDim b)
       where
         spaceOf key dimKey = \case
-          Paragraph st _ | spaced, null ctx -> paragraphSpace style st key dimKey
+          Paragraph st _ | spaced, null ctx -> paragraphSpace style (styleRefNameOf st) key dimKey
           _ -> 0
     -- the block before, past the controls of page breaks (docs/adr ADR 0030)
     before prev b = case blockBody b of
@@ -3092,8 +3093,9 @@ unitsOf lang book geom indexSet styleOf pageOf bib sections = concat (snd (mapAc
             -- paragraph (docs/adr ADR 0005, 0006); otherwise the line breaks are
             -- hard breaks inside one unit, and only its first line has the
             -- first-line indent (docs/adr ADR 0016)
-            Paragraph st is ->
-              let (face, ind) = paraLook style geom st
+            Paragraph ref is ->
+              let st = styleRefNameOf ref
+                  (face, ind) = paraLook style geom st
                   keeps = (paraStyle style st >>= psLineBreaks) == Just KeepLines
                   parts = if keeps then splitBreaks is else [is]
                   -- a paragraph in a list has no rules (golem-driver ADR 0027)
@@ -3775,7 +3777,7 @@ tableEnv fe st lang t =
 
 -- | The paragraph style of the cells of a table (docs/adr/0262).
 tableStyleName :: Table -> Text
-tableStyleName = fromMaybe "table" . tableStyle
+tableStyleName = fromMaybe "table" . styleRefNameOf . tableStyle
 
 -- | The size of the cells of a table (docs/adr/0262).
 tableCellSize :: FlowEnv -> Style -> Table -> Sp

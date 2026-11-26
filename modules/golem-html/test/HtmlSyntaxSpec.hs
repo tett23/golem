@@ -73,7 +73,10 @@ cfg0 =
       hcEmbedFonts = True,
       hcFontLicenses = [],
       hcGenericFamilies = Map.empty,
-      hcCharacterAdvance = Nothing
+      hcCharacterAdvance = Nothing,
+      hcAnonymousStyles = Map.empty,
+      hcLocalAnonymousStyles = Map.empty,
+      hcAnonymousTableFaces = Map.empty
     }
 
 -- | A book of the documents given, with nothing assembled.
