@@ -98,10 +98,21 @@ topOf r path = (\fid -> mkSpan fid 0 0) <$> sourceFileId r path
 
 -- | The codes and messages of the diagnostics, all at the top of the manifest.
 atManifestTop :: BuildResult -> IO [(DiagnosticCode, T.Text)]
-atManifestTop r = do
-  let ds = brDiagnostics r
+atManifestTop r0 = do
+  let r = withoutFollowOns r0
+      ds = brDiagnostics r
   assertEqual "at the top of manifest.toml" (map (const (topOf r "manifest.toml")) ds) (map (Just . diagSpan) ds)
   pure [(diagCode d, diagMessage d) | d <- ds]
+
+{- | A build without G02282, which follows from an error of the plugins at
+each name of a command they might have given (root ADR 0461).
+-}
+withoutFollowOns :: BuildResult -> BuildResult
+withoutFollowOns r = r {brDiagnostics = filter ((/= DiagnosticCode "G02282") . diagCode) (brDiagnostics r)}
+
+-- | The number of G02282 of a build.
+followOns :: BuildResult -> Int
+followOns r = length [() | d <- brDiagnostics r, diagCode d == DiagnosticCode "G02282"]
 
 {- | A one-chapter project, a.gm, with the plugin chan of channels.wat
 (golem-doc ADR 0007), for PDF, HTML and plain text.
@@ -142,12 +153,12 @@ channelTests =
           @?= [ (DiagnosticCode "G06012", "複数のプラグインが同じチャネルを宣言しています: glossary（a、b）"),
                 (DiagnosticCode "G06012", "複数のプラグインが同じチャネルを宣言しています: people（a、b）")
               ],
-    testCase "no G02090 after the plugins failed to load" $
+    testCase "root ADR 0461 I4: an undeclared channel after the plugins failed to load is G02282" $
       withPlugins [("chan", "channels.wat")] (pluginDeclOf "chan" "") $ \tmp -> do
         BS.writeFile (tmp </> "plugins.lock") ""
         BS.appendFile (tmp </> "chapters/02.gm") "\n@channel glossary\n"
         r <- build (defaultOptions tmp)
-        map diagCode (brDiagnostics r) @?= [DiagnosticCode "G06002"],
+        map diagCode (brDiagnostics r) @?= [DiagnosticCode "G02282", DiagnosticCode "G06002"],
     testCase "PDF: the entries of people have their pages, those of glossary none; a note item has the page of its mark" $
       withChannels horizontalStyle ("人[person 甲: 甲]。\n\n語[term ご ご: 語]。\n\n" <> fillers 35 <> "本文[note: 注[person 乙: 乙]]。\n\n@channel people\n\n@channel glossary\n") $ \tmp -> do
         ls <- concat <$> pdfPages tmp
@@ -277,10 +288,17 @@ blockCommandTests =
       withBlockProject [("gr", "grid.wat", ""), ("lookup", "lookup.wasm", "")] "[grid]\n\n@lookup x\n" $ \tmp -> do
         (_, ds) <- blocksOf tmp
         map fst ds @?= [DiagnosticCode "G02022", DiagnosticCode "G02009"],
-    testCase "no G02009 nor G02022 after a plugin failed to load" $
+    testCase "root ADR 0461 I4: @grid, [grid] and @nope after a plugin failed to load are G02282 each" $
       withBlockProject [("gr", "grid.wat", "data = { table = \"none.tsv\" }\n")] "@grid\n\n[grid]\n\n@nope\n" $ \tmp -> do
         r <- build (defaultOptions tmp)
-        map diagCode (brDiagnostics r) @?= [DiagnosticCode "G06101", DiagnosticCode "G06102"],
+        map diagCode (brDiagnostics r) @?= replicate 3 (DiagnosticCode "G02282") <> [DiagnosticCode "G06101", DiagnosticCode "G06102"],
+    testCase "root ADR 0461 I4: two unknown inline commands after a plugin failed to load are G02282 twice" $
+      withBlockProject [("gr", "grid.wat", "data = { table = \"none.tsv\" }\n")] "[nope] [nada]\n" $ \tmp -> do
+        r <- build (defaultOptions tmp)
+        [diagMessage d | d <- brDiagnostics r, diagCode d == DiagnosticCode "G02282"]
+          @?= [ "プラグインの誤りのため、この名前のコマンドがあるかを決められません: nope",
+                "プラグインの誤りのため、この名前のコマンドがあるかを決められません: nada"
+              ],
     testCase "root ADR 0459 I1: a block command of a plugin takes the next paragraph as its body" $ do
       let shape (bs, ds) = ([(blockLabel b, blockLang b, [t | Paragraph _ is <- [blockBody b], Text _ t <- is]) | b <- bs], ds)
       next <- withBlockProject [("gr", "grid.wat", "")] "@grid\n本文\n" (fmap shape . blocksOf)
@@ -288,10 +306,10 @@ blockCommandTests =
       -- grid.wat reads no body: both forms pass the paragraph to it, and both fail alike
       next @?= indented
       assertBool "no G02011" (DiagnosticCode "G02011" `notElem` map fst (snd next)),
-    testCase "root ADR 0459 I5: no G02011 for a block command left unknown after a plugin failed to load" $
+    testCase "root ADR 0461 I4, I5: a block command left unknown after a plugin failed to load is G02282, and G02011 as for a command that puts out blocks" $
       withBlockProject [("gr", "grid.wat", "data = { table = \"none.tsv\" }\n")] "@grid\n\n@nope\n本文\n" $ \tmp -> do
         r <- build (defaultOptions tmp)
-        map diagCode (brDiagnostics r) @?= [DiagnosticCode "G06101", DiagnosticCode "G06102"],
+        map diagCode (brDiagnostics r) @?= [DiagnosticCode "G02011", DiagnosticCode "G02282", DiagnosticCode "G02282", DiagnosticCode "G06101", DiagnosticCode "G06102"],
     testCase "G06006: two plugins with the same block command" $
       withBlockProject [("a", "grid.wat", ""), ("b", "grid.wat", "")] "本文\n" $ \tmp -> do
         r <- build (defaultOptions tmp)
@@ -720,10 +738,10 @@ tsvTableTests =
         (bs, ds) <- blocksOf tmp
         ds @?= []
         map (fmap (\(_, h, rows) -> (length h, length rows)) . tableShape . blockBody) bs @?= [Just (5, 9999)],
-    testCase "no G02009 for the block commands after a plugin fails to load, as G02022 (docs/adr/0122)" $
+    testCase "root ADR 0461 I4: the block command and the inline command after a plugin fails to load are G02282 each" $
       withTsvTable "data = { sales = \"none.tsv\" }\n" "@tsv-table sales\n\n[tsv-table sales]\n" [] $ \tmp -> do
         r <- build (defaultOptions tmp)
-        map diagCode (brDiagnostics r) @?= [DiagnosticCode "G06101"],
+        map diagCode (brDiagnostics r) @?= [DiagnosticCode "G02282", DiagnosticCode "G02282", DiagnosticCode "G06101"],
     testCase "the table is built to text" $
       withTsvTable "data = { sales = \"s.tsv\" }\n" "@tsv-table sales\n" [("s.tsv", salesTsv)] $ \tmp -> do
         r <- build (defaultOptions tmp)
@@ -806,9 +824,11 @@ pointedAt r = filter (not . T.null) [l | l <- T.lines (renderHuman (brSources r)
 -- | The check of a plugin's data at load (docs/adr/0120).
 checkDataTests :: [TestTree]
 checkDataTests =
-  [ testCase "an error of golem_check_data points at its line of the file of the data, once, and no command runs" $
+  [ testCase "an error of golem_check_data points at its line of the file of the data, once, and no command runs; each call is G02282" $
       withChecker calledAnswer [dataDiag "tsv-columns" 0 "table" (Just 2) "欄の数が違います"] "[shout]\n\n[shout]\n\n[shout]\n" [("t.tsv", "a\tb\nc\nd\te\n")] $ \tmp -> do
-        r <- build (defaultOptions tmp)
+        r0 <- build (defaultOptions tmp)
+        let r = withoutFollowOns r0
+        followOns r0 @?= 3
         pointedAt r @?= ["t.tsv:2:1: error[lk/tsv-columns]: 欄の数が違います"]
         map (spanStart . diagSpan) (brDiagnostics r) @?= [4]
         map (Just . spanFile . diagSpan) (brDiagnostics r) @?= [sourceFileId r "t.tsv"],
@@ -816,10 +836,10 @@ checkDataTests =
       withChecker calledAnswer [dataDiag "tsv-columns" 0 "table" (Just 2) "欄の数が違います"] "本文\n" [("t.tsv", "a\tb\nc\n")] $ \tmp -> do
         r <- build (defaultOptions tmp)
         pointedAt r @?= ["t.tsv:2:1: error[lk/tsv-columns]: 欄の数が違います"],
-    testCase "no G02022 after an error of the data" $
+    testCase "root ADR 0461 I4: G02282 in place of G02022 after an error of the data" $
       withChecker calledAnswer [dataDiag "tsv-empty" 0 "table" Nothing "空です"] "[shout]\n" [("t.tsv", "")] $ \tmp -> do
         r <- build (defaultOptions tmp)
-        pointedAt r @?= ["t.tsv:1:1: error[lk/tsv-empty]: 空です"],
+        pointedAt r @?= ["a.gm:1:2: error[G02282]: プラグインの誤りのため、この名前のコマンドがあるかを決められません: shout", "t.tsv:1:1: error[lk/tsv-empty]: 空です"],
     testCase "a warning of the data: the plugin loads and its commands run" $
       withChecker emptyAnswer [dataDiag "tsv-blank" 1 "table" (Just 1) "空の行です"] "[shout]\n" [("t.tsv", "\na\n")] $ \tmp -> do
         r <- build (defaultOptions tmp)
@@ -947,7 +967,9 @@ glossaryTests =
     testCase "a bad line of terms is reported once, at its line, however many [term] the book has" $
       withGlossaryOf (TE.encodeUtf8 "組版\tくみはん\t版を組むこと\n\nx\ty\n") horizontalStyle "[term: 組版]と[term: 組版]と[term: 組版]。\n" $ \tmp -> do
         r <- build (defaultOptions tmp) {optTargets = Just [TargetText]}
-        pointedAt r @?= ["terms.tsv:3:1: error[glossary/tsv-columns]: terms の 3 行めの欄の数が 3 か 4 ではありません"],
+        -- each [term] is G02282 (root ADR 0461)
+        followOns r @?= 3
+        pointedAt (withoutFollowOns r) @?= ["terms.tsv:3:1: error[glossary/tsv-columns]: terms の 3 行めの欄の数が 3 か 4 ではありません"],
     testCase "a bad line of terms is reported in a book without [term]" $
       withGlossaryOf (TE.encodeUtf8 "組版\t\t版を組むこと\n") horizontalStyle "本文。\n" $ \tmp -> do
         r <- build (defaultOptions tmp) {optTargets = Just [TargetText]}
@@ -1155,10 +1177,10 @@ dataTests =
         BS.writeFile (tmp </> "big.tsv") (BS.replicate (fromIntegral maxDataBytes + 1) 0x20)
         r <- build (defaultOptions tmp)
         atManifestTop r >>= (@?= [(DiagnosticCode "G06103", "プラグインのデータが上限（67108864 バイト）を超えています: lk（67108865 バイト）")]),
-    testCase "no G02022 after an error of the data (golem-plugin ADR 0003)" $
+    testCase "root ADR 0461 I4: G02282 in place of G02022 after an error of the data" $
       withDatum "data = { table = \"none.tsv\" }\n" "[datum]\n" [] $ \tmp -> do
         r <- build (defaultOptions tmp)
-        map diagCode (brDiagnostics r) @?= [DiagnosticCode "G06101"]
+        map diagCode (brDiagnostics r) @?= [DiagnosticCode "G02282", DiagnosticCode "G06101"]
   ]
 
 -- | The SHA-256 of a file in hexadecimal, as plugins.lock writes it.
@@ -1277,12 +1299,12 @@ pluginTests =
              TIO.writeFile (tmp </> "plugins.lock") (T.replace "identity.wasm" "other.wasm" locked)
              r'' <- build (defaultOptions tmp)
              atManifestTop r'' >>= (@?= [(DiagnosticCode "G06002", "plugins.lock の URL が manifest.toml と違います。golem plugin lock を実行してください: identity")]),
-         testCase "G06002 only: no G02022 for the commands after a plugin fails to load" $
+         testCase "root ADR 0461 I4: G06002, and G02282 in place of G02022 for the commands after a plugin fails to load" $
            withPluginProject pluginDecl $ \tmp -> do
              BS.writeFile (tmp </> "plugins.lock") ""
              BS.appendFile (tmp </> "chapters/02.gm") "\n[broken: x]\n"
              r <- build (defaultOptions tmp)
-             map diagCode (brDiagnostics r) @?= [DiagnosticCode "G06002"],
+             map diagCode (brDiagnostics r) @?= [DiagnosticCode "G02282", DiagnosticCode "G06002"],
          testCase "G06003: an uncached plugin asks for golem plugin fetch" $
            withPluginProject pluginDecl $ \tmp -> do
              r <- withEnv "XDG_CACHE_HOME" (tmp </> "empty-cache") $ build (defaultOptions tmp)

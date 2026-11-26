@@ -104,6 +104,10 @@ texts e path = [concatMap inlineTexts is | Block _ _ _ (Paragraph _ is) <- block
       CharStyle _ _ xs -> concatMap inlineTexts xs
       _ -> []
 
+-- | A .emet with an error of types (E02101).
+badEmet :: Text
+badEmet = "pub inline f :: Nat -> Inlines\nf n = n\n"
+
 imported :: Text -> Text
 imported body = "@import functions/book.emet * as book\n\n" <> body
 
@@ -237,10 +241,24 @@ callsTests =
         withBook [("a.gm", imported "@book.heading\n\n@book.styled\n")] [("functions/book.emet", book)] "" $ \tmp -> do
           e <- evaluated tmp
           codesIn e @?= ["E06104", "G02047"],
-      testCase "a .emet with an error of types: no G02022, G02009 or G02002 through its namespace" $
-        withBook [("a.gm", imported "[book.x 1]\n\n@book.y\n\n[= book.z(1)]\n")] [("functions/book.emet", "pub inline f :: Nat -> Inlines\nf n = n\n")] "" $ \tmp -> do
+      testCase "root ADR 0461 I1, I6: a .emet with an error of types: G02279 at each call through its namespace" $
+        withBook [("a.gm", imported "[book.x 1]\n\n@book.y\n\n[= book.z(1)]\n")] [("functions/book.emet", badEmet)] "" $ \tmp -> do
           e <- evaluated tmp
-          codesIn e @?= ["E02101"],
+          sort (codesIn e) @?= ["E02101", "G02279", "G02279", "G02279"],
+      testCase "root ADR 0461 I1, I6: { total } of a .emet with an error of types and [= total(1)] twice: its error and G02279 twice" $
+        withBook [("a.gm", "@import functions/book.emet { total }\n\n[= total(1)]\n\n[= total(1)]\n")] [("functions/book.emet", badEmet)] "" $ \tmp -> do
+          e <- evaluated tmp
+          sort (codesIn e) @?= ["E02101", "G02279", "G02279"]
+          [diagMessage d | d <- evDiagnostics e, diagCode d == DiagnosticCode "G02279"] @?= replicate 2 ".emet の誤りのため、この名前を呼べません: total",
+      testCase "root ADR 0461 I1: a name of a .emet with an error and one of a .emet without, called once each: G02279 twice" $
+        withBook [("a.gm", "@import functions/bad.emet { f }\n@import functions/good.emet { g }\n\n[= f(1)]\n\n[= g(1)]\n")] [("functions/bad.emet", badEmet), ("functions/good.emet", "pub fn g :: Nat -> Nat\ng n = n\n")] "" $ \tmp -> do
+          e <- evaluated tmp
+          sort (codesIn e) @?= ["E02101", "G02279", "G02279"],
+      testCase "root ADR 0461 I6: the calls of a .emet without errors are as before" $
+        withBook [("a.gm", "@import functions/good.emet { g }\n\n[= g(1)]\n")] [("functions/good.emet", "pub fn g :: Nat -> Nat\ng n = n\n")] "" $ \tmp -> do
+          e <- evaluated tmp
+          codesIn e @?= []
+          texts e "a.gm" @?= [["1"]],
       testCase "a filter of a .emet, with a ruby in a ruby, is E06104 at the top of the file"
         $ withBook
           [("a.gm", "本文。\n")]
@@ -295,10 +313,10 @@ callsTests =
         $ \tmp -> do
           e <- evaluated tmp
           codesIn e @?= ["E05104"],
-      testCase "a requirement of a .emet of @import not in [functions.requires] is E05104 in a build" $
+      testCase "root ADR 0461 I1: a requirement of a .emet of @import not in [functions.requires] is E05104 in a build, and its call G02279" $
         withBook [("a.gm", imported "[book.w]\n")] [("functions/book.emet", "pub inline w :: <file \"w.tsv\"> Inlines\nw = Inline.text (File.read \"w.tsv\")\n"), ("w.tsv", "w\n")] "" $ \tmp -> do
           e <- evaluated tmp
-          codesIn e @?= ["E05104"],
+          codesIn e @?= ["E05104", "G02279"],
       testCase "File.read of a file of [functions.requires] in a command" $
         withBook [("a.gm", imported "[book.w]\n")] [("functions/book.emet", "pub inline w :: <file \"w.tsv\"> Inlines\nw = Inline.text (String.trim (File.read \"w.tsv\"))\n"), ("w.tsv", "語\n")] "[functions.requires]\nfile = [\"w.tsv\"]\n" $ \tmp -> do
           e <- evaluated tmp

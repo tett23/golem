@@ -161,30 +161,30 @@ tests =
       testCase "root ADR 0458 I5: an alias of G02278 is not put in and clashes with nothing" $ do
         sites ctx (emet "x as my_x" "" <> "@import functions/other.emet { total as my_x }\n") @?= [("G02278", "my_x")]
         sites ctx ("@import functions/other.emet { total as my_x }\n" <> emet "x as my_x" "") @?= [("G02278", "my_x")],
-      testCase "root ADR 0458 I8: the order of the @import lines with aliases changes no diagnostic nor output" $ do
+      testCase "root ADR 0458 I8, root ADR 0461 I2: the order of the @import lines with aliases changes no diagnostic nor output" $ do
         let a = "@import functions/book.emet { total as sum, x as y }\n"
             b = "@import functions/other.emet { total as sum }\n"
             c = "@import common/values.gm { price as cost, rate }\n"
             body = "\n[= sum([1])][y 1][= cost + rate]\n\n@y\n"
             orders = [a <> b <> c, a <> c <> b, b <> a <> c, b <> c <> a, c <> a <> b, c <> b <> a]
         mapM_ (\src -> result ctx (src <> body) @?= result ctx (a <> b <> c <> body)) orders
-        fst (result ctx (a <> b <> c <> body)) @?= replicate 2 ("G02272", "ほかの @import が並べた名前と同じです: sum"),
+        fst (result ctx (a <> b <> c <> body)) @?= replicate 2 ("G02272", "ほかの @import が並べた名前と同じです: sum") <> [("G02280", "ほかの @import と重なった名前を呼んでいます: sum")],
       testCase "root ADR 0458 I8: an alias that clashes with another @import's name, in either order" $ do
         let a = "@import functions/book.emet { total as n }\n"
             b = "@import common/values.gm { n }\n"
         unplaced ctx (a <> b) @?= unplaced ctx (b <> a)
         map fst (sites ctx (a <> b)) @?= ["G02272", "G02272"],
-      testCase "root ADR 0458 I9: an alias of a .emet that could not be loaded reports nothing" $ do
-        codes unloaded (emet "total as sum" "[= sum([1])]\n") @?= []
+      testCase "root ADR 0458 I9, root ADR 0461 I1: an alias of a .emet that could not be loaded is not checked, and each call is G02279" $ do
+        sites unloaded (emet "total as sum" "[= sum([1])]\n") @?= [("G02279", "sum([1])")]
         codes unloaded (emet "nothing as a.b" "") @?= []
         sites unloaded (emet "total as meta" "") @?= [("G02275", "meta")]
-        codes unloaded (emet "x as y" "[y 1]\n\n@y\n") @?= []
+        sites unloaded (emet "x as y" "[y 1]\n\n@y\n") @?= [("G02279", "y"), ("G02279", "y")]
         codes unloaded (emet "total as sum" "[= total([1])]\n") @?= codes unloaded "[= total([1])]\n",
-      testCase "root ADR 0458 I9: { x as toc } of a .emet that could not be loaded puts out nothing at @toc" $ do
+      testCase "root ADR 0458 I9, root ADR 0461 I1: { x as toc } of a .emet that could not be loaded puts out nothing at @toc, with G02279" $ do
         resultBodies (evalResult unloaded (emet "x as toc" "@toc\n")) @?= []
-        codes unloaded (emet "x as toc" "@toc\n") @?= [],
-      testCase "root ADR 0458 I9: an alias of a variable file the evaluation does not resolve" $ do
-        codes unresolved (vars "price as p" "[= p]\n") @?= []
+        codes unloaded (emet "x as toc" "@toc\n") @?= ["G02279"],
+      testCase "root ADR 0458 I9, root ADR 0461 I3: an alias of a variable file the evaluation does not resolve" $ do
+        codes unresolved (vars "price as p" "[= p]\n") @?= ["G02281"]
         codes unresolved (vars "price as my-p" "") @?= []
         sites unresolved (vars "price as meta" "") @?= [("G02275", "meta")]
         codes unresolved (vars "price as p" "[p]\n") @?= codes unresolved (vars "price" "[price]\n"),

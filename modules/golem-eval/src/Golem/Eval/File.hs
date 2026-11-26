@@ -105,11 +105,13 @@ data PluginHook = PluginHook
     phChannels :: !(Map Text ChannelDecl),
     phApplyFilters :: FilePath -> Document -> Either [Diagnostic] (Document, [Diagnostic]),
     -- | the names of the context of the book the plugins ask for, in order (docs/adr/0121)
-    phContextNames :: ![Text]
+    phContextNames :: ![Text],
+    -- | the plugins failed to load or to pass the checks: a name one might have given is G02282 (root ADR 0461)
+    phFailed :: !Bool
   }
 
 noPlugins :: PluginHook
-noPlugins = PluginHook Map.empty Map.empty Map.empty Map.empty Map.empty (\_ d -> Right (d, [])) []
+noPlugins = PluginHook Map.empty Map.empty Map.empty Map.empty Map.empty (\_ d -> Right (d, [])) [] False
 
 data EvalContext = EvalContext
   { ctxFile :: !FileId,
@@ -230,7 +232,7 @@ data St = St
     -- | the @import lines of the file and the names it @set, for the clashes of listed names (root ADR 0451)
     stFileImports :: ![ImportSite],
     stSetNames :: !(Set Text),
-    -- | the functions listed by @import, by their space of use and name; Unloaded for one whose calls report nothing
+    -- | the functions listed by @import, by their space of use and name; Unloaded with why for one the evaluation cannot call (root ADR 0461)
     stListedFns :: !(Map (Space, Text) FunctionRef),
     -- | the variables listed by @import
     stListedVars :: !(Map Text Value),
@@ -247,16 +249,36 @@ data Space = InlineSpace | BlockSpace | ExprSpace
 
 type M = State St
 
-{- | A diagnostic of the file; one of a call through a namespace whose
-.emet could not be loaded is not reported (docs/adr/0162).
--}
+-- | A diagnostic of the file.
 report :: Diagnostic -> M ()
-report d
-  | isUnloaded d = pure ()
-  | otherwise = modify' (\s -> s {stDiags = stDiags s <> [d]})
+report d = modify' (\s -> s {stDiags = stDiags s <> [d]})
 
 err :: Text -> SrcSpan -> Text -> M ()
 err code sp msg = report (diagnostic code Error sp msg)
+
+{- | Why the evaluation cannot call a name of a .emet it has not loaded
+(root ADR 0461): the evaluation of a file without manifest resolves no
+@import; otherwise the .emet could not be loaded or checked.
+-}
+loadFailure :: EvalContext -> Unloaded
+loadFailure ctx = case ctxImports ctx of
+  UnresolvedImports -> NoManifest
+  ResolvedImports _ -> EmetErrors
+
+{- | A call of a name the evaluation cannot call, by the name it is written
+with: G02279, G02280 or G02281 (root ADR 0461); it puts out nothing.
+-}
+unloadedCall :: Unloaded -> SrcSpan -> Text -> M [a]
+unloadedCall why sp shown = report (unloadedDiagnostic why sp shown) >> pure []
+
+{- | A name no command has where a plugin might have given one: G02282 at
+its span after the plugins failed to load or to pass the checks, the
+diagnostic otherwise (root ADR 0461).
+-}
+unknownName :: EvalContext -> Text -> Diagnostic -> M ()
+unknownName ctx shown d
+  | phFailed (ctxPlugins ctx) = err "G02282" (diagSpan d) ("プラグインの誤りのため、この名前のコマンドがあるかを決められません: " <> shown)
+  | otherwise = report d
 
 builtinInlineCommands :: [Text]
 builtinInlineCommands = map builtinName allBuiltins
@@ -661,13 +683,14 @@ plugins, then among the names the file lists by @import (root ADR 0453): a
 listed name that puts out nothing does not fall back to the built-in one.
 -}
 standalone :: EvalContext -> SrcSpan -> A.Located A.Name -> [A.Located A.Argument] -> [A.Located A.Block] -> M [Block]
-standalone ctx sp lname@(A.Located _ name) args body
+standalone ctx sp lname@(A.Located nsp name) args body
   | Just o <- parseOverridableBlock name, Just pb <- Map.lookup o (phBlockOverrides (ctxPlugins ctx)) = pluginBlock ctx sp pb args body
   | Just _ <- parseOverridableBlock name =
       listedFunction BlockSpace name >>= \case
         Nothing -> builtinBlock ctx sp lname args body
         Just (Loaded fns) | Just f <- Map.lookup name (fnBlock fns) -> callBlock ctx sp ("@" <> name) f args body
-        Just _ -> pure []
+        Just (Unloaded why) -> unloadedCall why nsp ("@" <> name)
+        Just (Loaded _) -> pure []
   | otherwise = builtinBlock ctx sp lname args body
 
 -- | A block command of the language, a plugin or a function, after the overrides.
@@ -686,10 +709,10 @@ builtinBlock ctx sp (A.Located nsp name) args body = case name of
                 let table = ctxFunctions ctx
                     ref = case normalizeRelative (T.unpack path) >>= \p -> maybe (Left Missing) Right (Map.lookup p (ftFiles table)) of
                       Right fns | not (ftUnloaded table) -> Loaded fns
-                      _ -> Unloaded
+                      _ -> Unloaded (loadFailure ctx)
                  in modify' (\s -> s {stFunctions = Map.insert ns ref (stFunctions s), stImports = stImports s <> [(ns, T.unpack path, sp)]})
               else do
-                -- a namespace of an @import the evaluation does not resolve: its references report nothing (root ADR 0455)
+                -- a namespace of an @import the evaluation does not resolve: each reference is G02281 (root ADR 0455, root ADR 0461)
                 let vals = importedVars ctx path
                     unresolvedNs = if isNothing vals then Set.insert ns else Set.delete ns
                 modify' (\s -> s {stNamespaces = Map.insert ns (fromMaybe Map.empty vals) (stNamespaces s), stImports = stImports s <> [(ns, T.unpack path, sp)], stUnresolvedNamespaces = unresolvedNs (stUnresolvedNamespaces s)})
@@ -734,9 +757,10 @@ builtinBlock ctx sp (A.Located nsp name) args body = case name of
     | otherwise ->
         -- a block command listed by @import (root ADR 0451)
         listedFunction BlockSpace name >>= \case
-          Nothing -> err "G02009" nsp ("未知のブロックコマンドです: @" <> name) >> pure []
+          Nothing -> unknownName ctx ("@" <> name) (diagnostic "G02009" Error nsp ("未知のブロックコマンドです: @" <> name)) >> pure []
           Just (Loaded fns) | Just f <- Map.lookup name (fnBlock fns) -> callBlock ctx sp ("@" <> name) f args body
-          Just _ -> pure []
+          Just (Unloaded why) -> unloadedCall why nsp ("@" <> name)
+          Just (Loaded _) -> pure []
 
 {- | The names of the variables a file sets, wherever they are, for G02274
 (root ADR 0451): an @import clashes with a @set before it or after it.
@@ -761,11 +785,11 @@ listedFunction space name = do
 
 {- | What a path an @import lists names of gives (root ADR 0451): the
 functions of a .emet, the variables of a .gm, or nothing to check for a
-.emet that could not be loaded, whose names report nothing, and for a
-variable file whose @import the evaluation does not resolve, whose
-references in the expressions report nothing (root ADR 0455).
+.emet that could not be loaded, with why its names cannot be called, and
+for a variable file whose @import the evaluation does not resolve, whose
+references in the expressions are G02281 (root ADR 0455, root ADR 0461).
 -}
-data ListedSource = FromEmet !FunctionNamespace | FromVars !(Map Text Value) | Unchecked | UnresolvedVars
+data ListedSource = FromEmet !FunctionNamespace | FromVars !(Map Text Value) | Unchecked !Unloaded | UnresolvedVars
 
 listedSource :: EvalContext -> Text -> ListedSource
 listedSource ctx path
@@ -773,7 +797,7 @@ listedSource ctx path
       let table = ctxFunctions ctx
        in case normalizeRelative (T.unpack path) >>= \p -> maybe (Left Missing) Right (Map.lookup p (ftFiles table)) of
             Right fns | not (ftUnloaded table) -> FromEmet fns
-            _ -> Unchecked
+            _ -> Unchecked (loadFailure ctx)
   | otherwise = maybe UnresolvedVars FromVars (importedVars ctx path)
 
 -- | The spaces of use a source gives a name in; Nothing for one that is not checked.
@@ -781,7 +805,7 @@ listedSpaces :: ListedSource -> Text -> Maybe [Space]
 listedSpaces src n = case src of
   FromEmet fns -> Just ([InlineSpace | Map.member n (fnInline fns)] <> [BlockSpace | Map.member n (fnBlock fns)] <> [ExprSpace | Map.member n (fnExpr fns)])
   FromVars vals -> Just [ExprSpace | Map.member n vals]
-  Unchecked -> Nothing
+  Unchecked _ -> Nothing
   UnresolvedVars -> Nothing
 
 {- | The names of the built-in commands a listed name may not override, by
@@ -804,7 +828,7 @@ alias gives its code once: a built-in command (G02270), a command of a
 plugin (G02271), an alias another @import lists (G02272, at both), an
 alias before it in the list (G02273), a variable the file sets (G02274),
 a built-in name of the expressions (G02277). An alias that clashes with
-another @import is put in as one whose calls report nothing, so that the
+another @import is put in as one whose calls are G02280, so that the
 order of the @import lines changes nothing; one that clashes with a name
 of the language or a variable is left out of that space.
 -}
@@ -823,13 +847,13 @@ listedImport ctx sp path items = do
       one (i, l@(ListedName n nsp a asp))
         | a `elem` reservedNames = err "G02275" asp ("予約語は取り込む名前に使えません: " <> a)
         | otherwise = case listedSpaces src n of
-            -- a variable of an @import not resolved: only its references in the expressions report nothing (root ADR 0455)
+            -- a variable of an @import not resolved: only its references in the expressions are G02281 (root ADR 0455, root ADR 0461)
             Nothing | UnresolvedVars <- src -> do
               note l
               modify' (\st -> st {stUnresolvedVars = Set.insert a (stUnresolvedVars st)})
             Nothing -> do
               note l
-              mapM_ (\s -> put' s a Unloaded) [InlineSpace, BlockSpace, ExprSpace]
+              mapM_ (\s -> put' s a (Unloaded (uncheckedWhy src))) [InlineSpace, BlockSpace, ExprSpace]
             Just [] -> err "G02276" nsp (path <> " が公開していない名前です: " <> n)
             Just spaces
               | not (all (`aliasShape` a) spaces) -> err "G02278" asp ("別名の形が不正です: " <> a)
@@ -849,16 +873,19 @@ listedImport ctx sp path items = do
                     let cs = map fst (clashes s) :: [Text]
                         kept
                           | any (`elem` cs) ["G02270", "G02271", "G02274", "G02277"] = pure ()
-                          | "G02272" `elem` cs = put' s a Unloaded
+                          | "G02272" `elem` cs = put' s a (Unloaded ImportClash)
                           | otherwise = case src of
                               FromEmet fns -> put' s a (Loaded (renamed n a fns))
                               FromVars vals -> mapM_ (\v -> modify' (\st -> st {stListedVars = Map.insert a v (stListedVars st)})) (Map.lookup n vals)
-                              Unchecked -> pure ()
+                              Unchecked _ -> pure ()
                               UnresolvedVars -> pure ()
                     kept
   mapM_ one (zip [0 :: Int ..] items)
   where
     note (ListedName n _ a asp) = modify' (\s -> s {stListedSites = stListedSites s <> [(a, n, T.unpack path, asp)]})
+    uncheckedWhy = \case
+      Unchecked why -> why
+      _ -> EmetErrors
     put' s a ref = modify' (\st -> st {stListedFns = Map.insert (s, a) ref (stListedFns st)})
 
 {- | The spaces of use an item of a source is put in under its alias, when
@@ -984,18 +1011,18 @@ firstKeywords args =
 -- ------------------------------------------------------------------ functions of .emet
 
 {- | The namespace of a command of a .emet (docs/adr/0162): Left with the
-diagnostic of a namespace the file has not imported, Nothing for one whose
-.emet could not be loaded (nothing is reported), or its functions.
+diagnostic of a namespace the file has not imported, or what the namespace
+gives: its functions, or why the evaluation cannot call them (root ADR
+0461).
 -}
-functionNamespace :: Text -> SrcSpan -> Text -> Text -> M (Either Diagnostic (Maybe FunctionNamespace))
+functionNamespace :: Text -> SrcSpan -> Text -> Text -> M (Either Diagnostic FunctionRef)
 functionNamespace code nsp ns shown = do
   -- the namespace is used, for the lint of unused imports (G05003)
   modify' (\s -> s {stNsRefs = Map.insertWith Set.union ns (Set.singleton shown) (stNsRefs s)})
   refs <- gets stFunctions
   isVars <- gets (Map.member ns . stNamespaces)
   pure $ case Map.lookup ns refs of
-    Just (Loaded fns) -> Right (Just fns)
-    Just Unloaded -> Right Nothing
+    Just ref -> Right ref
     Nothing
       | isVars -> Left (diagnostic code Error nsp ("名前空間 " <> ns <> " は .gm の変数の取り込みで、コマンドを持ちません: " <> shown))
       | otherwise -> Left (diagnostic code Error nsp ("未定義の名前空間 " <> ns <> " のコマンドです: " <> shown))
@@ -1069,10 +1096,10 @@ functionArgs ctx sp name ps args = do
 functionInline :: EvalContext -> Bool -> SrcSpan -> SrcSpan -> Text -> Text -> [A.Located A.Argument] -> [[A.Located A.Inline]] -> M [Inline]
 functionInline ctx inHeading sp nsp ns n args slots =
   functionNamespace "G02022" nsp ns qualified >>= \case
-    Left d -> report d >> pure []
-    Right Nothing -> pure []
-    Right (Just fns) -> case Map.lookup n (fnInline fns) of
-      Nothing -> err "G02022" nsp ("名前空間 " <> ns <> " にないインラインのコマンドです: " <> qualified <> blockHint) >> pure []
+    Left d -> unknownName ctx qualified d >> pure []
+    Right (Unloaded why) -> unloadedCall why nsp qualified
+    Right (Loaded fns) -> case Map.lookup n (fnInline fns) of
+      Nothing -> unknownName ctx qualified (diagnostic "G02022" Error nsp ("名前空間 " <> ns <> " にないインラインのコマンドです: " <> qualified <> blockHint)) >> pure []
         where
           blockHint = if Map.member n (fnBlock fns) then "（ブロックコマンドの @" <> qualified <> " はあります）" else ""
       Just f -> callInline ctx inHeading sp qualified f args slots
@@ -1100,10 +1127,10 @@ callInline ctx inHeading sp qualified f args slots = do
 functionBlock :: EvalContext -> SrcSpan -> SrcSpan -> Text -> Text -> [A.Located A.Argument] -> [A.Located A.Block] -> M [Block]
 functionBlock ctx sp nsp ns n args body =
   functionNamespace "G02009" nsp ns ("@" <> qualified) >>= \case
-    Left d -> report d >> pure []
-    Right Nothing -> pure []
-    Right (Just fns) -> case Map.lookup n (fnBlock fns) of
-      Nothing -> err "G02009" nsp ("名前空間 " <> ns <> " にないブロックコマンドです: @" <> qualified <> inlineHint) >> pure []
+    Left d -> unknownName ctx ("@" <> qualified) d >> pure []
+    Right (Unloaded why) -> unloadedCall why nsp ("@" <> qualified)
+    Right (Loaded fns) -> case Map.lookup n (fnBlock fns) of
+      Nothing -> unknownName ctx ("@" <> qualified) (diagnostic "G02009" Error nsp ("名前空間 " <> ns <> " にないブロックコマンドです: @" <> qualified <> inlineHint)) >> pure []
         where
           inlineHint = if Map.member n (fnInline fns) then "（インラインのコマンドの [" <> qualified <> "] はあります）" else ""
       Just f -> callBlock ctx sp ("@" <> qualified) f args body
@@ -1249,7 +1276,8 @@ data CommandKind
     Attribute
   | -- | puts out blocks of its own and takes no body
     PutsOut
-  | -- | a name whose calls report nothing (a .emet not loaded, a name of G02272): it puts out nothing
+  | -- | a name the evaluation cannot call (a .emet not loaded, a name of G02272): it puts out nothing, and
+    -- counts as a command that puts out blocks for G02011 and G02123 (root ADR 0461)
     Unresolved
   deriving stock (Eq)
 
@@ -1279,7 +1307,7 @@ commandKind ctx (A.Located _ b) = case b of
     | Just (ns, n) <- splitNamespace name ->
         gets (Map.lookup ns . stFunctions) >>= \case
           Just (Loaded fns) -> pure (maybe PutsOut functionKind (Map.lookup n (fnBlock fns)))
-          Just Unloaded -> pure Unresolved
+          Just (Unloaded _) -> pure Unresolved
           Nothing -> pure PutsOut
     | otherwise ->
         gets (Map.lookup (BlockSpace, name) . stListedFns) >>= \case
@@ -1327,8 +1355,9 @@ its blocks before the rest. G02013 for an attribute, @style or @lang
 outside @note and @endnote, which are left out; G02012 for one written
 twice, the second left out; G02011 once for the group when a command
 that puts out blocks has an attribute outside it, or the next block after
-it; G02123 for the blocks between ::: lines after it. A group with a name
-the evaluation does not resolve reports neither G02011 nor G02123.
+it; G02123 for the blocks between ::: lines after it. A name the
+evaluation cannot call counts as a command that puts out blocks for them,
+in the nested groups too (root ADR 0461).
 -}
 commandRow :: EvalContext -> Maybe Passed -> SrcSpan -> [A.Located A.Block] -> Maybe (A.Located A.Block) -> M [Block]
 commandRow ctx passed sp cmds0 target = do
@@ -1350,8 +1379,8 @@ commandRow ctx passed sp cmds0 target = do
       dropped = [i | (j, (n, i)) <- zip [0 :: Int ..] once, if n == "style" then n `elem` map fst (take j once) else n `elem` map fst (drop (j + 1) once)]
   mapM_ (\(_, (_, A.Located asp _)) -> err "G02012" asp "同じ属性を二度書いています") [x | x@(i, _) <- zip [0 :: Int ..] tagged1, i `elem` repeated]
   let tagged = [x | (i, x) <- zip [0 :: Int ..] tagged1, i `notElem` dropped]
-      kinds = map fst tagged
-      quiet = Unresolved `elem` kinds
+      -- a name the evaluation cannot call is one that puts out blocks (root ADR 0461)
+      kinds = [if k == Unresolved then PutsOut else k | (k, _) <- tagged]
       nextBlock = case target of
         Just (A.Located _ (A.Fenced _)) -> False
         Just _ -> True
@@ -1370,9 +1399,9 @@ commandRow ctx passed sp cmds0 target = do
       suffix = case break (== TakesBody) kinds of
         (_, _ : rest@(_ : _)) -> Just rest
         _ -> Nothing
-  when (not quiet && g02011 kinds && not (maybe False g02011 suffix)) $
+  when (g02011 kinds && not (maybe False g02011 suffix)) $
     err "G02011" sp "属性のまとまりに属性でないコマンドがあります"
-  when (not quiet && TakesBody `notElem` kinds && fenced && lastOf kinds == Just PutsOut) $
+  when (TakesBody `notElem` kinds && fenced && lastOf kinds == Just PutsOut) $
     err "G02123" sp "本体を受け取らないコマンドに ::: で囲んだ本体があります"
   (pre, r) <- go tagged
   pure (pre <> r)
@@ -1541,7 +1570,7 @@ channelBlock ctx sp args = do
           Just st
             | Map.member st (ctxParaStyles ctx) -> pure [block sp (ChannelOutput (CustomOutput n (Just st)))]
             | otherwise -> err "G02047" sp ("定義されていない段落スタイルです: " <> st) >> pure []
-      | otherwise -> err "G02090" sp ("宣言されていないチャネルです: " <> argText v) >> pure []
+      | otherwise -> unknownName ctx (argText v) (diagnostic "G02090" Error sp ("宣言されていないチャネルです: " <> argText v)) >> pure []
     _ -> err "G02090" sp "@channel にはチャネルの名前を一つ書きます" >> pure []
 
 -- | G02049: @manifest or @style-def after the file settings (docs/adr ADR 0014).
@@ -3101,12 +3130,13 @@ evalCommand ctx inHeading sp (A.Located nsp name) args slots
   | Just (ns, n) <- splitNamespace name = functionInline ctx inHeading sp nsp ns n args slots
   | otherwise =
       -- an inline command listed by @import (root ADR 0451)
-      listedFunction InlineSpace name >>= maybe (err "G02022" nsp ("未知のコマンドです: " <> name) >> pure []) listed
+      listedFunction InlineSpace name >>= maybe (unknownName ctx name (diagnostic "G02022" Error nsp ("未知のコマンドです: " <> name)) >> pure []) listed
   where
     parsed = parseBuiltin name
     listed = \case
       Loaded fns | Just f <- Map.lookup name (fnInline fns) -> callInline ctx inHeading sp name f args slots
-      _ -> pure []
+      Unloaded why -> unloadedCall why nsp name
+      Loaded _ -> pure []
     plugin pc = do
       vals <- pluginArgs ctx sp args
       slots' <- mapM (evalInlines ctx inHeading) slots

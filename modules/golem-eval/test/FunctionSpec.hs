@@ -168,10 +168,10 @@ tests =
         let (ds, _) = evalSource functionCtx (withImport "[= book.helper(1)]\n")
         map diagCodeText ds @?= ["G02002"]
         assertBool "says pub fn" (any (Data.Text.isInfixOf "pub fn" . diagMessage) ds),
-      testCase "a call through a namespace whose .emet could not be loaded reports nothing" $ do
+      testCase "root ADR 0461 I1: each call through a namespace whose .emet could not be loaded is G02279" $ do
         let ctx = baseCtx {ctxFunctions = FunctionTable Map.empty True Set.empty}
             (ds, _) = evalSource ctx (withImport "[book.x 1]\n\n@book.y\n\n[= book.z(1)]\n")
-        map diagCodeText ds @?= [],
+        map diagCodeText ds @?= ["G02279", "G02279", "G02279"],
       testCase "a function is not called after an error of its arguments" $ do
         let f = InlineFunction (Params [ArgNat] Nothing []) 0 "" (\_ _ sp -> Left [diagnostic "G99999" Error sp "called"])
             ctx = baseCtx {ctxFunctions = FunctionTable (Map.singleton "functions/book.emet" emptyNamespace {fnInline = Map.singleton "f" f}) False Set.empty}

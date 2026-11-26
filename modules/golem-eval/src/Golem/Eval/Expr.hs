@@ -50,7 +50,7 @@ data Env = Env
     envListed :: !(Map Name FunctionRef),
     -- | the names an @import of a variable file lists that the evaluation does not resolve (root ADR 0455)
     envUnresolvedVars :: !(Set Name),
-    -- | the namespaces of such @import lines; references through them report nothing
+    -- | the namespaces of such @import lines; a reference through them is G02281 (root ADR 0461)
     envUnresolvedNamespaces :: !(Set Name)
   }
 
@@ -319,7 +319,7 @@ equal a b = case (numberOf a, numberOf b) of
 {- | A function of the expression context of a .emet (docs/adr/0162):
 @pub fn@ of the .emet of a namespace. A name of a function that is no
 @pub fn@ is G02002 with why; a call through a namespace whose .emet could
-not be loaded carries 'unloadedFact', and is not reported.
+not be loaded is G02279 (root ADR 0461).
 -}
 callFunction :: Env -> Located Expr -> Name -> Name -> [Value] -> Eval Value
 callFunction env le ns name vs = case Map.lookup ns (envFunctions env) of
@@ -330,13 +330,12 @@ callFunction env le ns name vs = case Map.lookup ns (envFunctions env) of
   where
     qualified = ns <> "." <> name
 
-{- | A call of a pub fn of a .emet, by the name it is written with: one of
-a .emet that could not be loaded carries 'unloadedFact', and is not
-reported.
+{- | A call of a pub fn of a .emet, by the name it is written with: one the
+evaluation cannot call is G02279, G02280 or G02281 by why (root ADR 0461).
 -}
 callRef :: Located Expr -> Name -> FunctionRef -> Name -> [Value] -> Eval Value
 callRef le qualified ref name vs = case ref of
-  Unloaded -> Left ((diagnostic "G02002" Error (locSpan le) ("読み込めなかった .emet の関数です: " <> qualified)) {diagFacts = [unloadedFact]})
+  Unloaded why -> Left (unloadedDiagnostic why (locSpan le) qualified)
   Loaded fns -> case Map.lookup name (fnExpr fns) of
     Just ef -> case positionalValues (efParams ef) vs of
       Left e -> Left (argErrorDiagnostic (locSpan le) qualified e)
@@ -346,12 +345,10 @@ callRef le qualified ref name vs = case ref of
       Nothing -> err "G02002" le ("未定義の関数 " <> qualified <> " です")
 
 {- | A reference to a variable of an @import the evaluation does not
-resolve, outside a project (root ADR 0455): it carries 'unloadedFact', as
-a call of a function of a .emet that could not be loaded, and is not
-reported.
+resolve, outside a project (root ADR 0455): G02281 (root ADR 0461).
 -}
 unresolved :: Located Expr -> Name -> Eval Value
-unresolved le n = Left ((diagnostic "G02002" Error (locSpan le) ("取り込みを解いていない変数です: " <> n)) {diagFacts = [unloadedFact]})
+unresolved le n = Left (unloadedDiagnostic NoManifest (locSpan le) n)
 
 call :: Located Expr -> Name -> [Value] -> Eval Value
 call le f args = case (f, args) of
