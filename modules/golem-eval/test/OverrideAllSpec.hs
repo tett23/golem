@@ -144,11 +144,11 @@ tests =
         texts blockOnly (listed "lang" "@lang en\n@lang ja\n段落\n") @?= ["F:lang", "F:lang", "段落"]
         codes blockOnly (listed "lang" "@lang en\n@lang ja\n段落\n") @?= [],
       testCase "root ADR 0471 I2: { toc as note } and @note with a paragraph: the output of toc" $ do
-        texts blockOnly ("@import functions/all.emet { toc as note }\n\n@note\n段落\n") @?= ["F:toc", "段落"]
-        codes blockOnly ("@import functions/all.emet { toc as note }\n\n@note\n段落\n") @?= [],
+        texts blockOnly "@import functions/all.emet { toc as note }\n\n@note\n段落\n" @?= ["F:toc", "段落"]
+        codes blockOnly "@import functions/all.emet { toc as note }\n\n@note\n段落\n" @?= [],
       testCase "root ADR 0471 I3: { note as n } and @note with a paragraph: the built-in note, G02142" $ do
-        assertBool "not called" (not (called blockOnly ("@import functions/all.emet { note as n }\n\n@note\n段落\n")))
-        codes blockOnly ("@import functions/all.emet { note as n }\n\n@note\n段落\n") @?= ["G02142"],
+        assertBool "not called" (not (called blockOnly "@import functions/all.emet { note as n }\n\n@note\n段落\n"))
+        codes blockOnly "@import functions/all.emet { note as n }\n\n@note\n段落\n" @?= ["G02142"],
       testCase "root ADR 0471 I3: @note before the @import line of { note }: the built-in note, G02142 and no G02270" $ do
         assertBool "not called" (not (called blockOnly ("@note\n段落\n\n" <> listed "note" "")))
         codes blockOnly ("@note\n段落\n\n" <> listed "note" "") @?= ["G02142"],
