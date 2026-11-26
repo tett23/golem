@@ -2,6 +2,7 @@
 
 module Main (main) where
 
+import AliasLspSpec (aliasLspTests)
 import Control.Concurrent (forkIO)
 import Control.Monad (forM_, void)
 import Data.Aeson qualified as J
@@ -652,6 +653,7 @@ tests =
       editingTests,
       functionsLspTests,
       setRenameTests,
+      aliasLspTests,
       tableWatchTests,
       staleS1Tests,
       publishTests,

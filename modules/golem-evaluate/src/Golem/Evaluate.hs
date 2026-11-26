@@ -487,11 +487,11 @@ runningVars e =
         (Just (mname, MasterDef {mdRunningHead = Just rh}), Just r) ->
           let refs = Map.fromListWith (&&) [(n, q) | c <- [rhOdd rh, rhEven rh], (RefVar n, q) <- runningRefs c]
               lookupVar = \case
-                -- its own, or one an @import lists (root ADR 0451)
-                [v] -> Map.lookup v (erExports r) <|> imported (\site -> v `elem` map fst (importNames site)) v
-                [ns, v] -> imported (\site -> importNamespace site == Just ns) v
+                -- its own, or one an @import lists, by its alias (root ADR 0451, root ADR 0458)
+                [v] -> Map.lookup v (erExports r) <|> imported (\site -> [lnName l | l <- importNames site, lnAlias l == v])
+                [ns, v] -> imported (\site -> [v | importNamespace site == Just ns])
                 _ -> Nothing
-              imported which v = listToMaybe [x | (tfid, site) <- Map.findWithDefault [] fid graph, which site, Just tr <- [Map.lookup tfid (evResults e)], Just x <- [Map.lookup v (erExports tr)]]
+              imported origs = listToMaybe [x | (tfid, site) <- Map.findWithDefault [] fid graph, o <- origs site, Just tr <- [Map.lookup tfid (evResults e)], Just x <- [Map.lookup o (erExports tr)]]
               at = mkSpan fid 0 0
               related = [(mkSpan (evStyleFile e) 0 0, "マスターページ " <> mname <> " の柱の書式")]
               one (n, optional) = case lookupVar n of

@@ -75,7 +75,13 @@ varsTests :: TestTree
 varsTests =
   testGroup
     "[vars] (docs/adr/0185)"
-    [ testCase "{vars.product} of a running head shows the value, numbers and tables too" $ do
+    [ testCase "root ADR 0458 I1: {set.<alias>} shows the variable imported under the alias" $ do
+        let files = [("a.gm", "@import common/values.gm { price as cost }\n\n" <> twoChapters), ("common/values.gm", "@set price = \"P\"\n")]
+        (heads, _) <- layoutHeads miniManifest (headsStyle "content = [\"{set.cost}\"]") files
+        Map.lookup 2 heads @?= Just ["P"]
+        (plain, _) <- layoutHeads miniManifest (headsStyle "content = [\"x{set.price?}\"]") files
+        Map.lookup 2 plain @?= Just ["x"],
+      testCase "{vars.product} of a running head shows the value, numbers and tables too" $ do
         (heads, _) <- layoutHeads pdfManifest (headsStyle "content = [\"{vars.product} {vars.count} {vars.author.short}\"]") [("a.gm", twoChapters)]
         Map.lookup 2 heads @?= Just ["Golem 3 tett23"],
       testCase "a running head shows the texts of [vars] given in the PdfInput (docs/adr/0196)" $ do

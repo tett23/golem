@@ -766,7 +766,7 @@ diagnosticCodeTests =
           ( \src -> withProject [("manifest.toml", manifest ["\"a.gm\""]), ("a.gm", src), ("x.gm", "")] $ \root -> do
               r <- loadProject root
               assertEqual (T.unpack src) ["G03009"] (codes r)
-              assertEqual (T.unpack src) ["@import は「@import パス * as 名前空間」か「@import パス { 名前, … }」の形で書きます"] (msgs r)
+              assertEqual (T.unpack src) ["@import は「@import パス * as 名前空間」か「@import パス { 名前, 名前 as 別名, … }」の形で書きます"] (msgs r)
           )
           [ "@import x.gm\n",
             "@import x.gm as\n",
@@ -800,11 +800,34 @@ diagnosticCodeTests =
         let sitesOf src = let (f, _, _) = parseAst (FileId 1) src in [fmap (\s -> (isPath s, isForm s)) e | e <- importsOf f]
             at = mkSpan (FileId 1)
         sitesOf "@import x.gm * as v\n" @?= [Right ("x.gm", ImportAll "v" (at 18 19))]
-        sitesOf "@import x.gm { a }\n" @?= [Right ("x.gm", ImportNames [("a", at 15 16)])]
-        sitesOf "@import x.gm { a, bc }\n" @?= [Right ("x.gm", ImportNames [("a", at 15 16), ("bc", at 18 20)])]
-        sitesOf "@import x.gm {a,bc}\n" @?= [Right ("x.gm", ImportNames [("a", at 14 15), ("bc", at 16 18)])]
-        sitesOf "@import x.gm {a ,bc }\n" @?= [Right ("x.gm", ImportNames [("a", at 14 15), ("bc", at 17 19)])]
-        sitesOf "@import \"x.gm\" { 値 }\n" @?= [Right ("x.gm", ImportNames [("値", at 17 20)])],
+        sitesOf "@import x.gm { a }\n" @?= [Right ("x.gm", ImportNames [listedName "a" (at 15 16)])]
+        sitesOf "@import x.gm { a, bc }\n" @?= [Right ("x.gm", ImportNames [listedName "a" (at 15 16), listedName "bc" (at 18 20)])]
+        sitesOf "@import x.gm {a,bc}\n" @?= [Right ("x.gm", ImportNames [listedName "a" (at 14 15), listedName "bc" (at 16 18)])]
+        sitesOf "@import x.gm {a ,bc }\n" @?= [Right ("x.gm", ImportNames [listedName "a" (at 14 15), listedName "bc" (at 17 19)])]
+        sitesOf "@import \"x.gm\" { 値 }\n" @?= [Right ("x.gm", ImportNames [listedName "値" (at 17 20)])],
+      testCase "root ADR 0458 I4: an item is an original name and an alias, read by place" $ do
+        let itemsOf src = let (f, _, _) = parseAst (FileId 1) src in [fmap (map (\l -> (lnName l, lnAlias l)) . namesOf) e | e <- importsOf f]
+            namesOf s = case isForm s of
+              ImportNames ns -> ns
+              ImportAll _ _ -> []
+            at = mkSpan (FileId 1)
+        itemsOf "@import x.gm { as }\n" @?= [Right [("as", "as")]]
+        itemsOf "@import x.gm { as as b }\n" @?= [Right [("as", "b")]]
+        itemsOf "@import x.gm { a as as }\n" @?= [Right [("a", "as")]]
+        itemsOf "@import x.gm { a, as }\n" @?= [Right [("a", "a"), ("as", "as")]]
+        itemsOf "@import x.gm { a as b, c }\n" @?= [Right [("a", "b"), ("c", "c")]]
+        itemsOf "@import x.gm {a as b,c as d}\n" @?= [Right [("a", "b"), ("c", "d")]]
+        itemsOf "@import x.gm { fooasbar }\n" @?= [Right [("fooasbar", "fooasbar")]]
+        itemsOf "@import x.gm { total as total }\n" @?= [Right [("total", "total")]]
+        let (f, _, _) = parseAst (FileId 1) "@import x.gm { ab as cd, e }\n"
+        [isForm s | Right s <- importsOf f] @?= [ImportNames [ListedName "ab" (at 15 17) "cd" (at 21 23), listedName "e" (at 25 26)]],
+      testCase "root ADR 0458 I4: a list that breaks the reading by place is G03009" $
+        mapM_
+          ( \src -> withProject [("manifest.toml", manifest ["\"a.gm\""]), ("a.gm", src), ("x.gm", "")] $ \root -> do
+              r <- loadProject root
+              assertEqual (T.unpack src) ["G03009"] (codes r)
+          )
+          ["@import x.gm { a as }\n", "@import x.gm { a as b as c }\n", "@import x.gm { a b }\n", "@import x.gm { as as }\n", "@import x.gm { a as b c }\n", "@import x.gm { as b }\n", "@import x.gm { a as, b }\n"],
       testCase "root ADR 0451 I6: both forms load in a project" $
         withProject [("manifest.toml", manifest ["\"a.gm\""]), ("a.gm", "@import x.gm * as x\n@import x.gm { y }\n"), ("x.gm", "@set y = 1\n")] $ \root ->
           loadProject root >>= (@?= []) . codes,
