@@ -4,6 +4,7 @@ module Golem.Typeset.Draw
     renderPdfView,
     renderPdfOutputs,
     masterFlowText,
+    fitCharacterDiagnostics,
     renderPdfStructure,
     renderPdfLeafTexts,
     renderPdfWithTree,
@@ -156,6 +157,17 @@ reused between the rounds of S2 or not, for the tests that compare the two
 -}
 renderPdfAllReusing :: Bool -> Text -> FontProvider -> PdfInput -> IO (Either [Diagnostic] (ByteString, [Diagnostic], V.View, Structure, [Maybe (FileId, Int)]))
 renderPdfAllReusing reuse = renderPdfAllUsing reuse untouched
+
+{- | G07144 of a book (root ADR 0466) for golem check: its fonts loaded and
+its paragraphs composed, without the pages; nothing when the geometry or
+the fonts stop the PDF, which the PDF reports itself.
+-}
+fitCharacterDiagnostics :: FontProvider -> PdfInput -> IO [Diagnostic]
+fitCharacterDiagnostics provider input = case checkedGeometry inp of
+  Left _ -> pure []
+  Right geom -> either (const []) (fitCharacterWarnings inp geom) <$> loadFonts provider (piFiles inp) (piStyleFile inp) (piStyle inp) (Map.elems (piLocalStyles inp))
+  where
+    inp = codeInput input
 
 -- | The logical lines before wrapping and the line boxes composed in the master flow.
 masterFlowText :: FontProvider -> PdfInput -> IO (Either [Diagnostic] ([Text], Integer))

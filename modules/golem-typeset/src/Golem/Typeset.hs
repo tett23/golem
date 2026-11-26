@@ -76,6 +76,7 @@ module Golem.Typeset
     renderPdfView,
     renderPdfOutputs,
     masterFlowText,
+    fitCharacterDiagnostics,
     renderPdfStructure,
     renderPdfLeafTexts,
     renderPdfWithTree,

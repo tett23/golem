@@ -264,7 +264,9 @@ data HtmlParaStyle = HtmlParaStyle
     hpsPhysical :: !(Maybe HtmlPhysicalParagraph),
     {- | the first-line indent of a style with opening-indent = "half", Nothing
     for any other (root ADR 0469)
-    -} hpsOpeningHalf :: !(Maybe HtmlIndent)
+    -} hpsOpeningHalf :: !(Maybe HtmlIndent),
+    -- | fit-characters, none with drop-lines too (root ADR 0466)
+    hpsFitCharacters :: !(Maybe Int)
   }
   deriving stock (Eq)
 
@@ -1808,6 +1810,8 @@ css cfg book =
             -- the first line of a paragraph that starts with an opening bracket (root ADR 0469)
             <> [openingSelector sel ps <> " { text-indent: " <> openingTextIndent f <> "; }" | Just f <- [hpsOpeningHalf ps]]
             <> [rule sel (hpsAlign ps) | alignRule name ps]
+            -- the width of so many characters, the characters spread over it (root ADR 0466)
+            <> [rule sel (fitDecls n) | Just n <- [hpsFitCharacters ps]]
             <> [sel <> " { padding-inline-end: " <> hpsEndIndent ps <> "; }" | endIndentRule name ps]
             <> [ prefixed (outside [name | name /= "body"]) (adjacent <> " + " <> adjacent) <> " { margin-block-start: " <> (if spaceBetween ps > 0 then spaceText ps (spaceBetween ps) else "0") <> "; }"
                | spaceBetween ps > 0 || spaced || isJust (hpsPhysical ps)
@@ -1952,6 +1956,8 @@ css cfg book =
                 ]
                   -- the first line of a paragraph that starts with an opening bracket (root ADR 0469)
                   <> [rule (openingSelector (paraSel name) ps) ["text-indent: " <> openingTextIndent f] | Just f <- [hpsOpeningHalf ps]]
+                  -- fit-characters (root ADR 0466)
+                  <> [rule (paraSel name) (fitDecls k) | Just k <- [hpsFitCharacters ps]]
               | (name, ps) <- locals
               ]
               -- the pairs of a style of the file and another
@@ -1969,6 +1975,12 @@ css cfg book =
             [rule (pre <> " div.box-" <> name) (hbDecls hb) | (name, ps) <- locals, Just hb <- [hpsBox ps]]
               <> [pre <> " div.box > p { padding-inline-start: 0; padding-inline-end: 0; }" | not (Map.null (hlParaStyles l)), any (isJust . hpsBox . snd) mergedList]
        in charRules <> markerRules (pre <> " ") (hlCharStyles l) <> readingRules (pre <> " ") (hlCharStyles l) <> paraStyleRules <> faceRules <> boxLocal <> listRule
+
+{- | The declarations of a paragraph style of fit-characters (root ADR
+0466): the width of so many characters, the characters spread over it.
+-}
+fitDecls :: Int -> [Text]
+fitDecls n = ["width: " <> T.pack (show n) <> "em", "text-align: justify", "text-align-last: justify", "text-justify: inter-character"]
 
 {- | The table of contents page of the HTML target, index.html, in the HTML
 syntax (docs/adr ADR 0090, root ADR 0432).
