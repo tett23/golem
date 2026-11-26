@@ -2,17 +2,20 @@
 does not otherwise export (root ADR 0436): the composition environment of
 the product ('composeEnv'), the look of a paragraph style ('paraLook') and
 the empty assumed page numbers, so that a test composes in the environment
-the product composes in.
+the product composes in; the indent of a paragraph that starts with an
+opening bracket ('openingIndent', root ADR 0469).
 -}
 module Golem.Typeset.Internal
   ( composeEnv,
     paraLook,
     emptyAssumed,
+    Indent (..),
+    openingIndent,
   )
 where
 
 import Data.Map.Strict qualified as Map
-import Golem.Typeset.Flow (Assumed (..), composeEnv, paraLook)
+import Golem.Typeset.Flow (Assumed (..), Indent (..), composeEnv, openingIndent, paraLook)
 
 -- | No assumed page numbers: the first round of the page references, and a text without them.
 emptyAssumed :: Assumed

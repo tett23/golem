@@ -64,6 +64,7 @@ htmlParaStyles style =
           (keepDecls d)
           (htmlBox style n d)
           (physicalParagraph d)
+          (openingHalf d)
       )
     | n <- Map.keys (stParaStyles style),
       -- toc-<l> as built in writes nothing: the table of contents of HTML is as before (docs/adr/0264)
@@ -72,6 +73,12 @@ htmlParaStyles style =
     ]
   where
     bindingRight = maybe False pageBindingRight (stPage style)
+    -- the first-line indent of a style whose opening brackets take half of it off (root ADR 0469)
+    openingHalf d
+      | psOpeningIndent d == Just OpeningHalf = Just $ case fromMaybe (Zw 0) (psFirstLineIndent d) of
+          Zw r -> IndentEm r
+          Abs sp -> IndentAbs sp
+      | otherwise = Nothing
     physicalParagraph d
       | maybe False ((== AlignFree) . gridAlignment) (stPage style >>= pageGrid) = do
           pitch <- resolvedParagraphPitch style d

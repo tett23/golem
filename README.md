@@ -285,7 +285,7 @@ PDF の柱とノンブルに当てる文字スタイルは、マスターペー�
 これらの値やインデント、文字色はプロジェクトのスタイルにまとめ、Emet のブロック関数からそのスタイルを付けられる。
 台本専用の固定値は設けない。
 
-`next-style` は次の段落の段落スタイルを、`initial-style` は段落の先頭の一字の文字スタイルを決め、PDF の `opening-indent = "half"` は始め括弧類で始まる段落の字下げを半角減らす（[ADR 0374](./docs/adr/0374-paragraph-style-controls.md)）。
+`next-style` は次の段落の段落スタイルを、`initial-style` は段落の先頭の一字の文字スタイルを決め、`opening-indent = "half"` は始め括弧類で始まる段落の字下げを PDF、HTML、EPUB で半角減らす（[ADR 0374](./docs/adr/0374-paragraph-style-controls.md)、[root ADR 0469](./docs/adr/0469-opening-indent-in-html-and-epub.md)）。
 
 文字の詰めと送りも、スタイルで指定する。
 文字スタイルと段落スタイルの `kerning`（`metrics`、`japanese-equal-width`、`none`）、`tracking`、`proportional-metrics`、`baseline-shift` で、カーニングの方式、トラッキング、プロポーショナルメトリクス、ベースラインシフトを指定する。

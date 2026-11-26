@@ -300,11 +300,11 @@ chapterNoteTests =
 
 -- | A paragraph style that sets nothing but its rules.
 ruled :: Maybe HtmlRule -> Maybe HtmlRule -> HtmlParaStyle
-ruled b a = HtmlParaStyle Nothing False 0 "0" "0" noFeatures b a defaultAlignDecls 0 0 "0em" [] Nothing Nothing
+ruled b a = HtmlParaStyle Nothing False 0 "0" "0" noFeatures b a defaultAlignDecls 0 0 "0em" [] Nothing Nothing Nothing
 
 -- | A paragraph style of the defaults of body (docs/adr/0189).
 plainPara :: HtmlParaStyle
-plainPara = HtmlParaStyle Nothing False 0 "0em" "0em" noFeatures Nothing Nothing defaultAlignDecls 0 0 "0em" [] Nothing Nothing
+plainPara = HtmlParaStyle Nothing False 0 "0em" "0em" noFeatures Nothing Nothing defaultAlignDecls 0 0 "0em" [] Nothing Nothing Nothing
 
 -- | The rules of the CSS that have a declaration of the keys of docs/adr/0189, but those of the cells of tables.
 alignSpaceLines :: HtmlConfig -> [Text]
@@ -1091,7 +1091,81 @@ langTests =
     ]
 
 xhtmlTests :: TestTree
-xhtmlTests = testGroup "XHTML and CSS (golem-html ADR 0001)" (tests <> [indexPageTests, langTests, pageBreakTests, genericFontTests, fontLicenseTests])
+xhtmlTests = testGroup "XHTML and CSS (golem-html ADR 0001)" (tests <> [indexPageTests, langTests, pageBreakTests, genericFontTests, fontLicenseTests, openingIndentTests])
+
+{- | The table of root ADR 0469 I2, the same as in the tests of golem-typeset:
+a paragraph, the language of its block, and whether its first character
+is an opening bracket.
+-}
+openingTable :: [(String, [Inline], Maybe Text, Bool)]
+openingTable =
+  [ ("「 first", [txt "「あ」"], Nothing, True),
+    ("あ first", [txt "あ「い」"], Nothing, False),
+    ("( first in a [lang en] span", [Lang (at 0) "en" [txt "(a)"]], Nothing, False),
+    ("“ first in a [lang en] span", [Lang (at 0) "en" [txt "“a”"]], Nothing, False),
+    ("“ first in a block of ja", [txt "“あ”"], Just "ja", True),
+    ("“ first in a block of en", [txt "“a”"], Just "en", False),
+    ("an empty paragraph", [], Nothing, False),
+    ("「 first in a character style after an empty text", [txt "", CharStyle (at 0) "em" [txt "「あ」"]], Nothing, True),
+    ("「 first in the base of ruby", [Ruby (at 0) () [RubySegment [Text (at 0) "「漢"] (Just "かん")]], Nothing, True),
+    ("a line break first", [LineBreak (at 0), txt "「あ」"], Nothing, False)
+  ]
+
+-- | A paragraph style of a first-line indent, with opening-indent = "half" or not (root ADR 0469).
+openingPara :: Bool -> HtmlIndent -> HtmlParaStyle
+openingPara half f =
+  plainPara
+    { hpsFirstLineIndent = case f of
+        IndentEm r -> T.pack (show (fromRational r :: Double)) <> "em"
+        IndentAbs _ -> "10pt",
+      hpsOpeningHalf = if half then Just f else Nothing
+    }
+
+-- | The indent and the opening brackets of paragraphs in HTML and EPUB (root ADR 0469).
+openingIndentTests :: TestTree
+openingIndentTests =
+  testGroup
+    "root ADR 0469"
+    ( [ testCase ("root ADR 0469 I2: " <> name) $ do
+          let cfg keep = cfg0 {hcParaStyles = Map.singleton "body" (openingPara True (IndentEm 1)) {hpsKeepLines = keep}}
+              opening keep xs = "data-opening" `T.isInfixOf` bodyA (cfg keep) (bookOf [Block (at 0) Nothing blang (Paragraph Nothing xs)])
+          (opening False is, opening True (is <> [LineBreak (at 9), txt "「い」"])) @?= (opens, opens)
+      | (name, is, blang, opens) <- openingTable
+      ]
+        <> [ testCase "root ADR 0469 I1: a style without opening-indent writes no data-opening" $ do
+               let cfg = cfg0 {hcParaStyles = Map.fromList [("body", openingPara False (IndentEm 1)), ("x", openingPara False (IndentEm 1))]}
+                   site = renderXhtml cfg ft (bookOf [para 0 [txt "「あ」"], Block (at 1) Nothing Nothing (Paragraph (Just "x") [txt "「い」"])])
+               filter (T.isInfixOf "data-opening") (siteCss site : map snd (sitePages site)) @?= [],
+             testCase "root ADR 0469 I3: two paragraphs of body that start with 「 keep the rules but the indent" $ do
+               let with half = cfg0 {hcParaStyles = Map.singleton "body" (openingPara half (IndentEm 1)) {hpsSpaceBetween = 1}}
+                   book = bookOf [para 0 [txt "「あ」"], para 1 [txt "「い」"]]
+                   opened = cssLines "" (with True)
+               filter (T.isInfixOf "data-opening") opened @?= ["p[data-opening] { text-indent: 0.5em; }"]
+               filter (not . T.isInfixOf "data-opening") opened @?= cssLines "" (with False)
+               T.replace " data-opening=\"\"" "" (bodyA (with True) book) @?= bodyA (with False) book
+               T.count "data-opening" (bodyA (with True) book) @?= 2,
+             testCase "root ADR 0469 I4: a first-line indent of 1em becomes 0.5em" $
+               openingRules (IndentEm 1) @?= ["p[data-opening] { text-indent: 0.5em; }", "p.ps-x[data-opening] { text-indent: 0.5em; }"],
+             testCase "root ADR 0469 I4: a first-line indent of 0.25em becomes 0" $
+               openingRules (IndentEm (1 / 4)) @?= ["p[data-opening] { text-indent: 0; }", "p.ps-x[data-opening] { text-indent: 0; }"],
+             testCase "root ADR 0469 I4: a first-line indent of -1em stays -1em" $
+               openingRules (IndentEm (-1)) @?= ["p[data-opening] { text-indent: -1em; }", "p.ps-x[data-opening] { text-indent: -1em; }"],
+             testCase "root ADR 0469 I4: a first-line indent in pt is max() of CSS" $
+               openingRules (IndentAbs 655360) @?= ["p[data-opening] { text-indent: max(min(10pt, 0em), 10pt - 0.5em); }", "p.ps-x[data-opening] { text-indent: max(min(10pt, 0em), 10pt - 0.5em); }"],
+             testCase "root ADR 0469 I4: a style that keeps its lines takes half off its first line only" $ do
+               let cfg = cfg0 {hcParaStyles = Map.singleton "v" (openingPara True (IndentEm 1)) {hpsKeepLines = True}}
+               filter (T.isInfixOf "data-opening") (cssLines "" cfg) @?= ["p.ps-v[data-opening] > .line:first-child { text-indent: 0.5em; }"],
+             testCase "root ADR 0469 I4: a style of a file writes its rule under the class of the file" $ do
+               let local = HtmlLocalStyles Map.empty (Map.fromList [("body", openingPara True (IndentEm 1)), ("x", openingPara True (IndentEm 2))]) Nothing Nothing Map.empty
+                   cfg = cfg0 {hcLocalStyles = Map.singleton fidA local}
+               filter (T.isInfixOf "data-opening") (cssLines "" cfg) @?= ["body.file-1 p:not([class])[data-opening] { text-indent: 0.5em; }", "body.file-1 p.ps-x[data-opening] { text-indent: 1.5em; }"],
+             testCase "root ADR 0469: a paragraph in a list, which has no indent, has no data-opening" $ do
+               let cfg = cfg0 {hcParaStyles = Map.singleton "body" (openingPara True (IndentEm 1))}
+               assertBool "no data-opening" (not ("data-opening" `T.isInfixOf` bodyA cfg (bookOf [Block (at 0) Nothing Nothing (BulletList [ListItem Nothing [para 1 [txt "「あ」"]]])])))
+           ]
+    )
+  where
+    openingRules f = filter (T.isInfixOf "data-opening") (cssLines "" cfg0 {hcParaStyles = Map.fromList [("body", openingPara True f), ("x", openingPara True f)]})
 
 -- | The fonts of a site, embedded or named by generic families (root ADR 0423).
 genericFontTests :: TestTree
