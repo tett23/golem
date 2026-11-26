@@ -1,6 +1,6 @@
 # ADR 0462: ブロックコマンドの本体の中の改ページと、続けて二度書いたコマンドの扱いをそろえる
 
-Status: accepted-pending
+Status: accepted
 
 ## 文脈
 

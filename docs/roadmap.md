@@ -54,8 +54,6 @@ v0.1.0-rc4 と v1.0.0 のどちらで扱うかは、まだ決めていない。
 
 ### diagnostics とビルドの結果
 
-- **本体の中の改ページと二度書いたコマンド（未実装）**：結果をその場に置く本体（`@style`、`@lang`、関数）の中の改ページ、行アキ、区切りを許し、入れ物を作る本体（`@frame`、注）の中では一つずつ報告する。二度書いたコマンドは、どれも最後に書いたものを残す。 [root ADR 0462](adr/0462-breaks-in-command-bodies-and-repeated-commands.md)。
-
 - **一つのコードに一つの原因に合わせたコードの分割**：[Golem ADR 0356](adr/0356-diagnostic-cause-audit.md) の [監査の記録](audits/2026-11-17-diagnostic-cause-audit.md) は、異なる原因を一つにまとめたコードを 62 件挙げ、候補ごとに分け方を提案した。どの提案を採るかを決め、ADR を作成してコードを分ける（仕様書の「設計原則」の「一つのコードに一つの原因」）。コードを分けると、書き手や CI がコードで引いていた扱いが変わるので、1.0.0 の前に済ませる。
 - **diagnostics の判定の近似の監査**：数値による診断の境界と、追加の近似を調べる手順を定めた。 [Golem ADR 0322](adr/0322-check-numeric-diagnostic-boundaries.md)（採択）。
 - **`golem check` が G01012 を二度出す件**：check と HTML ビルドで見出しの各位置を照合する回帰テストを定めた。 [Golem ADR 0323](adr/0323-heading-level-diagnostic-occurrences.md)（採択）。
