@@ -21,7 +21,6 @@ library
     Golem.Geometry.Polygon
   build-depends:
     , base          >=4.20 && <4.21
-    , containers    >=0.6  && <0.8
     , golem-length
     , text          >=2.0  && <2.2
   default-language: GHC2021

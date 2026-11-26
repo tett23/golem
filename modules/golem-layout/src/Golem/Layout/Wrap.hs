@@ -28,6 +28,13 @@ import Golem.Geometry.Polygon (RPoint, flattenPathWith, indexPolygons, reachInIn
 import Golem.Layout.KnuthPlass (Sp (..))
 import Golem.Project.PathData (Path)
 
+{- | An exclusion area: its side, the most a line loses, how many grid
+lines it covers, the wrap gap, and its edge in a band (root ADR 0464):
+given the start and the end of a band across the lines (from the top of
+the area), the text-side edge of the area within it, as a distance from
+the edge of the column on its side, or Nothing where the band does not
+meet the area.
+-}
 data Exclusion = Exclusion
   { exSide :: !Wrap,
     -- | across the lines: the figure width plus the gap, the most a line loses
@@ -36,10 +43,7 @@ data Exclusion = Exclusion
     exLines :: !Int,
     -- | the wrap gap
     exGap :: !Sp,
-    {- | the text-side edge of the area within the band from the first to
-    the second distance across the lines (from the top of the area), as a
-    distance from the edge of the column on its side; Nothing where the
-    band does not meet the area (root ADR 0464) -}
+    -- | the text-side edge within a band across the lines (root ADR 0464): see 'Exclusion'
     exEdge :: Rational -> Rational -> Maybe Rational
   }
 

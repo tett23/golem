@@ -165,9 +165,9 @@ import Golem.Numerals.Notation (writeNumber)
 import Golem.Pdf qualified as P
 import Golem.Project
 import Golem.Project.Files (Files (..))
+import Golem.Project.PathData (outlineScale)
 import Golem.Project.Paths (PathError (..), normalizeRelative, pathErrorMessage)
 import Golem.Project.Position (Position (..))
-import Golem.Project.PathData (outlineScale)
 import Golem.Project.Style
 import Golem.Svg qualified as S
 import Golem.Syntax

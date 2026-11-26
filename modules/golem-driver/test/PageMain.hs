@@ -34,7 +34,6 @@ import ParagraphRuleSpec
 import ParagraphSpec
 import ParagraphStyleControlsSpec (paragraphStyleControlsTests)
 import ParagraphWrapPitchSpec (paragraphWrapPitchTests)
-import WrapOutlineSpec qualified
 import ReuseSpec
 import SeparatorSpec (visibleSeparatorTests)
 import SinglePageSpec qualified
@@ -42,6 +41,7 @@ import SoftHyphenSpec (softHyphenTests)
 import StylesSpec
 import Test.Tasty
 import VerseLineNumbersSpec (verseLineNumberTests)
+import WrapOutlineSpec qualified
 
 main :: IO ()
 main = enterPackageDirectory >> defaultMainReportingSkips (const tests)

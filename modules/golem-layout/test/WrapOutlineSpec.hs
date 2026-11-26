@@ -155,7 +155,8 @@ enumerated =
                 || (captioned && 700 <= b && b <= 780)
          in [(a, b) | b <- bs, a <- as, inArea (a, b), a > rat (t - gap)] == [] && exWidth ex >= 0,
     testCase "root ADR 0464 I3: no line beside an outline loses more than beside the rectangle" $
-      check $ \ex _ _ _ t -> t <= exWidth ex,
+      check $
+        \ex _ _ _ t -> t <= exWidth ex,
     testCase "root ADR 0464 I4: the text of a line starts the gap and less than 1 sp more from the edge" $
       check $ \ex _ _ s t -> case exEdge ex (rat (s - gap)) (rat (s + face + gap)) of
         Nothing -> t == 0

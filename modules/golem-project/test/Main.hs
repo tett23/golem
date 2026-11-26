@@ -20,7 +20,6 @@ import FeaturesSpec qualified
 import FilesSpec qualified
 import FontLicensesSpec qualified
 import FramesSpec qualified
-import OutlinesSpec qualified
 import FunctionsSpec qualified
 import GenericFontsSpec qualified
 import Golem.Assemble (NoteNumbering (..))
@@ -38,6 +37,7 @@ import Golem.TestSupport.PackageDirectory (enterPackageDirectory)
 import HyphenationExceptionsSpec qualified
 import KeepPartsSpec qualified
 import NaturalKeySpec qualified
+import OutlinesSpec qualified
 import OutputCharsSpec qualified
 import ParagraphPitchSpec qualified
 import PathDataSpec qualified

@@ -26,8 +26,8 @@ module Golem.Geometry.Polygon
   )
 where
 
-import Data.List (sort, sortOn)
-import Data.Map.Strict qualified as Map
+import Data.Function (on)
+import Data.List (groupBy, sort, sortOn)
 import Golem.Geometry (FillRule (..), Path (..), Point, Segment (..), SubPath (..))
 import Golem.Length (Sp (..))
 
@@ -268,11 +268,11 @@ flattened within 1/4 sp has many short edges.
 -}
 data EdgeIndex = EdgeIndex
   { -- | the edges by their lowest y
-    eiEdges :: !(Map.Map Rational [(RPoint, RPoint)]),
+    eiEdges :: !(Keyed (RPoint, RPoint)),
     -- | the most an edge spans in y
     eiSpan :: !Rational,
     -- | the vertices by their y
-    eiVertices :: !(Map.Map Rational [Rational])
+    eiVertices :: !(Keyed Rational)
   }
 
 -- | The index of the edges and the vertices of polygons.
@@ -282,9 +282,9 @@ indexPolygons polys =
       lowY ((_, ay), (_, by)) = min ay by
       highY ((_, ay), (_, by)) = max ay by
    in EdgeIndex
-        (Map.fromListWith (flip (<>)) [(lowY e, [e]) | e <- es])
+        (keyed [(lowY e, e) | e <- es])
         (maximum (0 : [highY e - lowY e | e <- es]))
-        (Map.fromListWith (flip (<>)) [(y, [x]) | poly <- polys, length poly > 1, (x, y) <- poly])
+        (keyed [(y, x) | poly <- polys, length poly > 1, (x, y) <- poly])
 
 -- | 'reachInBox' of the polygons of an index.
 reachInIndex :: FillRule -> EdgeIndex -> (Rational, Rational) -> (Rational, Rational) -> Maybe Rational
@@ -296,11 +296,10 @@ reachInIndex rule ix (x0, x1) (y0, y1)
     -- the edges that reach the box across the lines: those from y0 less the longest span to y1 that end at y0 or after
     es =
       [ e
-      | bucket <- Map.elems (fst (Map.split y1 (snd (Map.split (y0 - eiSpan ix - 1) (eiEdges ix))))) <> Map.findWithDefault [] y1 (Map.map pure (eiEdges ix)),
-        e@((_, ay), (_, by)) <- bucket,
+      | e@((_, ay), (_, by)) <- inRange (y0 - eiSpan ix) y1 (eiEdges ix),
         max ay by >= y0
       ]
-    verticesIn = concat (Map.elems (fst (Map.split y1 (snd (Map.split y0 (eiVertices ix)))))) <> Map.findWithDefault [] y0 (eiVertices ix) <> (if y1 /= y0 then Map.findWithDefault [] y1 (eiVertices ix) else [])
+    verticesIn = inRange y0 y1 (eiVertices ix)
     vertices = [x | x <- verticesIn, x0 <= x, x <= x1]
     -- the part of each edge on a side of the box across the lines: its furthest x within the box
     onSideY y =
@@ -324,6 +323,32 @@ reachInIndex rule ix (x0, x1) (y0, y1)
       ]
     -- a corner inside the region: on an edge, at a vertex, or covered; the edges that matter reach its y, so are in es
     inside p@(px, py) =
-      elem px (Map.findWithDefault [] py (eiVertices ix)) || any (onEdge p) es || covered rule (winding es p)
+      elem px (inRange py py (eiVertices ix)) || any (onEdge p) es || covered rule (winding es p)
     corners = [x | x <- [x0, x1], y <- [y0, y1], inside (x, y)]
     candidates = vertices <> onSideY y0 <> onSideY y1 <> onSideX x0 <> onSideX x1 <> corners
+
+{- | Values by a rational key, for the values of the keys within a closed
+range: a search tree built once from the sorted keys (base has no map).
+-}
+data Keyed a = KLeaf | KNode !(Keyed a) !Rational [a] !(Keyed a)
+
+-- | The tree of values by their keys, balanced by splitting the sorted keys in the middle.
+keyed :: [(Rational, a)] -> Keyed a
+keyed kvs = build [(fst (head' g), map snd g) | g <- groupBy ((==) `on` fst) (sortOn fst kvs)]
+  where
+    head' g = case g of
+      x : _ -> x
+      [] -> error "keyed: an empty group"
+    build xs = case splitAt (length xs `div` 2) xs of
+      (_, []) -> KLeaf
+      (l, (k, vs) : r) -> KNode (build l) k vs (build r)
+
+-- | The values whose keys are from lo to hi, both included.
+inRange :: Rational -> Rational -> Keyed a -> [a]
+inRange lo hi = go
+  where
+    go KLeaf = []
+    go (KNode l k vs r) =
+      (if lo < k then go l else [])
+        <> (if lo <= k && k <= hi then vs else [])
+        <> (if k < hi then go r else [])

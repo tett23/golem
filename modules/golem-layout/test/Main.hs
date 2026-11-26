@@ -7,7 +7,6 @@ import AvoidSpec (avoidTests)
 import BookPartsEnum (bookPartsEnumTests)
 import BookPartsSpec qualified
 import BoxModelSpec (boxModelTests)
-import WrapOutlineSpec (wrapOutlineTests)
 import CharClassSpec (charClassTests)
 import CiteBreakEnum (citeBreakTests)
 import CodeJapaneseSpec (codeJapaneseTests)
@@ -90,6 +89,7 @@ import TrackingBoxesSpec qualified
 import UnbreakablePairsSpec (unbreakablePairsTests)
 import UnbreakableSpacingSpec (unbreakableSpacingTests)
 import UrlBreakSpec (urlBreakTests)
+import WrapOutlineSpec (wrapOutlineTests)
 
 main :: IO ()
 main = enterPackageDirectory >> defaultMain tests
