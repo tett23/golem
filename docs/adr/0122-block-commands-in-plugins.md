@@ -1,6 +1,6 @@
 # ADR 0122: プラグインのブロックコマンド
 
-Status: superseded [{"part":"区切りをブロック結果に許すこと","by":["docs/adr/0398-styled-separators-in-manuscripts.md"]}]
+Status: superseded [{"part":"区切りをブロック結果に許すこと","by":["docs/adr/0398-styled-separators-in-manuscripts.md"]},{"part":"宣言","by":["docs/adr/0453-override-built-in-commands-by-listed-imports-and-plugins.md"],"kind":"replace"}]
 
 ## 文脈
 

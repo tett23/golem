@@ -1224,8 +1224,8 @@ TOML の型は、式の値に次のように写す。
 
 | 重なる相手 | 調べる場所 | コード |
 | --- | --- | --- |
-| 組み込みのコマンドの名前（`@import`、`@set`、`@toc` など、名前空間なしで評価が組み込みとして扱うすべての名前） | インライン、ブロック | G02270 |
-| プロジェクトが宣言したプラグインのコマンドの名前 | インライン、ブロック | G02271 |
+| 上書きできない組み込みのコマンドの名前（`@import`、`@set`、`[link]` など。「プラグイン」の節の「種類」の表） | インライン、ブロック | G02270 |
+| プロジェクトが宣言したプラグインのコマンドの名前（`overrides` と `block-overrides` で上書きを宣言したプラグインのコマンドを含む） | インライン、ブロック | G02271 |
 | 同じファイルのほかの `@import` が並べた名前 | 三つとも | G02272 |
 | 同じ並びの中で前に書いた名前 | 三つとも | G02273 |
 | 同じファイルで `@set` した変数の名前 | 式 | G02274 |
@@ -1242,6 +1242,32 @@ G02272 は、重なる名前を並べたどちらの `@import` にも出し、G0
 組み込みの名前、プラグインのコマンド、`@set` の変数と重なった名前は、その使う場所には取り込まず、名前空間なしの参照は組み込みの名前、プラグインのコマンド、`@set` の変数を指す。
 ほかの `@import` と重なった名前は、その使う場所の名前空間なしの呼び出しを、何も出力せず、diagnostic も出さないものとして扱う。
 どちらの定義を呼ぶかが `@import` の行の順で変わらないようにするためである。
+
+並べた名前が、その使う場所で上書きできる組み込みのコマンド（「プラグイン」の節の「種類」の表）と同じなら、エラーにしない（[root ADR 0453](adr/0453-override-built-in-commands-by-listed-imports-and-plugins.md)）。
+その名前の呼び出しは、`@import` を書いたファイルの中で、`@import` の行より後で、組み込みのコマンドの代わりに取り込んだ関数を呼ぶ。
+`@import` の行より前の呼び出しと、ほかのファイルの呼び出しは、組み込みのコマンドを呼ぶ。
+たとえば、`pub inline "index"` と `pub block "index"` の両方を公開する `.emet` から `{ index }` を並べると、インラインの `index` は上書きできないので G02270 が一つ出て `[index …]` は組み込みのままになり、`@index` は取り込んだ関数を呼ぶ。
+
+名前を探す順は、使う場所ごとに次のとおりである。
+
+1. 上書きを宣言したプラグインのコマンド（`overrides` か `block-overrides`）
+2. 名前を並べた取り込みが上書きした、上書きできる組み込みのコマンドの名前
+3. 組み込みのコマンド（ブロックでは、ファイルの設定と属性も）
+4. プラグインのコマンド
+5. 名前空間つきの関数
+6. 名前を並べて取り込んだ、ほかの名前の関数
+
+同じ組み込みのコマンドを、上書きを宣言したプラグインと名前を並べた取り込みの両方が上書きすると、G02271 になり、その名前は取り込まれない。
+そのため 1 と 2 は同時には成り立たず、その呼び出しはプラグインのコマンドを呼ぶ。
+2 の名前には、何も出力しない呼び出しとして取り込んだ名前（読み込めなかった `.emet` から並べた名前と、G02272 になった名前）も含む。
+これらの名前の呼び出しは組み込みのコマンドを呼ばず、何も出力しない。
+書き手が上書きを意図して並べた名前で、組み込みのコマンドの出力が黙って出ないようにするためである。
+
+上書きした名前の呼び出しは、組み込みのコマンドの名前で決まる前処理と短縮記法を、組み込みのコマンドと同じく受ける。
+`##N##` は `[number-text N]` として読むので、`number-text` を上書きした取り込みの関数を呼ぶ。
+`[code …]` と、第一引数が `code` の `[style …]` の散文スロットは、短縮記法を文字のまま渡す。
+上書きした名前の中から元の組み込みのコマンドを呼ぶ書き方はない。
+名前空間つきの取り込み（`* as`）では、名前空間を通して呼ぶので上書きは起きない。
 
 `.emet` のどれかの読み込みか型の検査に誤りがあるときは、`.emet` から並べたすべての名前の G02276 と重なりの検査をせず、それらの名前空間なしの呼び出しでも G02022、G02009、G02002 を報告しない。
 名前空間つきの取り込みと同じく、誤りの元を `.emet` の中の位置で報告するためである。
@@ -7649,7 +7675,7 @@ lint の規則はユーザーが変更も追加もできないので、誰もが
 
 - 段落内の改行の前後がともに欧文の文字である箇所（G05001、エラー）。改行は文字を生まないので、単語が空白なしに連結される。細則は下に書く。
 - 使われていない `@set` 変数（G05002、エラー）。そのファイルの中でも、そのファイルを import するどのファイルからも参照されていない変数を指す。名前を並べて取り込み、名前空間なしで参照した変数は、参照されたと数える。
-- 使われていない `@import`（G05003、エラー）。名前空間つきの取り込みは、名前空間を使わなければ `@import` の行で報告する。名前を並べた取り込みは、並べた名前のうち使われていないものを、その名前の位置で一つずつ報告する。
+- 使われていない `@import`（G05003、エラー）。名前空間つきの取り込みは、名前空間を使わなければ `@import` の行で報告する。名前を並べた取り込みは、並べた名前のうち使われていないものを、その名前の位置で一つずつ報告する。組み込みのコマンドを上書きした名前の呼び出しも、その名前を使ったと数える（[root ADR 0453](adr/0453-override-built-in-commands-by-listed-imports-and-plugins.md)）。
 - 参照されていない `@label`（G05004）。dev のプロファイルでは警告、prod のプロファイルではエラーとする。外部からのリンクの受け口として書きかけの原稿に置いておくラベルは許すが、入稿やデプロイのために組む本に参照されないラベルを残さないためである。
 
 さらに、引数列や式のコメントとの区切りに半角スペースがない一意な境界を G05100 の info として一か所ずつ報告する（[Golem ADR 0339](adr/0339-comments-in-arguments-and-manuscript-expressions.md)）。
@@ -7781,9 +7807,9 @@ UTF-8 として読めない表のファイルは、原稿と同じく整形せ�
 LSP は次の機能を持つ。
 
 - diagnostics（コンパイルエラーと lint）。重大度ごとの載せ方は下に書く。
-- 定義への移動と参照の検索（`@import`、変数、ラベル）。ラベルは文書単位なので、章をまたいで引ける。注の `label=` もラベルの定義として扱う（[root ADR 0422](adr/0422-references-to-notes.md)）。名前を並べて取り込んだ名前は、名前の並びの中の名前と名前空間なしの参照から、`.emet` の宣言か `@set` の変数へ移動する。`.emet` の関数の参照には、名前の並びの中の名前も入る（[docs/adr/0451](adr/0451-import-listed-names-without-a-namespace.md)）。
+- 定義への移動と参照の検索（`@import`、変数、ラベル）。ラベルは文書単位なので、章をまたいで引ける。注の `label=` もラベルの定義として扱う（[root ADR 0422](adr/0422-references-to-notes.md)）。名前を並べて取り込んだ名前は、名前の並びの中の名前と名前空間なしの参照から、`.emet` の宣言か `@set` の変数へ移動する。`.emet` の関数の参照には、名前の並びの中の名前も入る（[docs/adr/0451](adr/0451-import-listed-names-without-a-namespace.md)）。名前を並べた取り込みが上書きした組み込みのコマンドの呼び出しからは、取り込んだ関数の宣言へ移動する（[root ADR 0453](adr/0453-override-built-in-commands-by-listed-imports-and-plugins.md)）。
 - ラベルの名前変更（章をまたいで一括で書き換える）と、`.emet` の名前の変更（[docs/adr/0170](adr/0170-emet-editor-support.md)）
-- 補完（組み込みとプラグインのコマンドの名前、ラベル（注のラベルを含む）、注のコマンドの後の `label=`（[root ADR 0422](adr/0422-references-to-notes.md)）、import のパス、`[color ...]` のスウォッチ、`[style ...]` の文字スタイル、行頭の `@style` の段落スタイル、`@frame` のフレームの名前（[root ADR 0438](adr/0438-place-text-frames-anywhere-on-a-page.md)）、`@page-break` と `@page-lines` の値、`@manifest` と `@style-def` のキーと値、式の中の組み込みの定数と関数、`meta` と `meta.roles` のキー、式の中の `vars` と `[vars]` の表の中のキー、`style.toml` と `preflight.toml` のキーと値、`manifest.toml` の列挙できる値、[Golem ADR 0347](adr/0347-revise-complete-manifest-values-and-manuscript-expressions.md)）。`@import` の名前の並びの中では取り込む先の公開された名前を、名前を並べて取り込んだファイルの中では、その名前を使う場所ごとに名前空間なしで補完する（[docs/adr/0451](adr/0451-import-listed-names-without-a-namespace.md)）
+- 補完（組み込みとプラグインのコマンドの名前、ラベル（注のラベルを含む）、注のコマンドの後の `label=`（[root ADR 0422](adr/0422-references-to-notes.md)）、import のパス、`[color ...]` のスウォッチ、`[style ...]` の文字スタイル、行頭の `@style` の段落スタイル、`@frame` のフレームの名前（[root ADR 0438](adr/0438-place-text-frames-anywhere-on-a-page.md)）、`@page-break` と `@page-lines` の値、`@manifest` と `@style-def` のキーと値、式の中の組み込みの定数と関数、`meta` と `meta.roles` のキー、式の中の `vars` と `[vars]` の表の中のキー、`style.toml` と `preflight.toml` のキーと値、`manifest.toml` の列挙できる値、[Golem ADR 0347](adr/0347-revise-complete-manifest-values-and-manuscript-expressions.md)）。`@import` の名前の並びの中では取り込む先の公開された名前を、名前を並べて取り込んだファイルの中では、その名前を使う場所ごとに名前空間なしで補完する（[docs/adr/0451](adr/0451-import-listed-names-without-a-namespace.md)）。組み込みのコマンドと同じ名前を並べたときは、二つを一つの候補にまとめる（[root ADR 0453](adr/0453-override-built-in-commands-by-listed-imports-and-plugins.md)）
 - ホバーによる `[= ...]` の評価結果の表示
 - 整形（fmt を呼び出す）
 - 見出しによる文書のアウトラインと、`.emet` の宣言のアウトライン（[docs/adr/0170](adr/0170-emet-editor-support.md)）
@@ -9273,11 +9299,22 @@ ABI のバージョンと、ABI を変えるときの規則は、下の「シリ
 
 また、プラグインは、コマンドとフィルタのほかに、独自のチャネルを宣言できる（「チャネル」の節の「プラグインとの関係」、[golem-doc ADR 0007](golem-doc/adr/0007-plugin-channel-lists.md)）。
 
-プラグインのコマンドは、表示に関わる組み込みのインラインのコマンドを上書きできる。
+プラグインのコマンドは、組み込みのコマンドのうち上書きできるものを上書きできる。
 ただし、上書きできるのは、マニフェストで上書きを宣言した場合に限る（[docs/adr/0031](adr/0031-adr-code-mismatches.md)）。
-上書きできるのは `strong`、`bold`、`italic`、`code`、`ruby`、`kenten`、`color`、`style`、`tcy`、`number-text` の十である。
-上書きできないのは、文書構造、参照、チャネルに関わる `ref-number`、`ref-title`、`ref-page`、`note`、`sidenote`、`index`、`cite` と、`aki`、`link`、`lang`、`shy` である（[docs/adr/0187](adr/0187-inline-language-switch.md)、[docs/adr/0272](adr/0272-discretionary-hyphens-hyphenation-exceptions-and-no-break.md)）。
-`link` を組み込みに固定するのは、`ref-number` や `note` と同じく、PDF のリンクになる要素だからである（[docs/adr/0182](adr/0182-external-links.md)）。
+インラインのコマンドは `overrides` で、ブロックコマンドは `block-overrides` で宣言する（[root ADR 0453](adr/0453-override-built-in-commands-by-listed-imports-and-plugins.md)）。
+名前を並べた取り込みも、同じコマンドを上書きできる（「定義の取り込み」の節）。
+上書きできるコマンドとできないコマンドは、使う場所ごとに次のとおりである。
+
+| 使う場所 | 上書きできる | 上書きできない |
+| --- | --- | --- |
+| インライン | `strong`、`bold`、`italic`、`code`、`ruby`、`kenten`、`color`、`style`、`warichu`、`upright`、`tcy`、`number-text` の十二 | `ref-number`、`ref-title`、`ref-page`、`note`、`sidenote`、`endnote`、`index`、`cite`、`aki`、`link`、`lang`、`shy` の十二 |
+| ブロック | 出力の中身を作る `toc`、`index`、`bibliography`、`printings`、`separator` の五つ | 上の五つのほかのすべて。取り込みと変数（`import`、`set`）、スタイル（`style`、`style-def`）、ファイルの設定（`manifest`、`hyphenation-exceptions`）、属性、チャネル（`channel`）、図表とコード（`figure`、`table`、`listing`）、注（`note`、`endnote`）、フレーム（`frame`）、改ページと行の指定（`page-break`、`column-break`、`no-page-break`、`need-lines`、`page-lines`、`blank-line`）、言語（`lang`） |
+
+上書きできないコマンドは、評価、ページ分割、参照、チャネルの仕組みが、そのコマンドの意味を前提にするものである（[docs/adr/0187](adr/0187-inline-language-switch.md)、[docs/adr/0272](adr/0272-discretionary-hyphens-hyphenation-exceptions-and-no-break.md)）。
+たとえば、`link` を組み込みに固定するのは、`ref-number` や `note` と同じく、PDF のリンクになる要素だからである（[docs/adr/0182](adr/0182-external-links.md)）。
+上書きできるコマンドは、出力の中身だけを作り、ほかの仕組みがその中身を読まないものである。
+表のブロックの行の「上書きできない」は例を挙げたもので、属性（`label`、`caption` など）を含め、上書きできる五つのほかの組み込みのブロックコマンドの名前はすべて上書きできない。
+組み込みのブロックコマンドの名前の一覧は `Golem.Eval.Builtin.builtinBlockCommands` で、上書きできる五つ（`overridableBlockCommands`）と、上書きできない名前（`fixedBlockCommands`）に分かれる。
 
 ### 実行の範囲
 
@@ -9510,14 +9547,24 @@ data = { table = "data/words.tsv" }
 
 - 形の誤った名前（`ブロックコマンドの名前が不正です: <名前>`）
 - 二度書いた名前（`ブロックコマンドの名前が重複しています: <名前>`）
-- 組み込みのブロックコマンドの名前（`組み込みのブロックコマンドの名前です: <名前>`）。属性、`manifest`、`style-def`、`set`、`import` を含む（`Golem.Eval.Builtin.builtinBlockCommands`）。
 
 ブロックコマンドの名前は、インラインのコマンドの名前と別の名前空間にある。
 `@name` はブロックコマンドだけを、`[name ...]` はインラインのコマンドだけを呼ぶ。
 二つのプラグインが同じブロックコマンドを宣言すると、G06006（`複数のプラグインが同じブロックコマンドを提供しています: @<名前>（<プラグイン>、...）`）になる。
-組み込みのブロックコマンドは上書きできない。
 
-評価は、組み込みのブロックコマンド、ファイルの設定、属性を先に調べ、どれでもなければプラグインのブロックコマンドを探し、なければ G02009 とする。
+プラグインは、上書きできる組み込みのブロックコマンド（「種類」の節の表）を、マニフェストの `block-overrides` で宣言して上書きできる（[root ADR 0453](adr/0453-override-built-in-commands-by-listed-imports-and-plugins.md)）。
+組み込みのブロックコマンドの名前（`Golem.Eval.Builtin.builtinBlockCommands`。属性、`manifest`、`style-def`、`set`、`import` を含む）は、golem-plugin の `golem_describe` の検査では拒まない。
+golem-evaluate が、インラインのコマンドの `overrides` と同じく、マニフェストと照らして次のものを報告する。
+
+- 組み込みのブロックコマンドと同じ名前を提供し、`block-overrides` に書いていない（`組み込みのブロックコマンドと衝突しています（block-overrides で宣言してください）: <プラグイン>.@<名前>`）。
+  上書きできない組み込みのブロックコマンドと同じ名前を提供した（`上書きできない組み込みのブロックコマンドと衝突しています: <プラグイン>.@<名前>`）。
+  どちらも G06007 で、提供した名前ごとに一つ出す。
+- `block-overrides` に、プラグインが提供していないブロックコマンドを書いた（`プラグインが提供していないブロックコマンドを block-overrides に書いています: <プラグイン>.@<名前>`）。
+  上書きできる組み込みのブロックコマンドでない名前を書いた（`上書きできる組み込みのブロックコマンドではありません: <プラグイン>.@<名前>`）。
+  どちらも G06008 で、書いた名前ごとに一つ出す。
+  G06008 の名前は、上書きできない名前を提供していても、G06007 を出さない。インラインのコマンドの `overrides` と同じ扱いである。
+
+評価は、ブロックコマンドを、`block-overrides` で上書きを宣言したプラグイン、名前を並べた取り込みが上書きした名前、組み込みのブロックコマンド、ファイルの設定、属性、プラグインのブロックコマンド、名前空間つきの関数、名前を並べて取り込んだほかの名前の関数の順に探し、なければ G02009 とする。
 ただし、プラグインの読み込みか検査に誤りがあるときは、G02022 と G02090 と同じく G02009 を報告しない。
 
 呼び出しの要求と応答は、次のとおりである。
@@ -9848,7 +9895,7 @@ files = ["chapters/01.gm"]
 
 - `[plugins.<名前>]` は、プラグインを名前を付けて宣言する。名前は、原稿と `[[filters]]` からプラグインを指すのに使う。
 - `url` は配布物の URL、`path` はプロジェクトの中の `.wasm` のパス（下の `path` の説明）で、どちらか一方だけを書く。両方を書くか、どちらも書かなければ G03001 になる。
-- `overrides` は、上書きする組み込みのインラインのコマンドの名前の配列である。`data` は、プラグインに渡すデータ（「データ」の節）である。
+- `overrides` は、上書きする組み込みのインラインのコマンドの名前の配列である。`block-overrides` は、上書きする組み込みのブロックコマンドの名前の配列である（「ブロックコマンド」の節、[root ADR 0453](adr/0453-override-built-in-commands-by-listed-imports-and-plugins.md)）。二つのキーを分けるのは、`style` のように、インラインとブロックの両方にある名前があるためである。`data` は、プラグインに渡すデータ（「データ」の節）である。
 - `[[filters]]` は、フィルタを当てるファイルを、当てる順に書く。`plugin` は `[plugins.<名前>]` の名前、`filter`（必須）はそのプラグインのフィルタの名前、`files`（必須）はフィルタを当てる原稿のファイルの配列である。
   未宣言の `plugin` は G06010 をその値に、プラグインが提供していない `filter` は G06107 をその値に出す（[ADR 0330](adr/0330-undeclared-plugin-and-missing-filter.md)）。
 - `[[filters]]` の `plugin` の代わりに `function` に `.emet` のパスを書けば、`.emet` のフィルタになる（[ADR 0162](adr/0162-calling-emet-functions-from-gm.md)、「.gm から関数を使う」）。`plugin` と `function` は、どちらか一方だけを書く。
