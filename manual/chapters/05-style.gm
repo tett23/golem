@@ -902,6 +902,7 @@ regex-styles = [
 - [code: page-break]：[code: "recto"] にすると、その見出しを奇数ページから始めます。
 - [code: block-align]：行取りの中で見出しを置く位置です。[code: "start"] は前に、[code: "center"] は中央に、[code: "end"] は後ろに寄せます。既定は [code: "center"] です。前と後ろは、横組みでは上と下、縦組みでは右と左です。
 - [code: number-title-separator]：番号と題のあいだに入れる文字列です。たとえば [code: number-title-separator = "："] と書くと、「第3章：原稿の記法」のように組みます。[code: ""] にすると、番号のすぐ後に題が続きます。書かなければ、上の [code: number] の区切りが入ります。目次、柱、PDF のしおりも、この区切りを使います。
+- [code: title-format]：番号のある見出しの、番号と題の並べ方です。[code: {number}] が番号、[code: {title}] が題、[code: {separator}] が上の区切りの位置になります。たとえば [code: title-format = "{title}（{number}）"] と書くと、「原稿の記法（第3章）」のように組みます。[code: {meta.title}]、[code: {vars.<名前>}]、見出しのあるファイルの変数 [code: {set.<名前>}] も差し込めます。目次、柱、PDF のしおりも、この書式で組みます。番号のない見出しは、題だけで組みます。
 
 格子モードでは、本文より大きい見出しも、行の格子からずらさずに置きます。
 見出しは、その大きさを収める行数を占め、[code: block-align] で決めた位置に組まれます（行取り）。
@@ -1198,7 +1199,7 @@ leader = "dots"
 - [code: \[notes.rule\]]：PDF のページの下の脚注の前に引く区切り線です。[code: length] が線の長さ（必須）、[code: weight] が太さ（省くと [code: "0.3pt"]）、[code: space-before] が本文の最後の行と線のあいだの空き、[code: space-after] が線と脚注の一行目のあいだの空きです。[code: style] で線の種類を、[code: color] でスウォッチの名前の色を選べます。このテーブルがなければ線は引きません。
 - [code: \[sidenotes\]]：傍注の領域を設けます。見開きモードでは既定で小口側、左右固定モードでは明記した [code: side] の側の余白を使います。[code: width] が傍注の領域の幅、[code: gap] が版面とのあいだの空きです。[code: marker] で本文側の印を、番号（[code: "number"]）、「※」（[code: "symbol"]）、なし（[code: "none"]）から選べます。[code: marker-style] には、本文の中の「※」に当てる文字スタイルの名前を書きます。省くと、「※」は置いた位置の文字のまま組みます。この文字スタイルは、傍注の本文の先頭の「※」と番号の印には当たりません。
 - [code: \[figures\]] の [code: number]：図番号の書式です。[code: {chapter}] が章の番号、[code: {n}] が章の中の図の番号です。[code: wrap-gap] で、回り込みの図版と本文のあいだの空きを決めます。
-- [code: \[paragraph-styles.caption\]] の [code: number-title-separator]：図版、コードブロック、表のキャプションで、番号と題のあいだに入れる文字列です。書き方は見出しの [code: number-title-separator] と同じです。[code: \[paragraph-styles.body\]] に書いた区切りも、キャプションに届きます。
+- [code: \[paragraph-styles.caption\]] の [code: number-title-separator]：図版、コードブロック、表のキャプションで、番号と題のあいだに入れる文字列です。書き方は見出しの [code: number-title-separator] と同じです。[code: \[paragraph-styles.body\]] に書いた区切りも、キャプションに届きます。同じ段落スタイルの [code: title-format] で、キャプションの番号と題の並べ方を見出しと同じく書けます。
 - [code: \[toc\]] の [code: leader]：目次のリーダーを点線（[code: "dots"]）にするか、なし（[code: "none"]）にするかです。
 
 本文と脚注のあいだは、行の格子の一行分だけ空いています。

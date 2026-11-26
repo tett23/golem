@@ -327,6 +327,7 @@ pageMapTests =
           bookChannels = [],
           bookChannelDecls = Map.empty,
           bookTitleSeparators = Map.empty,
+          bookTitleFormats = Map.empty,
           bookSeparators = Map.empty,
           bookImages = Map.empty
         }

@@ -16,7 +16,7 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Golem.Assemble
 import Golem.Assemble.ListMarkers
-import Golem.Assemble.Numbering (titleSeparator)
+import Golem.Assemble.Numbering (numberedTitleText)
 import Golem.Bibliography (EntryPart, entryText)
 import Golem.Doc.Citation (citationPieces, citationText)
 import Golem.Doc.IR
@@ -148,7 +148,7 @@ block c ind (Block sp _ _ body) = case body of
      in lead first <> T.intercalate ("\n" <> lead rest) (map (inlines c) (splitAtLineBreaks is)) <> sidenotes is
   Heading l _ is ->
     let num = Map.lookup sp (bookHeadings (cBook c)) >>= hiNumberText
-     in numbered sp (Just l) (inlines c is) num <> inlines c is
+     in numbered sp (Just l) (inlines c is) num
   BulletList items -> T.intercalate "\n" [indentBy ind <> spaced (atDepth (tlBullets (cLists c)) depth) <> itemText (ind + 1) it | it <- items]
   OrderedList items ->
     T.intercalate "\n" [indentBy ind <> marker n <> itemText (ind + 1) it | (n, it) <- zip (itemNumbers items) items]
@@ -160,14 +160,14 @@ block c ind (Block sp _ _ body) = case body of
       ]
   -- the caption a line before or after the rows, as that of a code block (docs/adr/0262)
   TableBlock t ->
-    let caption = [numbered sp Nothing (inlines c is) (Map.lookup sp (bookTables (cBook c))) <> inlines c is | Just is <- [tableCaption t]]
+    let caption = [numbered sp Nothing (inlines c is) (Map.lookup sp (bookTables (cBook c))) | Just is <- [tableCaption t]]
         rows = map (T.intercalate "\t" . map (inlines c)) (tableHeader t : tableRows t)
      in T.intercalate "\n" (if cTableCaptionBelow c then rows <> caption else caption <> rows)
   -- the caption, the file name, the diff marks and the callouts (golem-driver ADR 0023)
   CodeBlock code ->
     let num = Map.lookup sp (bookListings (cBook c))
         -- the separator of the language (golem-driver ADR 0042)
-        caption = [numbered sp Nothing (inlines c is) num <> inlines c is | Just is <- [codeCaption code]]
+        caption = [numbered sp Nothing (inlines c is) num | Just is <- [codeCaption code]]
         mark l = case clDiff l of
           Just DiffAdded -> "+"
           Just DiffRemoved -> "-"
@@ -178,11 +178,11 @@ block c ind (Block sp _ _ body) = case body of
   FigureBlock f ->
     let num = Map.lookup sp (bookFigures (cBook c))
         cap = T.intercalate "" [inlines c is | Block _ _ _ (Paragraph _ is) <- figCaption f]
-        line = T.strip (numbered sp Nothing cap num <> cap)
+        line = T.strip (numbered sp Nothing cap num)
      in -- no line without a number and a caption (docs/adr/0200)
         if T.null line then "" else "［" <> line <> "］"
   ChannelOutput (TocOutput d) ->
-    T.intercalate "\n" [numbered (teSpan e) (Just (teLevel e)) (inlines c (teTitle e)) (teNumber e) <> inlines c (teTitle e) | e <- bookToc (cBook c), teLevel e <= d]
+    T.intercalate "\n" [numbered (teSpan e) (Just (teLevel e)) (inlines c (teTitle e)) (teNumber e) | e <- bookToc (cBook c), teLevel e <= d]
   ChannelOutput IndexOutput -> ""
   -- the body of each entry of a channel of a plugin on a line (golem-doc ADR 0007)
   ChannelOutput (CustomOutput _ _) -> T.intercalate "\n" [inlines c (ceBody e) | e <- channelAt (cBook c) sp]
@@ -201,8 +201,8 @@ block c ind (Block sp _ _ body) = case body of
     -- the entry, or the key that has none (golem-doc ADR 0004, 0005)
     T.intercalate "\n" ["[" <> T.pack (show n) <> "] " <> maybe k entryText (Map.lookup k (cBibliography c)) | (k, n) <- bibliographyAt (cBook c) sp]
   where
-    -- a number and the separator of the language (golem-html ADR 0002)
-    numbered site level title = maybe "" (\n -> n <> titleSeparator (cLanguage c) (Map.lookup (spanFile site, level) (bookTitleSeparators (cBook c))) n title)
+    -- a title with its number and the separator of the language (golem-html ADR 0002), or by the format of its level (root ADR 0463)
+    numbered site level title = maybe title (\n -> let key = (spanFile site, level) in numberedTitleText (cLanguage c) (Map.lookup key (bookTitleSeparators (cBook c))) (Map.lookup key (bookTitleFormats (cBook c))) n title)
     -- the markers of [lists] by depth; without numbers, those of a book without [lists] (golem-driver ADR 0013)
     depth = cDepth c + 1
     marker n = case tlNumbers (cLists c) of

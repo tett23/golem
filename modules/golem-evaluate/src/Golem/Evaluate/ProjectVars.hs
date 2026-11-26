@@ -5,6 +5,7 @@ formats of style.toml.
 module Golem.Evaluate.ProjectVars
   ( projectVarTexts,
     projectVarDiagnostics,
+    lookupProjectVar,
   )
 where
 
@@ -19,12 +20,12 @@ import Golem.Project.Style (RunningRef (..), runningFormatSites)
 import Golem.Syntax
 
 -- | The value at a path of the tables of [vars].
-lookupVar :: Map Text Value -> [Text] -> Maybe Value
-lookupVar vars = \case
+lookupProjectVar :: Map Text Value -> [Text] -> Maybe Value
+lookupProjectVar vars = \case
   [] -> Nothing
   [k] -> Map.lookup k vars
   k : rest -> case Map.lookup k vars of
-    Just (VHash t) -> lookupVar t rest
+    Just (VHash t) -> lookupProjectVar t rest
     _ -> Nothing
 
 {- | The text of every value of [vars] a running head can show, by its
@@ -55,7 +56,7 @@ projectVarDiagnostics styleFid styleText pvars =
     ]
   where
     vars = projectVarValues pvars
-    check master sp n optional = case lookupVar vars n of
+    check master sp n optional = case lookupProjectVar vars n of
       Nothing
         | optional -> []
         | otherwise -> [diagnostic "G03111" Error sp ("柱が参照する変数 vars." <> T.intercalate "." n <> " が、manifest.toml の [vars] にありません（マスターページ " <> master <> "）")]

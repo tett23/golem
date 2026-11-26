@@ -247,6 +247,7 @@ HTML と EPUB は、既定ではフォントのファイルを同梱せず、役
 見出しを行取りの中の前、中央、後ろのどこに寄せるかは、`block-align` で選べる。
 見出しの番号と題のあいだの区切りの文字列は `[headings.<階層>]` の `number-title-separator` で選べ、目次、柱、PDF のしおりもその区切りを使う（[Golem ADR 0372](docs/adr/0372-number-title-separator.md)）。
 図版、コードブロック、表のキャプションの区切りは、段落スタイル `caption` の `number-title-separator` で選べる。
+番号と題の並べ方は、同じ場所の `title-format` に `{title}（{number}）` のような書式で書け、`[metadata]`、`[vars]`、ファイルの変数も差し込める（[root ADR 0463](docs/adr/0463-title-formats-for-numbered-headings-and-captions.md)）。
 
 文字と段落の見た目は、スタイルにまとめる。
 文字の見た目は `[character-styles.<名前>]` の文字スタイル、段落の見た目は `[paragraph-styles.<名前>]` の段落スタイルにまとめる。

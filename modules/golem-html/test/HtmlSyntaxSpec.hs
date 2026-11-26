@@ -96,6 +96,7 @@ bookOfDocs docs =
       bookChannels = [],
       bookChannelDecls = Map.empty,
       bookTitleSeparators = Map.empty,
+      bookTitleFormats = Map.empty,
       bookImages = Map.empty,
       bookSeparators = Map.empty
     }

@@ -23,7 +23,7 @@ import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Time.Calendar (Day, showGregorian)
 import Golem.Assemble
-import Golem.Assemble.Numbering (titleSeparator)
+import Golem.Assemble.Numbering (formatSeparator, formatTitle, titleSeparator)
 import Golem.Html
 import Golem.Syntax.Span
 import System.FilePath (takeExtension, (</>))
@@ -149,10 +149,16 @@ navDocument cfg ft book =
         <> "#"
         <> escapeXml (teAnchor e)
         <> "\">"
-        <> maybe "" (\n -> escapeXml (n <> titleSeparator (epLanguage cfg) (Map.lookup (teFile e, Just (teLevel e)) (bookTitleSeparators book)) n (foldMap inlineText (teTitle e)))) (teNumber e)
-        -- the language spans stay, for assistive technologies (docs/adr ADR 0187)
-        <> titleWithLanguages (teTitle e)
+        <> numbered e
         <> "</a>"
+    -- the number and the separator before the title, or the format of the level (root ADR 0463);
+    -- the language spans stay, for assistive technologies (docs/adr ADR 0187)
+    numbered e =
+      let key = (teFile e, Just (teLevel e))
+          separator = Map.lookup key (bookTitleSeparators book)
+       in case (teNumber e, Map.lookup key (bookTitleFormats book)) of
+            (Just n, Just format) -> formatTitle escapeXml (escapeXml n) (titleWithLanguages (teTitle e)) (formatSeparator (epLanguage cfg) separator) format
+            _ -> maybe "" (\n -> escapeXml (n <> titleSeparator (epLanguage cfg) separator n (foldMap inlineText (teTitle e)))) (teNumber e) <> titleWithLanguages (teTitle e)
     nested [] = "<ol><li><a href=\"#toc\">" <> escapeXml (epTitle cfg) <> "</a></li></ol>"
     nested es = "<ol>" <> go es <> "</ol>"
     go [] = ""

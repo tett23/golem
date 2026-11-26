@@ -59,6 +59,7 @@ import Golem.Eval.Value
 import Golem.Evaluate.Functions (LoadedFunctions (..), RequiredFiles (..), loadFunctions, loadRequiredFiles, requiredFileSet, requirementHandlers)
 import Golem.Evaluate.Plugins (FunctionFilter, HostContext (..), LoadedPlugins (..), defaultCacheDir, loadPlugins)
 import Golem.Evaluate.ProjectVars (projectVarDiagnostics, projectVarTexts)
+import Golem.Evaluate.TitleFormats (localTitleFormatDiagnostics, resolveTitleFormats, titleFormatSetDiagnostics, titleFormatStyleDiagnostics, titleFormatsOf)
 import Golem.Evaluate.Verse (numberVerseDocument)
 import Golem.Parser (parseAst)
 import Golem.Parser.AST qualified as A
@@ -197,7 +198,8 @@ evaluateProjectWith files overlay profile root = do
               functionFiles = Set.fromList [siPath si | si <- Map.elems (lfSources functions)]
               pluginCommands = sort (map unPluginCommandName (Map.keys (phCommands hook)))
               -- G03111 and G03112 of {vars.<name>} of the running heads, once for the project (docs/adr/0185)
-              runningVarDiags = projectVarDiagnostics styleFid (fromMaybe "" styleText) (manifestVars manifest0)
+              -- and G03297 to G03299 of the title formats of style.toml, once for each slot (root ADR 0463)
+              runningVarDiags = projectVarDiagnostics styleFid (fromMaybe "" styleText) (manifestVars manifest0) <> titleFormatStyleDiagnostics styleFid (fromMaybe "" styleText) manifest0
               -- style.toml, which the context comes from, when a plugin asks for it: the LSP watches it (docs/adr/0121)
               contextFiles = Set.fromList ["style.toml" | not (null (phContextNames hook))]
           if hasErrors synDiags
@@ -247,7 +249,7 @@ stage or of S0 have an error.
 -}
 assembleResults :: Map Text ChannelDecl -> Handlers -> Maybe Program -> Style -> FileId -> Text -> Manifest -> Project -> [Diagnostic] -> Map FileId EvalResult -> (Maybe Book, [Diagnostic])
 assembleResults channels handlers program style styleFid styleText manifest project projectDiags results
-  | hasErrors (projectDiags <> concatMap erDiagnostics (Map.elems results)) = (Nothing, [])
+  | hasErrors (projectDiags <> concatMap erDiagnostics (Map.elems results) <> localFormatDiags) = (Nothing, localFormatDiags)
   | otherwise =
       let -- the chapter of the manifest of each file: a top-level entry, a nested array as one (golem-driver ADR 0018)
           chapterOfFile = [i | (i, e) <- zip [0 :: Int ..] (manifestChapters manifest), _ <- chapterFiles [e]] <> [length (manifestChapters manifest) ..]
@@ -273,6 +275,10 @@ assembleResults channels handlers program style styleFid styleText manifest proj
                        Just separator <- [hsNumberTitleSeparator h]
                      ]
               )
+          -- the title formats of the numbered headings and captions, their variables in place (root ADR 0463)
+          formats = titleFormatsOf style results
+          fileVar = fileVariable project results
+          formatDiags = titleFormatSetDiagnostics fileVar formats book
           numberedDocs =
             [ numberVerseDocument (maybe style (withLocalStyles style . erStyles) (Map.lookup fid results)) doc
             | doc@(Document fid _) <- bookDocs book
@@ -284,7 +290,10 @@ assembleResults channels handlers program style styleFid styleText manifest proj
               Block sp _ _ (FrameBlock name _) <- framesIn bs,
               Map.notMember name (stFrames style)
             ]
-       in (Just book {bookDocs = numberedDocs, bookTitleSeparators = separators, bookImages = Map.unions (map erImages (Map.elems results)), bookSeparators = resolvedSeparators}, separatorDiags <> frameDiags <> s1Diags)
+       in (Just book {bookDocs = numberedDocs, bookTitleSeparators = separators, bookTitleFormats = resolveTitleFormats fileVar manifest formats, bookImages = Map.unions (map erImages (Map.elems results)), bookSeparators = resolvedSeparators}, localFormatDiags <> separatorDiags <> frameDiags <> formatDiags <> s1Diags)
+  where
+    -- G03297 to G03299 of the title formats of @style-def, at the definitions (root ADR 0463)
+    localFormatDiags = localTitleFormatDiagnostics manifest project results
 
 -- | The text frames of blocks, at any depth, in order (root ADR 0438).
 framesIn :: [Block] -> [Block]
@@ -481,17 +490,11 @@ runningVars e =
   let project = evProject e
       style = evStyle e
       masters = stMasters style
-      ImportGraph graph = projectImports project
       masterOf name = (name >>= \n -> (n,) <$> Map.lookup n masters) <|> (("body",) <$> Map.lookup "body" masters) <|> Map.lookupMin masters
       perFile (fid, name) = case (masterOf name, Map.lookup fid (evResults e)) of
-        (Just (mname, MasterDef {mdRunningHead = Just rh}), Just r) ->
+        (Just (mname, MasterDef {mdRunningHead = Just rh}), Just _) ->
           let refs = Map.fromListWith (&&) [(n, q) | c <- [rhOdd rh, rhEven rh], (RefVar n, q) <- runningRefs c]
-              lookupVar = \case
-                -- its own, or one an @import lists, by its alias (root ADR 0451, root ADR 0458)
-                [v] -> Map.lookup v (erExports r) <|> imported (\site -> [lnName l | l <- importNames site, lnAlias l == v])
-                [ns, v] -> imported (\site -> [v | importNamespace site == Just ns])
-                _ -> Nothing
-              imported origs = listToMaybe [x | (tfid, site) <- Map.findWithDefault [] fid graph, o <- origs site, Just tr <- [Map.lookup tfid (evResults e)], Just x <- [Map.lookup o (erExports tr)]]
+              lookupVar = fileVariable project (evResults e) fid
               at = mkSpan fid 0 0
               related = [(mkSpan (evStyleFile e) 0 0, "マスターページ " <> mname <> " の柱の書式")]
               one (n, optional) = case lookupVar n of
@@ -506,6 +509,20 @@ runningVars e =
            in (Map.singleton fid (Map.fromList vals), ds)
         _ -> (Map.empty, [])
    in foldMap perFile (nub [(fid, name) | (fid, name) <- projectChapters project])
+
+{- | A variable of a file by its path in @{set.<name>}@ or
+@{set.<namespace>.<name>}@ (golem-driver ADR 0022): its own or one an
+@import lists, by its alias (root ADR 0451, root ADR 0458), or one of a
+file it imports with the namespace.
+-}
+fileVariable :: Project -> Map FileId EvalResult -> FileId -> [Text] -> Maybe Value
+fileVariable project results fid = \case
+  [v] -> (Map.lookup fid results >>= Map.lookup v . erExports) <|> imported (\site -> [lnName l | l <- importNames site, lnAlias l == v])
+  [ns, v] -> imported (\site -> [v | importNamespace site == Just ns])
+  _ -> Nothing
+  where
+    ImportGraph graph = projectImports project
+    imported origs = listToMaybe [x | (tfid, site) <- Map.findWithDefault [] fid graph, o <- origs site, Just tr <- [Map.lookup tfid results], Just x <- [Map.lookup o (erExports tr)]]
 
 -- | How a file is referred to: by @figure, @table or @listing (golem-eval ADR 0004).
 data AssetUse = UseImage | UseTable | UseListing

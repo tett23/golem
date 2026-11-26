@@ -61,6 +61,7 @@ import Golem.Eval.Expr (builtinExpressionNames, embedValue, evalExpr, plainEnv)
 import Golem.Eval.File (EvalResult (..), Usage (..), builtinInlineCommands)
 import Golem.Eval.Value (Value (..), projectVarValues, typeName)
 import Golem.Evaluate (Evaluated (..), metadataValues)
+import Golem.Evaluate.TitleFormats (styleDefTitleFormats)
 import Golem.Fmt (FormatResult (..), format)
 import Golem.Lsp.Toml (Context (..), Quote (..), contextAt, definedPaths)
 import Golem.Lsp.Workspace
@@ -71,7 +72,7 @@ import Golem.Parser.SourceSettings (paragraphSeparators, sourceKeys)
 import Golem.Preflight.Rules (rulesSchema)
 import Golem.Project
 import Golem.Project.Paths (normalizeRelative)
-import Golem.Project.Style (FontRole, LocalStyles (..), Style (..), StyleKind (..), alignValues, builtinAkiSetNames, builtinCharStyles, builtinParaStyles, charStyleKeys, defaultStyle, layoutValueNames, layoutValueSites, lineBreaksValues, noLocalStyles, paraStyleKeys, parseStyle, regexStyleKeys, styleSchema)
+import Golem.Project.Style (FontRole, LocalStyles (..), RunningRef (..), Style (..), StyleKind (..), TitleFormatPart (..), alignValues, builtinAkiSetNames, builtinCharStyles, builtinParaStyles, charStyleKeys, defaultStyle, layoutValueNames, layoutValueSites, lineBreaksValues, noLocalStyles, paraStyleKeys, parseStyle, parseTitleFormat, regexStyleKeys, styleSchema, titleFormatSites)
 import Golem.Project.TomlSchema (Leaf (..), Namespace (..), Node (..), nodeAt)
 import Golem.Syntax
 import Language.LSP.Protocol.Types (PositionEncodingKind (..), SemanticTokenAbsolute (..), SemanticTokenModifiers (..), SemanticTokenTypes (..))
@@ -450,6 +451,8 @@ data RenameError
     ListedUnclear FilePath Text Text
   | -- | a variable in the format of a running head of style.toml: the format, its line and column
     RunningHeadVariable Text Int Int
+  | -- | a variable in title-format (root ADR 0463): the file that writes it (style.toml or a source) and the slot
+    TitleFormatVariable FilePath Text
   | NewNameReferenced FilePath Text
   | -- | the position is no alias of a list of an @import nor a reference by one (root ADR 0458)
     NotAnAlias
@@ -486,6 +489,7 @@ renameMessage = \case
   BuiltinTaken n -> "組み込みの式の名前と重なります: " <> n
   ListedUnclear p n c -> T.pack p <> " は " <> n <> " について " <> c <> " のエラーがあり、どの変数を指すか決められないため、名前を変えられません"
   RunningHeadVariable f l c -> "style.toml の柱の書式 " <> f <> "（" <> T.pack (show l) <> " 行 " <> T.pack (show c) <> " 列）がどのファイルの変数を指すかはページで決まるため、名前を変えられません"
+  TitleFormatVariable f w -> T.pack f <> " の title-format の " <> w <> " がどのファイルの変数を指すかは見出しとキャプションのファイルで決まるため、名前を変えられません"
   NewNameReferenced p n -> T.pack p <> " に、改名すると変数を指す名前 " <> n <> " がすでにあります"
   NotAnAlias -> "別名の上で名前を変更してください"
   InvalidAlias n -> "別名の形が不正です: " <> n
@@ -1575,6 +1579,22 @@ runningHeadVariables style =
                 c = off + T.length pre
              in if T.null after then [] else (c, body <> "}") : go (c + T.length body + 1) (T.drop 1 after)
 
+{- | The variables of @{set.<name>}@ and @{set.<namespace>.<name>}@ in the
+title formats (root ADR 0463), of style.toml and of @style-def of each
+file: the file, the slot as written and the name.
+-}
+titleFormatVariables :: Workspace -> Maybe Text -> [(FilePath, Text, Text)]
+titleFormatVariables ws style =
+  [("style.toml", slot n q, last n) | Just t <- [style], (_, refs) <- titleFormatSites (FileId 0) t, (RefVar n@(_ : _), q) <- refs]
+    <> [ (srcPath s, slot n q, last n)
+       | s <- allSources ws,
+         (_, _, f) <- styleDefTitleFormats (srcAst s),
+         Right parts <- [parseTitleFormat f],
+         FormatRef (RefVar n@(_ : _)) q <- parts
+       ]
+  where
+    slot n q = "{set." <> T.intercalate "." n <> (if q then "?" else "") <> "}"
+
 {- | Renames a variable of @set (root ADR 0454): its @set, its references
 in the file that sets it, the name after the namespace in the files that
 import it with a namespace, and the name in the list and the references in
@@ -1609,6 +1629,8 @@ renameVariable ws style path off new = do
     when (clash && new `elem` [lnAlias l | site <- importSitesOf h, l <- importNames site, site `notElem` ls || not (unaliased old l)]) (Left (ListedTaken hp new))
     -- a reference to the new name after the list, which would point at the variable
     when (clash && not (null [() | (sp, OccVar Nothing v) <- occurrences (srcAst h), v == new, any (\site -> spanEnd (isSpan site) <= spanStart sp) ls])) (Left (NewNameReferenced hp new))
+  forM_ (titleFormatVariables ws style) $ \(writer, whole, name) ->
+    when (name `elem` [old, new]) (Left (TitleFormatVariable writer whole))
   forM_ (maybe [] runningHeadVariables style) $ \(whole, name, l, c) ->
     when (name `elem` [old, new]) (Left (RunningHeadVariable whole l c))
   -- a name written already that would point at the variable after the rename
@@ -1765,6 +1787,8 @@ renameAlias ws style path off new = do
       OccCommand _ q | q == new, afterImports sp -> Left (NewNameReferenced path new)
       OccFunction q | q == new, afterImports sp -> Left (NewNameReferenced path new)
       _ -> pure ()
+  forM_ (titleFormatVariables ws style) $ \(writer, whole, name) ->
+    when (name `elem` [old, new]) (Left (TitleFormatVariable writer whole))
   forM_ (maybe [] runningHeadVariables style) $ \(whole, name, l, c) ->
     when (name `elem` [old, new]) (Left (RunningHeadVariable whole l c))
   pure [(l, new) | l <- aliasPlaces ws src al]
