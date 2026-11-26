@@ -1,0 +1,668 @@
+/- Golem ADR 0351 I6-I8: an executable model of argument diagnostics.
+   An occurrence remains in the input after an error. Positions are ordinal
+   here; the Haskell comparison checks the corresponding source spans. -/
+namespace ArgumentDiagnostics
+
+inductive Kind where
+  | nat | string | bool
+  deriving DecidableEq, Repr
+
+structure Rule where
+  name : String
+  kind : Kind
+  required : Bool
+  repeatable : Bool
+  deriving Repr
+
+structure Argument where
+  name : String
+  kind : Kind
+  deriving Repr
+
+inductive Error where
+  | unknown | duplicate | wrongType | missing
+  deriving DecidableEq, Repr
+
+structure Finding where
+  position : Nat
+  name : String
+  error : Error
+  deriving DecidableEq, Repr
+
+def ruleFor (rules : List Rule) (name : String) : Option Rule :=
+  rules.find? (fun rule => rule.name == name)
+
+/- The order of these three lists is the tie break at one occurrence. An
+   unknown name is also non-repeatable, so later occurrences report both. -/
+def atOccurrence (rules : List Rule) (seen : List String)
+    (position : Nat) (arg : Argument) : List Finding :=
+  let rule := ruleFor rules arg.name
+  (if rule.isNone then [{ position, name := arg.name, error := .unknown }] else []) ++
+  (if seen.contains arg.name && (rule.isNone || rule.any (fun r => !r.repeatable))
+   then [{ position, name := arg.name, error := .duplicate }] else []) ++
+  (if rule.any (fun r => r.kind != arg.kind)
+   then [{ position, name := arg.name, error := .wrongType }] else [])
+
+def scan (rules : List Rule) : List Argument → List String → Nat → List Finding
+  | [], _, _ => []
+  | arg :: rest, seen, position =>
+      atOccurrence rules seen position arg ++
+        scan rules rest (arg.name :: seen) (position + 1)
+
+/- Presence is checked by name alone. A value of the wrong kind still
+   supplies a required argument. Missing findings follow the source. -/
+def missing (rules : List Rule) (args : List Argument) : List Finding :=
+  (rules.filter (fun rule => rule.required && !(args.any (fun arg => arg.name == rule.name)))).map
+    (fun rule => { position := args.length, name := rule.name, error := .missing })
+
+def check (rules : List Rule) (args : List Argument) : List Finding :=
+  scan rules args [] 0 ++ missing rules args
+
+/- The native function checker reports each absent positional argument in
+   signature order, using one-based ordinals (G02120). -/
+def positionalMissing (supplied required : Nat) : List Nat :=
+  ((List.range required).drop supplied).map (· + 1)
+
+private theorem rangeLoopAt (n : Nat) (tail : List Nat) (i : Nat) :
+    (List.range.loop n tail).get? i = if i < n then some i else tail.get? (i - n) := by
+  induction n generalizing tail with
+  | zero => simp [List.range.loop, Nat.not_lt_zero]
+  | succ n ih =>
+    rw [List.range.loop, ih]
+    by_cases lt : i < n
+    · simp [lt, Nat.lt_succ_of_lt lt]
+    · by_cases eq : i = n
+      · subst i; simp
+      · have a : ¬ i < n + 1 := by omega
+        have b : i - n = (i - (n + 1)) + 1 := by omega
+        simp [lt, a, b]
+
+private theorem droppedAt (xs : List α) (skip i : Nat) :
+    (xs.drop skip).get? i = xs.get? (skip + i) := by
+  induction skip generalizing xs with
+  | zero => simp
+  | succ n ih =>
+    cases xs with
+    | nil => simp
+    | cons x xs => simpa [List.drop, Nat.succ_add] using ih xs
+
+theorem I8_positionalMissingInOrder (supplied required i : Nat) :
+    (positionalMissing supplied required).get? i =
+      if supplied + i < required then some (supplied + i + 1) else none := by
+  simp only [positionalMissing, List.get?_map, droppedAt, List.range, rangeLoopAt]
+  split <;> simp_all
+
+example : positionalMissing 1 3 = [2, 3] := by decide
+
+private theorem splitMembership {xs ys : List α} {x : α} (h : x ∈ xs ++ ys) :
+    x ∈ xs ∨ x ∈ ys := by
+  induction xs with
+  | nil => exact Or.inr h
+  | cons a rest ih =>
+      cases h with
+      | head => exact Or.inl (.head _)
+      | tail _ later =>
+          exact (ih later).elim (fun h => Or.inl (.tail _ h)) Or.inr
+
+theorem occurrencePosition {rules seen position arg finding}
+    (found : finding ∈ atOccurrence rules seen position arg) :
+    finding.position = position := by
+  simp only [atOccurrence] at found
+  split at found <;> split at found <;> split at found <;>
+    simp_all <;> rcases found with h | h <;> first | simp [h] | rcases h with h | h <;> simp [h]
+
+theorem scanPositionBounds {rules seen position args finding}
+    (found : finding ∈ scan rules args seen position) :
+    position ≤ finding.position ∧ finding.position < position + args.length := by
+  induction args generalizing seen position with
+  | nil => simp [scan] at found
+  | cons arg rest ih =>
+      cases splitMembership (show finding ∈ _ ++ _ from found) with
+      | inl here =>
+          rw [occurrencePosition here]
+          simp only [List.length_cons]
+          omega
+      | inr later =>
+          have bounds := ih later
+          simp only [List.length_cons]
+          omega
+
+-- Each finding precedes only findings at the same or a later position.
+def InSourceOrder : List Finding → Prop
+  | [] => True
+  | x :: xs => (∀ y ∈ xs, x.position ≤ y.position) ∧ InSourceOrder xs
+
+private theorem samePositionOrdered {xs : List Finding} {n : Nat}
+    (h : ∀ x ∈ xs, x.position = n) : InSourceOrder xs := by
+  induction xs with
+  | nil => trivial
+  | cons x xs ih =>
+      have tail : ∀ y ∈ xs, y.position = n := fun y hy => h y (.tail _ hy)
+      exact ⟨fun y hy => Nat.le_of_eq ((h x (.head _)).trans (tail y hy).symm), ih tail⟩
+
+private theorem orderedAppend {xs ys : List Finding} (left : InSourceOrder xs)
+    (right : InSourceOrder ys) (cross : ∀ x ∈ xs, ∀ y ∈ ys, x.position ≤ y.position) :
+    InSourceOrder (xs ++ ys) := by
+  induction xs with
+  | nil => exact right
+  | cons x xs ih =>
+      constructor
+      · intro y hy
+        exact (splitMembership hy).elim (left.1 y) (cross x (.head _) y)
+      · exact ih left.2 (fun z hz => cross z (.tail _ hz))
+
+theorem scanInSourceOrder (rules : List Rule) (args : List Argument)
+    (seen : List String) (position : Nat) : InSourceOrder (scan rules args seen position) := by
+  induction args generalizing seen position with
+  | nil => trivial
+  | cons a rest ih =>
+      apply orderedAppend (samePositionOrdered (fun _ h => occurrencePosition h)) (ih _ _)
+      intro x hx y hy
+      have bounds := (scanPositionBounds hy).1
+      rw [occurrencePosition hx]
+      omega
+
+theorem checkInSourceOrder (rules : List Rule) (args : List Argument) :
+    InSourceOrder (check rules args) := by
+  have endPos : ∀ f ∈ missing rules args, f.position = args.length := by
+    intro f hf
+    obtain ⟨rule, _, eq⟩ := List.mem_map.mp hf
+    subst f
+    rfl
+  apply orderedAppend (scanInSourceOrder rules args [] 0) (samePositionOrdered endPos)
+  intro x hx y hy
+  rw [endPos y hy]
+  exact Nat.le_of_lt (by simpa using (scanPositionBounds hx).2)
+
+-- Every reported occurrence belongs to the call. Only declaration
+-- omissions can point just past its last argument.
+theorem checkPosition {rules args finding} (found : finding ∈ check rules args) :
+    finding.position < args.length ∨
+      (finding.position = args.length ∧ finding.error = .missing) := by
+  cases splitMembership (show finding ∈ _ ++ _ from found) with
+  | inl scanned => exact Or.inl (by simpa using (scanPositionBounds scanned).2)
+  | inr omitted =>
+      obtain ⟨rule, _, eq⟩ := List.mem_map.mp omitted
+      subst finding
+      exact Or.inr ⟨rfl, rfl⟩
+
+-- At a single supplied argument, the emitted codes form a subsequence
+-- of the specified tie order. The Boolean choices include absent codes.
+theorem occurrenceErrorOrder (rules : List Rule) (seen : List String)
+    (position : Nat) (arg : Argument) :
+    ∃ unknown duplicate wrongType : Bool,
+      (atOccurrence rules seen position arg).map Finding.error =
+        (if unknown then [Error.unknown] else []) ++
+        (if duplicate then [Error.duplicate] else []) ++
+        (if wrongType then [Error.wrongType] else []) := by
+  let rule := ruleFor rules arg.name
+  refine ⟨rule.isNone, seen.contains arg.name && (rule.isNone || rule.any (fun r => !r.repeatable)),
+    rule.any (fun r => r.kind != arg.kind), ?_⟩
+  simp only [atOccurrence, rule, List.map_append]
+  repeat first | split | rfl
+
+theorem absentUnknown (rules : List Rule) (seen : List String)
+    (position : Nat) (arg : Argument) (h : ruleFor rules arg.name = none) :
+    { position, name := arg.name, error := Error.unknown } ∈
+      atOccurrence rules seen position arg := by
+  simp [atOccurrence, h]
+
+/- Golem ADR 0351 I7/I8: the value and the distance from an earlier
+   occurrence do not affect the two findings for a repeated unknown name. -/
+theorem repeatedUnknownFindings (rules : List Rule) (seen : List String)
+    (position : Nat) (arg : Argument) (unknown : ruleFor rules arg.name = none)
+    (repeated : seen.contains arg.name = true) :
+    atOccurrence rules seen position arg =
+      [{ position, name := arg.name, error := .unknown },
+       { position, name := arg.name, error := .duplicate }] := by
+  simp [atOccurrence, unknown, repeated, Option.any]
+
+/- Splitting at any occurrence preserves all preceding findings and passes
+   exactly the preceding names to the remaining scan. -/
+theorem scan_split (rules : List Rule) (before after : List Argument)
+    (seen : List String) (position : Nat) :
+    scan rules (before ++ after) seen position =
+      scan rules before seen position ++
+        scan rules after ((before.map Argument.name).reverse ++ seen) (position + before.length) := by
+  induction before generalizing seen position with
+  | nil => simp [scan]
+  | cons arg rest ih =>
+      simp [scan, ih, List.reverse_cons, List.append_assoc, Nat.add_assoc,
+        Nat.add_comm, Nat.add_left_comm]
+
+theorem scan_repeated_unknown (rules : List Rule) (before after : List Argument)
+    (arg : Argument) (unknown : ruleFor rules arg.name = none)
+    (repeated : (before.map Argument.name).reverse.contains arg.name = true) :
+    scan rules (before ++ arg :: after) [] 0 =
+      scan rules before [] 0 ++
+        [{ position := before.length, name := arg.name, error := Error.unknown },
+         { position := before.length, name := arg.name, error := Error.duplicate }] ++
+        scan rules after (arg.name :: (before.map Argument.name).reverse) (before.length + 1) := by
+  rw [scan_split]
+  simp [scan, repeatedUnknownFindings rules _ _ _ unknown repeated, List.append_assoc]
+
+theorem repeatedKnownFindings (rules : List Rule) (seen : List String)
+    (position : Nat) (arg : Argument) (rule : Rule)
+    (known : ruleFor rules arg.name = some rule) (once : rule.repeatable = false)
+    (repeated : seen.contains arg.name = true) :
+    atOccurrence rules seen position arg =
+      [{ position, name := arg.name, error := .duplicate }] ++
+        (if rule.kind != arg.kind then [{ position, name := arg.name, error := .wrongType }] else []) := by
+  simp [atOccurrence, known, once, repeated, Option.any]
+
+-- I7 also covers the first occurrence of a name, even after unrelated
+-- errors. No duplicate is emitted until that same spelling appears again.
+theorem firstUnknownFindings (rules : List Rule) (seen : List String)
+    (position : Nat) (arg : Argument) (unknown : ruleFor rules arg.name = none)
+    (first : seen.contains arg.name = false) :
+    atOccurrence rules seen position arg =
+      [{ position, name := arg.name, error := .unknown }] := by
+  simp [atOccurrence, unknown, first, Option.any]
+
+theorem scan_repeated_known (rules : List Rule) (before after : List Argument)
+    (arg : Argument) (rule : Rule) (known : ruleFor rules arg.name = some rule)
+    (once : rule.repeatable = false)
+    (repeated : (before.map Argument.name).reverse.contains arg.name = true) :
+    scan rules (before ++ arg :: after) [] 0 =
+      scan rules before [] 0 ++
+        [{ position := before.length, name := arg.name, error := Error.duplicate }] ++
+        (if rule.kind != arg.kind then
+          [{ position := before.length, name := arg.name, error := Error.wrongType }] else []) ++
+        scan rules after (arg.name :: (before.map Argument.name).reverse) (before.length + 1) := by
+  rw [scan_split]
+  simp [scan, repeatedKnownFindings rules _ _ _ rule known once repeated, List.append_assoc]
+
+theorem presentRequiredName (name : String) (kind : Kind) (rest : List Argument) :
+    (({ name, kind } : Argument) :: rest).any (fun arg => arg.name == name) = true := by
+  simp
+
+/- Golem ADR 0351 I7: a supplied name cannot give rise to a missing
+   finding, including when its value failed the declared type check. -/
+theorem suppliedNeverMissing (rules : List Rule) (args : List Argument)
+    (name : String) (supplied : args.any (fun arg => arg.name == name) = true) :
+    { position := args.length, name, error := Error.missing } ∉ missing rules args := by
+  intro found
+  obtain ⟨rule, selected, eq⟩ := List.mem_map.mp found
+  have same : rule.name = name := congrArg Finding.name eq
+  have eligible := (List.mem_filter.mp selected).2
+  simp [same, supplied] at eligible
+
+/- Golem ADR 0351 I8: projecting the names of missing findings returns
+   exactly the unsupplied required names in declaration order. -/
+theorem missingInDeclarationOrder (rules : List Rule) (args : List Argument) :
+    (missing rules args).map Finding.name =
+      (rules.filter (fun rule => rule.required &&
+        !(args.any (fun arg => arg.name == rule.name)))).map Rule.name := by
+  simp [missing, List.map_map, Function.comp_def]
+
+private def isMissing (f : Finding) : Bool := f.error == .missing
+
+private theorem filterMissingAppend (xs ys : List Finding) :
+    (xs ++ ys).filter isMissing = xs.filter isMissing ++ ys.filter isMissing := by
+  induction xs with
+  | nil => rfl
+  | cons x xs ih =>
+      cases h : isMissing x <;> simp [List.filter, h, ih]
+
+theorem I8_checkedMissingInDeclarationOrder (rules : List Rule) (args : List Argument) :
+    ((check rules args).filter isMissing).map Finding.name =
+      (rules.filter (fun rule => rule.required &&
+        !(args.any (fun arg => arg.name == rule.name)))).map Rule.name := by
+  have scanned (input : List Argument) (seen : List String) (pos : Nat) :
+      (scan rules input seen pos).filter isMissing = [] := by
+    induction input generalizing seen pos with
+    | nil => rfl
+    | cons arg rest ih =>
+        rw [scan, filterMissingAppend, ih, List.append_nil]
+        simp only [atOccurrence, filterMissingAppend]
+        split <;> split <;> split <;> rfl
+  have kept (decls : List Rule) :
+      ((decls.map (fun r => Finding.mk args.length r.name .missing)).filter isMissing) =
+        decls.map (fun r => Finding.mk args.length r.name .missing) := by
+    induction decls with
+    | nil => rfl
+    | cons r rs ih => simp [List.filter, isMissing, ih]
+  rw [check, filterMissingAppend, scanned, List.nil_append]
+  simpa only [missing, kept] using missingInDeclarationOrder rules args
+
+def known : List Rule :=
+  [ { name := "tax", kind := .bool, required := false, repeatable := false },
+    { name := "count", kind := .nat, required := true, repeatable := false },
+    { name := "label", kind := .string, required := true, repeatable := false } ]
+
+/- FunctionSpec's book.price accepts tax and unit after its positional
+   value. The first positional value is omitted from this keyword model. -/
+def bookPrice : List Rule :=
+  [ { name := "tax", kind := .bool, required := false, repeatable := false },
+    { name := "unit", kind := .string, required := false, repeatable := false } ]
+
+example :
+    check bookPrice
+      [ { name := "x", kind := .nat },
+        { name := "x", kind := .nat },
+        { name := "x", kind := .nat },
+        { name := "tax", kind := .string } ] =
+      [ { position := 0, name := "x", error := .unknown },
+        { position := 1, name := "x", error := .unknown },
+        { position := 1, name := "x", error := .duplicate },
+        { position := 2, name := "x", error := .unknown },
+        { position := 2, name := "x", error := .duplicate },
+        { position := 3, name := "tax", error := .wrongType } ] := by decide
+
+/- These are the same boundaries used by the Haskell regression tests:
+   unknown x three times, an ill-typed required argument, and two missing
+   required names in declaration order. -/
+example :
+    check known
+      [ { name := "x", kind := .nat },
+        { name := "x", kind := .nat },
+        { name := "x", kind := .string },
+        { name := "count", kind := .string } ] =
+      [ { position := 0, name := "x", error := .unknown },
+        { position := 1, name := "x", error := .unknown },
+        { position := 1, name := "x", error := .duplicate },
+        { position := 2, name := "x", error := .unknown },
+        { position := 2, name := "x", error := .duplicate },
+        { position := 3, name := "count", error := .wrongType },
+        { position := 4, name := "label", error := .missing } ] := by decide
+
+example :
+    missing known [] =
+      [ { position := 0, name := "count", error := .missing },
+        { position := 0, name := "label", error := .missing } ] := by decide
+
+structure KeywordText where
+  leading : String
+  name : String
+  separator : String
+  value : String
+
+def KeywordText.width (a : KeywordText) : Nat :=
+  a.leading.utf8ByteSize + a.name.utf8ByteSize + a.separator.utf8ByteSize + a.value.utf8ByteSize
+
+def atKeyword (a : KeywordText) (offset : Nat) (error : Error) : Option (Nat × Nat) :=
+  let start := offset + a.leading.utf8ByteSize
+  let nameEnd := start + a.name.utf8ByteSize
+  let valueStart := nameEnd + a.separator.utf8ByteSize
+  let stop := valueStart + a.value.utf8ByteSize
+  match error with
+  | .unknown => some (start, nameEnd)
+  | .duplicate => some (start, stop)
+  | .wrongType => some (valueStart, stop)
+  | .missing => none
+
+def keywordSpan : List KeywordText → Nat → Nat → Error → Option (Nat × Nat)
+  | [], _, _, _ => none
+  | a :: _, 0, offset, error => atKeyword a offset error
+  | a :: rest, index + 1, offset, error => keywordSpan rest index (offset + a.width) error
+
+-- Computing the span from either spelling targets the same occurrence
+-- ordinal even when trivia or the UTF-8 width of earlier values changes.
+theorem I6_keywordSpanAtOccurrence (before after : List KeywordText)
+    (a : KeywordText) (offset : Nat) (error : Error) :
+    keywordSpan (before ++ a :: after) before.length offset error =
+      atKeyword a (offset + before.foldr (fun entry total => entry.width + total) 0) error := by
+  induction before generalizing offset with
+  | nil => simp [keywordSpan, List.foldr]
+  | cons first rest ih => simp [keywordSpan, List.foldr, ih, Nat.add_assoc]
+
+-- I6: two identical spellings separated by a multibyte comment.
+example : keywordSpan [.mk " " "x" "=" "1", .mk " %%甲%% " "x" "=" "1"]
+    1 0 .duplicate = some (13, 16) := by decide
+
+def findingSpan (words : List KeywordText) (offset callEnd : Nat)
+    (finding : Finding) : Option (Nat × Nat) :=
+  if finding.error = .missing then some (callEnd, callEnd)
+  else keywordSpan words finding.position offset finding.error
+
+private theorem keywordSpanExists (words : List KeywordText) (index offset : Nat)
+    (within : index < words.length) (error : Error) (supplied : error ≠ .missing) :
+    ∃ span, keywordSpan words index offset error = some span := by
+  induction words generalizing index offset with
+  | nil => simp at within; omega
+  | cons word rest ih =>
+      cases index with
+      | zero => cases error <;> simp_all [keywordSpan, atKeyword]
+      | succ i => exact ih i (offset + word.width) (Nat.lt_of_succ_lt_succ within)
+
+-- Every finding returned by the checker has a concrete span when each
+-- argument has its source spelling. Missing arguments point to callEnd.
+theorem I6_allFindingsHaveSpans (rules : List Rule) (args : List Argument)
+    (words : List KeywordText) (aligned : words.length = args.length)
+    (offset callEnd : Nat) (f : Finding) (found : f ∈ check rules args) :
+    ∃ span, findingSpan words offset callEnd f = some span := by
+  by_cases absent : f.error = .missing
+  · simp [findingSpan, absent]
+  · have within : f.position < words.length := by
+      rw [aligned]
+      exact (checkPosition found).elim id (fun h => False.elim (absent h.2))
+    simpa [findingSpan, absent] using keywordSpanExists words f.position offset within f.error absent
+
+-- The missing-argument span follows the closing delimiter, including
+-- any intervening comments. The offset is the start of the argument list.
+def callEndOffset (words : List KeywordText) (offset : Nat) (closing : String) : Nat :=
+  offset + words.foldr (fun entry total => entry.width + total) 0 + closing.utf8ByteSize
+
+private theorem keywordSpanBounds (words : List KeywordText) (index offset : Nat)
+    (error : Error) (found : keywordSpan words index offset error = some (lo, hi)) :
+    offset ≤ lo ∧ lo ≤ hi ∧ hi ≤ offset + words.foldr (fun w total => w.width + total) 0 := by
+  induction words generalizing index offset with
+  | nil => simp [keywordSpan] at found
+  | cons word rest ih =>
+      cases index with
+      | zero =>
+          cases error <;> simp [keywordSpan, atKeyword] at found <;>
+            obtain ⟨rfl, rfl⟩ := found <;> simp [List.foldr, KeywordText.width] <;> omega
+      | succ index =>
+          have bounds := ih index (offset + word.width) found
+          simp only [List.foldr]
+          omega
+
+theorem I6_spanWithinCall (words : List KeywordText) (offset : Nat) (closing : String)
+    (f : Finding) (found : findingSpan words offset (callEndOffset words offset closing) f =
+      some (lo, hi)) : offset ≤ lo ∧ lo ≤ hi ∧ hi ≤ callEndOffset words offset closing := by
+  unfold findingSpan at found
+  split at found
+  · simp at found
+    obtain ⟨rfl, rfl⟩ := found
+    simp [callEndOffset]
+    omega
+  · have bounds := keywordSpanBounds words f.position offset f.error found
+    unfold callEndOffset
+    omega
+
+structure TypedKeyword where
+  text : KeywordText
+  kind : Kind
+
+def TypedKeyword.argument (word : TypedKeyword) : Argument := ⟨word.text.name, word.kind⟩
+
+def diagnosticsWithSpans (rules : List Rule) (words : List TypedKeyword)
+    (offset : Nat) (closing : String) :=
+  let spellings := words.map TypedKeyword.text
+  (check rules (words.map TypedKeyword.argument)).map fun f =>
+    (f, findingSpan spellings offset (callEndOffset spellings offset closing) f)
+
+theorem I6_diagnosticsInBothSpellings (rules : List Rule) (before after : List TypedKeyword)
+    (preserved : before.map TypedKeyword.argument = after.map TypedKeyword.argument)
+    (startBefore startAfter : Nat) (closeBefore closeAfter : String) :
+    (diagnosticsWithSpans rules before startBefore closeBefore).map Prod.fst =
+      (diagnosticsWithSpans rules after startAfter closeAfter).map Prod.fst := by
+  simp [diagnosticsWithSpans, List.map_map, Function.comp_def, preserved]
+
+example : (diagnosticsWithSpans known [] 12 " %%甲%% ]").map Prod.snd =
+    [some (22, 22), some (22, 22)] := by decide
+
+-- Count diagnostics for one name across arbitrary interleaved arguments.
+def countFor (name : String) (error : Error) (findings : List Finding) : Nat :=
+  (findings.filter (fun f => f.name == name && f.error == error)).length
+
+private theorem countForAppend (name : String) (error : Error) (xs ys : List Finding) :
+    countFor name error (xs ++ ys) = countFor name error xs + countFor name error ys := by
+  induction xs with
+  | nil => simp [countFor]
+  | cons f rest ih =>
+      cases h : (f.name == name && f.error == error) <;>
+        simpa [countFor, List.filter, h, Nat.succ_add] using ih
+
+private theorem countOther (name : String) (code : Error) (rules : List Rule)
+    (seen : List String) (pos : Nat) (arg : Argument) (other : arg.name ≠ name) :
+    countFor name code (atOccurrence rules seen pos arg) = 0 := by
+  simp only [atOccurrence, countForAppend]
+  repeat first | split | simp [countFor, other]
+
+private theorem scanUnknownCount (rules : List Rule) (name : String)
+    (unknown : ruleFor rules name = none) (args : List Argument) (seen : List String) (pos : Nat) :
+    countFor name .unknown (scan rules args seen pos) =
+      (args.filter (fun a => a.name == name)).length := by
+  induction args generalizing seen pos with
+  | nil => rfl
+  | cons a rest ih =>
+      rw [scan, countForAppend, ih]
+      by_cases same : a.name = name
+      · subst name
+        cases prior : seen.contains a.name <;>
+          simp [List.filter, atOccurrence, unknown, prior, countFor, Option.any,
+            show (Error.duplicate == Error.unknown) = false by decide] <;> omega
+      · have diff : (a.name == name) = false := by
+          cases h : a.name == name with
+          | false => rfl
+          | true => exact False.elim (same (of_decide_eq_true h))
+        simp [countOther name .unknown rules seen pos a same, List.filter, diff]
+
+private theorem countMissingForOtherCode (rules : List Rule) (args : List Argument)
+    (name : String) (code : Error) (different : (Error.missing == code) = false) :
+    countFor name code (missing rules args) = 0 := by
+  unfold missing
+  generalize rules.filter _ = required
+  induction required with
+  | nil => rfl
+  | cons r rs ih => simpa [countFor, List.filter, different] using ih
+
+theorem I7_unknownCount (rules : List Rule) (name : String)
+    (unknown : ruleFor rules name = none) (args : List Argument) :
+    countFor name .unknown (check rules args) =
+      (args.filter (fun a => a.name == name)).length := by
+  rw [check, countForAppend, scanUnknownCount rules name unknown]
+  rw [countMissingForOtherCode rules args name .unknown (by decide), Nat.add_zero]
+
+private def nonrepeatable (rule : Option Rule) :=
+  rule.isNone || rule.any (fun r => !r.repeatable)
+
+private theorem duplicateAt (rules : List Rule) (seen : List String) (pos : Nat) (a : Argument)
+    (once : nonrepeatable (ruleFor rules a.name) = true) :
+    countFor a.name .duplicate (atOccurrence rules seen pos a) =
+      (if seen.contains a.name then 1 else 0) := by
+  unfold nonrepeatable at once
+  simp only [atOccurrence, once, Bool.and_true, countForAppend]
+  cases h : seen.contains a.name <;>
+    cases h₁ : (ruleFor rules a.name).isNone <;>
+    cases h₂ : (ruleFor rules a.name).any (fun r => r.kind != a.kind) <;>
+    simp [countFor, h, h₁, h₂] <;> rfl
+
+private theorem scanDuplicateCount (rules : List Rule) (name : String)
+    (once : nonrepeatable (ruleFor rules name) = true)
+    (args : List Argument) (seen : List String) (pos : Nat) :
+    countFor name .duplicate (scan rules args seen pos) =
+      (args.filter (fun a => a.name == name)).length - (if seen.contains name then 0 else 1) := by
+  induction args generalizing seen pos with
+  | nil => simp [scan, countFor]
+  | cons a rest ih =>
+      rw [scan, countForAppend, ih]
+      by_cases same : a.name = name
+      · subst name
+        rw [duplicateAt rules seen pos a once]
+        cases h : seen.contains a.name <;> simp [List.filter, List.contains, h] <;> omega
+      · have diff : (a.name == name) = false := by
+          cases h : a.name == name with
+          | false => rfl
+          | true => exact False.elim (same (of_decide_eq_true h))
+        simp [countOther name .duplicate rules seen pos a same, List.filter, List.contains, List.elem, diff, show (name == a.name) = false by
+          cases h : name == a.name with
+          | false => rfl
+          | true => exact False.elim (same (of_decide_eq_true h).symm)]
+
+theorem I7_duplicateCount (rules : List Rule) (name : String) (args : List Argument)
+    (once : ruleFor rules name = none ∨
+      ∃ rule, ruleFor rules name = some rule ∧ rule.repeatable = false) :
+    countFor name .duplicate (check rules args) =
+      (args.filter (fun a => a.name == name)).length - 1 := by
+  have single : nonrepeatable (ruleFor rules name) = true := by
+    rcases once with unknown | ⟨rule, known, repeatable⟩ <;> simp_all [nonrepeatable, Option.any]
+  rw [check, countForAppend, scanDuplicateCount rules name single]
+  rw [countMissingForOtherCode rules args name .duplicate (by decide), Nat.add_zero]
+  rfl
+
+theorem I7_repeatableNeverDuplicate (rules : List Rule) (name : String) (rule : Rule)
+    (known : ruleFor rules name = some rule) (repeatable : rule.repeatable = true)
+    (args : List Argument) : countFor name .duplicate (check rules args) = 0 := by
+  have scanZero (input : List Argument) (seen : List String) (pos : Nat) :
+      countFor name .duplicate (scan rules input seen pos) = 0 := by
+    induction input generalizing seen pos with
+    | nil => rfl
+    | cons a rest ih =>
+        rw [scan, countForAppend, ih, Nat.add_zero]
+        by_cases same : a.name = name
+        · subst name
+          cases wrong : rule.kind != a.kind <;>
+            simp [atOccurrence, known, repeatable, wrong, Option.any, countFor] <;> rfl
+        · exact countOther name .duplicate rules seen pos a same
+  rw [check, countForAppend, scanZero, countMissingForOtherCode rules args name .duplicate (by decide)]
+
+-- Type errors count ill-typed occurrences, independently of whether the
+-- declaration permits repetition or requires the argument to be present.
+theorem I6_wrongTypeCount (rules : List Rule) (name : String) (rule : Rule)
+    (known : ruleFor rules name = some rule) (args : List Argument) :
+    countFor name .wrongType (check rules args) =
+      (args.filter (fun a => a.name == name && rule.kind != a.kind)).length := by
+  have scanCount (input : List Argument) (seen : List String) (pos : Nat) :
+      countFor name .wrongType (scan rules input seen pos) =
+        (input.filter (fun a => a.name == name && rule.kind != a.kind)).length := by
+    induction input generalizing seen pos with
+    | nil => rfl
+    | cons a rest ih =>
+        rw [scan, countForAppend, ih]
+        by_cases same : a.name = name
+        · subst name
+          cases wrong : rule.kind != a.kind <;> cases prior : seen.contains a.name <;>
+            cases multiple : rule.repeatable <;>
+            simp [atOccurrence, known, prior, wrong, multiple, Option.any, countFor, List.filter,
+              show (Error.duplicate == Error.wrongType) = false by decide] <;> omega
+        · have diff : (a.name == name) = false := by
+            cases h : a.name == name with
+            | false => rfl
+            | true => exact False.elim (same (of_decide_eq_true h))
+          simp [countOther name .wrongType rules seen pos a same, List.filter, diff]
+  rw [check, countForAppend, scanCount, countMissingForOtherCode rules args name .wrongType (by decide),
+    Nat.add_zero]
+
+-- Relate an ordinal diagnostic to the actual argument it identifies.
+private theorem occurrenceName {rules seen pos arg f}
+    (found : f ∈ atOccurrence rules seen pos arg) : f.name = arg.name := by
+  simp only [atOccurrence] at found
+  split at found <;> split at found <;> split at found <;>
+    simp_all <;> rcases found with h | h <;> first | simp [h] | rcases h with h | h <;> simp [h]
+
+private theorem scanPointsAtName {rules seen pos f} (args : List Argument)
+    (found : f ∈ scan rules args seen pos) :
+    (args.map Argument.name).get? (f.position - pos) = some f.name := by
+  induction args generalizing seen pos with
+  | nil => simp [scan] at found
+  | cons a rest ih =>
+      cases splitMembership (show f ∈ _ ++ _ from found) with
+      | inl here => simp [occurrencePosition here, occurrenceName here]
+      | inr later =>
+          have bound := (scanPositionBounds later).1
+          have step : f.position - pos = (f.position - (pos + 1)) + 1 := by omega
+          simpa [step] using ih later
+
+theorem I6_checkedOccurrenceName {rules args f} (found : f ∈ check rules args)
+    (supplied : f.error ≠ .missing) :
+    (args.map Argument.name).get? f.position = some f.name := by
+  cases splitMembership (show f ∈ _ ++ _ from found) with
+  | inl scanned => simpa using scanPointsAtName args scanned
+  | inr omitted =>
+      obtain ⟨_, _, eq⟩ := List.mem_map.mp omitted
+      exact False.elim (supplied (congrArg Finding.error eq.symm))
+
+end ArgumentDiagnostics

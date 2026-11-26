@@ -2411,10 +2411,10 @@ needs() { # needs NAME=RESULT...: the JSON of the needs context
   done
   printf '}\n'
 }
-needs changes=success scripts-linux=success build=success determinism=success visual=success release-scripts=success scripts-macos=success format=success plugins=success editors=success editors-lsp=success verapdf=success wasm=success >"$WORK/in"
+needs changes=success scripts-linux=success build=success determinism=success visual=success release-scripts=success scripts-macos=success format=success plugins=success editors=success editors-lsp=success verapdf=success wasm=success parser-fmt-proofs=success parser-fmt-manuscripts=success >"$WORK/in"
 run gate
 expect "gate: all succeeded" 0
-needs changes=success scripts-linux=success build=skipped determinism=skipped visual=skipped release-scripts=skipped scripts-macos=skipped format=skipped plugins=skipped editors=success editors-lsp=skipped verapdf=skipped wasm=skipped >"$WORK/in"
+needs changes=success scripts-linux=success build=skipped determinism=skipped visual=skipped release-scripts=skipped scripts-macos=skipped format=skipped plugins=skipped editors=success editors-lsp=skipped verapdf=skipped wasm=skipped parser-fmt-proofs=skipped parser-fmt-manuscripts=skipped >"$WORK/in"
 run gate
 expect "gate: docs only" 0
 needs changes=success scripts-linux=success build=failure determinism=skipped visual=skipped release-scripts=success scripts-macos=success format=success plugins=success editors=success >"$WORK/in"
@@ -4890,8 +4890,16 @@ scripts-macos: changes
 verapdf: changes
 visual: changes
 wasm: changes'
+# root ADR 0351 adds independent proof and manuscript jobs to the current
+# workflow. Keep the ADR 0392 fixture and all its original edges unchanged.
+CP_CURRENT_NEEDS=$(
+  {
+    printf '%s\n' "$CP_NEEDS" | sed '/^ci:/s/$/ parser-fmt-manuscripts parser-fmt-proofs/'
+    printf '%s\n' 'parser-fmt-manuscripts: changes build' 'parser-fmt-proofs: changes'
+  } | cp_norm
+)
 run cpath --needs
-if [ "$CODE" = 0 ] && [ "$(cp_norm <"$WORK/out")" = "$CP_NEEDS" ]; then ok; else ng "ADR 0392 I1: the needs read from .github/workflows/ci.yml are those of the ADR"; printf '  got: %s\n' "$(cp_norm <"$WORK/out")"; fi
+if [ "$CODE" = 0 ] && [ "$(cp_norm <"$WORK/out")" = "$CP_CURRENT_NEEDS" ]; then ok; else ng "ADR 0392 I1: the needs read from .github/workflows/ci.yml are those of the ADR"; printf '  got: %s\n' "$(cp_norm <"$WORK/out")"; fi
 # the three forms of needs (a word, a list in brackets, the lines of a list),
 # quoted or not, with a comment after them, in the ci.yml of 2026-11-18,
 # before cache-dist (root ADR 0416)
@@ -5246,18 +5254,21 @@ expect "root ADR 0416 I3: cache-dist, which ci does not wait for, does not count
 # after cabal build of build is written with the runners it runs on, the
 # suites of cabal test with their runners, and the needs of ci; the list of
 # the commit before the ADR is testdata. The one step more is the check of
-# the plan, item 1 of the ADR
+# the plan, item 1 of the ADR. root ADR 0351 independently adds two checks:
+# retain every original step, suite and architecture and add only their needs.
 # The suites of golem-driver-test are those of the four suites that it was
 # split into, on the same runners (root ADR 0416)
 CC=$HERE/testdata/ci-checks
-awk -F '\t' -v OFS='\t' '$1 == "suites" && $3 == "golem-driver:test:golem-driver-test" {
-    for (i = split("pdf page output cli", s, " "); i > 0; i--) print $1, $2, "golem-driver:test:golem-driver-" s[i] "-test"
-    next
-  } { print }' "$CC/before-0395.txt" |
-  # the generated module of docs/diagnostics.md is that of golem-evaluate
-  # (root ADR 0434)
-  sed 's|modules/golem-driver/src/Golem/Driver/Explain/Embedded.hs|modules/golem-evaluate/src/Golem/Evaluate/Explain/Embedded.hs|' |
-  LC_ALL=C sort >"$WORK/before"
+{
+  awk -F '\t' -v OFS='\t' '$1 == "suites" && $3 == "golem-driver:test:golem-driver-test" {
+      for (i = split("pdf page output cli", s, " "); i > 0; i--) print $1, $2, "golem-driver:test:golem-driver-" s[i] "-test"
+      next
+    } { print }' "$CC/before-0395.txt" |
+    # the generated module of docs/diagnostics.md is that of golem-evaluate
+    # (root ADR 0434)
+    sed 's|modules/golem-driver/src/Golem/Driver/Explain/Embedded.hs|modules/golem-evaluate/src/Golem/Evaluate/Explain/Embedded.hs|'
+  printf 'needs\t%s\n' parser-fmt-proofs parser-fmt-manuscripts
+} | LC_ALL=C sort >"$WORK/before"
 run sh "$HERE/ci-checks.sh" "$CI_YML"
 # the step of cabal sdist all is a check added after the ADR (root ADR 0452)
 grep -vF -e 'same-plan.sh' -e 'cabal sdist all' "$WORK/out" >"$WORK/a1" 2>/dev/null
