@@ -17,6 +17,10 @@ fs = 655360
 hf :: Sp
 hf = 327680
 
+-- | A quarter of 'fs'.
+qf :: Sp
+qf = 163840
+
 -- | The keys of body after those of 'horizontal30'.
 bodyKeys :: T.Text -> BS.ByteString
 bodyKeys keys = horizontal30 (TE.encodeUtf8 ("\n[paragraph-styles.body]\n" <> keys))
@@ -43,7 +47,16 @@ paragraphStyleControlsTests =
       firstLine "indent = \"2zw\"\nfirst-line-indent = \"-2zw\"\nopening-indent = \"half\"\n" ("「" <> T.replicate 40 "あ" <> "」\n") >>= (@?= (30 * fs, 0))
       -- the indent of the lines after the first is left as it is
       (_, ls) <- verseLines (bodyKeys "indent = \"2zw\"\nfirst-line-indent = \"-1zw\"\nopening-indent = \"half\"\n") ("「" <> T.replicate 40 "あ" <> "」\n")
-      map snd ls @?= [hf, 2 * fs],
+      map snd ls @?= [fs, 2 * fs],
+    testCase "root ADR 0374 opening-indent lower bound: a first-line indent of 1em becomes 0.5em" $
+      firstLine "indent = \"2zw\"\nfirst-line-indent = \"1zw\"\nopening-indent = \"half\"\n" ("「" <> T.replicate 40 "あ" <> "」\n") >>= (@?= (28 * fs - hf, 2 * fs + hf)),
+    testCase "root ADR 0374 opening-indent lower bound: a first-line indent of 0.25em becomes 0, not below" $
+      firstLine "indent = \"2zw\"\nfirst-line-indent = \"0.25zw\"\nopening-indent = \"half\"\n" ("「" <> T.replicate 40 "あ" <> "」\n") >>= (@?= (28 * fs, 2 * fs)),
+    testCase "root ADR 0374 opening-indent lower bound: a first-line indent of -1em stays -1em" $
+      firstLine "indent = \"2zw\"\nfirst-line-indent = \"-1zw\"\nopening-indent = \"half\"\n" ("「" <> T.replicate 40 "あ" <> "」\n") >>= (@?= (29 * fs, fs)),
+    testCase "root ADR 0374 opening-indent lower bound: a paragraph whose first character is not an opening bracket keeps its indent" $ do
+      firstLine "indent = \"2zw\"\nfirst-line-indent = \"0.25zw\"\nopening-indent = \"half\"\n" (T.replicate 40 "あ" <> "\n") >>= (@?= (28 * fs - qf, 2 * fs + qf))
+      firstLine "indent = \"2zw\"\nfirst-line-indent = \"-1zw\"\nopening-indent = \"half\"\n" (T.replicate 40 "あ" <> "\n") >>= (@?= (29 * fs, fs)),
     testCase "ADR 0374: each line of a paragraph that keeps its lines starts as a paragraph, with opening-indent" $ do
       (_, ls) <- verseLines (horizontal30 "\n[paragraph-styles.verse]\nindent = \"0zw\"\nfirst-line-indent = \"1zw\"\nopening-indent = \"half\"\nspace-before = 0\nspace-after = 0\n") "@style verse\n  「一行」\n  二行\n"
       map snd ls @?= [hf, fs]
