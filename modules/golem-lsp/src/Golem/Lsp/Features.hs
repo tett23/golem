@@ -48,8 +48,8 @@ import Data.Char (isAsciiLower, isAsciiUpper, isDigit)
 import Data.Either (fromRight, rights)
 import Data.List (nub, sortOn)
 import Data.Map.Strict qualified as Map
-import Data.Set qualified as Set
 import Data.Maybe (fromMaybe, isJust, isNothing, listToMaybe, mapMaybe)
+import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE

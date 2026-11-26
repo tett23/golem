@@ -20,8 +20,8 @@ import LinkSpec qualified
 import NaturalSpec qualified
 import NoteSpec qualified
 import OperatorSpec qualified
-import OverrideImportSpec qualified
 import OverrideAllSpec qualified
+import OverrideImportSpec qualified
 import ParagraphStyleControlsSpec qualified
 import RangeSpec qualified
 import RationalSpec qualified

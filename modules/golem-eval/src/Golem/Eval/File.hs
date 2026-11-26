@@ -245,10 +245,11 @@ fileOverrides table hook file =
   where
     sourceSpaces path n a
       | ".emet" `T.isSuffixOf` path = case normalizeRelative (T.unpack path) >>= \p -> maybe (Left Missing) Right (Map.lookup p (ftFiles table)) of
-          Right fns | not (ftUnloaded table) ->
-            let spaces = [InlineSpace | Map.member n (fnInline fns)] <> [BlockSpace | Map.member n (fnBlock fns)] <> [ExprSpace | Map.member n (fnExpr fns)]
-             in -- an alias not of the shape of the names of every one of them is G02278 and left out
-                Just (if all (`aliasShape` a) spaces then spaces else [])
+          Right fns
+            | not (ftUnloaded table) ->
+                let spaces = [InlineSpace | Map.member n (fnInline fns)] <> [BlockSpace | Map.member n (fnBlock fns)] <> [ExprSpace | Map.member n (fnExpr fns)]
+                 in -- an alias not of the shape of the names of every one of them is G02278 and left out
+                    Just (if all (`aliasShape` a) spaces then spaces else [])
           _ -> Just [InlineSpace, BlockSpace, ExprSpace]
       | otherwise = Nothing
     overridable s a = case s of
@@ -342,7 +343,6 @@ unknownName ctx shown d
 
 builtinInlineCommands :: [Text]
 builtinInlineCommands = map builtinName allBuiltins
-
 
 attributeCommands :: [Text]
 attributeCommands = ["label", "toc-title", "number", "nonumber", "notoc", "style", "caption", "lang", "column-widths"]
@@ -1405,26 +1405,27 @@ data Passed = Passed
 
 -- | The kind of a command of a group, looked up as 'standalone' and 'builtinBlock' look it up, without noting any use.
 commandKind :: EvalContext -> A.Located A.Block -> M CommandKind
-commandKind ctx (A.Located _ b) = gets stListedFns >>= \listedFns -> case b of
-  A.BlockCommand (A.Located _ name) _ _
-    -- the @style of a next-style is the built-in one (root ADR 0471)
-    | name == nextStyleName -> pure TakesBody
-    | Just o <- parseOverridableBlock name, Map.member o (phBlockOverrides (ctxPlugins ctx)) -> pure TakesBody
-    -- an overridden built-in command is the function listed (root ADR 0471)
-    | isJust (parseOverridableBlock name), Just ref <- Map.lookup (BlockSpace, name) listedFns -> pure (listedKind name ref)
-    | name `elem` ["note", "endnote", "frame", "style", "lang"] -> pure TakesBody
-    | name `elem` attributeCommands -> pure Attribute
-    | name `elem` builtinBlockCommands || name `elem` settingCommands -> pure PutsOut
-    | Map.member name (phBlocks (ctxPlugins ctx)) -> pure TakesBody
-    | Just (ns, n) <- splitNamespace name ->
-        gets (Map.lookup ns . stFunctions) >>= \case
-          Just (Loaded fns) -> pure (maybe PutsOut functionKind (Map.lookup n (fnBlock fns)))
-          Just (Unloaded _) -> pure Unresolved
+commandKind ctx (A.Located _ b) =
+  gets stListedFns >>= \listedFns -> case b of
+    A.BlockCommand (A.Located _ name) _ _
+      -- the @style of a next-style is the built-in one (root ADR 0471)
+      | name == nextStyleName -> pure TakesBody
+      | Just o <- parseOverridableBlock name, Map.member o (phBlockOverrides (ctxPlugins ctx)) -> pure TakesBody
+      -- an overridden built-in command is the function listed (root ADR 0471)
+      | isJust (parseOverridableBlock name), Just ref <- Map.lookup (BlockSpace, name) listedFns -> pure (listedKind name ref)
+      | name `elem` ["note", "endnote", "frame", "style", "lang"] -> pure TakesBody
+      | name `elem` attributeCommands -> pure Attribute
+      | name `elem` builtinBlockCommands || name `elem` settingCommands -> pure PutsOut
+      | Map.member name (phBlocks (ctxPlugins ctx)) -> pure TakesBody
+      | Just (ns, n) <- splitNamespace name ->
+          gets (Map.lookup ns . stFunctions) >>= \case
+            Just (Loaded fns) -> pure (maybe PutsOut functionKind (Map.lookup n (fnBlock fns)))
+            Just (Unloaded _) -> pure Unresolved
+            Nothing -> pure PutsOut
+      | otherwise -> case Map.lookup (BlockSpace, name) listedFns of
           Nothing -> pure PutsOut
-    | otherwise -> case Map.lookup (BlockSpace, name) listedFns of
-        Nothing -> pure PutsOut
-        Just ref -> pure (listedKind name ref)
-  _ -> pure PutsOut
+          Just ref -> pure (listedKind name ref)
+    _ -> pure PutsOut
   where
     functionKind f = if bfBody f then TakesBody else PutsOut
     listedKind name = \case
@@ -1621,20 +1622,21 @@ without paragraphs or tables, @frame, @note, @endnote and an inner @style
 are as they are.
 -}
 evalStyled :: EvalContext -> Passed -> A.Located A.Block -> M [Block]
-evalStyled ctx ps lb@(A.Located sp b) = builtinBlockAt ctx >>= \isBuiltin -> case b of
-  A.Paragraph is -> styledParagraph ctx sp (psName ps) is
-  A.BulletList items -> one . BulletList <$> mapM (fmap (ListItem Nothing) . inner) items
-  A.OrderedList items -> one . OrderedList <$> mapM (fmap (ListItem Nothing) . inner) items
-  A.DefList gs -> one . DefList <$> mapM (\(A.DefGroup ts ds) -> DefGroup <$> mapM (evalInlines ctx False) ts <*> mapM inner ds) gs
-  A.Table {} -> evalBlock ctx lb >>= mapM (styledOutput ctx ps)
-  A.Attributed cmds t -> attributed ctx (Just ps) sp cmds t
-  A.Fenced bs -> inner bs
-  -- the built-in commands alone (root ADR 0471): an overridden name puts out blocks in the style
-  A.BlockCommand _ args body
-    | builtinCommand isBuiltin lb `elem` map Just ["style", "frame", "note", "endnote"] -> evalBlock ctx lb
-    | isLangCommand isBuiltin lb, not (null body) -> prepareArgs args >>= maybe (pure []) (\args' -> langBodyWith inner sp args' body)
-    | otherwise -> evalBlock ctx lb >>= mapM (styledOutput ctx ps)
-  _ -> evalBlock ctx lb
+evalStyled ctx ps lb@(A.Located sp b) =
+  builtinBlockAt ctx >>= \isBuiltin -> case b of
+    A.Paragraph is -> styledParagraph ctx sp (psName ps) is
+    A.BulletList items -> one . BulletList <$> mapM (fmap (ListItem Nothing) . inner) items
+    A.OrderedList items -> one . OrderedList <$> mapM (fmap (ListItem Nothing) . inner) items
+    A.DefList gs -> one . DefList <$> mapM (\(A.DefGroup ts ds) -> DefGroup <$> mapM (evalInlines ctx False) ts <*> mapM inner ds) gs
+    A.Table {} -> evalBlock ctx lb >>= mapM (styledOutput ctx ps)
+    A.Attributed cmds t -> attributed ctx (Just ps) sp cmds t
+    A.Fenced bs -> inner bs
+    -- the built-in commands alone (root ADR 0471): an overridden name puts out blocks in the style
+    A.BlockCommand _ args body
+      | builtinCommand isBuiltin lb `elem` map Just ["style", "frame", "note", "endnote"] -> evalBlock ctx lb
+      | isLangCommand isBuiltin lb, not (null body) -> prepareArgs args >>= maybe (pure []) (\args' -> langBodyWith inner sp args' body)
+      | otherwise -> evalBlock ctx lb >>= mapM (styledOutput ctx ps)
+    _ -> evalBlock ctx lb
   where
     inner = fmap concat . mapM (evalStyled ctx ps)
     one x = [block sp x]
@@ -2153,21 +2155,23 @@ paragraph of the body, whose style is dropped.
 paragraphsOnly :: EvalContext -> (Text, Text) -> Text -> A.Located A.Block -> M [Block]
 paragraphsOnly ctx (code, message) styleMessage lb0 = builtinBlockAt ctx >>= \isBuiltin -> inBody isBuiltin lb0
   where
-    inBody isBuiltin lb@(A.Located bsp b) = let isStyleCommand' = isStyleCommand isBuiltin in case b of
-      A.Attributed cmds t | (breaks@(_ : _), rest) <- partition (isBreakCommand isBuiltin) cmds -> do
-        mapM_ (\(A.Located csp _) -> err code csp message) breaks
-        if null rest then maybe (pure []) (inBody isBuiltin) t else inBody isBuiltin (A.Located bsp (A.Attributed rest t))
-      A.Paragraph _ -> unstyled <$> evalBlock ctx lb
-      A.Attributed cmds t@(Just (A.Located _ (A.Paragraph _))) | any isStyleCommand' cmds -> do
-        mapM_ (\(A.Located csp _) -> err "G02013" csp styleMessage) (filter isStyleCommand' cmds)
-        unstyled <$> evalBlock ctx (A.Located bsp (A.Attributed (filter (not . isStyleCommand') cmds) t))
-      A.Attributed _ (Just (A.Located _ (A.Paragraph _))) -> unstyled <$> evalBlock ctx lb
-      -- the body form of the built-in @style: G02013, its paragraphs without the style, its other blocks the code given
-      A.BlockCommand _ _ inner | isStyleCommand' lb -> do
-        err "G02013" bsp styleMessage
-        concat <$> mapM (inBody isBuiltin . joined) inner
-      A.ErrorBlock -> pure []
-      _ -> err code bsp message >> pure []
+    inBody isBuiltin lb@(A.Located bsp b) =
+      let isStyleCommand' = isStyleCommand isBuiltin
+       in case b of
+            A.Attributed cmds t | (breaks@(_ : _), rest) <- partition (isBreakCommand isBuiltin) cmds -> do
+              mapM_ (\(A.Located csp _) -> err code csp message) breaks
+              if null rest then maybe (pure []) (inBody isBuiltin) t else inBody isBuiltin (A.Located bsp (A.Attributed rest t))
+            A.Paragraph _ -> unstyled <$> evalBlock ctx lb
+            A.Attributed cmds t@(Just (A.Located _ (A.Paragraph _))) | any isStyleCommand' cmds -> do
+              mapM_ (\(A.Located csp _) -> err "G02013" csp styleMessage) (filter isStyleCommand' cmds)
+              unstyled <$> evalBlock ctx (A.Located bsp (A.Attributed (filter (not . isStyleCommand') cmds) t))
+            A.Attributed _ (Just (A.Located _ (A.Paragraph _))) -> unstyled <$> evalBlock ctx lb
+            -- the body form of the built-in @style: G02013, its paragraphs without the style, its other blocks the code given
+            A.BlockCommand _ _ inner | isStyleCommand' lb -> do
+              err "G02013" bsp styleMessage
+              concat <$> mapM (inBody isBuiltin . joined) inner
+            A.ErrorBlock -> pure []
+            _ -> err code bsp message >> pure []
     joined = \case
       A.Located psp (A.Paragraph is) -> A.Located psp (A.Paragraph (joinSoftBreaks is))
       other -> other

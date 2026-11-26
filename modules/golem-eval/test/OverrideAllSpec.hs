@@ -15,7 +15,7 @@ import Golem.Eval.Builtin (BuiltinInline (..), OverridableBlock (..), builtinBlo
 import Golem.Eval.File
 import Golem.Eval.Functions
 import Golem.Parser (parseAst)
-import Golem.Project.Style (LineBreaks (..), parseStyle, paraLineBreaks)
+import Golem.Project.Style (LineBreaks (..), paraLineBreaks, parseStyle)
 import Golem.Syntax
 import Support
 import Test.Tasty
