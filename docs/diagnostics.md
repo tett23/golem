@@ -6440,7 +6440,7 @@ TSV の途中の空の行は消す。
 上書きできない組み込みのコマンドは、Golem の仕組みを決めるもの（`@import`、`@set`、`@channel`、`@manifest`、`@style-def`、`@hyphenation-exceptions` と属性の `@label`、`@toc-title`、`@number`、`@nonumber`、`@notoc`、`@caption`、`@column-widths`）と `@frame` で、一覧は仕様書の「プラグイン」の節の「種類」の表にある（[root ADR 0471](adr/0471-override-built-in-commands-except-mechanisms-and-frames.md)）。
 インラインのコマンドはすべて上書きできるので、インラインの名前はこのコードにならない。
 上書きできる組み込みのコマンド（`@toc`、`@note`、`[strong]`、`[link]` など）と同じ名前は、このコードにならず、取り込んだ関数がそのファイルの中で組み込みのコマンドを上書きする（[root ADR 0453](adr/0453-override-built-in-commands-by-listed-imports-and-plugins.md)、[root ADR 0471](adr/0471-override-built-in-commands-except-mechanisms-and-frames.md)）。
-その名前はその場所には取り込まず、名前空間なしの参照は組み込みのコマンドを指す。
+このコードになった名前はその場所には取り込まず、名前空間なしの参照は組み込みのコマンドを指す。
 位置は、`@import` の行のその名前である。
 
 - メッセージ: `上書きできない組み込みのコマンドと同じ名前は取り込めません: <名前>`
@@ -10951,7 +10951,7 @@ overrides に書けない名前です
 
 - メッセージ: `プラグインが提供していないコマンドを overrides に書いています: <プラグイン>.<コマンド>`、`上書きできる組み込みのコマンドではありません: <プラグイン>.<コマンド>`、`プラグインが提供していないブロックコマンドを block-overrides に書いています: <プラグイン>.@<名前>`、`上書きできる組み込みのブロックコマンドではありません: <プラグイン>.@<名前>`
 - 段階とモジュール: プラグイン（golem-evaluate の `Golem.Evaluate.Plugins`）
-- ADR: [golem-plugin ADR 0003](golem-plugin/adr/0003-plugin-diagnostic-codes.md)、[root ADR 0453](adr/0453-override-built-in-commands-by-listed-imports-and-plugins.md)
+- ADR: [golem-plugin ADR 0003](golem-plugin/adr/0003-plugin-diagnostic-codes.md)、[root ADR 0453](adr/0453-override-built-in-commands-by-listed-imports-and-plugins.md)、[root ADR 0471](adr/0471-override-built-in-commands-except-mechanisms-and-frames.md)
 
 ### 主な原因
 
