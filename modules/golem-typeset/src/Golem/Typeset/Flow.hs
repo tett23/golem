@@ -2772,9 +2772,10 @@ paragraphSpace style name countOf dimOf = fromMaybe 0 $ do
   resolvedParagraphSpacing style d amount
 
 {- | The indent of a paragraph that starts with an opening bracket
-(docs/adr/0374): with opening-indent = "half", the start of the first line
-(the indent and the first-line indent) less half the size of the
-paragraph, 0 at the least; otherwise the indent as it is. The bracket is
+(docs/adr/0374): with opening-indent = "half", the first-line indent f less
+half the size h of the paragraph, 0 at the least, and f itself when f is
+already negative (a hanging indent): max (min f 0) (f - h); otherwise the
+indent as it is. The bracket is
 the first character of the inlines, inside styles, links, language spans
 and the bases of ruby, past the elements without a character; its class
 is found in the language of the paragraph.
@@ -2784,7 +2785,7 @@ openingIndent oi face blang ind@(Indent s f e a) is
   | oi == Just OpeningHalf,
     Just (spanLang, c) <- firstCharOf Nothing is,
     lookClass face {lkLang = spanLang <|> lkLang face <|> blang} c == Opening =
-      let Sp size = lkSize face in Indent s (max (negate s) (f - Sp (size `div` 2))) e a
+      let Sp size = lkSize face in Indent s (max (min f 0) (f - Sp (size `div` 2))) e a
   | otherwise = ind
 
 -- | The first character of inlines, with the language of the span it is in.
