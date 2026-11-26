@@ -89,6 +89,7 @@ module Golem.Project.Style
     checkLocalStyles,
     charStyleKeys,
     paraStyleKeys,
+    fitCharacters,
     styleSchema,
     builtinCharStyles,
     builtinParaStyles,
@@ -525,7 +526,12 @@ data ParaStyleDef = ParaStyleDef
     -- | number every nth nonempty source line of a paragraph that keeps lines (root ADR 0384)
     psLineNumberInterval :: !(Maybe Int),
     -- | the format of a numbered caption (root ADR 0463)
-    psTitleFormat :: !(Maybe [TitleFormatPart])
+    psTitleFormat :: !(Maybe [TitleFormatPart]),
+    {- | the lines of a drop cap (root ADR 0465): read for the check of
+    G03301 (root ADR 0466); the drop cap itself is not set yet
+    -} psDropLines :: !(Maybe Int),
+    -- | the characters of the width a one-line paragraph is set to (root ADR 0466)
+    psFitCharacters :: !(Maybe Int)
   }
   deriving stock (Eq, Show)
 
@@ -675,7 +681,7 @@ noCharDef = CharStyleDef Nothing Nothing Nothing Nothing Nothing Nothing Nothing
 
 -- | A paragraph style with no key written.
 noParaDef :: ParaStyleDef
-noParaDef = ParaStyleDef Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing [] Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing
+noParaDef = ParaStyleDef Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing [] Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing
 
 -- | The keys body has without a definition (docs/adr ADR 0005, 0006, 0019; docs/adr/0020, 0189).
 bodyDefaults :: ParaStyleDef
@@ -1079,6 +1085,8 @@ overPara u b =
     (psNumberTitleSeparator u <|> psNumberTitleSeparator b)
     (psLineNumberInterval u <|> psLineNumberInterval b)
     (psTitleFormat u <|> psTitleFormat b)
+    (psDropLines u <|> psDropLines b)
+    (psFitCharacters u <|> psFitCharacters b)
 
 {- | The parent of a paragraph style: body and code have none (golem-driver
 ADR 0017), the others are based on body by default.
@@ -2534,8 +2542,13 @@ instance FromValue ParaStyleDef where
     separator <- optKey "number-title-separator"
     interval <- optKeyOf "line-number-interval" (keepCount 1 Nothing)
     format <- optKeyOf "title-format" titleFormatOf
-    pure (ParaStyleDef b f s ((\x -> if x == "keep" then KeepLines else JoinLines) <$> lb) pitch sb sbDim ind fli' rs aki k t p bs bg pad' border bw bst bsides brad rb ra align sbefore sbeforeDim safter safterDim endInd fs kwn kal kfl kll start adjustment slim sord tord pw nxt ini (oind >>= \v -> lookup v (zip openingIndentValues [minBound .. maxBound])) separator interval format)
+    -- a natural number greater than 0; any other value is G03006, a negative one too (root ADR 0465, 0466)
+    drop' <- optKeyOf "drop-lines" (positiveCount "drop-lines")
+    fit <- optKeyOf "fit-characters" (positiveCount "fit-characters")
+    pure (ParaStyleDef b f s ((\x -> if x == "keep" then KeepLines else JoinLines) <$> lb) pitch sb sbDim ind fli' rs aki k t p bs bg pad' border bw bst bsides brad rb ra align sbefore sbeforeDim safter safterDim endInd fs kwn kal kfl kll start adjustment slim sord tord pw nxt ini (oind >>= \v -> lookup v (zip openingIndentValues [minBound .. maxBound])) separator interval format drop' fit)
     where
+      positiveCount :: Text -> Value' l -> Matcher l Int
+      positiveCount key = withValue $ \l x -> if x < 1 then failAt l (T.unpack key <> " は 0 より大きい整数です: " <> show x) else pure x
       keepCount :: Natural -> Maybe Natural -> Value' l -> Matcher l Int
       keepCount lo hi v =
         naturalIntOf v >>= \n ->
@@ -3637,6 +3650,27 @@ styleChecks owner s =
     <> spineAlignChecks s
     <> markPositionChecks s
     <> endnoteChecks s
+    <> dropFitChecks s
+
+{- | G03301 (root ADR 0466): a paragraph style that has drop-lines and
+fit-characters, through based-on, once for each such style, at its
+definition; its paragraphs are set as without the two ('fitCharacters').
+-}
+dropFitChecks :: Style -> [(Text, Text, [Scope], Text)]
+dropFitChecks s =
+  [ ("G03301", n, [ScopeKey "paragraph-styles", ScopeKey n], "段落スタイル " <> n <> " は drop-lines と fit-characters の両方を持っています。どちらか一方を書きます")
+  | n <- Map.keys (stParaStyles s),
+    Just d <- [paraStyle s (Just n)],
+    isJust (psDropLines d),
+    isJust (psFitCharacters d)
+  ]
+
+{- | The fit-characters of a resolved paragraph style (root ADR 0466):
+none when the style has drop-lines too, which is G03301 and sets the
+paragraphs as without either.
+-}
+fitCharacters :: ParaStyleDef -> Maybe Int
+fitCharacters d = if isJust (psDropLines d) then Nothing else psFitCharacters d
 
 {- | G03278 (root ADR 0412): [endnotes] numbering = "page"; a list at the
 end of a chapter has no page to number its endnotes by.
@@ -3915,7 +3949,9 @@ codeStyleChecks s =
             ("stretch-order", isJust (psStretchOrder d)),
             ("next-style", isJust (psNextStyle d)),
             ("initial-style", isJust (psInitialStyle d)),
-            ("opening-indent", isJust (psOpeningIndent d))
+            ("opening-indent", isJust (psOpeningIndent d)),
+            ("drop-lines", isJust (psDropLines d)),
+            ("fit-characters", isJust (psFitCharacters d))
           ],
         written
       ]
@@ -4731,7 +4767,9 @@ paraStyleNode =
         ("stretch-order", adjustOrderNode),
         ("next-style", ref ParaStyles),
         ("initial-style", ref CharStyles),
-        ("opening-indent", enum openingIndentValues)
+        ("opening-indent", enum openingIndentValues),
+        ("drop-lines", int),
+        ("fit-characters", int)
       ]
         <> featureNodes
         <> [ ("background", NEither [ref Swatches, NValue LFalse]),

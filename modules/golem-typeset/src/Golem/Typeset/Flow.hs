@@ -66,6 +66,9 @@ module Golem.Typeset.Flow
     -- the indent of a paragraph that starts with an opening bracket (root ADR 0374, 0469)
     Indent (..),
     openingIndent,
+    -- the paragraphs of fit-characters (root ADR 0466)
+    fitItems,
+    fitCharacterWarnings,
     fixpoint,
     fixpointWith,
     rubyStyleOf,
@@ -177,6 +180,7 @@ import Golem.Typeset.Overhang (lineOverhang, reachesBackground)
 import Golem.Typeset.Pages (sourceAt)
 import Golem.Typeset.PdfColor (recolorImportedPage)
 import Golem.Typeset.Svg (drawingImportedPage, figureColor, markerMessage, markerSegmentsMessage, recolorFigure, svgDrawing, unsupportedMessage)
+import Golem.Unicode.Grapheme (graphemeClusters)
 import System.FilePath (takeBaseName)
 
 -- | One line of the flow, with what is needed to draw it.
@@ -448,8 +452,10 @@ data Built = Built
     bBoxes :: Map Int BoxInfo,
     -- | where the destinations of links are drawn (docs/adr/0267)
     bDestAnchors :: Map LinkDest DestAnchor,
-    -- | G07127: the captions whose indents leave no character, also when the layout stops (docs/adr/0389)
-    bCaptionWarnings :: [Diagnostic],
+    {- | G07127: the captions whose indents leave no character, and G07144:
+    the paragraphs of fit-characters not fitted (root ADR 0466), also when
+    the layout stops (docs/adr/0389)
+    -} bCaptionWarnings :: [Diagnostic],
     bLinePitches :: Map Int Sp,
     bBoxPadding :: Map Int Sp,
     bWrappedBefore :: Map Int Sp,
@@ -3451,8 +3457,13 @@ unitLabelLink u = listToMaybe [LinkTo (DestNoteMark (NoteId sp 0)) | Frame _ (FE
 M of each list; a unit in lists is indented by them (golem-driver ADR 0013).
 -}
 flowUnits :: FlowEnv -> ([(Int, Unit)], Map Int Sp)
-flowUnits fe = ([(i, (withBox (withReserve (withListIndent u))) {uIndex = i}) | (i, u) <- zip [0 :: Int ..] rawUnits], widths)
+flowUnits fe = ([(i, (withFit (withBox (withReserve (withListIndent u)))) {uIndex = i}) | (i, u) <- zip [0 :: Int ..] rawUnits], widths)
   where
+    {- a paragraph fitted to its fit-characters is one line, ragged, put by
+    its align (root ADR 0466); one that is not fitted keeps its align -}
+    withFit u = case uKind u of
+      UPara (Indent s f e a) | isJust (unitFitted fe u) -> u {uKind = UPara (Indent s f e (fitAlign a))}
+      _ -> u
     {- the box of a paragraph at the top of the document (docs/adr/0271): its
     lines the padding inside the box, which is from the indent to the end indent -}
     withBox u = case (uKind u, paraStyle (uStyle u) (uParaStyle u)) of
@@ -3546,24 +3557,191 @@ type area (docs/adr/0279).
 composeUnit :: FlowEnv -> Map Int Sp -> (Int -> Sp) -> Unit -> Composed
 composeUnit fe widths lineWidth u =
   let boxed = isJust (uBox u)
-      env = (unitEnv fe u) {ceSizeSource = uSource u, ceSite = unitSiteOf u, ceHanging = ceHanging (unitEnv fe u) && not boxed}
+      env = unitTextEnv fe u
       params
         | boxed = (feParams fe) {pProtrusion = compProtrusion (stComposition (piStyle (feInput fe)))}
         | otherwise = feParams fe
       marker = markerItems env (listInner widths u) u
       -- the anchors count the items of the text; the marker comes first
       shift = length marker
-      (textItems0, anchors) = composeInlines env (uInlines u)
+      (textItems0, anchors0) = composeInlines env (uInlines u)
       {- numbered per page, the mark of a note at the end of a chapter is one
       box of the reserved width (docs/adr/0383); one box too when its
       number is set flat (docs/adr/0381) -}
-      textItems = case [(ch, n) | Frame _ (FEndNote ch _ _ n) _ <- uFrames u] of
+      textItems1 = case [(ch, n) | Frame _ (FEndNote ch _ _ n) _ <- uFrames u] of
         (ch, n) : _ | noteMarkBoxed (uStyle u) (ceVertical env) n -> markLabelBox env ch n textItems0
         _ -> textItems0
+      -- a paragraph of fit-characters that fits, its anchors at the items they went to (root ADR 0466)
+      (textItems, anchors) = case unitFit u of
+        Just n | not (fitBroken u), Just (fitted, at) <- fitItems env (fitWidth n u) textItems1 -> (fitted, map (anchorAt at) anchors0)
+        _ -> (textItems1, anchors0)
       items = marker <> textItems
       breaks = A.breakAligned (layoutAlign (uKind u)) (adjustedParams (uStyle u) (uParaStyle u) params) lineWidth items
       lines' = brLines breaks
    in Composed lines' (unitNotes fe u anchors) (unitSidenotes fe u shift anchors) (unitMarks fe u shift anchors) anchors items shift (brPositions breaks) 0 False Nothing
+
+{- | The environment the text of a unit is composed in: a unit in a box
+with hanging-punctuation = false (docs/adr/0279).
+-}
+unitTextEnv :: FlowEnv -> Unit -> ComposeEnv
+unitTextEnv fe u = (unitEnv fe u) {ceSizeSource = uSource u, ceSite = unitSiteOf u, ceHanging = ceHanging (unitEnv fe u) && isNothing (uBox u)}
+
+{- | The fit-characters of a unit (root ADR 0466): of a paragraph at the
+top of the document, or of the body of @style put in place there, whose
+style, resolved, has it and no drop-lines. A list item, a table cell, a
+caption, a note, a frame and an entry of a channel are no such units.
+-}
+unitFit :: Unit -> Maybe Int
+unitFit u = case uKind u of
+  UPara _ | topParagraph u -> paraStyle (uStyle u) (uParaStyle u) >>= fitCharacters
+  _ -> Nothing
+
+-- | The width of a paragraph of fit-characters: so many characters of its size (root ADR 0466).
+fitWidth :: Int -> Unit -> Sp
+fitWidth n u = fromIntegral n * lkSize (uLook u)
+
+{- | Whether a paragraph of fit-characters is not fitted for its line
+breaks (root ADR 0466): a line of a paragraph that keeps its lines and
+has more than one, or a paragraph with a line break.
+-}
+fitBroken :: Unit -> Bool
+fitBroken u = any (\(Frame _ k _) -> k == FPara) (uFrames u) || any hasLineBreak (uInlines u)
+  where
+    hasLineBreak :: Inline -> Bool
+    hasLineBreak = \case
+      LineBreak _ -> True
+      Kenten _ _ ys -> any hasLineBreak ys
+      Color _ _ ys -> any hasLineBreak ys
+      CharStyle _ _ ys -> any hasLineBreak ys
+      Link _ _ ys -> any hasLineBreak ys
+      Lang _ _ ys -> any hasLineBreak ys
+      Resolved _ _ _ ys -> any hasLineBreak ys
+      _ -> False
+
+-- | The text items of a paragraph of fit-characters fitted to its width, when it fits (root ADR 0466).
+unitFitted :: FlowEnv -> Unit -> Maybe ([Item], Int -> Int)
+unitFitted fe u = case unitFit u of
+  Just n | not (fitBroken u) -> let env = unitTextEnv fe u in fitItems env (fitWidth n u) (fst (composeInlines env (uInlines u)))
+  _ -> Nothing
+
+{- | The align of a fitted line (root ADR 0466): ragged, put as the align
+puts the last line of a paragraph; fully justified at the start, and
+towards and away from the spine as they are.
+-}
+fitAlign :: ParaAlign -> ParaAlign
+fitAlign = \case
+  ParaLeftJustified -> ParaLeft
+  ParaCenterJustified -> ParaCenter
+  ParaRightJustified -> ParaRight
+  ParaFullyJustified -> ParaLeft
+  a -> a
+
+-- | An anchor at the item an item went to.
+anchorAt :: (Int -> Int) -> Anchor -> Anchor
+anchorAt at = \case
+  AnchorNote i n s b -> AnchorNote (at i) n s b
+  AnchorSidenote i n s b -> AnchorSidenote (at i) n s b
+  AnchorPageRef i t -> AnchorPageRef (at i) t
+  AnchorIndex i s e -> AnchorIndex (at i) s e
+
+{- | The items of a paragraph of fit-characters set to the width @w@ (root
+ADR 0466), with the item each item went to; Nothing when its graphemes
+are wider than @w@. The graphemes are the boxes of the text, a Latin word
+split into its grapheme clusters, and the spaces between words. The other
+glue (the aki of punctuation, the space between Japanese and Latin text)
+goes with the grapheme before it, or the first one, at its natural width;
+the penalties go. What @w@ leaves goes between the graphemes as empty
+boxes, evenly, the remainder of the rounding to sp 1 sp at a time from
+the first space, none at the ends; one grapheme is put at the centre, the
+odd sp after it. Nothing breaks the line but its end, and nothing in it
+stretches, shrinks, expands or sticks out.
+-}
+fitItems :: ComposeEnv -> Sp -> [Item] -> Maybe ([Item], Int -> Int)
+fitItems env w items0
+  | null graphemes = Just (items0, id)
+  | natural > w = Nothing
+  | otherwise = Just (map snd out, at)
+  where
+    -- the end of the paragraph: a penalty of no break, the glue of fill and the forced break
+    (body, end) = case reverse items0 of
+      f@(Penalty _ q _) : g@Glue {} : p@(Penalty _ n _) : rest | n >= 10000, q <= -10000 -> (reverse rest, [p, g, f])
+      _ -> (items0, [])
+    tokens = concatMap token (zip [0 :: Int ..] body)
+    token (i, it) = case it of
+      Box bw c -> case splitBox c of
+        Just parts -> [Left [(Just i, b)] | b <- parts]
+        Nothing -> [Left [(Just i, Box bw (still c))]]
+      Glue {itemWidth = gw, itemKind = k}
+        | gw <= 0 -> []
+        | k `elem` [WordSpaceGlue, OtherGlue] -> [Left [(Just i, spacer gw)]]
+        | otherwise -> [Right (Just i, spacer gw)]
+      Penalty {} -> []
+    -- the graphemes, each with the glue that goes with it
+    graphemes = place [] [] tokens
+    place acc lead = \case
+      Left g : rest -> place ((lead <> g) : acc) [] rest
+      Right a : rest -> case acc of
+        d : ds -> place ((d <> [a]) : ds) lead rest
+        [] -> place [] (lead <> [a]) rest
+      [] -> reverse (if null lead then acc else lead : acc)
+    natural = sum [itemWidth it | g <- graphemes, (_, it) <- g]
+    left = w - natural
+    count = length graphemes
+    laid = case graphemes of
+      [g] ->
+        let before = Sp (unSp left `div` 2)
+         in [(Nothing, spacer before) | before > 0] <> g <> [(Nothing, spacer (left - before)) | left - before > 0]
+      _ ->
+        let (q, r) = unSp left `divMod` fromIntegral (count - 1)
+            gaps = [Sp (q + (if k < r then 1 else 0)) | k <- [0 .. fromIntegral count - 2]] <> [0]
+         in concat (zipWith (\g gap -> g <> [(Nothing, spacer gap) | gap > 0]) graphemes gaps)
+    out = laid <> [(Just (length body + k), it) | (k, it) <- zip [0 ..] end]
+    firsts = Map.fromListWith min [(i, p) | (p, (Just i, _)) <- zip [0 :: Int ..] out]
+    at i = maybe (length out) snd (Map.lookupGE i firsts)
+    -- a box of text that does not stretch, expand or stick out
+    still c = c {bcExpandable = False, bcProtrudeStart = 0, bcProtrudeEnd = 0, bcEdgeStart = 0, bcEdgeEnd = 0}
+    spacer x = Box x (BoxContent "" False 0 0 (fromEnum KindAki) (ceLook env) 0 0 [] 0 0 (ceBoxSource env) Nothing noLeaf (-1) Nothing)
+    {- a Latin word of more than one grapheme, as a box for each: its
+    advance in the look of the word, and the tracking after each
+    character; where each starts in the source, after the bytes of those
+    before it -}
+    splitBox c
+      | boxKind c `elem` [KindText, KindRotated],
+        null (bcBaseLooks c),
+        isNothing (bcWarichu c),
+        isNothing (bcMark c),
+        bcPadStart c == 0,
+        bcPadEnd c == 0,
+        gs@(_ : _ : _) <- graphemeClusters (bcText c) =
+          let lk = bcLook c
+              tr = Sp (round (toInteger (lkTracking lk) * unSp (lkSize lk) % 1000))
+              starts = scanl (+) 0 (map (BS.length . TE.encodeUtf8) gs)
+           in Just
+                [ Box (L.zwToSp (lkSize lk) (ceWordAdvance env lk g) + tr * fromIntegral (T.length g)) (still c {bcText = g, bcAt = if bcAt c >= 0 then bcAt c + off else bcAt c})
+                | (g, off) <- zip gs starts
+                ]
+      | otherwise = Nothing
+
+{- | G07144 (root ADR 0466): a paragraph of fit-characters that is not
+fitted, for its line breaks or for its graphemes wider than its width,
+once for each paragraph, at its block, in the order of the units.
+-}
+fitWarnings :: FlowEnv -> [(Int, Unit)] -> [Diagnostic]
+fitWarnings fe units =
+  [ diagnostic "G07144" Warning (uSpan u) ("段落の字が fit-characters の " <> T.pack (show n) <> " 字分の幅に収まらないので、字取りをしません")
+  | u <- nubOrdOn uSpan [u' | (_, u') <- units, isJust (unitFit u')],
+    Just n <- [unitFit u],
+    fitBroken u || isNothing (unitFitted fe u)
+  ]
+
+{- | G07144 of a book as its layout gives it (root ADR 0466), without the
+pages: for golem check, which does not lay out the book. The input is
+that of the layout, the code styles in it ('codeInput').
+-}
+fitCharacterWarnings :: PdfInput -> PageGeometry -> LoadedFonts -> [Diagnostic]
+fitCharacterWarnings inp geom fonts =
+  let fe = flowEnv inp geom fonts (Assumed Map.empty Map.empty Map.empty Map.empty)
+   in fitWarnings fe (fst (flowUnits fe))
 
 {- | The place of the text of a unit in the structure tree (docs/adr ADR
 0183): none for the title of the notes at the end of a chapter, which is
@@ -4715,9 +4893,10 @@ numberComposedFlow inp geom fe units widths composed =
       -- the code blocks of the flow are those of the units, in order
       codeInfos = Map.fromList [(lbId b, (cbInfo cb) {ciFirst = lbId b0}) | (bs@(b0 : _), cb) <- zip [fcRows f | f@FCode {} <- flow] (Map.elems codeBlocks), b <- bs]
       codeNotices = concatMap cbNotices (Map.elems codeBlocks)
-      -- G07127: each caption over its inner width, in the order of the units (docs/adr/0389)
+      -- G07127: each caption over its inner width, in the order of the units (docs/adr/0389); G07144 after them (root ADR 0466)
       captionWarnings =
-        concat
+        (<> fitWarnings fe units) $
+          concat
           [ case uKind u of
               UFigure _ | Just (pf, _, _, _) <- Map.lookup i figures -> captionIndentWarnings fe u (pfFullAlong pf) (pfCaption pf)
               UTable t -> captionIndentWarnings fe u (feMeasure fe) (ccLines (tableCaptionOf fe u t))
