@@ -40,6 +40,7 @@ import MovedReferencesSpec (movedReferencesTests)
 import PositionEnumSpec (positionEnumTests)
 import PublishSpec (publishTests)
 import SemanticTokensSpec (semanticTokensTests)
+import SetRenameSpec (setRenameTests)
 import StaleS1Spec (staleS1Tests)
 import Support (codesOf)
 import System.Directory (canonicalizePath, copyFile, createDirectoryIfMissing, doesDirectoryExist, listDirectory, makeAbsolute)
@@ -650,6 +651,7 @@ tests =
             ],
       editingTests,
       functionsLspTests,
+      setRenameTests,
       tableWatchTests,
       staleS1Tests,
       publishTests,

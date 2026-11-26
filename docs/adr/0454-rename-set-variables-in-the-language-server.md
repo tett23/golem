@@ -1,6 +1,6 @@
 # ADR 0454: 言語サーバーで `@set` の変数の名前を変えられるようにする
 
-Status: accepted-pending
+Status: accepted
 
 ## 文脈
 
