@@ -94,7 +94,9 @@ tests =
       testCase "root ADR 0471 I1: { note } of a .emet that could not be loaded: @note puts out nothing, G02279 once, and the paragraph is set" $ do
         let unloaded = ctxAll {ctxFunctions = (ctxFunctions ctxAll) {ftUnloaded = True}}
         texts unloaded (listed "note" "@note\n段落\n") @?= ["段落"]
-        codes unloaded (listed "note" "@note\n段落\n") @?= ["G02279"],
+        -- the paragraph after a name the evaluation cannot call is G02011, as root ADR 0461 decides
+        filter (== "G02279") (codes unloaded (listed "note" "@note\n段落\n")) @?= ["G02279"]
+        codes unloaded (listed "note" "@note\n\n段落\n") @?= ["G02279"],
       testCase "root ADR 0471 I2: each overridable block name listed is the function's, with no G02270 and no diagnostics of the built-in one" $
         mapM_ (\n -> (n, texts blockOnly (listed n ("@" <> n <> "\n")), codes blockOnly (listed n ("@" <> n <> "\n"))) @?= (n, ["F:" <> n], [])) overridableBlock,
       testCase "root ADR 0471 I2: each inline name listed is the function's, with no G02270 and no diagnostics of the built-in one" $
@@ -122,9 +124,9 @@ tests =
       testCase "root ADR 0471 I2: { figure } and @figure a.png without a.png: the function's output, no error of the file" $ do
         texts blockOnly (listed "figure" "@figure a.png\n") @?= ["F:figure"]
         codes blockOnly (listed "figure" "@figure a.png\n") @?= [],
-      testCase "root ADR 0471 I2: { listing } and src twice: the function is called, no G02077" $ do
-        assertBool "called" (called blockOnly (listed "listing" "@listing src=a src=b\n"))
-        assertBool "no G02077" ("G02077" `notElem` codes blockOnly (listed "listing" "@listing src=a src=b\n")),
+      -- G02077 of the repeated key is that of every command (golem-parser ADR 0013); the call is not stopped as that of @listing is
+      testCase "root ADR 0471 I2: { listing } and src twice: the call reaches the function, whose signature has no src" $
+        codes blockOnly (listed "listing" "@listing src=a src=b\n") @?= ["G02077", "G02119", "G02119"],
       testCase "root ADR 0471 I2: { lang } and @lang twice: the functions, no G02012" $ do
         texts blockOnly (listed "lang" "@lang en\n@lang ja\n段落\n") @?= ["F:lang", "F:lang", "段落"]
         codes blockOnly (listed "lang" "@lang en\n@lang ja\n段落\n") @?= [],
