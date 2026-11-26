@@ -1,6 +1,6 @@
 # ADR 0471: 組み込みのコマンドを、組版と Golem の仕組みに要るもののほかは上書きできるようにする
 
-Status: accepted-pending
+Status: accepted
 
 ## 文脈
 

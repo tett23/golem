@@ -4,7 +4,7 @@ module ShySpec (tests) where
 import Data.Maybe (isJust)
 import Data.Text (Text)
 import Golem.Doc.IR
-import Golem.Eval.Builtin (BuiltinInline (..), FixedBuiltin (..), parseBuiltin, pluginCommandName)
+import Golem.Eval.Builtin (BuiltinInline (..), parseBuiltin, pluginCommandName)
 import Support
 import Test.Tasty
 import Test.Tasty.HUnit
@@ -39,6 +39,6 @@ tests =
       testCase "G02038: [shy] with a prose slot" $
         codes "a[shy: b]c\n" @?= ["G02038"],
       testCase "shy is a built-in command a plugin may not override" $ do
-        parseBuiltin "shy" @?= Just (Fixed BShy)
+        parseBuiltin "shy" @?= Just BShy
         isJust (pluginCommandName "shy") @?= False
     ]

@@ -26,7 +26,7 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Golem.Doc.IR (ChannelDecl (..), Document (..))
-import Golem.Eval.Builtin (BuiltinInline (..), OverridableBlock, OverridableBuiltin, PluginCommandName, builtinBlockCommands, parseBuiltin, parseOverridableBlock, pluginCommandName)
+import Golem.Eval.Builtin (BuiltinInline, OverridableBlock, PluginCommandName, builtinBlockCommands, parseBuiltin, parseOverridableBlock, pluginCommandName)
 import Golem.Eval.File (PluginBlockCommand (..), PluginCommand (..), PluginHook (..), noPlugins)
 import Golem.Plugin
 import Golem.Plugin.Lock
@@ -163,7 +163,7 @@ loadPlugins root overlay cacheDir mfid lfid lockText (FileId dataBase) context f
           checkedOverrides = [((n, o), overrideTarget o n p) | (o, n, p) <- overrides]
           overrideTarget o n p
             | o `notElem` pluginCommands p = Left ("プラグインが提供していないコマンドを overrides に書いています: " <> n <> "." <> o)
-            | Just (Overridable b) <- parseBuiltin o = Right b
+            | Just b <- parseBuiltin o = Right b
             | otherwise = Left ("上書きできる組み込みのコマンドではありません: " <> n <> "." <> o)
           -- each command a plugin provides as a key of the hook (docs/adr ADR 0027):
           -- a name of its own, a declared override, or G06007 for an undeclared
@@ -180,9 +180,8 @@ loadPlugins root overlay cacheDir mfid lfid lockText (FileId dataBase) context f
           lookupPlugin n = case [x | x@(n', _, _) <- plugins, n' == n] of
             (x : _) -> Just x
             [] -> Nothing
-          collisionMessage (c, n)
-            | Just (Overridable _) <- parseBuiltin c = "組み込みのコマンドと衝突しています（overrides で宣言してください）: " <> n <> "." <> c
-            | otherwise = "上書きできない組み込みのコマンドと衝突しています: " <> n <> "." <> c
+          -- every built-in inline command may be overridden (root ADR 0471)
+          collisionMessage (c, n) = "組み込みのコマンドと衝突しています（overrides で宣言してください）: " <> n <> "." <> c
           -- the same for the block commands and block-overrides (root ADR 0453)
           checkedBlockOverrides = [((n, o), blockOverrideTarget o n p) | (n, decl, p) <- plugins, o <- pdBlockOverrides decl]
           blockOverrideTarget o n p
@@ -304,9 +303,9 @@ declared name that is not an overridable built-in command, which G06008
 reports.
 -}
 commandKey ::
-  [((Text, Text), Either Text OverridableBuiltin)] ->
+  [((Text, Text), Either Text BuiltinInline)] ->
   (Text, Text, p) ->
-  Maybe (Either (Text, Text) (Either OverridableBuiltin PluginCommandName, (Text, Text, p)))
+  Maybe (Either (Text, Text) (Either BuiltinInline PluginCommandName, (Text, Text, p)))
 commandKey checked x@(c, n, _) = case pluginCommandName c of
   Just k -> Just (Right (Right k, x))
   Nothing -> case lookup (n, c) checked of

@@ -126,9 +126,10 @@ tests =
         codes ctx "@import functions/book.emet * as book\n@import functions/book.emet { total }\n\n[= total([1]) + book.total([2])]\n" @?= [],
       testCase "root ADR 0451 I3: a built-in command's name is G02270, at the name" $ do
         sites "@import functions/book.emet { frame }\n" @?= [("G02270", "frame")]
-        sites "@import functions/book.emet { link }\n" @?= [("G02270", "link")],
-      testCase "root ADR 0451 I3: the built-in command keeps its name" $
-        [u | Paragraph _ is <- resultBodies (evalResult ctx "@import functions/book.emet { link }\n\n[link \"https://example.com/\": a]\n"), Link _ u _ <- is] @?= ["https://example.com/"],
+        -- link may be overridden since root ADR 0471
+        sites "@import functions/book.emet { link }\n" @?= [],
+      testCase "root ADR 0471 I2: a listed link is the function, not the built-in command" $
+        [u | Paragraph _ is <- resultBodies (evalResult ctx "@import functions/book.emet { link }\n\n[link \"https://example.com/\": a]\n"), Link _ u _ <- is] @?= [],
       testCase "root ADR 0451 I3: a plugin command's name is G02271" $ do
         sites "@import functions/book.emet { grid }\n" @?= [("G02271", "grid")]
         sites "@import functions/book.emet { pc }\n" @?= [("G02271", "pc")],

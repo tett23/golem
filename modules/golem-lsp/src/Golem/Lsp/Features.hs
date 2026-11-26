@@ -49,6 +49,7 @@ import Data.Either (fromRight, rights)
 import Data.List (nub, sortOn)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (fromMaybe, isJust, isNothing, listToMaybe, mapMaybe)
+import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
@@ -56,9 +57,10 @@ import Golem.Emet (Export (..), Kind (..), Program, formatEmet, programExports, 
 import Golem.Emet.Highlight (Highlight (..), HlType (..), emetHighlights)
 import Golem.Emet.Ide (IdeKind (..), emetCompletions, emetDefinition, emetExportAt, emetHover, emetLocalHover)
 import Golem.Emet.Rename qualified as R
-import Golem.Eval.Builtin (builtinBlockCommands)
+import Golem.Eval.Builtin (builtinBlockCommands, parseBuiltin)
 import Golem.Eval.Expr (builtinExpressionNames, embedValue, evalExpr, plainEnv)
-import Golem.Eval.File (EvalResult (..), Usage (..), builtinInlineCommands)
+import Golem.Eval.File (EvalResult (..), Overrides, Space (..), Usage (..), builtinInlineCommands, callsBuiltin, fileOverrides, noOverrides, noPlugins)
+import Golem.Eval.Functions (FunctionTable (..))
 import Golem.Eval.Value (Value (..), projectVarValues, typeName)
 import Golem.Evaluate (Evaluated (..), metadataValues)
 import Golem.Evaluate.TitleFormats (styleDefTitleFormats)
@@ -146,13 +148,40 @@ labelCommands = ["ref-number", "ref-title", "ref-page"]
 noteCommands :: [Text]
 noteCommands = ["note", "sidenote", "endnote"]
 
--- | Every occurrence in a file with its span.
+-- | Every occurrence in a file with its span, as a file that overrides no built-in command.
 occurrences :: File -> [(SrcSpan, Occurrence)]
-occurrences file@(File _ bs) = concatMap block bs
+occurrences = occurrencesWith noOverrides
+
+-- | Every occurrence in a source, told by where it overrides the built-in commands (root ADR 0471).
+occurrencesOf :: Source -> [(SrcSpan, Occurrence)]
+occurrencesOf s = occurrencesWith (sourceOverrides s) (srcAst s)
+
+{- | Where a source overrides the built-in commands, by its evaluation
+(root ADR 0471). A source not evaluated (one being typed with a syntax
+error) is told by its @import lines alone, each name listed from a .emet
+over the built-in commands of every space of use, as one that could not
+be loaded.
+-}
+sourceOverrides :: Source -> Overrides
+sourceOverrides s = maybe (fileOverrides (FunctionTable Map.empty True Set.empty) noPlugins (srcAst s)) (usageOverrides . erUsage) (srcResult s)
+
+{- | Every occurrence in a file with its span. The labels and the styles
+the built-in commands name are occurrences only where the command calls
+the built-in one (root ADR 0471); a call of an overridden name is the
+function listed.
+-}
+occurrencesWith :: Overrides -> File -> [(SrcSpan, Occurrence)]
+occurrencesWith overrides file@(File _ bs) = concatMap block bs
   where
     -- the names the @import lines of the file list, which .gm calls without a namespace: the aliases (root ADR 0451, root ADR 0458)
     listed = [a | Right site <- importsOf file, a <- map lnAlias (importNames site)]
-    called name = T.isInfixOf "." name || name `elem` listed
+    -- a built-in name is the function listed where the file overrides it (root ADR 0471)
+    called space name sp = T.isInfixOf "." name || (name `elem` listed && not (builtinName space name && builtinAt space name sp))
+    builtinName space name = case space of
+      InlineSpace -> isJust (parseBuiltin name)
+      BlockSpace -> name `elem` builtinBlockCommands
+      ExprSpace -> False
+    builtinAt space name sp = callsBuiltin overrides space name (spanStart sp)
     -- the original name of each item, and its alias when it is written apart; an alias written as the original name is the original name
     listedIn bsp p args =
       concat
@@ -168,7 +197,7 @@ occurrences file@(File _ bs) = concatMap block bs
       DefList gs -> concatMap (\g -> concatMap (concatMap inline) (dgTerms g) <> concatMap (concatMap block) (dgDefs g)) gs
       Table _ h rows -> concatMap (concatMap inline) h <> concatMap (concatMap (concatMap inline)) rows
       SetVar (Located vsp v) e -> (vsp, OccVar Nothing v) : expr e
-      BlockCommand (Located nsp name) args body -> [(nsp, OccCommand False name) | called name] <> blockCommand sp name args <> concatMap block body
+      BlockCommand (Located nsp name) args body -> [(nsp, OccCommand False name) | called BlockSpace name nsp] <> blockCommand sp name args <> concatMap block body
       Attributed cs t -> concatMap block cs <> maybe [] block t
       Fenced fbs -> concatMap block fbs
       _ -> []
@@ -176,7 +205,7 @@ occurrences file@(File _ bs) = concatMap block bs
       ("import", Located asp (Positional (Word p)) : _) -> (asp, OccImport p) : listedIn importSp p args
       ("import", Located asp (Positional (StringLit p)) : _) -> (asp, OccImport p) : listedIn importSp p args
       ("label", Located asp (Positional (Word l)) : _) -> [(asp, OccLabelDef l)]
-      ("style", [Located asp (Positional (Word n))]) -> [(asp, OccStyleRef ParagraphKind n)]
+      ("style", [Located asp (Positional (Word n))]) | builtinAt BlockSpace "style" importSp -> [(asp, OccStyleRef ParagraphKind n)]
       -- a regex style names a paragraph style and a character style (docs/adr ADR 0015)
       ("style-def", Located _ (Positional (Word "regex")) : Located nsp (Positional (Word n)) : rest) ->
         (nsp, OccStyleRef ParagraphKind n) : [(vsp, OccStyleRef CharacterKind v) | Located vsp (Keyword (Located _ "style") (Word v)) <- rest]
@@ -187,8 +216,9 @@ occurrences file@(File _ bs) = concatMap block bs
     inline (Located sp i) = case i of
       Expr e -> (sp, OccExpr e) : expr e
       Command (Located nsp name) args slots ->
-        [(nsp, OccCommand True name) | called name]
+        [(nsp, OccCommand True name) | called InlineSpace name nsp]
           <> ( case (name, args) of
+                 _ | not (builtinAt InlineSpace name sp) -> concatMap argument args
                  (n, Located asp (Positional (Word l)) : _)
                    | n `elem` labelCommands -> [(asp, OccLabelRef l)] <> [(sp, OccPageRef l) | n == "ref-page"]
                  ("style", [Located asp (Positional (Word n))]) -> [(asp, OccStyleRef CharacterKind n)]
@@ -218,7 +248,7 @@ occurrences file@(File _ bs) = concatMap block bs
       EVar (ns : v : _) -> [(sp, OccVar (Just ns) v)]
       EArray es -> concatMap expr es
       EHash kvs -> concatMap (expr . snd) kvs
-      ECall f es -> [(sp, OccFunction f) | called f] <> concatMap expr es
+      ECall f es -> [(sp, OccFunction f) | called ExprSpace f sp] <> concatMap expr es
       EUnary _ a -> expr a
       EBinary _ a b -> expr a <> expr b
       ERange a b -> expr a <> expr b
@@ -294,7 +324,7 @@ callsIn :: Program -> Workspace -> Export -> [Location]
 callsIn p ws e =
   [ loc s sp
   | s <- allSources ws,
-    (sp, occ) <- occurrences (srcAst s),
+    (sp, occ) <- occurrencesOf s,
     case occ of
       -- the name in the list of an @import (root ADR 0451), and the alias of the item (root ADR 0458)
       OccListed path n -> n == exName e && emetPath path == Right (exPath e)
@@ -320,7 +350,7 @@ occurrenceExport ws src = \case
 -- | The innermost occurrence at an offset.
 occurrenceAt :: Source -> Int -> Maybe (SrcSpan, Occurrence)
 occurrenceAt src off =
-  listToMaybe (sortOn (spanLength . fst) [o | o@(sp, _) <- occurrences (srcAst src), spanStart sp <= off, off <= spanEnd sp])
+  listToMaybe (sortOn (spanLength . fst) [o | o@(sp, _) <- occurrencesOf src, spanStart sp <= off, off <= spanEnd sp])
 
 allSources :: Workspace -> [Source]
 allSources ws =
@@ -376,7 +406,7 @@ definition ws path off = case sourceOf ws path of
         ]
 
 styleDefs :: Source -> StyleKind -> Text -> [Location]
-styleDefs src k n = take 1 [loc src sp | (sp, OccStyleDef k' n') <- occurrences (srcAst src), k' == k, n' == n]
+styleDefs src k n = take 1 [loc src sp | (sp, OccStyleDef k' n') <- occurrencesOf src, k' == k, n' == n]
 
 styleKindOf :: Text -> Maybe StyleKind
 styleKindOf = \case
@@ -385,10 +415,10 @@ styleKindOf = \case
   _ -> Nothing
 
 labelDefs :: Workspace -> Text -> [Location]
-labelDefs ws l = [loc s sp | s <- allSources ws, (sp, OccLabelDef l') <- occurrences (srcAst s), l' == l]
+labelDefs ws l = [loc s sp | s <- allSources ws, (sp, OccLabelDef l') <- occurrencesOf s, l' == l]
 
 labelRefs :: Workspace -> Text -> [Location]
-labelRefs ws l = [loc s sp | s <- allSources ws, (sp, OccLabelRef l') <- occurrences (srcAst s), l' == l]
+labelRefs ws l = [loc s sp | s <- allSources ws, (sp, OccLabelRef l') <- occurrencesOf s, l' == l]
 
 -- ------------------------------------------------------------------ references
 
@@ -416,13 +446,13 @@ references ws path off = case sourceOf ws path of
   where
     varRefs t v =
       nub $
-        [loc t sp | (sp, OccVar Nothing v') <- occurrences (srcAst t), v' == v]
+        [loc t sp | (sp, OccVar Nothing v') <- occurrencesOf t, v' == v]
           <> [ loc s sp
              | s <- allSources ws,
                Just r <- [srcResult s],
                (ns, target, _) <- usageImports (erUsage r),
                target == srcPath t,
-               (sp, OccVar (Just ns') v') <- occurrences (srcAst s),
+               (sp, OccVar (Just ns') v') <- occurrencesOf s,
                ns' == ns,
                v' == v
              ]
@@ -585,7 +615,7 @@ renameEmet ws manifest path off new = do
         _ -> []
   pure ([(Location p s e, new) | (p, s, e) <- R.rnEdits r] <> [(l, new) | l <- gmEdits])
   where
-    byAlias = [loc s sp | s <- allSources ws, (sp, occ) <- occurrences (srcAst s), byAliasIn s occ]
+    byAlias = [loc s sp | s <- allSources ws, (sp, occ) <- occurrencesOf s, byAliasIn s occ]
     -- the name after the namespace in a call of .gm: ns.name
     nameIn old (Location p s e) = do
       src <- sourceOf ws p
@@ -722,12 +752,12 @@ completions ws path off = case sourceOf ws path of
         {- the styles of the file (docs/adr ADR 0014): of its evaluation, and
         of its @style-def lines while it does not evaluate -}
         local = maybe noLocalStyles erStyles (srcResult src)
-        defined k = [n | (_, OccStyleDef k' n) <- occurrences (srcAst src), k' == k]
+        defined k = [n | (_, OccStyleDef k' n) <- occurrencesOf src, k' == k]
         -- code is the style of code blocks, not of @style, based-on or regex styles (golem-driver ADR 0017)
         paraNames = filter (/= "code") (nub (Map.keys (stParaStyles style) <> Map.keys (lsParaStyles local) <> defined ParagraphKind))
         charNames = nub (Map.keys (stCharStyles style) <> Map.keys (lsCharStyles local) <> defined CharacterKind)
         separatorNames = nub ("default" : Map.keys (stSeparators style))
-        labels = nub [l | s <- allSources ws, (_, OccLabelDef l) <- occurrences (srcAst s)]
+        labels = nub [l | s <- allSources ws, (_, OccLabelDef l) <- occurrencesOf s]
         -- the dotted name before the cursor in an expression
         metaPath = case T.stripPrefix "=" (T.stripStart lastOpen) of
           Just _ -> Just (T.splitOn "." (T.takeWhileEnd (\c -> c == '.' || c == '_' || c `elem` ['a' .. 'z'] || c `elem` ['A' .. 'Z'] || c `elem` ['0' .. '9']) lastOpen))
@@ -738,6 +768,8 @@ completions ws path off = case sourceOf ws path of
         listedOf k = [Completion n CkCommand | n <- listedNamesOf ws src k]
         -- a listed name over a built-in command is one candidate (root ADR 0453)
         commandsAnd builtins k = [Completion n CkCommand | n <- nub (builtins <> listedNamesOf ws src k)]
+        -- whether a command of a name at the cursor calls the built-in one (root ADR 0471)
+        builtinHere space n = callsBuiltin (sourceOverrides src) space n off
      in if maybe False (T.all nameChar) (T.stripPrefix "@" (T.stripStart lineBefore))
           then commandsAnd builtinBlockCommands KindBlock
           else
@@ -754,8 +786,8 @@ completions ws path off = case sourceOf ws path of
                       if "@page-lines " `T.isPrefixOf` T.stripStart lineBefore && length (T.words lineBefore) <= 2 && not ("[" `T.isInfixOf` lineBefore)
                         then [Completion k CkSettingValue | k <- ["+1", "-1"]]
                         else
-                          -- paragraph styles after @style at the start of a line (docs/adr ADR 0005)
-                          if "@style " `T.isPrefixOf` T.stripStart lineBefore && length (T.words lineBefore) <= 2 && not ("[" `T.isInfixOf` lineBefore)
+                          -- paragraph styles after the built-in @style at the start of a line (docs/adr ADR 0005, root ADR 0471)
+                          if "@style " `T.isPrefixOf` T.stripStart lineBefore && length (T.words lineBefore) <= 2 && not ("[" `T.isInfixOf` lineBefore) && builtinHere BlockSpace "style"
                             then [Completion n CkParaStyle | n <- paraNames]
                             else
                               if "@separator " `T.isPrefixOf` T.stripStart lineBefore && length (T.words lineBefore) <= 2 && not ("[" `T.isInfixOf` lineBefore)
@@ -783,7 +815,7 @@ completions ws path off = case sourceOf ws path of
                                               -- label= after the command of a note (root ADR 0422)
                                               | cmd `elem` noteCommands, not ("label=" `T.isInfixOf` lastOpen) -> [Completion "label=" CkSettingKey]
                                               | cmd == "color" -> [Completion n CkSwatch | n <- Map.keys (stSwatches style)]
-                                              | cmd == "style" -> [Completion n CkCharStyle | n <- charNames]
+                                              | cmd == "style", builtinHere InlineSpace "style" -> [Completion n CkCharStyle | n <- charNames]
                                             _ -> []
   where
     nameChar c = isAsciiLower c || isAsciiUpper c || isDigit c || c == '_' || c == '-'
@@ -1124,7 +1156,7 @@ hover ws path off
   | otherwise = do
       src <- sourceOf ws path
       -- the signature of the function of a .emet that a name calls (docs/adr/0162)
-      case [e | (sp, occ) <- occurrences (srcAst src), onName sp occ, Just e <- [occurrenceExport ws src occ]] of
+      case [e | (sp, occ) <- occurrencesOf src, onName sp occ, Just e <- [occurrenceExport ws src occ]] of
         e : _ -> Just (exSignature e)
         [] -> gmHover ws src off
   where
@@ -1136,7 +1168,7 @@ hover ws path off
 -- | The hover of a .gm.
 gmHover :: Workspace -> Source -> Int -> Maybe Text
 gmHover ws src off = do
-  (_, occ) <- listToMaybe (sortOn (negate . spanLength . fst) [o | o@(sp, OccExpr _) <- occurrences (srcAst src), spanStart sp <= off, off <= spanEnd sp]) `orElse` occurrenceAt src off
+  (_, occ) <- listToMaybe (sortOn (negate . spanLength . fst) [o | o@(sp, OccExpr _) <- occurrencesOf src, spanStart sp <= off, off <= spanEnd sp]) `orElse` occurrenceAt src off
   case occ of
     OccExpr e -> Just (evaluate src e)
     OccPageRef _ -> Just "ページ番号はレイアウト（S2）で決まるため、ここでは表示できません"
@@ -1527,7 +1559,7 @@ variableOccurrencesNamed ws extra var@(f, _) =
   sortOn ((/= f) . locPath . fst) . nub $
     [ (Location (srcPath s) (spanStart nsp) (spanEnd nsp), written)
     | s <- allSources ws,
-      (sp, occ) <- occurrences (srcAst s),
+      (sp, occ) <- occurrencesOf s,
       isVariableOccurrence occ,
       variableAt ws extra s sp occ == Just var,
       let nsp = nameSpan sp occ,
@@ -1628,7 +1660,7 @@ renameVariable ws style path off new = do
     when (clash && new `elem` setNamesOf h) (Left (VariableTaken hp new))
     when (clash && new `elem` [lnAlias l | site <- importSitesOf h, l <- importNames site, site `notElem` ls || not (unaliased old l)]) (Left (ListedTaken hp new))
     -- a reference to the new name after the list, which would point at the variable
-    when (clash && not (null [() | (sp, OccVar Nothing v) <- occurrences (srcAst h), v == new, any (\site -> spanEnd (isSpan site) <= spanStart sp) ls])) (Left (NewNameReferenced hp new))
+    when (clash && not (null [() | (sp, OccVar Nothing v) <- occurrencesOf h, v == new, any (\site -> spanEnd (isSpan site) <= spanStart sp) ls])) (Left (NewNameReferenced hp new))
   forM_ (titleFormatVariables ws style) $ \(writer, whole, name) ->
     when (name `elem` [old, new]) (Left (TitleFormatVariable writer whole))
   forM_ (maybe [] runningHeadVariables style) $ \(whole, name, l, c) ->
@@ -1716,7 +1748,7 @@ aliasPlaces :: Workspace -> Source -> AliasSite -> [Location]
 aliasPlaces ws src al =
   nub $
     [loc src (lnAliasSpan l) | (_, l) <- alItems al]
-      <> [nameLoc src sp (alAlias al) | o@(sp, _) <- occurrences (srcAst src), any (\it -> refersBy ws src (alAlias al) it o) (alItems al)]
+      <> [nameLoc src sp (alAlias al) | o@(sp, _) <- occurrencesOf src, any (\it -> refersBy ws src (alAlias al) it o) (alItems al)]
 
 -- | The definition of the original name of an alias: the declaration in the .emet, or the @set in the variable file.
 originalDefinition :: Workspace -> Source -> AliasSite -> [Location]
@@ -1782,7 +1814,7 @@ renameAlias ws style path off new = do
     when (KindInline `elem` kinds && new `elem` (builtinInlineCommands <> plugins)) (Left (AliasTaken new))
     when (KindBlock `elem` kinds && new `elem` (builtinBlockCommands <> plugins)) (Left (AliasTaken new))
     -- a name written already after the lists, which the new alias would reach
-    forM_ (occurrences (srcAst src)) $ \(sp, occ) -> case occ of
+    forM_ (occurrencesOf src) $ \(sp, occ) -> case occ of
       OccVar Nothing v | v == new, afterImports sp -> Left (NewNameReferenced path new)
       OccCommand _ q | q == new, afterImports sp -> Left (NewNameReferenced path new)
       OccFunction q | q == new, afterImports sp -> Left (NewNameReferenced path new)

@@ -73,7 +73,7 @@ path = "plugins/local.wasm"
 
 ## 組み込みのコマンドを置き換える
 
-プラグインは、ルビや強調のような見た目に関わる組み込みのコマンドを置き換えられます。
+プラグインは、ルビや強調、注のような組み込みのコマンドを置き換えられます。
 置き換えるときは、[code: overrides] に置き換えるコマンドの名前を書きます。
 
 ```toml
@@ -83,10 +83,12 @@ overrides = ["ruby"]
 ```
 
 書いていない名前は置き換わりません。
-置き換えられるのは、見た目に関わる十二のコマンド（[code: strong]、[code: bold]、[code: italic]、[code: code]、[code: ruby]、[code: kenten]、[code: color]、[code: style]、[code: warichu]、[code: upright]、[code: tcy]、[code: number-text]）です。
-ブロックコマンドは、[code: overrides] の代わりに [code: block-overrides] に書き、[code: toc]、[code: index]、[code: bibliography]、[code: printings]、[code: separator] の五つを置き換えられます。
-注、傍注、索引、引用、相互参照のように本の構造に関わるコマンドと、[code: aki] は置き換えられません。
-[code: overrides] にこれらの名前を書くと、エラー（G06008）になります。
+角括弧で呼ぶ組み込みのコマンドは、すべて置き換えられます。
+ブロックコマンドは、[code: overrides] の代わりに [code: block-overrides] に書きます。
+ブロックコマンドのうち、Golem の仕組みを決めるもの（[code: import]、[code: set]、[code: channel]、[code: manifest]、[code: style-def]、[code: hyphenation-exceptions] と、[code: label]、[code: toc-title]、[code: number]、[code: nonumber]、[code: notoc]、[code: caption]、[code: column-widths]）と [code: frame] は置き換えられません。
+[code: block-overrides] にこれらの名前を書くと、エラー（G06008）になります。
+置き換えたコマンドは、本のどのファイルでも組み込みのコマンドとして働きません。
+たとえば [code: block-overrides] でブロックの [code: note] を置き換えると、[code: @note] で注の本文を書けなくなり、名前で引く [code: \[note 名前\]] はエラーになります。
 
 Golem のリリースには、[code: number-text] を置き換える見本のプラグイン [code: kansuji] が添えてあります。
 縦組みの本の数を漢数字で組み、組み込みにない小数と分数も書けます。

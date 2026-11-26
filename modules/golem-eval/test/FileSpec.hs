@@ -16,7 +16,7 @@ import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Golem.Doc.IR
 import Golem.Doc.Validate (validateDocument)
-import Golem.Eval.Builtin (OverridableBuiltin (..), builtinBlockCommands, pluginCommandName)
+import Golem.Eval.Builtin (BuiltinInline (..), builtinBlockCommands, pluginCommandName)
 import Golem.Eval.File
 import Golem.Eval.Value
 import Golem.Parser (parseAst)
