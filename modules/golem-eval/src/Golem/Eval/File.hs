@@ -15,6 +15,11 @@ module Golem.Eval.File
     EvalResult (..),
     evalFile,
     builtinInlineCommands,
+    Space (..),
+    Overrides (..),
+    noOverrides,
+    fileOverrides,
+    callsBuiltin,
     kentenShapes,
     TableFormat (..),
     CellReading (..),
@@ -198,8 +203,64 @@ data EvalResult = EvalResult
     -- | the line of each @number by the span of the block it numbers (G04007, golem-syntax ADR 0002)
     erNumberSites :: !(Map SrcSpan SrcSpan),
     -- | the images plugins made for the figures of the file, by their source (docs/adr/0123)
-    erImages :: !(Map Text ByteString)
+    erImages :: !(Map Text ByteString),
+    -- | where the file overrides the built-in commands, for the tools (root ADR 0471)
+    erOverrides :: !Overrides
   }
+
+{- | Where a file overrides the built-in commands (root ADR 0471), for the
+stages before the evaluation and the tools: the names the plugins
+override, in every file of the book, and the names the @import lines of
+names list, each from the end of its line on, in the spaces of use the
+source gives the name in.
+-}
+data Overrides = Overrides
+  { ovPlugins :: !(Set (Space, Text)),
+    ovListed :: ![(Space, Text, Int)]
+  }
+  deriving stock (Eq, Show)
+
+noOverrides :: Overrides
+noOverrides = Overrides Set.empty []
+
+{- | The overrides of a file (root ADR 0471), told from its @import lines
+of names and the plugins as the evaluation tells them ('listedImport'):
+an alias of a built-in name that is not reserved, of a space of use the
+.emet gives the name in (every space for a .emet that could not be
+loaded), with the shape of the names of each of those spaces. A variable
+file overrides nothing.
+-}
+fileOverrides :: FunctionTable -> PluginHook -> A.File -> Overrides
+fileOverrides table hook file =
+  Overrides
+    (Set.fromList ([(InlineSpace, builtinName b) | b <- Map.keys (phOverrides hook)] <> [(BlockSpace, overridableBlockName b) | b <- Map.keys (phBlockOverrides hook)]))
+    [ (s, a, spanEnd sp)
+    | ImportSite path (ImportNames items) sp <- rights (importsOf file),
+      ListedName n _ a _ <- items,
+      a `notElem` reservedNames,
+      Just spaces <- [sourceSpaces path n a],
+      s <- spaces,
+      overridable s a
+    ]
+  where
+    sourceSpaces path n a
+      | ".emet" `T.isSuffixOf` path = case normalizeRelative (T.unpack path) >>= \p -> maybe (Left Missing) Right (Map.lookup p (ftFiles table)) of
+          Right fns | not (ftUnloaded table) ->
+            let spaces = [InlineSpace | Map.member n (fnInline fns)] <> [BlockSpace | Map.member n (fnBlock fns)] <> [ExprSpace | Map.member n (fnExpr fns)]
+             in -- an alias not of the shape of the names of every one of them is G02278 and left out
+                Just (if all (`aliasShape` a) spaces then spaces else [])
+          _ -> Just [InlineSpace, BlockSpace, ExprSpace]
+      | otherwise = Nothing
+    overridable s a = case s of
+      InlineSpace -> isJust (parseBuiltin a)
+      BlockSpace -> isJust (parseOverridableBlock a)
+      ExprSpace -> False
+
+{- | Whether a command of a name at a position (an offset of the file)
+calls the built-in command (root ADR 0471).
+-}
+callsBuiltin :: Overrides -> Space -> Text -> Int -> Bool
+callsBuiltin (Overrides plugins listed) s n pos = not (Set.member (s, n) plugins || or [True | (s', n', from) <- listed, s' == s, n' == n, from <= pos])
 
 data St = St
   { stVars :: !(Map Text Value),
@@ -337,7 +398,8 @@ evalFile ctx0 (A.File fid blocks0) =
           erSource = ctxSource ctx,
           erStyles = local,
           erNumberSites = stNumberSites st,
-          erImages = stImages st
+          erImages = stImages st,
+          erOverrides = fileOverrides (ctxFunctions ctx) (ctxPlugins ctx) (A.File fid blocks0)
         }
 
 {- | The blocks at the top of a file evaluated in order (docs/adr/0374):

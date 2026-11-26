@@ -358,6 +358,31 @@ blockOverrideTests =
         r <- build (defaultOptions tmp)
         ds <- atManifestTop r
         sort (map fst ds) @?= [DiagnosticCode "G06007", DiagnosticCode "G06008"],
+    testCase "root ADR 0471 I5: block-overrides = [\"note\"]: @note of each of two files calls the plugin" $
+      withBlockProject [("nt", "block-note.wat", "block-overrides = [\"note\"]\n")] "@note\n" $ \tmp -> do
+        BS.writeFile (tmp </> "manifest.toml") (TE.encodeUtf8 (manifestToml testManifest {tmTargets = ["text"], tmChapters = ["a.gm", "b.gm"]}) <> pluginDeclOf "nt" "block-overrides = [\"note\"]\n")
+        TIO.writeFile (tmp </> "b.gm") "本文。\n\n@note\n"
+        e <- evaluateProject Dev tmp >>= either (assertFailure . show . pfDiagnostics) pure
+        let paragraphs path = [[t | Paragraph _ is <- [blockBody b], Text _ t <- is] | (fid, sf) <- Map.toList (projectSources (evProject e)), sfPath sf == path, Just r <- [Map.lookup fid (evResults e)], b <- docBlocks (erDocument r)]
+        paragraphs "a.gm" @?= [["表"]]
+        paragraphs "b.gm" @?= [["本文。"], ["表"]]
+        [(diagCode d, diagMessage d) | d <- evDiagnostics e] @?= [],
+    testCase "root ADR 0471 I7: a plugin that provides frame is G06007, and block-overrides = [\"frame\"] G06008" $ do
+      withBlockProject [("bb", "block-builtins.wat", "block-overrides = [\"separator\"]\n")] "本文\n" $ \tmp -> do
+        r <- build (defaultOptions tmp)
+        atManifestTop r >>= (@?= [(DiagnosticCode "G06007", "上書きできない組み込みのブロックコマンドと衝突しています: bb.@frame")])
+      withBlockProject [("bb", "block-builtins.wat", "block-overrides = [\"separator\", \"frame\"]\n")] "本文\n" $ \tmp -> do
+        r <- build (defaultOptions tmp)
+        atManifestTop r >>= (@?= [(DiagnosticCode "G06008", "上書きできる組み込みのブロックコマンドではありません: bb.@frame")]),
+    testCase "root ADR 0471: a file that overrides @figure and @table reads none of their files" $
+      withBlockProject [] "@import f.emet { figure, table }\n\n@figure a.png\n\n@table t.tsv\n" $ \tmp -> do
+        BS.writeFile (tmp </> "f.emet") "pub block figure :: String -> Blocks\nfigure _ = Block.paragraph (Inline.text \"F\")\n\npub block table :: String -> Blocks\ntable _ = Block.paragraph (Inline.text \"T\")\n"
+        BS.writeFile (tmp </> "t.tsv") "a\tb\n1\t2\n"
+        e <- evaluateProject Dev tmp >>= either (assertFailure . show . pfDiagnostics) pure
+        assertBool "t.tsv is not read" ("t.tsv" `notElem` evTableFiles e)
+        [(diagCode d, diagMessage d) | d <- evDiagnostics e] @?= []
+        (bs, _) <- blocksOf tmp
+        [[t | Paragraph _ is <- [blockBody b], Text _ t <- is] | b <- bs] @?= [["F"], ["T"]],
     testCase "root ADR 0453 I5: a plugin's override and a listed name are G02271 once, and @separator calls the plugin" $
       withBlockProject [("sp", "block-separator.wat", "block-overrides = [\"separator\"]\n")] "@import f.emet { separator }\n\n@separator\n" $ \tmp -> do
         BS.writeFile (tmp </> "f.emet") "pub block separator :: Blocks\nseparator = Block.paragraph (Inline.text \"EMET\")\n"
@@ -1328,16 +1353,15 @@ pluginTests =
            withPlugins [("b", "identity.wat"), ("a", "identity.wat")] (pluginDeclOf "b" "" <> pluginDeclOf "a" "") $ \tmp -> do
              r <- build (defaultOptions tmp)
              atManifestTop r >>= (@?= [(DiagnosticCode "G06006", "複数のプラグインが同じコマンドを提供しています: broken（a、b）")]),
-         testCase "G06007: a collision with a built-in command, overridable or not" $
+         testCase "G06007: a collision with a built-in command, each of which may be overridden (root ADR 0471)" $
            withPlugins [("names", "builtin-names.wat")] (pluginDeclOf "names" "") $ \tmp -> do
              r <- build (defaultOptions tmp)
              ds <- atManifestTop r
              sort ds
                @?= sort
                  [ (DiagnosticCode "G06007", "組み込みのコマンドと衝突しています（overrides で宣言してください）: names.ruby"),
-                   (DiagnosticCode "G06007", "上書きできない組み込みのコマンドと衝突しています: names.note"),
-                   -- link is built in, and a plugin may not override it (docs/adr ADR 0182)
-                   (DiagnosticCode "G06007", "上書きできない組み込みのコマンドと衝突しています: names.link")
+                   (DiagnosticCode "G06007", "組み込みのコマンドと衝突しています（overrides で宣言してください）: names.note"),
+                   (DiagnosticCode "G06007", "組み込みのコマンドと衝突しています（overrides で宣言してください）: names.link")
                  ],
          testCase "G06008: one per name in overrides" $ do
            let g06008 m = [(DiagnosticCode "G06008", m)]
@@ -1347,19 +1371,21 @@ pluginTests =
            withPluginProject (pluginDeclWith "overrides = [\"xyz\"]\n") $ \tmp -> do
              r <- build (defaultOptions tmp)
              atManifestTop r >>= (@?= g06008 "プラグインが提供していないコマンドを overrides に書いています: identity.xyz")
-           -- link may not be overridden either (docs/adr ADR 0182)
+           -- note and link may be overridden since root ADR 0471
            withPlugins [("names", "builtin-names.wat")] (pluginDeclOf "names" "overrides = [\"note\", \"ruby\", \"link\"]\n") $ \tmp -> do
              r <- build (defaultOptions tmp)
-             ds <- atManifestTop r
-             sort ds @?= sort (g06008 "上書きできる組み込みのコマンドではありません: names.note" <> g06008 "上書きできる組み込みのコマンドではありません: names.link"),
-         -- docs/adr ADR 0031
-         testCase "overrides = [\"code\"] loads; overrides = [\"aki\"] is G06008" $ do
+             atManifestTop r >>= (@?= []),
+         -- docs/adr ADR 0031, root ADR 0471
+         testCase "root ADR 0471 I5: overrides = [\"code\"], [\"aki\"] and [\"cite\"] load" $ do
            withPlugins [("cd", "override-code.wat")] (pluginDeclOf "cd" "overrides = [\"code\"]\n") $ \tmp -> do
              r <- build (defaultOptions tmp)
              brDiagnostics r @?= []
            withPlugins [("ak", "override-aki.wat")] (pluginDeclOf "ak" "overrides = [\"aki\"]\n") $ \tmp -> do
              r <- build (defaultOptions tmp)
-             atManifestTop r >>= (@?= [(DiagnosticCode "G06008", "上書きできる組み込みのコマンドではありません: ak.aki")]),
+             atManifestTop r >>= (@?= [])
+           withPlugins [("ct", "override-cite.wat")] (pluginDeclOf "ct" "overrides = [\"cite\"]\n") $ \tmp -> do
+             r <- build (defaultOptions tmp)
+             atManifestTop r >>= (@?= []),
          testCase "evPluginCommands: the names of the commands of the plugins" $
            withPlugins [("identity", "identity.wat")] (pluginDeclOf "identity" "") $ \tmp -> do
              e <- evaluateProject Dev tmp >>= either (assertFailure . show . pfDiagnostics) pure
@@ -1407,9 +1433,11 @@ pluginTests =
                  lockText <- TIO.readFile (tmp </> "plugins.lock")
                  m <- TIO.readFile (tmp </> "manifest.toml") >>= either (assertFailure . show) pure . parseManifest (FileId 0)
                  hook <- loadPlugins tmp Map.empty cache (FileId 0) (FileId 1) lockText (FileId 2) (HostContext "horizontal" "kanji") (\_ _ _ _ -> Nothing) m >>= either (assertFailure . show) pure . lpHook
-                 let overrides = map (builtinName . Overridable) (Map.keys (phOverrides hook))
+                 let overrides = map builtinName (Map.keys (phOverrides hook))
                  pure (sort (overrides <> map unPluginCommandName (Map.keys (phCommands hook))), sort overrides)
            keysOf [("ov", "override-ruby.wat")] (pluginDeclOf "ov" "overrides = [\"ruby\"]\n") >>= (@?= (["greet", "ruby"], ["ruby"]))
+           -- root ADR 0471 I5: cite, which a plugin may override since 0471, is a key of the overrides
+           keysOf [("ct", "override-cite.wat")] (pluginDeclOf "ct" "overrides = [\"cite\"]\n") >>= (@?= (["cite"], ["cite"]))
            keysOf [("identity", "identity.wat")] (pluginDeclOf "identity" "") >>= (@?= (["broken"], [])),
          testCase "G06011: plugins.lock that cannot be read points into plugins.lock" $
            withPluginProject pluginDecl $ \tmp -> do

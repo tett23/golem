@@ -11,9 +11,10 @@ import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
 import Golem.Doc.IR
-import Golem.Eval.Builtin (builtinBlockCommands)
+import Golem.Eval.Builtin (BuiltinInline (..), OverridableBlock (..), builtinBlockCommands)
 import Golem.Eval.File
 import Golem.Eval.Functions
+import Golem.Parser (parseAst)
 import Golem.Project.Style (LineBreaks (..), parseStyle, paraLineBreaks)
 import Golem.Syntax
 import Support
@@ -77,6 +78,18 @@ called c src = any ("F:" `T.isPrefixOf`) (texts c src)
 
 g02270 :: Text -> (Text, Text, Text)
 g02270 n = ("G02270", "上書きできない組み込みのコマンドと同じ名前は取り込めません: " <> n, n)
+
+-- | A plugin over cite and over the block note, each putting out PLUGIN.
+overriding :: PluginHook
+overriding =
+  noPlugins
+    { phOverrides = Map.fromList [(BCite, PluginCommand (\_ _ sp -> Right ([Text sp "PLUGIN"], [])))],
+      phBlockOverrides = Map.fromList [(BlockNote, PluginBlockCommand (\_ body sp -> Right (Block sp Nothing Nothing (Paragraph Nothing [Text sp "PLUGIN"]) : body, Map.empty, [])))]
+    }
+
+-- | The overrides the tools read of a source ('fileOverrides').
+overridesOf :: EvalContext -> Text -> Overrides
+overridesOf c src = let (file, _, _) = parseAst (FileId 1) src in fileOverrides (ctxFunctions c) (ctxPlugins c) file
 
 -- | The overridable block names: every built-in block name but the fixed ones.
 overridableBlock :: [Text]
@@ -151,6 +164,28 @@ tests =
         [n | n <- builtinInlineCommands, "G02270" `elem` codes inlineOnly (listed n "")] @?= [],
       testCase "root ADR 0471 I4: { import }, { set }, { frame } and { label } are G02270 each" $
         mapM_ (\n -> sites blockOnly (listed n "") @?= [g02270 n]) ["import", "set", "frame", "label"],
+      testCase "root ADR 0471 I5: a plugin's override of cite and of the block note is called" $ do
+        let c = baseCtx {ctxPlugins = overriding}
+        texts c "本文[cite k]。\n" @?= ["本文PLUGIN。"]
+        texts c "@note\n段落\n" @?= ["PLUGIN", "段落"]
+        codes c "@note\n段落\n" @?= []
+        -- the inline note and the block cite stay the built-in ones
+        codes c "本文[note x]。\n" @?= ["G02137"],
+      testCase "root ADR 0471: the overrides the tools read agree with the evaluation, for every built-in name" $ do
+        let at n src = T.length (fst (T.breakOn ("@" <> n <> "\n") src))
+        mapM_
+          ( \n -> do
+              let src = "@" <> n <> "\n\n" <> listed n ("@" <> n <> "\n")
+                  ov = overridesOf blockOnly src
+                  later = T.length src - T.length n - 2
+              (n, callsBuiltin ov BlockSpace n (at n src), callsBuiltin ov BlockSpace n later) @?= (n, True, n `elem` fixedBlock)
+          )
+          builtinBlockCommands
+        mapM_ (\n -> (n, callsBuiltin (overridesOf inlineOnly (listed n "")) InlineSpace n 1000) @?= (n, False)) builtinInlineCommands
+        -- a .emet that could not be loaded overrides every space; a plugin every file
+        callsBuiltin (overridesOf ctxAll {ctxFunctions = (ctxFunctions ctxAll) {ftUnloaded = True}} (listed "note" "")) InlineSpace "note" 1000 @?= False
+        callsBuiltin (overridesOf baseCtx {ctxPlugins = overriding} "") BlockSpace "note" 0 @?= False
+        callsBuiltin (overridesOf blockOnly (listed "note" "")) InlineSpace "note" 1000 @?= True,
       testCase "root ADR 0471 I6: [note x] in a file that overrides the block note is G02137, a @note x after it included" $ do
         codes blockOnly (listed "note" "本文[note x]。\n") @?= ["G02137"]
         codes blockOnly (listed "note" "本文[note x]。\n\n@note x\n  注。\n") @?= ["G02137"],
