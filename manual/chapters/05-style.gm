@@ -841,6 +841,34 @@ CSS では内側の要素で外側の線を消せないので、HTML と EPUB �
 
   [code: memo] を引き継ぎ、最初の行だけをもう一字下げています。
 
+## 段落ごとの上書き
+
+一つの段落だけ段落スタイルのキーを変えるときは、[code: @style] の名前の後に [code: キー=値] を並べます。
+
+```
+@style quote indent=4zw space-before=1
+この段落だけ、字下げを四字にし、前を一行空けます。
+```
+
+書けるキーは、[code: @style-def paragraph] に書けるキーから [code: based-on] を除いたものです。
+値の書き方と誤りも、[code: @style-def] と同じです。
+[code: based-on] や段落スタイルのキーでない名前を書くと、エラー（G02288）になり、その引数は使いません。
+誤りのある引数のほかの引数は、そのまま当たります。
+
+その段落は、[code: @style-def paragraph 名前 based-on=quote indent=4zw space-before=1] と定義した名前の無い段落スタイルで組みます。
+[code: @style] の本体に複数の段落や表を置いたときは、そのすべてに同じキーが当たります。
+名前と、キーと値がすべて等しい段落は同じ段落スタイルとして扱うので、続けば [code: space-between] で空きます。
+[code: @style quote] の段落と [code: @style quote indent=4zw] の段落は、別の段落スタイルです。
+
+次の段落の段落スタイルは、名前の段落スタイルの [code: next-style] で決まります。
+[code: next-style=…] を書くと、次の段落はその段落スタイルになります。
+
+HTML と EPUB では、段落に [code: ps-quote] に加えて [code: pso-1] のような番号の class が付きます。
+番号は、名前の無い段落スタイルが本の文書の順で最初に出た順に、1 から振ります。
+プレーンテキストの出力は、上書きの無い段落と同じです。
+
+名前を書かずに [code: @style indent=4zw] と書くと、エラー（G02047）になります。
+
 @label regex-styles
 ## 正規表現スタイル
 

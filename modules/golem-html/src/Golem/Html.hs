@@ -626,7 +626,7 @@ topBlocks c = go Nothing Nothing 0 False
               followingSeparator = nextSeparator rest' || blankFollows rest'
               blanksBefore = max 0 (fromMaybe 0 blanks - after)
               start = previous || blanksBefore > 0
-           in blankLines blanksBefore <> withBreak pending (styledBoundary start followingSeparator [el "div" [("class", "box box-" <> name)] (nl : concat [render (start && i == 0) (followingSeparator && i == lastIndex) x | (i, x) <- zip [0 ..] (b : more)]), nl]) <> go Nothing (Just 0) 0 False rest'
+           in blankLines blanksBefore <> withBreak pending (styledBoundary start followingSeparator [el "div" [("class", "box box-" <> name <> anonymousClass b)] (nl : concat [render (start && i == 0) (followingSeparator && i == lastIndex) x | (i, x) <- zip [0 ..] (b : more)]), nl]) <> go Nothing (Just 0) 0 False rest'
       | Just (before, after') <- separatorSpace b =
           let explicit = fromMaybe 0 blanks
               extra = if not previous && explicit > max after before then explicit - after else 0
@@ -654,6 +654,10 @@ topBlocks c = go Nothing Nothing 0 False
     styleOf = \case
       Block _ _ _ (Paragraph st _) -> (maybe "body" styleRefName st,) <$> paraStyleOf c st
       _ -> Nothing
+    -- the class of the number of a style without a name, on its box too (root ADR 0467)
+    anonymousClass = \case
+      Block _ _ _ (Paragraph (Just r) _) | Just (n, _) <- Map.lookup r (cAnonymous c) -> " pso-" <> tshow n
+      _ -> ""
     boxOf x = styleOf x >>= \(name, ps) -> (\hb -> (name, hbKey hb)) <$> hpsBox ps
     -- a paragraph of a style with page-break other than any starts a box of its own
     startsPage x = maybe False (any ("break-before:" `T.isPrefixOf`) . hpsBreaks . snd) (styleOf x)
@@ -1703,6 +1707,7 @@ css cfg book =
           ]
             <> [rule (openingSelector (pre <> "p.ps-" <> key) ps) ["text-indent: " <> openingTextIndent f] | Just f <- [hpsOpeningHalf ps]]
             <> ruleRules (pre <> "p.ps-" <> key) (hpsRuleBefore ps) (hpsRuleAfter ps)
+            <> [rule (pre <> "div.box-" <> key) (hbDecls hb) | Just hb <- [hpsBox ps]]
         | (key, ps) <- styles
         ]
         <> spaceRules (const (T.dropWhileEnd (== ' ') pre)) False styles [(a, b) | a <- styles <> allStyles, b <- styles <> allStyles, fst a `elem` map fst styles || fst b `elem` map fst styles]

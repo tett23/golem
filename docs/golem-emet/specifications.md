@@ -177,7 +177,9 @@ pub fn total :: List Nat -> Nat
 | `Inline.RefKind` | `RefNumber`、`RefTitle`、`RefPage` |
 | `Inline.AkiAmount` | `Zw Rat`、`Sp Nat` |
 | `Inline.Deferred` | なし（中身の読めない値） |
-| `Block.Block` | `Paragraph (Maybe String) Inlines`、`Heading Nat HeadingAttrs Inlines`、`BulletList (List ListItem)`、`OrderedList (List ListItem)`、`DefList (List DefGroup)`、`TableBlock Table`、`CodeBlock Code`、`FigureBlock Figure`、`ChannelOutput Channel`、`ForcedBreak BreakKind`、`PageControl PageControl`、`BlankLines Nat`、`Separator String` |
+| `Block.Block` | `Paragraph (Maybe String) Inlines`、`KeyedParagraph String (List StyleKey) Inlines`（キーのある段落スタイルの段落。[Golem ADR 0467](../adr/0467-override-paragraph-style-keys-with-style-arguments.md)）、`Heading Nat HeadingAttrs Inlines`、`BulletList (List ListItem)`、`OrderedList (List ListItem)`、`DefList (List DefGroup)`、`TableBlock Table`、`KeyedTableBlock Table (List StyleKey)`（セルの段落スタイルがキーを持つ表）、`CodeBlock Code`、`FigureBlock Figure`、`ChannelOutput Channel`、`ForcedBreak BreakKind`、`PageControl PageControl`、`BlankLines Nat`、`Separator String` |
+| `Block.StyleKey` | `StyleKey String StyleValue`（段落スタイルのキーと値。キーの名前の順に並ぶ） |
+| `Block.StyleValue` | `StyleWord String`、`StyleString String`（書いたとおりの語か文字列） |
 | `Block.HeadingAttrs` | `HeadingAttrs { tocTitle :: Maybe Inlines, number :: Maybe Nat, nonumber :: Bool, notoc :: Bool }` |
 | `Block.ListItem` | `ListItem (Maybe Nat) (List Block)`（番号と中身） |
 | `Block.DefGroup` | `DefGroup (List Inlines) (List Blocks)`（語と定義） |
