@@ -46,6 +46,12 @@ frameAcross geom col y0 y1 =
       ph = snd (pgPageSize geom)
    in (colTop - (ph - ptSp y0), colTop - (ph - ptSp y1))
 
+-- | The first column of page 1.
+firstColumn :: PageGeometry -> Rect
+firstColumn geom = case columnsFor geom 1 of
+  col : _ -> col
+  [] -> Rect 0 0 0 0
+
 -- | The column of a page of a layout.
 columnOf :: PageGeometry -> PageOutAt Sp -> Rect
 columnOf geom p = case drop (poColumn p) (columnsFor geom (poNumber p)) of
@@ -118,8 +124,8 @@ overFrame geom pl n y0 y1 =
            | (slot, SHeading lid count) <- poSlots p,
              Just hb <- [Map.lookup lid (plHeadings pl)],
              j <- [0 .. count - 1],
-             Just sl <- [Map.lookup (lid + j) (plLines pl)],
              let top = slot + hbOffset hb + fromIntegral j * hbPitch hb,
+             Just sl <- [Map.lookup (lid + j) (plLines pl)],
              (top, top + slSize sl) `crosses` frame,
              not (shortened sl)
            ]
@@ -149,7 +155,7 @@ aroundBlocksTests =
       overFrame geom pl 4 top0 bottom0 @?= []
       case tableSlots pl of
         (1, slot, _) : _ -> do
-          let frame = frameAcross geom (columnsFor geom 1 !! 0) top0 bottom0
+          let frame = frameAcross geom (firstColumn geom) top0 bottom0
           assertBool "the first line misses the frame" (not (emAcross geom slot (pgFontSize geom) `crosses` frame))
           assertBool "the grid line before crosses it" (emAcross geom (slot - pgLinePitch geom) (pgFontSize geom) `crosses` frame)
         other -> assertFailure (show other),
@@ -168,7 +174,7 @@ aroundBlocksTests =
     testCase "root ADR 0456 I1: a table whose header row alone fits before the frame goes past it with the header row" $ do
       (geom, pl) <- layoutOk (aroundAt False 12 4 top0 bottom0) (fillers 4 <> table 3) []
       overFrame geom pl 4 top0 bottom0 @?= []
-      let frame = frameAcross geom (columnsFor geom 1 !! 0) top0 bottom0
+      let frame = frameAcross geom (firstColumn geom) top0 bottom0
       case tableSlots pl of
         (1, slot, _) : _ -> assertBool "the header row after the frame" (fst (emAcross geom slot (pgFontSize geom)) >= snd frame)
         other -> assertFailure (show other),
@@ -182,7 +188,7 @@ aroundBlocksTests =
       overFrame geom pl 4 top0 bottom0 @?= []
       (_, _, gp, slot) <- theFigure pl
       poNumber gp @?= 1
-      let frame = frameAcross geom (columnsFor geom 1 !! 0) top0 bottom0
+      let frame = frameAcross geom (firstColumn geom) top0 bottom0
           at k = emAcross geom (fromIntegral k * pgLinePitch geom) (pgFontSize geom)
       assertBool "the first grid line after the frame" (not (at slot `crosses` frame) && at (slot - 1) `crosses` frame),
     testCase "root ADR 0456 I1, I3: a wrapped figure on the side of the frame goes past it" $ do
@@ -219,7 +225,7 @@ aroundBlocksTests =
     testCase "root ADR 0456 I3: a table on a page of free placement starts at the end edge of the frame" $ do
       (geom, pl) <- layoutOk (aroundAt True 12 4 top0 bottom0) (fillers 6 <> table 4) []
       case tableSlots pl of
-        (1, slot, _) : _ -> slot @?= snd (frameAcross geom (columnsFor geom 1 !! 0) top0 bottom0)
+        (1, slot, _) : _ -> slot @?= snd (frameAcross geom (firstColumn geom) top0 bottom0)
         other -> assertFailure (show other),
     testCase "root ADR 0456 I4: without a frame of wrap around, the blocks are where they are with a frame of no wrap" $ do
       img <- tinyImage
