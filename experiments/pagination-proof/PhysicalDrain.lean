@@ -239,7 +239,9 @@ theorem dk_waitForPrior {env : Env} (u : Unmet) (q : Nat × Bool) (st : St) : K 
   unfold waitForPrior; split <;> exact id
 
 theorem dk_flush (env : Env) (st : St) : K env st (flushPendingRule env st) := by
-  unfold flushPendingRule; split <;> exact id
+  unfold flushPendingRule; split
+  · exact id
+  · split <;> exact id
 
 theorem dk_keepFrom (env : Env) (st : St) (b : Bool) : K env st (keepFrom env st b) := by
   unfold keepFrom; split
@@ -547,7 +549,7 @@ theorem dr_placeHeading (env : Env) (st : St) (firstId : Nat) (extent : Int) (ls
     · exact R.via (dr_putHeading env _ firstId extent ls s h) (dk_fit env st _)
 
 theorem dr_putRuledHeading (env : Env) (ready : St) (b a : Int) (sh ends : List Int) (j : Option Pending) (fid : Nat)
-    (e : Int) (ls : List Line) (s : St) (h : putRuledHeading env ready b a sh ends j fid e ls = .ok s) :
+    (e : Int) (ls : List Line) (cl : Bool) (s : St) (h : putRuledHeading env ready b a sh ends j fid e ls cl = .ok s) :
     R env ready s (notesOf ls) := by
   unfold putRuledHeading at h
   split at h
@@ -597,8 +599,8 @@ theorem dr_placeRuled (inner : Inner) (env : Env) (st : St) (r : Ruled) (later :
       fit := dk_fit env
       hs := dk_headingState env
       ready := dk_headingReady env
-      put := fun r' _ _ _ _ _ _ _ _ _ e e2 => by
-        rw [← e]; exact dr_putRuledHeading env _ _ _ _ _ _ _ _ _ _ e2
+      put := fun r' _ _ _ _ _ _ _ _ _ _ e e2 => by
+        rw [← e]; exact dr_putRuledHeading env _ _ _ _ _ _ _ _ _ _ _ e2
       head := fun r' _ _ _ _ e e2 => by rw [← e]; exact dr_placeHeading env _ _ _ _ _ e2
       lines := fun _ r' _ _ _ e e2 => by rw [← e]; exact dr_ruledLinesHere env _ r' _ _ e2
       place := fun r' _ _ _ e _ e2 => by rw [← e]; exact dr_placeLines env _ true _ _ _ e2

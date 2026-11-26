@@ -919,6 +919,17 @@ golem-typeset の `ruledLinks` は、後の罫線を持つブロックの直後�
 `I2_startsAfterOwnRule` は、前のブロックの後の罫線が段の最後のスロット以降に自身の領域で置かれた段では、共有の印を持つブロックが次の段から始まることを示す。
 `PhysicalBoundary.hs` は、四つの組を、あいだにスペースを置くか置かないか、段の容量（36、44、60 sp）、後のブロックの長さ（1 行か 2 行の段落、長さ 10 sp か 24 sp の見出し）を変えて照合に含む。
 
+[root ADR 0450](../../docs/adr/0450-put-free-placement-rules-after-outside-the-column-end.md) の後、段の外に出てよい後の罫線（`RuleSide.outside` が `some`）は、段の終わりで最後の行の直後に置かれ、段を閉じる。
+条件は、最後の行の直後の位置（`ruleAfterOutside`）が段の終わり以降にあり、段の外へのはみ出しが外の余白に収まり、段とブロックの行に脚注がないことである。
+Lean は、この判定を段落の後の罫線（`ruledOutsideAt`、`ruledAfterExtraAt`、`ruledAfterRules`、`ruledCloses`、`ruledPlaceAt`）、見出しの後の罫線（`headingOutsideAt`、`headingAfterHere`、`headingEndsAt`、`headingClosesAt`、`putRuledHeading`）、待つ罫線を段の終わりに置く処理（`flushPendingRule`）、空の段で見出しが罫線を捨てるかの判定（`headingDropsAfter`）に写した。
+`ruleAfterInColumn` は、罫線が段の中で脚注より前に終わるか、この条件で段の外にあることを求める（`ruleAfterInColumnAt`）。
+`placeRuled` は、次の段に送るかと罫線を捨てるかを、この段と次の段の長さの小さいほう（`ruledLeast`）で決める。
+`I3_ruled_rule_after_outside` と `I3_ruledHeading_rule_after_outside` は、段の外に出た罫線が段の終わり以降にあり、はみ出しが外の余白以下で、段に脚注がないことを示す。
+`ruledPlaceAt_room` と `I3_ruledHere_in_column` は、罫線が段を閉じる場合も、行と脚注が段に収まることを示す。
+段の中に置く罫線についての定理（`I3_ruledHere_rule_after`、`I3_ruledHere_unshared_rule_after`、`I3_ruledHeading_rule_after`）は、`RuleSide.outside` が `none` の罫線について述べる。
+`PhysicalBoundary.hs` の 156360 個の境界入力は、段の外に出てよい後の罫線（外の余白 5 sp と 20 sp）を持つブロックを含み、すべて golem-layout の `paginatePhysical` と一致した。
+ただし、段の外に出てよい罫線はどれも字面からのアキを指定しない（`spaced` が偽）ので、`ruleAfterOutside` の `spaced` の場合は照合に含まれない。
+
 回り込み図版は、長さのないスロット（`SWrapped`）として段に置き、横に収まる行（`fittingWrapped`）を図版の終わりまでの長さを予約して置き、残りの行を次の段から置く（`placeWrappedOverflow`）。
 横の行と残りの行の前のアキは `physicalWrappedBefore` の値で、`Env.wrappedBefore` に写した。
 
@@ -1676,12 +1687,6 @@ golem-typeset はコードの行を脚注なしで作り（`Flow.hs:3870`）、g
 5. 照合できていない変更と、`putWrappedLine` の写しの前提。
    「区切りのモデル」の節の `keep-with-next` の行数を 2 にする変更と、段の番号だけが異なる分割は、照合できていない。
    `trialWrapRest_putLine` の前提のうち、回り込みの段が空でないことと、次の段が回り込みの段でないことは、`parts` の呼び出しについて示していない。
-6. 自由な配置で段の終わりの罫線を段の外に出す規則（[root ADR 0450](../../docs/adr/0450-put-free-placement-rules-after-outside-the-column-end.md)）の写し。
-   `Physical.lean` は、この規則を写していない。
-   main を取り込んだ後、`PhysicalBoundary.hs` の 156360 個の境界入力のうち、罫線のあるブロックを含む 374 個で、`Physical.lean` と golem-layout の `paginatePhysical` の出力が食い違う。
-   そのため、`check.sh` はこの照合で止まる。
-   段の外に出す判定は、段の終わりの位置、最後の行の箱の始まり、段の脚注の有無を読み、段を閉じる。
-   これを `ruledAfter`、`ruleAfterPos`、`ruledPlaceAt`、`ruleAfterFits`、`placeRuled`、見出しの罫線（`headingAfterGeom` と `headingDropsRules` の写し）、`flushPendingRule` に写し、それらを使う定理を証明し直す必要がある。
 
 これらを終えるまで Alloy の定期実行と既存の参照を維持する。
 終えたときは、Alloy の定期実行を終え、規則やモデルを変えたときにローカルの Lean で検証し直す手順を CONTRIBUTING に書く。

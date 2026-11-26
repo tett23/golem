@@ -452,7 +452,9 @@ theorem nm_waitForPrior (u : Unmet) (q : Nat × Bool) (st : St) : NM (waitForPri
   unfold waitForPrior; split <;> rfl
 
 theorem nm_flush (env : Env) (st : St) : NM (flushPendingRule env st) = NM st := by
-  unfold flushPendingRule; split <;> rfl
+  unfold flushPendingRule; split
+  · rfl
+  · split <;> rfl
 
 theorem nm_keepFrom (env : Env) (st : St) (b : Bool) : NM (keepFrom env st b) = NM st := by
   unfold keepFrom; split
@@ -752,7 +754,7 @@ theorem rel_placeHeading (env : Env) (st : St) (firstId : Nat) (extent : Int) (l
     · exact Rel.via (rel_putHeading env _ firstId extent ls s h) (nm_fit env st _)
 
 theorem rel_putRuledHeading (env : Env) (ready : St) (b a : Int) (sh ends : List Int) (j : Option Pending) (fid : Nat)
-    (e : Int) (ls : List Line) (s : St) (h : putRuledHeading env ready b a sh ends j fid e ls = .ok s) :
+    (e : Int) (ls : List Line) (cl : Bool) (s : St) (h : putRuledHeading env ready b a sh ends j fid e ls cl = .ok s) :
     Rel ready s (notesOf ls) := by
   unfold putRuledHeading at h
   split at h
@@ -802,8 +804,8 @@ theorem rel_placeRuled (inner : Inner) (env : Env) (st : St) (r : Ruled) (later 
       fit := nm_fit env
       hs := nm_headingState env
       ready := nm_headingReady env
-      put := fun r' _ _ _ _ _ _ _ _ _ e e2 => by
-        rw [← e]; exact rel_putRuledHeading env _ _ _ _ _ _ _ _ _ _ e2
+      put := fun r' _ _ _ _ _ _ _ _ _ _ e e2 => by
+        rw [← e]; exact rel_putRuledHeading env _ _ _ _ _ _ _ _ _ _ _ e2
       head := fun r' _ _ _ _ e e2 => by rw [← e]; exact rel_placeHeading env _ _ _ _ _ e2
       lines := fun _ r' _ _ _ e e2 => by rw [← e]; exact rel_ruledLinesHere env _ r' _ _ e2
       place := fun r' _ _ _ e _ e2 => by rw [← e]; exact rel_placeLines env _ true _ _ _ e2
