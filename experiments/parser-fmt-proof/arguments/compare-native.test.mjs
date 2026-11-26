@@ -82,8 +82,8 @@ test('Golem ADR 0351 I6-I8: Lean findings equal native check codes, order and sp
 
     const model = modelRows(dir);
     const tokens = ['x=1', 'x=2', 'tax=true', 'tax=abc', 'unit="円"'];
-    const price = '@import fn/book.emet as book\n\n[book.price 1 ' + tokens.join(' ') + ']\n';
-    const preamble = '@import fn/book.emet as book\n\n';
+    const price = '@import fn/book.emet * as book\n\n[book.price 1 ' + tokens.join(' ') + ']\n';
+    const preamble = '@import fn/book.emet * as book\n\n';
     const cases = [{ name: 'price', original: preamble + '[book.price 1]\n',
       input: price, tokens, count: 5 }];
     for (const supplied of [0, 1, 2]) {

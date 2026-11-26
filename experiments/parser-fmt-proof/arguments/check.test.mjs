@@ -70,7 +70,7 @@ function checkSites(source, run) {
 }
 
 test('Golem ADR 0351 I6-I8: error spans and missing arguments in declaration order', () => {
-  checkRoundTrip('@import fn/book.emet as book\n\n注[book.price 1  x=1 %%甲%% x=1 tax=abc x=1]\n\n[book.price 1 tax=true %%乙%% tax=abc]\n\n[book.triple   1]\n', checkSites, 'mixed');
+  checkRoundTrip('@import fn/book.emet * as book\n\n注[book.price 1  x=1 %%甲%% x=1 tax=abc x=1]\n\n[book.price 1 tax=true %%乙%% tax=abc]\n\n[book.triple   1]\n', checkSites, 'mixed');
 });
 
 function checkRepeatedTax(source, run) {
@@ -89,13 +89,13 @@ const base = ['tax=true', 'unit="円"'];
 for (let index = 0; index <= base.length; index++) {
   test(`Golem ADR 0351 I7: repeated tax at insertion boundary ${index}`, () => {
     const args = base.toSpliced(index, 0, 'tax=abc');
-    const original = '@import fn/book.emet as book\n\n[book.price 1  ' + args.join(' %%注%% ') + ']\n';
+    const original = '@import fn/book.emet * as book\n\n[book.price 1  ' + args.join(' %%注%% ') + ']\n';
     checkRoundTrip(original, checkRepeatedTax, 'tax-' + index);
   });
 }
 
 test('Golem ADR 0351 I6: missing arguments point past the closing delimiter and its preceding comment', () => {
-  const original = '@import fn/book.emet as book\n\n日本語[book.triple   1 %%末尾%% ]続き\n';
+  const original = '@import fn/book.emet * as book\n\n日本語[book.triple   1 %%末尾%% ]続き\n';
   checkRoundTrip(original, (source, run) => {
     const bytes = readFileSync(source);
     const comment = bytes.indexOf('%%末尾%%');
@@ -169,7 +169,7 @@ for (const [argument, code, column] of [
 }
 
 test('Golem ADR 0351 I8: each call reports its own unsupplied suffix in declaration order', () => {
-  const original = '@import fn/book.emet as book\n\n前[book.triple   ]中[book.triple   1 2]後[book.triple   1]\n';
+  const original = '@import fn/book.emet * as book\n\n前[book.triple   ]中[book.triple   1 2]後[book.triple   1]\n';
   checkRoundTrip(original, (source, run) => {
     const bytes = readFileSync(source);
     const expected = [];
@@ -191,7 +191,7 @@ test('Golem ADR 0351 I8: each call reports its own unsupplied suffix in declarat
 // Every case starts from this valid manuscript and damages one argument site.
 // The expected diagnostic list is computed from that case's own source bytes,
 // both before and after fmt moves the surrounding whitespace.
-const diagnosticMutationBase = '@import fn/book.emet as book\n\n'
+const diagnosticMutationBase = '@import fn/book.emet * as book\n\n'
   + '甲[book.price  1 tax=true unit="円"]\n'
   + '乙[book.price  2 unit="銭" tax=false]\n'
   + '丙[book.triple  1 2 3]\n'
@@ -341,7 +341,7 @@ test('Golem ADR 0351 I1: the enclosing command consumes its delimiter after the 
 test('Golem ADR 0351 I4: well-typed optional price keywords in every order pass check and preserve evaluation', () => {
   const keywords = ['tax=false', 'unit="銭"'];
   const calls = [[], [keywords[0]], [keywords[1]], keywords, keywords.toReversed()];
-  const original = '@import fn/book.emet as book\n\n' + calls.map(args =>
+  const original = '@import fn/book.emet * as book\n\n' + calls.map(args =>
     '[book.price  1' + args.map(arg => ' %%注%% ' + arg).join('') + ']').join('\n\n') + '\n';
   checkRoundTrip(original, (_source, run) => {
     run(['check', '--format', 'json'], 0);

@@ -13,7 +13,7 @@ test('Golem ADR 0351 I5: an imported Emet function evaluates identically after f
   const dir = mkdtempSync(join(tmpdir(), 'golem-fmt-evaluation-'));
   const file = join(dir, 'a.gm');
   const run = (...args) => execFileSync(process.env.GOLEM || 'golem', args, { cwd: dir, encoding: 'utf8' });
-  const original = '@import fn/book.emet as book\n\n[= book.sum(1,%%注%%2,3)]\n\n' +
+  const original = '@import fn/book.emet * as book\n\n[= book.sum(1,%%注%%2,3)]\n\n' +
     '[= book.first(7,%%左%%0)]\n\n[= book.second(8,%%右%%0)]\n\n' +
     '[= book.sum(9,%%外%%book.sum(1,%%内甲%%%%内乙%%2,3),%%末%%4)]\n';
   try {
@@ -51,7 +51,7 @@ test('Golem ADR 0351 I5: division failure points to the same expression after ma
   const root = fileURLToPath(new URL('../../../', import.meta.url));
   const fixtures = join(root, 'modules/golem-driver/test/fixtures');
   const dir = mkdtempSync(join(tmpdir(), 'golem-fmt-division-'));
-  const original = '@import fn/book.emet as book\n\n[= book.quotient(3,%%注%%0)]\n';
+  const original = '@import fn/book.emet * as book\n\n[= book.quotient(3,%%注%%0)]\n';
   const file = join(dir, 'a.gm');
   try {
     cpSync(join(fixtures, 'functions'), dir, { recursive: true });
