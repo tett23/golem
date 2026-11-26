@@ -1643,7 +1643,7 @@ css cfg book =
       <> concat [paraRules name ps | (name, ps) <- Map.toAscList (hcParaStyles cfg), name /= "code"]
       -- the paragraph styles without a name (root ADR 0467), after those of their names
       <> anonymousRules "" (anonymousOf (hcAnonymousStyles cfg))
-      <> [faceRule (tableCellSelector key) f | (r, f) <- Map.toAscList (hcAnonymousTableFaces cfg), Just key <- [anonymousKey r], isJust (faFont f) || isJust (faSize f)]
+      <> [faceRule (tableCellSelector key) f | (r, f) <- Map.toAscList (hcAnonymousTableFaces cfg), isJust (faFont f) || isJust (faSize f), Just key <- [anonymousKey r]]
       -- the spaces before and after (docs/adr/0189)
       <> spaceRules outside True allStyles [(a, b) | a <- allStyles, b <- allStyles]
       -- the boxes of paragraph styles (docs/adr/0271)
@@ -1678,7 +1678,7 @@ css cfg book =
       -- the styles of the files, last, under the class of their pages (docs/adr ADR 0014)
       <> concat [localRules n l | (n, fid) <- zip [1 :: Int ..] docs, Just l <- [Map.lookup fid (hcLocalStyles cfg)]]
       -- the styles without a name as the files with styles of their own resolve them (root ADR 0467)
-      <> concat [anonymousRules ("body.file-" <> tshow n <> " ") (anonymousOf a) | (n, fid) <- zip [1 :: Int ..] docs, Just a <- [Map.lookup fid (hcLocalAnonymousStyles cfg)], Map.member fid (hcLocalStyles cfg)]
+      <> concat [anonymousRules ("body.file-" <> tshow n <> " ") (anonymousOf a) | (n, fid) <- zip [1 :: Int ..] docs, Map.member fid (hcLocalStyles cfg), Just a <- [Map.lookup fid (hcLocalAnonymousStyles cfg)]]
   where
     numbers = anonymousStyleNumbers book
     -- the key of a style without a name: NAME.pso-N, so that p.ps-KEY is p.ps-NAME.pso-N
