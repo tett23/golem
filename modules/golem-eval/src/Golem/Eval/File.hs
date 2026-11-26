@@ -1276,8 +1276,9 @@ data CommandKind
     Attribute
   | -- | puts out blocks of its own and takes no body
     PutsOut
-  | -- | a name the evaluation cannot call (a .emet not loaded, a name of G02272): it puts out nothing, and
-    -- counts as a command that puts out blocks for G02011 and G02123 (root ADR 0461)
+  | {- | a name the evaluation cannot call (a .emet not loaded, a name of G02272): it puts out nothing, and
+    counts as a command that puts out blocks for G02011 and G02123 (root ADR 0461)
+    -}
     Unresolved
   deriving stock (Eq)
 
