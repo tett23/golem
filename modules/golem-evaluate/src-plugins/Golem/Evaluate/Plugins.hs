@@ -223,7 +223,8 @@ loadPlugins root overlay cacheDir mfid lfid lockText (FileId dataBase) context f
                     phBlockOverrides = Map.fromList [(o, callBlock pname p c) | (Left o, (c, pname, p)) <- keyedBlocks],
                     phChannels = Map.fromList [(c, d) | (c, (_, d)) <- declared],
                     phApplyFilters = applyFilters,
-                    phContextNames = sort (nubOrd [c | (_, _, p) <- plugins, c <- pluginContextNames p])
+                    phContextNames = sort (nubOrd [c | (_, _, p) <- plugins, c <- pluginContextNames p]),
+                    phFailed = False
                   }
             else Left diags
 

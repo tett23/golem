@@ -272,8 +272,8 @@ Emet の diagnostic のコードは、[code: E] と 5 桁の数字である。[i
 E04100、E04101、E04102 の位置は、評価を始めた [code: .gm] の呼び出しである。
 同じ関数でも、止まるかどうかは呼び出しの引数で決まるからである。
 [code: .emet] の中を指すと、一つの誤りが呼び出しの数だけ LSP に並ぶ。
-[code: .emet] のどれか一つに読み込みか型の検査の誤りがあれば、[code: .emet] の関数を通した呼び出しで G02022、G02009、G02002 を報告しない。
-原因は [code: .emet] の誤りであり、呼び出しの側の誤りを重ねて出さないためである。
+[code: .emet] のどれか一つに読み込みか型の検査の誤りがあれば、[code: .emet] の関数の呼び出しは何も出力せず、式、インラインのコマンド、ブロックコマンドの一つごとに G02279 とする。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0461-report-the-diagnostics-that-follow-from-another-error.md]（root ADR 0461「ほかの誤りから続いて起きるdiagnosticも、箇所ごとに出す」）]
+未知のコマンド（G02022、G02009）や未定義の名前（G02002）とは原因が別なので、別のコードにする。
 
 ## テスト
 

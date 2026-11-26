@@ -155,7 +155,7 @@ tests =
         sites "@import functions/book.emet { nothing }\n" @?= [("G02276", "nothing")]
         sites "@import functions/book.emet { helper }\n" @?= [("G02276", "helper")]
         sites "@import common/values.gm { nothing }\n" @?= [("G02276", "nothing")],
-      testCase "root ADR 0451 I7: the order of the @import lines changes no diagnostic nor output" $ do
+      testCase "root ADR 0451 I7, root ADR 0461 I2: the order of the @import lines changes no diagnostic nor output" $ do
         let a = "@import functions/book.emet { total, x }\n"
             b = "@import functions/other.emet { total }\n"
             c = "@import common/values.gm { price, rate }\n"
@@ -163,11 +163,11 @@ tests =
             orders = [a <> b <> c, a <> c <> b, b <> a <> c, b <> c <> a, c <> a <> b, c <> b <> a]
             results src = (unplaced (src <> body), texts ctx (src <> body))
         mapM_ (\src -> results src @?= results (a <> b <> c)) orders
-        fst (results (a <> b <> c)) @?= replicate 2 ("G02272", "ほかの @import が並べた名前と同じです: total"),
+        fst (results (a <> b <> c)) @?= replicate 2 ("G02272", "ほかの @import が並べた名前と同じです: total") <> [("G02280", "ほかの @import と重なった名前を呼んでいます: total")],
       testCase "root ADR 0451 I7: a @set after or before the @import lines gives the same" $
         unplaced "@import common/values.gm { price }\n@set price = 1\n" @?= unplaced "@set price = 1\n@import common/values.gm { price }\n",
-      testCase "root ADR 0451 I8: a .emet that could not be loaded reports nothing for its names" $ do
+      testCase "root ADR 0451 I8, root ADR 0461 I1: the names of a .emet that could not be loaded are not checked, and each call is G02279" $ do
         let unloaded = ctx {ctxFunctions = (ctxFunctions ctx) {ftUnloaded = True}}
-        codes unloaded "@import functions/book.emet { total, nothing, frame }\n\n[= total([1])][x 1]\n\n@word-table\n" @?= ["G02022", "G02009"]
-        codes unloaded "@import functions/book.emet { total, x, word-table }\n\n[= total([1])][x 1]\n\n@word-table\n" @?= []
+        codes unloaded "@import functions/book.emet { total, nothing, frame }\n\n[= total([1])][x 1]\n\n@word-table\n" @?= ["G02279", "G02022", "G02009"]
+        codes unloaded "@import functions/book.emet { total, x, word-table }\n\n[= total([1])][x 1]\n\n@word-table\n" @?= ["G02279", "G02279", "G02279"]
     ]

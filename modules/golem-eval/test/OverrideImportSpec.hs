@@ -162,14 +162,15 @@ tests =
         sort overridableBlockCommands @?= sort ["toc", "index", "bibliography", "printings", "separator"]
         -- the block names G02270 counts: each of a .emet of block commands alone
         [n | n <- builtinBlockCommands, (c, _, _) <- sites blockOnly (listed n ""), c == "G02270"] @?= fixedBlockCommands,
-      testCase "root ADR 0453 I8: a name of a .emet that could not be loaded puts out nothing" $ do
+      testCase "root ADR 0453 I8, root ADR 0461 I1: a name of a .emet that could not be loaded puts out nothing, with G02279" $ do
         let unloaded = ctx {ctxFunctions = (ctxFunctions ctx) {ftUnloaded = True}}
         resultBodies (evalResult unloaded (listed "toc" "@toc\n")) @?= []
         texts unloaded (listed "strong" "[strong: a]\n") @?= [""]
-        codes unloaded (listed "toc" "@toc\n") @?= [],
-      testCase "root ADR 0453 I8: a name of G02272 puts out nothing" $ do
+        codes unloaded (listed "toc" "@toc\n") @?= ["G02279"]
+        codes unloaded (listed "strong" "[strong: a]\n") @?= ["G02279"],
+      testCase "root ADR 0453 I8, root ADR 0461 I2: a name of G02272 puts out nothing, with G02280" $ do
         let twice body = "@import functions/over.emet { toc, strong }\n@import functions/other.emet { toc, strong }\n\n" <> body
-        sort (codes ctx (twice "@toc\n")) @?= replicate 4 "G02272"
+        sort (codes ctx (twice "@toc\n")) @?= replicate 4 "G02272" <> ["G02280"]
         resultBodies (evalResult ctx (twice "@toc\n")) @?= []
         texts ctx (twice "[strong: a]\n") @?= [""],
       testCase "root ADR 0453 I9: ##N## after { number-text } is [number-text N]" $ do

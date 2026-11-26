@@ -190,7 +190,8 @@ evaluateProjectWith files overlay profile root = do
               functionFilter = functionFilterOf handlers project (lfProgram functions)
               filterNameDiags = unknownFilters project (lfProgram functions)
           LoadedPlugins hookE checkWarnings pluginSources <- loadPlugins root overlay cacheDir (projectManifestFile project) (lockFileId project) (fromMaybe "" lockText) (dataFileBase project) (hostContext style) functionFilter manifest0
-          let (pluginErrors, hook) = either (,noPlugins) ([],) hookE
+          -- after the plugins failed, a name one might have given is G02282 (root ADR 0461)
+          let (pluginErrors, hook) = either (,noPlugins {phFailed = True}) ([],) hookE
               -- the warnings of the checks of the data (docs/adr/0120) do not stop the plugins
               pluginDiags = pluginErrors <> checkWarnings <> rqDiagnostics required <> filterRootDiags <> lfDiagnostics functions <> filterNameDiags
               functionFiles = Set.fromList [siPath si | si <- Map.elems (lfSources functions)]
@@ -199,21 +200,13 @@ evaluateProjectWith files overlay profile root = do
               runningVarDiags = projectVarDiagnostics styleFid (fromMaybe "" styleText) (manifestVars manifest0)
               -- style.toml, which the context comes from, when a plugin asks for it: the LSP watches it (docs/adr/0121)
               contextFiles = Set.fromList ["style.toml" | not (null (phContextNames hook))]
-              -- no G02022 after the plugins failed to load (golem-plugin ADR 0003), nor G02090 (golem-doc ADR 0007),
-              -- nor G02009 for their block commands (docs/adr/0122), nor G02011 and G02123 for the
-              -- commands written in a row with such a block command (root ADR 0459)
-              quiet = if null pluginErrors then id else \r -> r {erDiagnostics = dropUnknown (erDiagnostics r)}
-              dropUnknown ds =
-                let unknown = [diagSpan d | d <- ds, diagCode d == DiagnosticCode "G02009"]
-                    inRow d = diagCode d `elem` [DiagnosticCode "G02011", DiagnosticCode "G02123"] && any (spanContains (diagSpan d)) unknown
-                 in filter (\d -> diagCode d `notElem` [DiagnosticCode "G02022", DiagnosticCode "G02090", DiagnosticCode "G02009"] && not (inRow d)) ds
           if hasErrors synDiags
             then do
               loaded <- loadAssets files overlay project
               let assets = laAssets loaded
               (bibDiags, citeKeys, _) <- loadBibliography files manifest0
               let projectDiags = pluginDiags <> laDiagnostics loaded <> bibDiags <> runningVarDiags
-              pure (Right (Evaluated project style styleFid (fromMaybe "" styleText) lockText Map.empty Nothing (synDiags <> projectDiags) (laSources loaded <> pluginSources <> lfSources functions) (laTableFiles loaded <> pluginDataFiles manifest0 <> requiredFileSet manifest0 <> contextFiles <> functionFiles) projectDiags [] (const (Nothing, [])) (\f sf -> quiet (reeval profile project style assets citeKeys hook table Map.empty f sf)) pluginCommands (lfProgram functions) (lfSources functions)))
+              pure (Right (Evaluated project style styleFid (fromMaybe "" styleText) lockText Map.empty Nothing (synDiags <> projectDiags) (laSources loaded <> pluginSources <> lfSources functions) (laTableFiles loaded <> pluginDataFiles manifest0 <> requiredFileSet manifest0 <> contextFiles <> functionFiles) projectDiags [] (const (Nothing, [])) (reeval profile project style assets citeKeys hook table Map.empty) pluginCommands (lfProgram functions) (lfSources functions)))
             else do
               let manifest = manifest0
                   -- one G03007 for each name, in the order of the chapters (golem-project ADR 0006)
@@ -226,14 +219,14 @@ evaluateProjectWith files overlay profile root = do
               let assets = laAssets loaded
               -- G03026 and G03003 of the bibliography, for every target (golem-doc ADR 0004)
               (bibDiags, citeKeys, _) <- loadBibliography files manifest
-              let results = Map.map quiet (evalAll profile project style assets citeKeys hook table)
+              let results = evalAll profile project style assets citeKeys hook table
                   s0Diags = concatMap erDiagnostics (Map.elems results)
                   -- the syntax diagnostics short of errors: the info G01031 (root ADR 0459)
                   syntaxInfos = concatMap sfSyntaxDiagnostics (Map.elems (projectSources project))
                   projectDiags = defaultStyleNotice <> defaultSeparatorNotice <> styleNoticeDiags <> syntaxInfos <> masterDiags <> runningVarDiags <> pluginDiags <> laDiagnostics loaded <> bibDiags
                   reassemble = assembleResults (phChannels hook) handlers (lfProgram functions) style styleFid (fromMaybe "" styleText) manifest project projectDiags
                   (book, s1Diags) = reassemble results
-                  again f sf = quiet (reeval profile project style assets citeKeys hook table results f sf)
+                  again = reeval profile project style assets citeKeys hook table results
               pure (Right (Evaluated project style styleFid (fromMaybe "" styleText) lockText results book (projectDiags <> s0Diags <> s1Diags) (laSources loaded <> pluginSources <> lfSources functions) (laTableFiles loaded <> pluginDataFiles manifest0 <> requiredFileSet manifest0 <> contextFiles <> functionFiles) projectDiags s1Diags reassemble again pluginCommands (lfProgram functions) (lfSources functions)))
 
 {- | The files the plugins take as data (docs/adr/0105) and the .wasm of
@@ -587,7 +580,7 @@ functionPaths root project = do
 
 {- | The table of the functions for golem-eval (docs/adr/0162): the
 namespaces of the program, or, after an error of the .emet, none, whose
-calls report nothing.
+calls are G02279 (root ADR 0461).
 -}
 functionTableOf :: Handlers -> Project -> [FilePath] -> LoadedFunctions -> FunctionTable
 functionTableOf hs project roots lf =
