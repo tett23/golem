@@ -17,8 +17,8 @@ import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Text.IO qualified as TIO
 import FeaturesSpec qualified
-import FitCharactersSpec qualified
 import FilesSpec qualified
+import FitCharactersSpec qualified
 import FontLicensesSpec qualified
 import FramesSpec qualified
 import FunctionsSpec qualified

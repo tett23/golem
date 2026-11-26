@@ -4946,13 +4946,13 @@ numberComposedFlow inp geom fe units widths composed =
       captionWarnings =
         (<> fitWarnings fe units) $
           concat
-          [ case uKind u of
-              UFigure _ | Just (pf, _, _, _) <- Map.lookup i figures -> captionIndentWarnings fe u (pfFullAlong pf) (pfCaption pf)
-              UTable t -> captionIndentWarnings fe u (feMeasure fe) (ccLines (tableCaptionOf fe u t))
-              UCode lead _ | Just cb <- Map.lookup i codeBlocks -> captionIndentWarnings fe u (feMeasure fe - lead) (ciCaption (cbInfo cb))
-              _ -> []
-          | (i, u) <- units
-          ]
+            [ case uKind u of
+                UFigure _ | Just (pf, _, _, _) <- Map.lookup i figures -> captionIndentWarnings fe u (pfFullAlong pf) (pfCaption pf)
+                UTable t -> captionIndentWarnings fe u (feMeasure fe) (ccLines (tableCaptionOf fe u t))
+                UCode lead _ | Just cb <- Map.lookup i codeBlocks -> captionIndentWarnings fe u (feMeasure fe - lead) (ciCaption (cbInfo cb))
+                _ -> []
+            | (i, u) <- units
+            ]
       -- the paragraphs one after the other in one box (docs/adr/0271)
       (boxedFlow, boxes) = joinBoxes (nuBoxes numbered) flow
       flow' = ruledLinks (spaceAfterCode (pgLinePitch geom) (pgFontSize geom) (map cbInfo (Map.elems codeBlocks)) boxedFlow)
