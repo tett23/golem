@@ -179,6 +179,19 @@ setRenameTests =
         withProject baseFiles $ \_ ws ->
           forM_ ["{set.price}", "{set.worth}", "{set.ns.price}", "{set.ns.worth}"] $ \fmt ->
             refused ws (Just ("[masters.body]\nrunning-head = { position = \"top-outside\", format = \"" <> fmt <> "\" }\n")) "common/f.gm" (offsetIn fText "price = 1" 0) "worth",
+      testCase "root ADR 0463: {set.price} or {set.worth} in title-format of style.toml: refused" $
+        withProject baseFiles $ \_ ws ->
+          forM_ ["{set.price}", "{set.worth}", "{set.ns.price}", "{set.ns.worth}"] $ \fmt ->
+            refused ws (Just ("[headings.1]\ntitle-format = \"" <> fmt <> "{title}\"\n")) "common/f.gm" (offsetIn fText "price = 1" 0) "worth",
+      testCase "root ADR 0463: {set.price} or {set.worth} in title-format of @style-def: refused" $
+        forM_ ["{set.price}", "{set.worth}", "{set.ns.price}"] $ \fmt ->
+          withProject (("k.gm", "@style-def paragraph caption title-format=\"" <> fmt <> "\"\n\n" <> kText) : filter ((/= "k.gm") . fst) baseFiles) $ \_ ws ->
+            case renameVariable ws Nothing "common/f.gm" (offsetIn fText "price = 1" 0) "worth" of
+              Left (TitleFormatVariable "k.gm" _) -> pure ()
+              r -> assertFailure (show (fmap places r)),
+      testCase "root ADR 0463: title-format without {set.*} does not refuse the rename" $
+        withProject baseFiles $ \_ ws ->
+          () <$ renamed ws (Just "[headings.1]\ntitle-format = \"{number}{title}\"\n") "common/f.gm" (offsetIn fText "price = 1" 0) "worth",
       testCase "root ADR 0454 I3, I4: a reference to the new name, which the rename would make point at the variable, is refused" $ do
         withProject (("h2.gm", h2Text <> "\n[= worth]\n") : filter ((/= "h2.gm") . fst) baseFiles) $ \_ ws ->
           refused ws Nothing "common/f.gm" (offsetIn fText "price = 1" 0) "worth"

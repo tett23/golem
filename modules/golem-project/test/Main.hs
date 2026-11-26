@@ -54,6 +54,7 @@ import Test.Tasty
 import Test.Tasty.HUnit
 import TomlMessageSpec qualified
 import UnderlineSpec qualified
+import TitleFormatSpec qualified
 import VarsSpec qualified
 
 main :: IO ()
@@ -990,6 +991,7 @@ tests =
       NaturalKeySpec.tests,
       FunctionsSpec.tests,
       FilesSpec.tests,
+      TitleFormatSpec.tests,
       VarsSpec.tests,
       testCase "dimensions" $ do
         parseDim "1pt" @?= Just (Abs 65536)
