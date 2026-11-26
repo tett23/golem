@@ -1676,6 +1676,12 @@ golem-typeset はコードの行を脚注なしで作り（`Flow.hs:3870`）、g
 5. 照合できていない変更と、`putWrappedLine` の写しの前提。
    「区切りのモデル」の節の `keep-with-next` の行数を 2 にする変更と、段の番号だけが異なる分割は、照合できていない。
    `trialWrapRest_putLine` の前提のうち、回り込みの段が空でないことと、次の段が回り込みの段でないことは、`parts` の呼び出しについて示していない。
+6. 自由な配置で段の終わりの罫線を段の外に出す規則（[root ADR 0450](../../docs/adr/0450-put-free-placement-rules-after-outside-the-column-end.md)）の写し。
+   `Physical.lean` は、この規則を写していない。
+   main を取り込んだ後、`PhysicalBoundary.hs` の 156360 個の境界入力のうち、罫線のあるブロックを含む 374 個で、`Physical.lean` と golem-layout の `paginatePhysical` の出力が食い違う。
+   そのため、`check.sh` はこの照合で止まる。
+   段の外に出す判定は、段の終わりの位置、最後の行の箱の始まり、段の脚注の有無を読み、段を閉じる。
+   これを `ruledAfter`、`ruleAfterPos`、`ruledPlaceAt`、`ruleAfterFits`、`placeRuled`、見出しの罫線（`headingAfterGeom` と `headingDropsRules` の写し）、`flushPendingRule` に写し、それらを使う定理を証明し直す必要がある。
 
 これらを終えるまで Alloy の定期実行と既存の参照を維持する。
 終えたときは、Alloy の定期実行を終え、規則やモデルを変えたときにローカルの Lean で検証し直す手順を CONTRIBUTING に書く。
