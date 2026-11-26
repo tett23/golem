@@ -3731,8 +3731,8 @@ fitWarnings :: FlowEnv -> [(Int, Unit)] -> [Diagnostic]
 fitWarnings fe units =
   [ diagnostic "G07144" Warning (uSpan u) ("段落の字が fit-characters の " <> T.pack (show n) <> " 字分の幅に収まらないので、字取りをしません")
   | u <- nubOrdOn uSpan [u' | (_, u') <- units, isJust (unitFit u')],
-    Just n <- [unitFit u],
-    fitBroken u || isNothing (unitFitted fe u)
+    fitBroken u || isNothing (unitFitted fe u),
+    Just n <- [unitFit u]
   ]
 
 {- | G07144 of a book as its layout gives it (root ADR 0466), without the

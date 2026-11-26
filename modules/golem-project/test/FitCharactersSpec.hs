@@ -4,6 +4,7 @@ G03301.
 -}
 module FitCharactersSpec (tests) where
 
+import Data.Either (fromLeft)
 import Data.Map.Strict qualified as Map
 import Data.Text (Text)
 import Golem.Project.Style
@@ -14,7 +15,7 @@ import Test.Tasty.HUnit
 
 -- | The diagnostics of a style.toml, none when it reads.
 diagnosticsOf :: Text -> [Diagnostic]
-diagnosticsOf src = either id (const []) (parseStyle (FileId 0) src)
+diagnosticsOf src = fromLeft [] (parseStyle (FileId 0) src)
 
 -- | The codes of the diagnostics of a style.toml.
 codesOf :: Text -> [Text]
