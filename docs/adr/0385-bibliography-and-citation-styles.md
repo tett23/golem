@@ -1,6 +1,6 @@
 # ADR 0385: 書誌と本文の引用を共通の文献スタイルで組む
 
-Status: accepted-pending
+Status: superseded-pending [{"part":"実装すること","by":["docs/adr/0470-bibliography-styles-by-name-and-by-declaration.md"],"kind":"replace"}]
 
 ## 文脈
 

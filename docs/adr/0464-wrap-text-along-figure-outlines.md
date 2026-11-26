@@ -1,6 +1,6 @@
 # ADR 0464: 図版の輪郭を書き、輪郭に沿って本文を回り込ませる
 
-Status: proposed
+Status: accepted-pending
 
 ## 文脈
 

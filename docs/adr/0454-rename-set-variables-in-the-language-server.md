@@ -1,6 +1,6 @@
 # ADR 0454: 言語サーバーで `@set` の変数の名前を変えられるようにする
 
-Status: superseded [{"part":"実装すること","by":["docs/adr/0458-rename-listed-imports-with-as.md"],"kind":"supplement"}]
+Status: superseded [{"part":"実装すること","by":["docs/adr/0458-rename-listed-imports-with-as.md"],"kind":"supplement"},{"part":"改名を断る場合","by":["docs/adr/0463-title-formats-for-numbered-headings-and-captions.md"],"kind":"supplement"}]
 
 ## 文脈
 

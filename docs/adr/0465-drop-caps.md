@@ -1,6 +1,6 @@
 # ADR 0465: 段落スタイルの drop-lines でドロップキャップを組む
 
-Status: proposed
+Status: accepted-pending
 
 ## 文脈
 

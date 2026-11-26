@@ -1,6 +1,6 @@
 # ADR 0003: プラグインの診断のコード（G06002 から G06010）
 
-Status: accepted
+Status: superseded [{"part":"変更","by":["docs/adr/0461-report-the-diagnostics-that-follow-from-another-error.md"],"kind":"replace"}]
 
 ## 文脈
 

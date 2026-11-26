@@ -1,6 +1,6 @@
 # ADR 0455: 変数のファイルの取り込みを取り込みのグラフで引き、マニフェストの無いファイルの評価では読み込めなかった `.emet` と同じく扱う
 
-Status: accepted
+Status: superseded [{"part":"マニフェストの無いファイルの評価","by":["docs/adr/0461-report-the-diagnostics-that-follow-from-another-error.md"],"kind":"replace"}]
 
 ## 文脈
 

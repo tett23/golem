@@ -1,6 +1,6 @@
 # ADR 0469: 始め括弧の字下げを HTML と EPUB にも当てる
 
-Status: proposed
+Status: accepted-pending
 
 ## 文脈
 

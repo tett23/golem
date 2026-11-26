@@ -1,6 +1,6 @@
 # ADR 0374: 段落ごとの上書きと先頭文字の組み方を定める
 
-Status: superseded-pending [{"part":"行送りのキー名と通常の段落への適用範囲","by":["docs/adr/0397-paragraph-line-pitch-and-dimensional-spacing.md"]}]
+Status: superseded-pending [{"part":"行送りのキー名と通常の段落への適用範囲","by":["docs/adr/0397-paragraph-line-pitch-and-dimensional-spacing.md"]},{"part":"ドロップキャップ","by":["docs/adr/0465-drop-caps.md"],"kind":"replace"},{"part":"字取り","by":["docs/adr/0466-fit-characters.md"],"kind":"replace"},{"part":"段落ごとの上書き","by":["docs/adr/0467-override-paragraph-style-keys-with-style-arguments.md"],"kind":"replace"},{"part":"見出しとリストへの適用","by":["docs/adr/0468-paragraph-styles-for-headings-and-lists.md"],"kind":"replace"},{"part":"始め括弧の字下げ","by":["docs/adr/0469-opening-indent-in-html-and-epub.md"],"kind":"supplement"}]
 
 ## 文脈
 
