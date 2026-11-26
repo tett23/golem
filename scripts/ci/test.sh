@@ -5256,14 +5256,23 @@ expect "root ADR 0416 I3: cache-dist, which ci does not wait for, does not count
 # the commit before the ADR is testdata. The one step more is the check of
 # the plan, item 1 of the ADR. root ADR 0351 independently adds two checks:
 # retain every original step, suite and architecture and add only their needs.
+# The suites of golem-driver-test are those of the four suites that it was
+# split into, on the same runners (root ADR 0416)
 CC=$HERE/testdata/ci-checks
 {
-  cat "$CC/before-0395.txt"
+  awk -F '\t' -v OFS='\t' '$1 == "suites" && $3 == "golem-driver:test:golem-driver-test" {
+      for (i = split("pdf page output cli", s, " "); i > 0; i--) print $1, $2, "golem-driver:test:golem-driver-" s[i] "-test"
+      next
+    } { print }' "$CC/before-0395.txt" |
+    # the generated module of docs/diagnostics.md is that of golem-evaluate
+    # (root ADR 0434)
+    sed 's|modules/golem-driver/src/Golem/Driver/Explain/Embedded.hs|modules/golem-evaluate/src/Golem/Evaluate/Explain/Embedded.hs|'
   printf 'needs\t%s\n' parser-fmt-proofs parser-fmt-manuscripts
-} | LC_ALL=C sort >"$WORK/a1.expected"
+} | LC_ALL=C sort >"$WORK/before"
 run sh "$HERE/ci-checks.sh" "$CI_YML"
-grep -vF 'same-plan.sh' "$WORK/out" >"$WORK/a1" 2>/dev/null
-if [ "$CODE" = 0 ] && diff "$WORK/a1.expected" "$WORK/a1" >"$WORK/a1.diff"; then ok; else
+# the step of cabal sdist all is a check added after the ADR (root ADR 0452)
+grep -vF -e 'same-plan.sh' -e 'cabal sdist all' "$WORK/out" >"$WORK/a1" 2>/dev/null
+if [ "$CODE" = 0 ] && diff "$WORK/before" "$WORK/a1" >"$WORK/a1.diff"; then ok; else
   ng "ADR 0395 A1: the checks of a pull request are those of the commit before the ADR, on the same architectures"
   sed 's/^/  /' "$WORK/a1.diff" 2>/dev/null | head -40
 fi
