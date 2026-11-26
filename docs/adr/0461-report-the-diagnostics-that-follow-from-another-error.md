@@ -1,6 +1,6 @@
 # ADR 0461: ほかの誤りから続いて起きるdiagnosticも、箇所ごとに出す
 
-Status: accepted-pending
+Status: accepted
 
 ## 文脈
 

@@ -199,10 +199,11 @@ bodyTests =
         paragraphs ctx "本文\n:::\n続き\n" @?= [(Nothing, "本文:::続き")]
         paragraphs ctx "@label x\n本文\n:::\n" @?= [(Nothing, "本文:::")]
         paragraphs ctx "@label x\n\\:::\n" @?= [(Nothing, ":::")],
-      testCase "root ADR 0459 I5: a function of a .emet that could not be loaded puts out nothing, and the paragraph stays" $ do
+      testCase "root ADR 0459 I5, root ADR 0461 I5: a function of a .emet that could not be loaded puts out nothing, the paragraph stays, and G02011 as after @index" $ do
         let s = "@import functions/s.emet { stage-direction }\n\n@stage-direction\n段落\n"
             (ds, r) = evalSource unloadedCtx s
-        map diagCodeText ds @?= []
+        map diagCodeText ds @?= ["G02011", "G02279"]
+        filter (== "G02011") (codes ctx "@index\n段落\n") @?= ["G02011"]
         [T.concat [t | Text _ t <- is] | Paragraph _ is <- resultBodies r] @?= ["段落"],
       testCase "root ADR 0459 I6: @set before a command that takes the body is no G02011" $ do
         codes ctx "@set a = 1\n@stage-direction\n段落\n" @?= []

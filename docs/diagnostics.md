@@ -1932,8 +1932,8 @@ G01010 から G01023 に当たらない構文エラーの既定のコードで�
 ### 意味
 
 式が、定義されていない変数、名前空間、要素を参照した。
-プロジェクトの外のファイル（マニフェストの届かないファイル）の評価では、変数のファイルの取り込みを解かないので、変数のファイルから取り込んだ名前の式での参照（名前を並べた名前と、名前空間を通した名前）にこのコードを出さない（[root ADR 0455](adr/0455-resolve-variable-imports-through-the-import-graph.md)）。
-ただし、その参照を含む式で `@set` した変数は定義されないので、その変数の参照はこのコードになる。
+プロジェクトの外のファイル（マニフェストの届かないファイル）の評価では、変数のファイルの取り込みを解かないので、変数のファイルから取り込んだ名前の式での参照（名前を並べた名前と、名前空間を通した名前）は、このコードでなく [G02281](#g02281) になる（[root ADR 0455](adr/0455-resolve-variable-imports-through-the-import-graph.md)、[root ADR 0461](adr/0461-report-the-diagnostics-that-follow-from-another-error.md)）。
+その参照を含む式で `@set` した変数は定義されないので、その変数の参照はこのコードになる。
 
 - メッセージ: `未定義の名前 <名前> です`、`未定義の名前空間 <名前空間> です`、`名前がありません`
 - 段階とモジュール: 評価（golem-eval の `Golem.Eval.Expr`）
@@ -2107,11 +2107,12 @@ dev では出力に残し、診断は出さない。
 ### 意味
 
 ブロックコマンドが、組み込みにもプラグインのブロックコマンドにもない（[docs/adr/0122](adr/0122-block-commands-in-plugins.md)）。
-プラグインの読み込みか検査に誤りがあるときは、G02022 と同じく報告しない。
+名前空間つきの名前では、名前空間の `.emet` にそのブロックコマンドがない。
+プラグインの読み込みか検査に誤りがあるときは、プラグインがその名前のコマンドを持つかを決められないので、このコードでなく [G02282](#g02282) を出す（[root ADR 0461](adr/0461-report-the-diagnostics-that-follow-from-another-error.md)）。
 
 - メッセージ: `未知のブロックコマンドです: @<名前>`
 - 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
-- ADR: [golem-eval ADR 0003](golem-eval/adr/0003-evaluation-diagnostic-codes.md)、[docs/adr/0122](adr/0122-block-commands-in-plugins.md)
+- ADR: [golem-eval ADR 0003](golem-eval/adr/0003-evaluation-diagnostic-codes.md)、[docs/adr/0122](adr/0122-block-commands-in-plugins.md)、[root ADR 0461](adr/0461-report-the-diagnostics-that-follow-from-another-error.md)
 
 ### 主な原因
 
@@ -2164,11 +2165,12 @@ dev では出力に残し、診断は出さない。
 
 一番内側でない出すだけのコマンドは、書いた位置で評価して出力を前に置く。
 次の行に続けたブロックは、ふつうのブロックとして組む。
-まとまりに、呼び出しを解いた先の分からない名前（読み込めない `.emet` の名前など）があれば、このコードを出さない。
+呼び出しを解いた先の分からない名前（読み込めない `.emet` の名前、[G02272](#g02272) の名前、プラグインの誤りで未知になった名前）は、出すだけのコマンドとして数える。
+入れ子のまとまりにも、同じ規則を当てる（[root ADR 0461](adr/0461-report-the-diagnostics-that-follow-from-another-error.md)）。
 
 - メッセージ: `属性のまとまりに属性でないコマンドがあります`
 - 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
-- ADR: [golem-eval ADR 0003](golem-eval/adr/0003-evaluation-diagnostic-codes.md)（[docs/adr/0005](adr/0005-character-and-paragraph-styles.md)、[docs/adr/0013](adr/0013-paragraph-separator.md)、[docs/adr/0014](adr/0014-in-file-settings.md) が触れる。[root ADR 0459](adr/0459-take-the-next-block-as-the-body-without-indentation.md) が条件を決め直した）
+- ADR: [golem-eval ADR 0003](golem-eval/adr/0003-evaluation-diagnostic-codes.md)（[docs/adr/0005](adr/0005-character-and-paragraph-styles.md)、[docs/adr/0013](adr/0013-paragraph-separator.md)、[docs/adr/0014](adr/0014-in-file-settings.md) が触れる。[root ADR 0459](adr/0459-take-the-next-block-as-the-body-without-indentation.md) が条件を決め直し、[root ADR 0461](adr/0461-report-the-diagnostics-that-follow-from-another-error.md) が呼ぶ先の分からない名前の扱いを決めた）
 
 ### 主な原因
 
@@ -2447,11 +2449,13 @@ number-text の引数が不正です
 ### 意味
 
 インラインのコマンドが、組み込みにもプラグインにもない。
+名前空間つきの名前では、名前空間の `.emet` にそのインラインのコマンドがない。
 位置はコマンドの名前である。
+プラグインの読み込みか検査に誤りがあるときは、プラグインがその名前のコマンドを持つかを決められないので、このコードでなく [G02282](#g02282) を出す（[root ADR 0461](adr/0461-report-the-diagnostics-that-follow-from-another-error.md)）。
 
 - メッセージ: `未知のコマンドです: <名前>`
 - 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
-- ADR: [golem-eval ADR 0003](golem-eval/adr/0003-evaluation-diagnostic-codes.md)、[ADR 0027](adr/0027-exhaustive-command-dispatch-by-types.md)
+- ADR: [golem-eval ADR 0003](golem-eval/adr/0003-evaluation-diagnostic-codes.md)、[ADR 0027](adr/0027-exhaustive-command-dispatch-by-types.md)、[root ADR 0461](adr/0461-report-the-diagnostics-that-follow-from-another-error.md)
 
 ### 主な原因
 
@@ -2462,8 +2466,6 @@ number-text の引数が不正です
 
 コマンド名の綴りを確かめる。
 プラグインのコマンドなら、`manifest.toml` にプラグインを宣言する。
-プラグインの読み込みか検査が誤り（[G06002](#g06002) から [G06008](#g06008)、[G06010](#g06010)、[G06011](#g06011)）を出したときは、未知のコマンドを報告しない（[golem-plugin ADR 0003](golem-plugin/adr/0003-plugin-diagnostic-codes.md)）。
-プラグインの誤りを直した後のビルドで報告する。
 
 ## G02023
 
@@ -4308,11 +4310,12 @@ dev と prod の両方でエラーであり、LSP も同じく出す。
 または、`@channel` にチャネルの名前を一つだけ書いていない。
 一覧は出さない。
 位置は `@channel` のブロックコマンドである。
-プラグインの読み込みか検査が誤りを出したときは報告しない。
+プラグインの読み込みか検査に誤りがあるときは、プラグインがそのチャネルを宣言するかを決められないので、宣言されていないチャネルはこのコードでなく [G02282](#g02282) になる（[root ADR 0461](adr/0461-report-the-diagnostics-that-follow-from-another-error.md)）。
+チャネルの名前を一つだけ書いていないときは、プラグインによらないので、このコードのままである。
 
 - メッセージ: `宣言されていないチャネルです: <チャネル>`、`@channel にはチャネルの名前を一つ書きます`
 - 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
-- ADR: [golem-doc ADR 0007](golem-doc/adr/0007-plugin-channel-lists.md)
+- ADR: [golem-doc ADR 0007](golem-doc/adr/0007-plugin-channel-lists.md)、[root ADR 0461](adr/0461-report-the-diagnostics-that-follow-from-another-error.md)
 
 ### 主な原因
 
@@ -5224,11 +5227,11 @@ IR の整数の欄は 64 ビットの符号付き整数に限るので、その�
 次の二つの場合に出る。
 
 - 最後の引数が `Blocks` でない `.emet` の関数のブロックコマンドに、字下げした本体を書いた。関数は呼ばない。位置は、呼び出しである（[docs/adr/0162](adr/0162-calling-emet-functions-from-gm.md)）。
-- 続けて書いたブロックコマンドの最後が出すだけのコマンド（本体を受け取らず、属性でもない `@toc` など）で、その次に `:::` で囲んだブロックを書いた。設定と改ページの仲間を抜いた後にコマンドが残らないまとまりも同じである。囲んだ中は、ふつうのブロックとして順に組む。位置は、まとまりである（[root ADR 0459](adr/0459-take-the-next-block-as-the-body-without-indentation.md)）。まとまりに、呼び出しを解いた先の分からない名前があれば出さない。
+- 続けて書いたブロックコマンドの最後が出すだけのコマンド（本体を受け取らず、属性でもない `@toc` など）で、その次に `:::` で囲んだブロックを書いた。設定と改ページの仲間を抜いた後にコマンドが残らないまとまりも同じである。囲んだ中は、ふつうのブロックとして順に組む。位置は、まとまりである（[root ADR 0459](adr/0459-take-the-next-block-as-the-body-without-indentation.md)）。呼び出しを解いた先の分からない名前は、出すだけのコマンドとして数える（[root ADR 0461](adr/0461-report-the-diagnostics-that-follow-from-another-error.md)）。
 
 - メッセージ: `本体を受け取らない関数のブロックコマンドに本体があります: @<コマンド>`、`本体を受け取らないコマンドに ::: で囲んだ本体があります`
 - 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
-- ADR: [docs/adr/0162](adr/0162-calling-emet-functions-from-gm.md)、[root ADR 0459](adr/0459-take-the-next-block-as-the-body-without-indentation.md)
+- ADR: [docs/adr/0162](adr/0162-calling-emet-functions-from-gm.md)、[root ADR 0459](adr/0459-take-the-next-block-as-the-body-without-indentation.md)、[root ADR 0461](adr/0461-report-the-diagnostics-that-follow-from-another-error.md)
 
 ### 主な原因
 
@@ -6477,14 +6480,14 @@ TSV の途中の空の行は消す。
 
 `@import パス { … }` で並べた名前を、同じファイルのほかの `@import` も並べていて、二つが同じ使う場所（インラインのコマンド、ブロックコマンド、式）を持つ。
 重なる名前を並べたどちらの `@import` にも出すので、`@import` の行の順を入れ替えても diagnostic の集合は変わらない。
-どちらの定義を呼ぶかが行の順で変わらないように、その場所の名前空間なしの呼び出しは、何も出力せず、diagnostic も出さない。
+どちらの定義を呼ぶかが行の順で変わらないように、その場所の名前空間なしの呼び出しと参照は何も出力せず、それぞれ [G02280](#g02280) になる（[root ADR 0461](adr/0461-report-the-diagnostics-that-follow-from-another-error.md)）。
 別名を付けた項目（`{ total as sum }`）では、別名で比べる（[root ADR 0458](adr/0458-rename-listed-imports-with-as.md)）。
 G02275、G02276、G02278 になった項目は、ほかの `@import` の項目と重ならない。
 位置は、`@import` の行のその名前（別名を付けた項目では別名）である。
 
 - メッセージ: `ほかの @import が並べた名前と同じです: <名前>`
 - 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
-- ADR: [docs/adr/0451](adr/0451-import-listed-names-without-a-namespace.md)、[root ADR 0458](adr/0458-rename-listed-imports-with-as.md)
+- ADR: [docs/adr/0451](adr/0451-import-listed-names-without-a-namespace.md)、[root ADR 0458](adr/0458-rename-listed-imports-with-as.md)、[root ADR 0461](adr/0461-report-the-diagnostics-that-follow-from-another-error.md)
 
 ### 主な原因
 
@@ -6589,7 +6592,8 @@ G02275、G02276、G02278 になった前の項目は数えない。
 `@import パス { … }` で並べた名前を、取り込む先が公開していない。
 `.emet` では、`pub inline` と `pub block` のコマンドの名前（文字列で名前を書いたものはその名前）と `pub fn` の関数の名前が公開された名前で、変数のファイルでは `@set` の変数の名前である。
 この名前の重なりは調べない。
-`.emet` のどれかの読み込みか型の検査に誤りがあるときは、`.emet` から並べた名前にこのコードを出さない。
+`.emet` のどれかの読み込みか型の検査に誤りがあるときは、`.emet` の公開する名前が分からないので、`.emet` から並べた名前にこのコードを出さない。
+その名前の呼び出しは [G02279](#g02279) になる（[root ADR 0461](adr/0461-report-the-diagnostics-that-follow-from-another-error.md)）。
 プロジェクトの外のファイル（マニフェストの届かないファイル）の評価では、変数のファイルの取り込みを解かないので、変数のファイルから並べた名前にもこのコードを出さない（[root ADR 0455](adr/0455-resolve-variable-imports-through-the-import-graph.md)）。
 別名を付けた項目（`{ nothing as x }`）では、元の名前を調べる（[root ADR 0458](adr/0458-rename-listed-imports-with-as.md)）。
 別名が予約語なら、このコードでなく G02275 だけを出す。
@@ -6667,6 +6671,122 @@ G02275、G02276、G02278 になった前の項目は数えない。
 ### 直し方
 
 元の名前の使う場所のすべての規則に合う別名を付ける。
+
+## G02279
+
+.emet の誤りのため、この名前を呼べません
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+`.emet` の誤りのため読み込めない `.emet` から取り込んだ名前（並べた名前、別名、名前空間つきの名前）を、呼び出すか参照した。
+`.emet` のどれか一つの読み込みか型の検査に誤りがあれば、すべての `.emet` を読み込めないものとして扱うので、誤りの無い `.emet` から取り込んだ名前にも出る。
+式、インラインのコマンド、ブロックコマンドの一つごとに一つ出る。
+式の評価は最初の誤りで止まるので、一つの式に二つの呼び出しがあっても一つだけ出る。
+呼び出しは何も出力しない。
+位置は、式では呼び出し、コマンドではコマンドの名前である。
+`.emet` の誤りの diagnostic は、別に `.emet` の側に出る。
+メッセージの `<名前>` は原稿に書いた名前で、別名で取り込んだときは別名、名前空間つきのときは `<名前空間>.<名前>` を、ブロックコマンドでは `@` を付けて書く。
+
+- メッセージ: `.emet の誤りのため、この名前を呼べません: <名前>`
+- 段階とモジュール: 評価（golem-eval の `Golem.Eval.File` と `Golem.Eval.Expr`）
+- ADR: [root ADR 0461](adr/0461-report-the-diagnostics-that-follow-from-another-error.md)
+
+### 主な原因
+
+- 取り込んだ `.emet` のどれかに、構文か型の誤りがある。
+- `.emet` が `[functions.requires]` に無いファイルを読む。
+
+### 直し方
+
+`.emet` の誤りを直す。
+直せば、このコードも消える。
+
+## G02280
+
+ほかの @import と重なった名前を呼んでいます
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+[G02272](#g02272) になった名前（二つの `@import` が並べた同じ名前）を、名前空間なしで呼び出すか参照した。
+どちらの定義を呼ぶかが行の順で変わらないように、呼び出しは何も出力しない。
+式、インラインのコマンド、ブロックコマンドの一つごとに一つ出る。
+位置は、式では呼び出し、コマンドではコマンドの名前である。
+
+- メッセージ: `ほかの @import と重なった名前を呼んでいます: <名前>`
+- 段階とモジュール: 評価（golem-eval の `Golem.Eval.File` と `Golem.Eval.Expr`）
+- ADR: [root ADR 0461](adr/0461-report-the-diagnostics-that-follow-from-another-error.md)
+
+### 主な原因
+
+- 二つのファイルから同じ名前を名前空間なしで取り込み、その名前を呼んだ。
+
+### 直し方
+
+[G02272](#g02272) を直す。
+片方の項目に別名を付けるか、片方を名前空間つきの取り込みにする。
+
+## G02281
+
+マニフェストの無いファイルでは、取り込んだ名前を解きません
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+プロジェクトの外のファイル（マニフェストの届かないファイル）の評価で、`@import` で取り込んだ名前を呼び出すか参照した。
+この評価は、変数のファイルの取り込みも `.emet` も解かない（[root ADR 0455](adr/0455-resolve-variable-imports-through-the-import-graph.md)）。
+並べた名前、別名、名前空間を通した名前のどれにも出る。
+式、インラインのコマンド、ブロックコマンドの一つごとに一つ出る。
+その参照を含む式は評価しないので、その式で `@set` した変数は定義されず、その変数の参照は [G02002](#g02002) になる。
+
+- メッセージ: `マニフェストの無いファイルでは、取り込んだ名前を解きません: <名前>`
+- 段階とモジュール: 評価（golem-eval の `Golem.Eval.File` と `Golem.Eval.Expr`）
+- ADR: [root ADR 0461](adr/0461-report-the-diagnostics-that-follow-from-another-error.md)
+
+### 主な原因
+
+- `manifest.toml` の届かないファイルを、エディタで開くか `golem inspect --as ir` で見た。
+
+### 直し方
+
+ファイルをプロジェクトの章に加え、プロジェクトとして評価する。
+
+## G02282
+
+プラグインの誤りのため、この名前のコマンドがあるかを決められません
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+プラグインの読み込みか検査に誤りがあるときに、どのコマンドにもない名前を書いた。
+プラグインがその名前を持つかを決められないので、未知のインラインのコマンド（[G02022](#g02022)）、未知のブロックコマンド（[G02009](#g02009)）、宣言されていないチャネル（[G02090](#g02090)）の代わりに出す。
+箇所ごとに一つ出る。
+位置は、それぞれのコードと同じである。
+プラグインの誤りの diagnostic は、別に出る。
+メッセージの `<名前>` は原稿に書いた名前で、ブロックコマンドでは `@` を付けて書き、チャネルではチャネルの名前を書く。
+
+- メッセージ: `プラグインの誤りのため、この名前のコマンドがあるかを決められません: <名前>`
+- 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
+- ADR: [root ADR 0461](adr/0461-report-the-diagnostics-that-follow-from-another-error.md)
+
+### 主な原因
+
+- プラグインを読み込めないか、プラグインのデータの検査に誤りがある。
+- プラグインのコマンドではない名前を、綴り違いで書いた。
+
+### 直し方
+
+プラグインの誤りを直す。
+直した後のビルドで、この名前がどのコマンドにもなければ [G02022](#g02022)、[G02009](#g02009)、[G02090](#g02090) になる。
 
 ## G03001
 

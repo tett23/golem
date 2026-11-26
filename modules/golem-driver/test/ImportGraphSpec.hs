@@ -35,19 +35,22 @@ importGraphTests =
       testCase "root ADR 0455 I4: a name common/v.gm does not set is G02276" $ do
         (codes, _) <- project "@import common/v.gm { cost }\n\n一。\n"
         assertBool (show codes) ("G02276" `elem` codes),
-      testCase "root ADR 0455 I2, I3: outside a project, v.gm { price } and [= price] report nothing" $
-        loose "@import v.gm { price }\n\n[= price]\n" @?= [],
-      testCase "root ADR 0455 I3: outside a project, v.gm * as v and [= v.price] report nothing" $
-        loose "@import v.gm * as v\n\n[= v.price]\n" @?= [],
+      testCase "root ADR 0461 I3: outside a project, v.gm { price } and [= price], [= price + 1] are G02281 twice" $
+        loose "@import v.gm { price }\n\n[= price]\n\n[= price + 1]\n" @?= ["G02281", "G02281"],
+      testCase "root ADR 0461 I3: outside a project, v.gm * as v and [= v.price] is G02281" $
+        loose "@import v.gm * as v\n\n[= v.price]\n" @?= ["G02281"],
+      testCase "root ADR 0461 I3: outside a project, f.emet { total } and [= total(1)] is one G02281" $
+        loose "@import f.emet { total }\n\n[= total(1)]\n" @?= ["G02281"],
       testCase "root ADR 0455 I2: outside a project, v.gm { meta } is G02275 only" $
         loose "@import v.gm { meta }\n" @?= ["G02275"],
       testCase "root ADR 0455 I2: outside a project, the clashes of v.gm { price } are not reported" $
         loose "@import v.gm { price }\n@import w.gm { price }\n\n@set price = 1\n" @?= [],
       testCase "root ADR 0455 I5: outside a project, a @set of a listed variable defines nothing, as of a .emet" $ do
         let src p = "@import " <> p <> " { price }\n\n@set y = price(1)\n\n[= y]\n"
-        loose (src "v.gm") @?= ["G02002"]
+        loose (src "v.gm") @?= ["G02281", "G02002"]
         set (loose (src "v.gm")) @?= set (loose (src "f.emet"))
-        loose "@import v.gm { price }\n\n@set y = price\n\n[= y]\n" @?= ["G02002"],
+        -- root ADR 0461 I3, I6: G02281 at the @set, and G02002 at y as before
+        loose "@import v.gm { price }\n\n@set y = price\n\n[= y]\n" @?= ["G02281", "G02002"],
       testCase "root ADR 0455 I5: outside a project, a call of a listed name reports as of a .emet" $ do
         let src p = "@import " <> p <> " { total }\n\n[= total(1)]\n"
         set (loose (src "v.gm")) @?= set (loose (src "f.emet"))

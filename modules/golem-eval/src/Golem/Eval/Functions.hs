@@ -24,12 +24,12 @@ module Golem.Eval.Functions
     FunctionTable (..),
     noFunctions,
     FunctionRef (..),
+    Unloaded (..),
+    unloadedDiagnostic,
     ArgError (..),
     argErrorDiagnostic,
     positionalValues,
     fitValue,
-    unloadedFact,
-    isUnloaded,
   )
 where
 
@@ -131,7 +131,7 @@ emptyNamespace = FunctionNamespace Map.empty Map.empty Map.empty Map.empty
 
 {- | The .emet of a project by their paths from the root. @ftUnloaded@:
 the .emet could not be loaded or checked, and their errors are reported
-in them; the calls through their namespaces report nothing.
+in them; each call through their namespaces is G02279 (root ADR 0461).
 -}
 data FunctionTable = FunctionTable
   { ftFiles :: !(Map FilePath FunctionNamespace),
@@ -143,10 +143,28 @@ data FunctionTable = FunctionTable
 noFunctions :: FunctionTable
 noFunctions = FunctionTable Map.empty False Set.empty
 
-{- | A namespace of @import of a .emet in a .gm: its functions, or an .emet
-that could not be loaded, whose calls report nothing.
+{- | A namespace of @import of a .emet in a .gm, or a name an @import
+lists: its functions, or why the evaluation cannot call it (root ADR 0461).
 -}
-data FunctionRef = Loaded !FunctionNamespace | Unloaded
+data FunctionRef = Loaded !FunctionNamespace | Unloaded !Unloaded
+
+{- | Why the evaluation cannot call a name (root ADR 0461): the .emet could
+not be loaded or checked, the name clashes with one another @import lists
+(G02272), or the file is evaluated without manifest, which resolves no
+@import.
+-}
+data Unloaded = EmetErrors | ImportClash | NoManifest
+  deriving stock (Eq, Show)
+
+{- | The diagnostic at a call or a reference of such a name, by the name it
+is written with (root ADR 0461): G02279, G02280 and G02281, one for each
+expression, inline command and block command.
+-}
+unloadedDiagnostic :: Unloaded -> SrcSpan -> Text -> Diagnostic
+unloadedDiagnostic why sp name = case why of
+  EmetErrors -> diagnostic "G02279" Error sp (".emet の誤りのため、この名前を呼べません: " <> name)
+  ImportClash -> diagnostic "G02280" Error sp ("ほかの @import と重なった名前を呼んでいます: " <> name)
+  NoManifest -> diagnostic "G02281" Error sp ("マニフェストの無いファイルでは、取り込んだ名前を解きません: " <> name)
 
 -- | Why the values .gm passed do not fit what a function takes.
 data ArgError
@@ -206,12 +224,3 @@ fitValue t v = case (t, v) of
   (ArgBool, VString "false") -> Just (VBool False)
   (ArgList e, VArray xs) -> VArray <$> traverse (fitValue e) xs
   _ -> Nothing
-
-{- | The fact a diagnostic of a call through a namespace whose .emet could
-not be loaded carries: such a diagnostic is not reported (docs/adr/0162).
--}
-unloadedFact :: (Text, Fact)
-unloadedFact = ("unloaded-functions", FactText "")
-
-isUnloaded :: Diagnostic -> Bool
-isUnloaded d = unloadedFact `elem` diagFacts d
