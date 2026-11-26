@@ -230,6 +230,7 @@ encodeBlock (Block sp lbl blang body) = do
     PageControl pc -> pure ("PageControl", [pageControl pc])
     BlankLines n -> pure ("BlankLines", [nat n])
     Separator name -> pure ("Separator", [str name])
+    FrameBlock name bs -> (\b -> ("FrameBlock", [str name, b])) <$> encodeBlocks bs
   node c fs (Hidden sp lbl blang 0)
   where
     item (ListItem n bs) = (\b -> con "ListItem" [maybeR nat n, b]) <$> encodeBlocks bs
@@ -472,6 +473,9 @@ blockD cx = \case
     "PageControl" -> one1 (fmap PageControl . pageControl)
     "BlankLines" -> one1 $ \n -> BlankLines . fromInteger <$> (intD n >>= \m -> if m < 0 then bad "負の数です" else pure m)
     "Separator" -> one1 (fmap Separator . strD)
+    "FrameBlock" -> one 2 $ \case
+      [name, bs] -> FrameBlock <$> strD name <*> blocks bs
+      _ -> arity
     _ -> bad ("ブロックではない値です: " <> c)
     where
       arity = bad ("欄の数が合いません: " <> c)

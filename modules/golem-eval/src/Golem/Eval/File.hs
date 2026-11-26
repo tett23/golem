@@ -4,6 +4,7 @@ the layout (S2) are left as 'Ref' and 'Deferred' inlines.
 -}
 module Golem.Eval.File
   ( EvalContext (..),
+    VarImports (..),
     Asset (..),
     PluginHook (..),
     PluginCommand (..),
@@ -31,12 +32,13 @@ module Golem.Eval.File
 where
 
 import Control.Applicative ((<|>))
-import Control.Monad (forM, unless, when)
+import Control.Monad (forM, forM_, unless, when)
 import Control.Monad.State.Strict
 import Data.Bifunctor qualified as Bi
 import Data.ByteString (ByteString)
-import Data.Char (isAscii, isAsciiLower, isDigit)
-import Data.Either (fromLeft, fromRight, isLeft, lefts)
+import Data.ByteString qualified as BS
+import Data.Char (isAscii, isAsciiLower, isAsciiUpper, isDigit)
+import Data.Either (fromLeft, fromRight, isLeft, lefts, rights)
 import Data.List (mapAccumL, partition)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
@@ -47,6 +49,7 @@ import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Array qualified as TA
+import Data.Text.Encoding qualified as TE
 import Data.Text.Internal qualified as TI
 import Data.Text.Unsafe (lengthWord8)
 import Golem.Doc.FigureWidth (FigureWidth (..), parseFigureWidth)
@@ -65,11 +68,12 @@ import Golem.Parser.AST qualified as A
 import Golem.Parser.Lower qualified as A (numberWord)
 import Golem.Parser.Read (checkTableText)
 import Golem.Parser.SourceSettings
-import Golem.Project.Imports (ImportSite (..), importSite)
+import Golem.Project.Imports (ImportForm (..), ImportSite (..), ListedName (..), importNames, importSite, importsOf)
 import Golem.Project.Paths (PathError (..), normalizeRelative, pathErrorMessage)
 import Golem.Project.Style (Dim (..), LineBreaks (..), LocalStyles (..), ParaStyleDef (..), Sp (..), Style (stPrintingsFormat), kentenShapeNames, noLocalStyles, paraLineBreaks, paraStyle, parseAki, parseDim, renderPrintingTemplate, withLocalStyles)
 import Golem.Syntax
 import Golem.Syntax.LanguageTag (isLanguageTag)
+import Golem.Syntax.Sha256 (sha256)
 import Golem.Syntax.Text (isSpaceTab, tshow)
 import Numeric.Natural (Natural)
 
@@ -95,6 +99,8 @@ data PluginHook = PluginHook
     phCommands :: !(Map PluginCommandName PluginCommand),
     -- | the block commands of the plugins, by name (docs/adr/0122)
     phBlocks :: !(Map Text PluginBlockCommand),
+    -- | the overrides of built-in block commands that block-overrides declares (root ADR 0453)
+    phBlockOverrides :: !(Map OverridableBlock PluginBlockCommand),
     -- | the channels the plugins declare (golem-doc ADR 0007)
     phChannels :: !(Map Text ChannelDecl),
     phApplyFilters :: FilePath -> Document -> Either [Diagnostic] (Document, [Diagnostic]),
@@ -103,7 +109,7 @@ data PluginHook = PluginHook
   }
 
 noPlugins :: PluginHook
-noPlugins = PluginHook Map.empty Map.empty Map.empty Map.empty (\_ d -> Right (d, [])) []
+noPlugins = PluginHook Map.empty Map.empty Map.empty Map.empty Map.empty (\_ d -> Right (d, [])) []
 
 data EvalContext = EvalContext
   { ctxFile :: !FileId,
@@ -112,7 +118,8 @@ data EvalContext = EvalContext
     ctxMeta :: !(Map Text Value),
     -- | the namespace vars, the values of [vars] of manifest.toml (docs/adr/0185)
     ctxVars :: !(Map Text Value),
-    ctxImports :: !(Map FilePath (Map Text Value)), -- exported variables by file
+    -- | the variables the @import lines of variable files give (root ADR 0455)
+    ctxImports :: !VarImports,
     ctxSwatches :: !(Set Text),
     -- | the character styles, built-in ones included (docs/adr ADR 0005)
     ctxCharStyles :: !(Set Text),
@@ -130,6 +137,21 @@ data EvalContext = EvalContext
     -- | the functions of the .emet of the project (docs/adr/0162)
     ctxFunctions :: !FunctionTable
   }
+
+{- | The variables the @import lines of variable files give (root ADR
+0455). The evaluation of a project resolves each line through the import
+graph and gives the variables the file it points at exports, by the path
+as the line writes it; the evaluation of a file outside a project does not
+resolve them, and an @import of a variable file is then as one of a .emet
+that could not be loaded.
+-}
+data VarImports = ResolvedImports !(Map Text (Map Text Value)) | UnresolvedImports
+
+-- | The variables an @import of a path gives; Nothing when the evaluation does not resolve the imports.
+importedVars :: EvalContext -> Text -> Maybe (Map Text Value)
+importedVars ctx path = case ctxImports ctx of
+  ResolvedImports m -> Just (Map.findWithDefault Map.empty path m)
+  UnresolvedImports -> Nothing
 
 -- | A file referenced by @figure, @table or @listing (golem-eval ADR 0003).
 data Asset
@@ -155,7 +177,11 @@ data Usage = Usage
   { usageDefined :: ![(Text, SrcSpan)],
     usageReferenced :: !(Set Text),
     usageNamespaceRefs :: !(Map Text (Set Text)),
-    usageImports :: ![(Text, FilePath, SrcSpan)]
+    usageImports :: ![(Text, FilePath, SrcSpan)],
+    -- | each item an @import lists: its alias, its original name, its path and the span of its alias (root ADR 0451, root ADR 0458)
+    usageListed :: ![(Text, Text, FilePath, SrcSpan)],
+    -- | the listed names the file uses without a namespace (root ADR 0451)
+    usageListedRefs :: !(Set Text)
   }
   deriving stock (Eq, Show)
 
@@ -200,8 +226,24 @@ data St = St
     stEndnoteRefs :: ![(SrcSpan, Text)],
     stEndnoteDefs :: ![(Text, SrcSpan, [Block])],
     -- | the argument span and exact count of each @blank-line (Golem ADR 0345)
-    stBlankCounts :: !(Map SrcSpan (SrcSpan, Integer))
+    stBlankCounts :: !(Map SrcSpan (SrcSpan, Integer)),
+    -- | the @import lines of the file and the names it @set, for the clashes of listed names (root ADR 0451)
+    stFileImports :: ![ImportSite],
+    stSetNames :: !(Set Text),
+    -- | the functions listed by @import, by their space of use and name; Unloaded for one whose calls report nothing
+    stListedFns :: !(Map (Space, Text) FunctionRef),
+    -- | the variables listed by @import
+    stListedVars :: !(Map Text Value),
+    stListedSites :: ![(Text, Text, FilePath, SrcSpan)],
+    stListedRefs :: !(Set Text),
+    -- | the names listed by, and the namespaces of, the @import lines of variable files the evaluation does not resolve (root ADR 0455)
+    stUnresolvedVars :: !(Set Text),
+    stUnresolvedNamespaces :: !(Set Text)
   }
+
+-- | Where .gm uses a name: an inline command, a block command, or an expression (root ADR 0451).
+data Space = InlineSpace | BlockSpace | ExprSpace
+  deriving stock (Eq, Ord, Show)
 
 type M = State St
 
@@ -226,12 +268,6 @@ overridableCommands = [builtinName b | b@(Overridable _) <- allBuiltins]
 attributeCommands :: [Text]
 attributeCommands = ["label", "toc-title", "number", "nonumber", "notoc", "style", "caption", "lang", "column-widths"]
 
-{- | The attributes that have a body form too: with a body, the command is
-a block of its own (docs/adr ADR 0005, ADR 0187).
--}
-bodyFormCommands :: [Text]
-bodyFormCommands = ["style", "lang"]
-
 -- | The shapes of kenten (golem-driver ADR 0019); an unknown one is G02039.
 kentenShapes :: [Text]
 kentenShapes = kentenShapeNames
@@ -253,7 +289,11 @@ evalFile ctx0 (A.File fid blocks0) =
       -- the styles of style.toml with those of the file over them
       fileStyle = withLocalStyles (ctxStyle ctx0) local
       -- meta and vars, which every file reads without @import (docs/adr/0185)
-      st0 = St Map.empty (Map.fromList [("meta", ctxMeta ctx), ("vars", ctxVars ctx)]) Map.empty [] Set.empty Map.empty [] 0 0 0 (settingDiags <> styleDiags <> exceptionDiags) Map.empty Map.empty [] [] [] [] Map.empty
+      st0 =
+        (St Map.empty (Map.fromList [("meta", ctxMeta ctx), ("vars", ctxVars ctx)]) Map.empty [] Set.empty Map.empty [] 0 0 0 (settingDiags <> styleDiags <> exceptionDiags) Map.empty Map.empty [] [] [] [] Map.empty [] Set.empty Map.empty Map.empty [] Set.empty Set.empty Set.empty)
+          { stFileImports = rights (importsOf (A.File fid blocks0)),
+            stSetNames = Set.fromList (concatMap setNames blocks0)
+          }
       (bsEval, st) = runState (nextStyled ctx fileStyle blocks) st0
       (bsCollapsed, blankDiags) = collapseBlankLines (stBlankCounts st) bsEval
       -- the notes written by name take their bodies (docs/adr/0263)
@@ -274,7 +314,7 @@ evalFile ctx0 (A.File fid blocks0) =
    in EvalResult
         { erDocument = styled,
           erExports = stVars st,
-          erUsage = Usage (stDefined st) (stRefs st) (stNsRefs st) (stImports st),
+          erUsage = Usage (stDefined st) (stRefs st) (stNsRefs st) (stImports st) (stListedSites st) (stListedRefs st),
           erDiagnostics = stDiags st <> noteDiags <> breakDiags <> filterDiags <> unwritableText styled,
           erSource = ctxSource ctx,
           erStyles = local,
@@ -357,6 +397,7 @@ unwritableText = concatMap blockDiags . docBlocks
       PageControl _ -> []
       BlankLines _ -> []
       Separator _ -> []
+      FrameBlock _ bs -> concatMap blockDiags bs
     inlines :: [InlineF r] -> [Diagnostic]
     inlines = concatMap inline
     inline :: InlineF r -> [Diagnostic]
@@ -435,9 +476,11 @@ normalizeArg (A.Located sp a) = A.Located sp $ case a of
       v -> v
 
 {- | Every inline sequence of a block with its newlines dropped, except the
-paragraphs a paragraph style is given to (the body of @style and the
-target of an attribute group with @style), which keep them at the top
-level (docs/adr ADR 0005).
+paragraphs a paragraph style is given to, which keep them at the top
+level (docs/adr ADR 0005): the paragraphs of the body of @style, of its
+lists and of the @lang and groups in it (root ADR 0460), and the next
+paragraph of a group, which the line style splits when the group is
+evaluated (root ADR 0459).
 -}
 normalizeBlock :: A.Located A.Block -> A.Located A.Block
 normalizeBlock (A.Located sp b) = A.Located sp $ case b of
@@ -447,18 +490,37 @@ normalizeBlock (A.Located sp b) = A.Located sp $ case b of
   A.OrderedList items -> A.OrderedList (map (map normalizeBlock) items)
   A.DefList gs -> A.DefList [A.DefGroup (map joinSoftBreaks ts) (map (map normalizeBlock) ds) | A.DefGroup ts ds <- gs]
   A.Table al h rows -> A.Table al (map joinSoftBreaks h) (map (map joinSoftBreaks) rows)
-  A.BlockCommand n@(A.Located _ "style") args body -> A.BlockCommand n (map normalizeArg args) (map styledBody body)
+  A.BlockCommand n@(A.Located _ "style") args body -> A.BlockCommand n (map normalizeArg args) (map styledBlock body)
   -- the newlines of a caption are left to the paragraph style caption (docs/adr/0367)
-  A.BlockCommand n@(A.Located _ "figure") args body -> A.BlockCommand n (map normalizeArg args) (map styledBody body)
+  A.BlockCommand n@(A.Located _ "figure") args body -> A.BlockCommand n (map normalizeArg args) (map captionBody body)
   A.BlockCommand n args body -> A.BlockCommand n (map normalizeArg args) (map normalizeBlock body)
   A.Attributed cs t
-    | any isStyleCommand cs -> A.Attributed (map normalizeBlock cs) (styledBody <$> t)
-    | otherwise -> A.Attributed (map normalizeBlock cs) (normalizeBlock <$> t)
+    | any isStyleCommand cs -> A.Attributed (map styledBlock cs) (styledBlock <$> t)
+    | otherwise -> A.Attributed (map normalizeBlock cs) (nextBody <$> t)
+  A.Fenced bs -> A.Fenced (map normalizeBlock bs)
   other -> other
   where
-    styledBody = \case
+    captionBody = \case
       A.Located psp (A.Paragraph is) -> A.Located psp (A.Paragraph (map nestedInline is))
       other -> normalizeBlock other
+    nextBody = \case
+      A.Located psp (A.Paragraph is) -> A.Located psp (A.Paragraph (map nestedInline is))
+      other -> normalizeBlock other
+
+{- | A block of the body of @style, its paragraphs with their newlines
+(root ADR 0460): those of lists, definitions, @lang, groups and the
+blocks between ::: lines too.
+-}
+styledBlock :: A.Located A.Block -> A.Located A.Block
+styledBlock lb@(A.Located sp b) = case b of
+  A.Paragraph is -> A.Located sp (A.Paragraph (map nestedInline is))
+  A.BulletList items -> A.Located sp (A.BulletList (map (map styledBlock) items))
+  A.OrderedList items -> A.Located sp (A.OrderedList (map (map styledBlock) items))
+  A.DefList gs -> A.Located sp (A.DefList [A.DefGroup (map joinSoftBreaks ts) (map (map styledBlock) ds) | A.DefGroup ts ds <- gs])
+  A.BlockCommand n@(A.Located _ "lang") args body -> A.Located sp (A.BlockCommand n (map normalizeArg args) (map styledBlock body))
+  A.Attributed cs t -> A.Located sp (A.Attributed (map styledBlock cs) (styledBlock <$> t))
+  A.Fenced bs -> A.Located sp (A.Fenced (map styledBlock bs))
+  _ -> normalizeBlock lb
 
 isStyleCommand :: A.Located A.Block -> Bool
 isStyleCommand = \case
@@ -468,23 +530,18 @@ isStyleCommand = \case
 -- ------------------------------------------------------------------ the line style
 
 {- | The line style (docs/adr ADR 0013): a paragraph is split at its
-top-level 'A.SoftBreak' into paragraphs, one per line. An attribute goes
-to the first of them. The paragraphs of a style that keeps its lines are
-left alone, and so are headings, terms, tables and code. The blank-line
-style changes nothing.
+top-level 'A.SoftBreak' into paragraphs, one per line. The next paragraph
+of a group is split when the group is evaluated (root ADR 0459). The
+paragraphs of a style that keeps its lines are left alone, and so are
+headings, terms, tables and code. The blank-line style changes nothing.
 -}
 splitLines :: SourceSettings -> Map Text LineBreaks -> [A.Located A.Block] -> [A.Located A.Block]
 splitLines source paraStyles
   | ssParagraphSeparator source == BlankLineSeparated = id
   | otherwise = concatMap splitBlock
   where
-    splitBlock lb@(A.Located sp b) = case b of
+    splitBlock lb@(A.Located _ b) = case b of
       A.Paragraph is -> splitParagraph is
-      A.Attributed cmds (Just (A.Located _ (A.Paragraph is)))
-        | any keepsLines cmds -> [lb]
-        | otherwise -> case splitParagraph is of
-            first@(A.Located fsp _) : rest -> A.Located (mkSpan (spanFile sp) (spanStart sp) (spanEnd fsp)) (A.Attributed (map inside cmds) (Just first)) : rest
-            [] -> [A.Located sp (A.Attributed (map inside cmds) Nothing)]
       _ -> [inside lb]
     -- a block that is not split itself, with the blocks inside it split
     inside lb@(A.Located sp b) = A.Located sp $ case b of
@@ -494,14 +551,14 @@ splitLines source paraStyles
       A.BlockCommand n args body
         | keepsLines lb || captionKeeps n -> b
         | otherwise -> A.BlockCommand n args (concatMap splitBlock body)
-      A.Attributed cmds t -> A.Attributed (map inside cmds) (inside <$> t)
+      A.Attributed cmds t
+        | any keepsLines cmds -> b
+        | otherwise -> A.Attributed (map inside cmds) (inside <$> t)
+      A.Fenced bs -> A.Fenced (concatMap splitBlock bs)
       other -> other
     -- the caption of @figure, when caption keeps its lines (docs/adr/0367)
     captionKeeps (A.Located _ n) = n == "figure" && Map.lookup "caption" paraStyles == Just KeepLines
-    -- @style with the name of a style that keeps its lines
-    keepsLines = \case
-      A.Located _ (A.BlockCommand (A.Located _ "style") [A.Located _ (A.Positional v)] _) | Just n <- nameArg v -> Map.lookup n paraStyles == Just KeepLines
-      _ -> False
+    keepsLines = keepsLinesStyle paraStyles
 
 {- | The lines of a paragraph as paragraphs: spaces and tabs at the start of
 each line are not text (the ideographic space is), and a line left empty
@@ -530,7 +587,7 @@ splitParagraph = concatMap paragraph . chunks
 -- ------------------------------------------------------------------ blocks
 
 env :: M Env
-env = gets (\s -> Env (stVars s) (stNamespaces s) (stFunctions s))
+env = gets (\s -> Env (Map.union (stVars s) (stListedVars s)) (stNamespaces s) (stFunctions s) (Map.fromList [(n, r) | ((ExprSpace, n), r) <- Map.toList (stListedFns s)]) (stUnresolvedVars s) (stUnresolvedNamespaces s))
 
 block :: SrcSpan -> BlockBody -> Block
 block sp = Block sp Nothing Nothing
@@ -575,13 +632,15 @@ evalBlock ctx (A.Located sp b) = case b of
     -- @import is read as written, as the project reads it: a spread is G03009 (docs/adr ADR 0142)
     | n == "import" -> standalone ctx sp name args body
     -- @style is read before the evaluation for the lines of its body: G02114 at each spread (docs/adr ADR 0112, ADR 0143)
-    | n == "style", ssps@(_ : _) <- spreadsOf args -> mapM_ (report . styleSpread) ssps >> pure []
+    -- the body is put out without the style, as the next block of the attribute form was (root ADR 0459)
+    | n == "style", ssps@(_ : _) <- spreadsOf args -> mapM_ (report . styleSpread) ssps >> evalBlocks ctx body
     | n == "listing",
       srcDuplicates@(_ : _) <- [(asp, k) | (asp, k) <- repeatedKeys args, k == "src"] -> do
         mapM_ (\(asp, k) -> err "G02077" asp ("同じキーを二度書いています: " <> k)) srcDuplicates
         pure []
     | otherwise -> prepareArgs args >>= maybe (pure []) (\args' -> standalone ctx sp name args' body)
-  A.Attributed cmds target -> attributed ctx sp cmds target
+  A.Attributed cmds target -> attributed ctx Nothing sp cmds target
+  A.Fenced bs -> evalBlocks ctx bs
   A.ErrorBlock -> pure []
   where
     one x = [block sp x]
@@ -596,13 +655,29 @@ alignment = \case
   A.AlignCenter -> AlignCenter
   A.AlignRight -> AlignRight
 
--- A block command that is not an attribute of another block.
+{- | A block command that is not an attribute of another block. An
+overridable built-in one is looked up first in the overrides of the
+plugins, then among the names the file lists by @import (root ADR 0453): a
+listed name that puts out nothing does not fall back to the built-in one.
+-}
 standalone :: EvalContext -> SrcSpan -> A.Located A.Name -> [A.Located A.Argument] -> [A.Located A.Block] -> M [Block]
-standalone ctx sp (A.Located nsp name) args body = case name of
+standalone ctx sp lname@(A.Located _ name) args body
+  | Just o <- parseOverridableBlock name, Just pb <- Map.lookup o (phBlockOverrides (ctxPlugins ctx)) = pluginBlock ctx sp pb args body
+  | Just _ <- parseOverridableBlock name =
+      listedFunction BlockSpace name >>= \case
+        Nothing -> builtinBlock ctx sp lname args body
+        Just (Loaded fns) | Just f <- Map.lookup name (fnBlock fns) -> callBlock ctx sp ("@" <> name) f args body
+        Just _ -> pure []
+  | otherwise = builtinBlock ctx sp lname args body
+
+-- | A block command of the language, a plugin or a function, after the overrides.
+builtinBlock :: EvalContext -> SrcSpan -> A.Located A.Name -> [A.Located A.Argument] -> [A.Located A.Block] -> M [Block]
+builtinBlock ctx sp (A.Located nsp name) args body = case name of
   "import" -> do
     -- the same check as the project's (golem-project ADR 0006); G02023 points at the namespace
-    case (importSite sp (map A.locValue args), args) of
-      (Right (ImportSite path ns _), [_, _, A.Located nssp _]) -> do
+    case importSite sp args of
+      Right (ImportSite path (ImportNames names) _) -> listedImport ctx sp path names
+      Right (ImportSite path (ImportAll ns nssp) _) -> do
         if ns `elem` reservedNames
           then err "G02023" nssp ("予約語は名前空間に使えません: " <> ns)
           else
@@ -614,11 +689,11 @@ standalone ctx sp (A.Located nsp name) args body = case name of
                       _ -> Unloaded
                  in modify' (\s -> s {stFunctions = Map.insert ns ref (stFunctions s), stImports = stImports s <> [(ns, T.unpack path, sp)]})
               else do
-                let vals = fromMaybe Map.empty (Map.lookup (T.unpack path) (ctxImports ctx))
-                modify' (\s -> s {stNamespaces = Map.insert ns vals (stNamespaces s), stImports = stImports s <> [(ns, T.unpack path, sp)]})
-      (Left d, _) -> report d
-      -- importSite accepts three arguments only
-      (Right _, _) -> pure ()
+                -- a namespace of an @import the evaluation does not resolve: its references report nothing (root ADR 0455)
+                let vals = importedVars ctx path
+                    unresolvedNs = if isNothing vals then Set.insert ns else Set.delete ns
+                modify' (\s -> s {stNamespaces = Map.insert ns (fromMaybe Map.empty vals) (stNamespaces s), stImports = stImports s <> [(ns, T.unpack path, sp)], stUnresolvedNamespaces = unresolvedNs (stUnresolvedNamespaces s)})
+      Left d -> report d
     pure []
   "toc" -> do
     depth <- maybe (pure (Right 2)) (naturalArg ctx "@toc の depth" sp) (keywordAt "depth" args)
@@ -637,6 +712,8 @@ standalone ctx sp (A.Located nsp name) args body = case name of
   "separator" -> case (map A.locValue args, body) of
     ([A.Positional v], []) | Just name' <- nameArg v, not (T.null name') -> pure [block sp (Separator name')]
     _ -> err "G02158" sp "@separator には名前を一つ書き、本体は付けません" >> pure []
+  -- a text frame named in style.toml, holding paragraphs (root ADR 0438)
+  "frame" -> frameBlock ctx sp args body
   "page-break" -> forcedBreak sp name args body
   "column-break" -> forcedBreak sp name args body
   "no-page-break" -> noPageBreak ctx sp args body
@@ -654,7 +731,173 @@ standalone ctx sp (A.Located nsp name) args body = case name of
     | name `elem` attributeCommands -> err "G02010" sp ("@" <> name <> " の後にブロックがありません") >> pure []
     | Just pb <- Map.lookup name (phBlocks (ctxPlugins ctx)) -> pluginBlock ctx sp pb args body
     | Just (ns, n) <- splitNamespace name -> functionBlock ctx sp nsp ns n args body
-    | otherwise -> err "G02009" nsp ("未知のブロックコマンドです: @" <> name) >> pure []
+    | otherwise ->
+        -- a block command listed by @import (root ADR 0451)
+        listedFunction BlockSpace name >>= \case
+          Nothing -> err "G02009" nsp ("未知のブロックコマンドです: @" <> name) >> pure []
+          Just (Loaded fns) | Just f <- Map.lookup name (fnBlock fns) -> callBlock ctx sp ("@" <> name) f args body
+          Just _ -> pure []
+
+{- | The names of the variables a file sets, wherever they are, for G02274
+(root ADR 0451): an @import clashes with a @set before it or after it.
+-}
+setNames :: A.Located A.Block -> [Text]
+setNames (A.Located _ b) = case b of
+  A.SetVar (A.Located _ n) _ -> [n]
+  A.BulletList items -> concatMap (concatMap setNames) items
+  A.OrderedList items -> concatMap (concatMap setNames) items
+  A.DefList gs -> concatMap (concatMap (concatMap setNames) . A.dgDefs) gs
+  A.BlockCommand _ _ body -> concatMap setNames body
+  A.Attributed cmds t -> concatMap setNames cmds <> maybe [] setNames t
+  A.Fenced bs -> concatMap setNames bs
+  _ -> []
+
+-- | A function listed by @import in a space of use, its use noted for the lint (G05003, root ADR 0451).
+listedFunction :: Space -> Text -> M (Maybe FunctionRef)
+listedFunction space name = do
+  r <- gets (Map.lookup (space, name) . stListedFns)
+  when (isJust r) (modify' (\s -> s {stListedRefs = Set.insert name (stListedRefs s)}))
+  pure r
+
+{- | What a path an @import lists names of gives (root ADR 0451): the
+functions of a .emet, the variables of a .gm, or nothing to check for a
+.emet that could not be loaded, whose names report nothing, and for a
+variable file whose @import the evaluation does not resolve, whose
+references in the expressions report nothing (root ADR 0455).
+-}
+data ListedSource = FromEmet !FunctionNamespace | FromVars !(Map Text Value) | Unchecked | UnresolvedVars
+
+listedSource :: EvalContext -> Text -> ListedSource
+listedSource ctx path
+  | ".emet" `T.isSuffixOf` path =
+      let table = ctxFunctions ctx
+       in case normalizeRelative (T.unpack path) >>= \p -> maybe (Left Missing) Right (Map.lookup p (ftFiles table)) of
+            Right fns | not (ftUnloaded table) -> FromEmet fns
+            _ -> Unchecked
+  | otherwise = maybe UnresolvedVars FromVars (importedVars ctx path)
+
+-- | The spaces of use a source gives a name in; Nothing for one that is not checked.
+listedSpaces :: ListedSource -> Text -> Maybe [Space]
+listedSpaces src n = case src of
+  FromEmet fns -> Just ([InlineSpace | Map.member n (fnInline fns)] <> [BlockSpace | Map.member n (fnBlock fns)] <> [ExprSpace | Map.member n (fnExpr fns)])
+  FromVars vals -> Just [ExprSpace | Map.member n vals]
+  Unchecked -> Nothing
+  UnresolvedVars -> Nothing
+
+{- | The names of the built-in commands a listed name may not override, by
+space of use (G02270, root ADR 0453).
+-}
+builtinNamesIn :: Space -> [Text]
+builtinNamesIn = \case
+  InlineSpace -> [builtinName b | b@(Fixed _) <- allBuiltins]
+  BlockSpace -> fixedBlockCommands
+  ExprSpace -> []
+
+{- | An @import of names (root ADR 0451, root ADR 0458): each item is
+checked, then its alias is put in the spaces of use its source gives the
+original name, bound to the definition of the original name. The checks
+of an item stop at the first that falls: a reserved alias is G02275, an
+original name the source does not give G02276, an alias that breaks the
+rules of the names of a space of use of the original name G02278 (none
+for a source that is not checked). Otherwise each kind of clash of the
+alias gives its code once: a built-in command (G02270), a command of a
+plugin (G02271), an alias another @import lists (G02272, at both), an
+alias before it in the list (G02273), a variable the file sets (G02274),
+a built-in name of the expressions (G02277). An alias that clashes with
+another @import is put in as one whose calls report nothing, so that the
+order of the @import lines changes nothing; one that clashes with a name
+of the language or a variable is left out of that space.
+-}
+listedImport :: EvalContext -> SrcSpan -> Text -> [ListedName] -> M ()
+listedImport ctx sp path items = do
+  others <- gets (filter ((/= sp) . isSpan) . stFileImports)
+  set <- gets stSetNames
+  let src = listedSource ctx path
+      -- the overrides the plugins declare count as their commands (root ADR 0453)
+      pluginNames = \case
+        InlineSpace -> map unPluginCommandName (Map.keys (phCommands (ctxPlugins ctx))) <> map (builtinName . Overridable) (Map.keys (phOverrides (ctxPlugins ctx)))
+        BlockSpace -> Map.keys (phBlocks (ctxPlugins ctx)) <> map overridableBlockName (Map.keys (phBlockOverrides (ctxPlugins ctx)))
+        ExprSpace -> []
+      -- the spaces of use of the items of the other @import lines under an alias, of those that pass their own checks
+      otherSpaces a = concat [spaces | o <- others, l <- importNames o, lnAlias l == a, Just spaces <- [admitted (listedSource ctx (isPath o)) l]]
+      one (i, l@(ListedName n nsp a asp))
+        | a `elem` reservedNames = err "G02275" asp ("予約語は取り込む名前に使えません: " <> a)
+        | otherwise = case listedSpaces src n of
+            -- a variable of an @import not resolved: only its references in the expressions report nothing (root ADR 0455)
+            Nothing | UnresolvedVars <- src -> do
+              note l
+              modify' (\st -> st {stUnresolvedVars = Set.insert a (stUnresolvedVars st)})
+            Nothing -> do
+              note l
+              mapM_ (\s -> put' s a Unloaded) [InlineSpace, BlockSpace, ExprSpace]
+            Just [] -> err "G02276" nsp (path <> " が公開していない名前です: " <> n)
+            Just spaces
+              | not (all (`aliasShape` a) spaces) -> err "G02278" asp ("別名の形が不正です: " <> a)
+              | otherwise -> do
+                  note l
+                  let earlier = or [True | e <- take i items, lnAlias e == a, isJust (admitted src e)]
+                      clashes s =
+                        [("G02270", "上書きできない組み込みのコマンドと同じ名前は取り込めません: " <> a) | a `elem` builtinNamesIn s]
+                          <> [("G02271", "プラグインのコマンドと同じ名前は取り込めません: " <> a) | a `elem` pluginNames s]
+                          <> [("G02272", "ほかの @import が並べた名前と同じです: " <> a) | s `elem` otherSpaces a]
+                          <> [("G02273", "同じ並びに二度書いた名前です: " <> a) | earlier]
+                          <> [("G02274", "@set の変数と同じ名前は取り込めません: " <> a) | s == ExprSpace, a `Set.member` set]
+                          <> [("G02277", "組み込みの式の名前と同じ名前は取り込めません: " <> a) | s == ExprSpace, a `elem` builtinExpressionNames]
+                      codes = concatMap clashes spaces
+                  mapM_ (\(c, m) -> err c asp m) (Map.toList (Map.fromList codes))
+                  forM_ spaces $ \s -> do
+                    let cs = map fst (clashes s) :: [Text]
+                        kept
+                          | any (`elem` cs) ["G02270", "G02271", "G02274", "G02277"] = pure ()
+                          | "G02272" `elem` cs = put' s a Unloaded
+                          | otherwise = case src of
+                              FromEmet fns -> put' s a (Loaded (renamed n a fns))
+                              FromVars vals -> mapM_ (\v -> modify' (\st -> st {stListedVars = Map.insert a v (stListedVars st)})) (Map.lookup n vals)
+                              Unchecked -> pure ()
+                              UnresolvedVars -> pure ()
+                    kept
+  mapM_ one (zip [0 :: Int ..] items)
+  where
+    note (ListedName n _ a asp) = modify' (\s -> s {stListedSites = stListedSites s <> [(a, n, T.unpack path, asp)]})
+    put' s a ref = modify' (\st -> st {stListedFns = Map.insert (s, a) ref (stListedFns st)})
+
+{- | The spaces of use an item of a source is put in under its alias, when
+it passes the checks of its own (G02275, G02276, G02278); an empty list
+for a source that is not checked (root ADR 0458).
+-}
+admitted :: ListedSource -> ListedName -> Maybe [Space]
+admitted src (ListedName n _ a _)
+  | a `elem` reservedNames = Nothing
+  | otherwise = case listedSpaces src n of
+      Nothing -> Just []
+      Just [] -> Nothing
+      Just spaces
+        | all (`aliasShape` a) spaces -> Just spaces
+        | otherwise -> Nothing
+
+{- | Whether an alias keeps the rules of the names of a space of use (root
+ADR 0458, G02278): those of the commands of .gm in the inline and the
+block spaces (a lowercase letter, then lowercase letters, digits and -),
+those of the expressions in theirs (a letter or _, then letters, digits
+and _).
+-}
+aliasShape :: Space -> Text -> Bool
+aliasShape s a = case (s, T.uncons a) of
+  (ExprSpace, Just (c, rest)) -> (letter c || c == '_') && T.all (\x -> letter x || isDigit x || x == '_') rest
+  (_, Just (c, rest)) -> isAsciiLower c && T.all (\x -> isAsciiLower x || isDigit x || x == '-') rest
+  (_, Nothing) -> False
+  where
+    letter x = isAsciiLower x || isAsciiUpper x
+
+{- | The definitions of the original name of a .emet under an alias (root
+ADR 0458): a call under the alias finds the function of the original
+name, and no other.
+-}
+renamed :: Text -> Text -> FunctionNamespace -> FunctionNamespace
+renamed n a fns = FunctionNamespace (pick (fnInline fns)) (pick (fnBlock fns)) (pick (fnExpr fns)) (pick (fnOthers fns))
+  where
+    pick :: Map Text v -> Map Text v
+    pick m = maybe Map.empty (Map.singleton a) (Map.lookup n m)
 
 {- | A block command of a plugin (docs/adr/0122): its arguments as a plugin
 command's, its body evaluated as blocks. An argument beyond int64 is
@@ -671,27 +914,49 @@ pluginBlock ctx sp pb args body = do
       Left ds -> mapM_ report ds >> pure []
       Right (out, imgs, ds) -> do
         mapM_ report ds
-        concat <$> mapM (pluginFigure body' imgs) out
+        concat <$> mapM (memoryFigure sp body' imgs) out
+
+{- | A figure a block command made, whose image is in memory (docs/adr/0123,
+root ADR 0439), goes through the checks of @figure (checkFigure), its
+image found among the images of the command; one that fails gives no
+block, as @figure, and its image is not kept. A paragraph style in its
+caption is G02013, and is dropped, as @figure does. A block of the body,
+and a block that is no figure, passes as it is.
+-}
+memoryFigure :: SrcSpan -> [Block] -> Map Text ByteString -> Block -> M [Block]
+memoryFigure sp body imgs b = case b of
+  Block bsp lbl lang (FigureBlock f) | b `notElem` body -> do
+    mapM_ (\_ -> err "G02013" sp "@style は図版のキャプションには付けられません") [() | Block _ _ _ (Paragraph (Just _) _) <- figCaption f]
+    let unstyle = \case
+          Block csp clbl clang (Paragraph (Just _) is) -> Block csp clbl clang (Paragraph Nothing is)
+          c -> c
+        f' = f {figCaption = map unstyle (figCaption f)}
+    ok <- checkFigure sp (pure . (`Map.member` imgs)) f'
+    if ok
+      then do
+        modify' (\s -> s {stImages = Map.union (stImages s) (Map.restrictKeys imgs (Set.fromList (figSource f' : maybe [] pure (figWeb f'))))})
+        pure [Block bsp lbl lang (FigureBlock f')]
+      else pure []
+  _ -> pure [b]
+
+{- | The images of the figures a block command of a .emet made (root ADR
+0439): the SVG after 'svgDataPrefix' in the source of each, as UTF-8,
+named as the image of a plugin is, by the SHA-256 of its bytes, with the
+sources of the figures set to the names. golem-emet has refused any other
+figure the command made (E06104); a block of the body passes as it is.
+-}
+dataImages :: [Block] -> [Block] -> ([Block], Map Text ByteString)
+dataImages body = foldr place ([], Map.empty)
   where
-    {- a figure the plugin made goes through the checks of @figure
-    (checkFigure), its image found among the images of the answer; one that
-    fails gives no block, as @figure, and its image is not kept. A paragraph
-    style in its caption is G02013, and is dropped, as @figure does
-    (docs/adr/0123) -}
-    pluginFigure body' imgs b = case b of
-      Block bsp lbl lang (FigureBlock f) | b `notElem` body' -> do
-        mapM_ (\_ -> err "G02013" sp "@style は図版のキャプションには付けられません") [() | Block _ _ _ (Paragraph (Just _) _) <- figCaption f]
-        let unstyle = \case
-              Block csp clbl clang (Paragraph (Just _) is) -> Block csp clbl clang (Paragraph Nothing is)
-              c -> c
-            f' = f {figCaption = map unstyle (figCaption f)}
-        ok <- checkFigure sp (pure . (`Map.member` imgs)) f'
-        if ok
-          then do
-            modify' (\s -> s {stImages = Map.union (stImages s) (Map.restrictKeys imgs (Set.fromList (figSource f' : maybe [] pure (figWeb f'))))})
-            pure [Block bsp lbl lang (FigureBlock f')]
-          else pure []
-      _ -> pure [b]
+    place b@(Block bsp lbl lang (FigureBlock f)) (bs, imgs)
+      | b `notElem` body,
+        Just svg <- T.stripPrefix svgDataPrefix (figSource f) =
+          let bytes = TE.encodeUtf8 svg
+              name = pluginImagePrefix <> hexOf (sha256 bytes) <> ".svg"
+           in (Block bsp lbl lang (FigureBlock f {figSource = name}) : bs, Map.insert name bytes imgs)
+    place b (bs, imgs) = (b : bs, imgs)
+    hexOf = T.pack . concatMap (\w -> [hexDigit (w `div` 16), hexDigit (w `mod` 16)]) . BS.unpack
+    hexDigit w = "0123456789abcdef" !! fromIntegral w
 
 {- | The arguments of a call of a plugin: a keyword with its name
 (docs/adr/0110). A spread is already expanded by 'prepareArgs'
@@ -810,22 +1075,26 @@ functionInline ctx inHeading sp nsp ns n args slots =
       Nothing -> err "G02022" nsp ("名前空間 " <> ns <> " にないインラインのコマンドです: " <> qualified <> blockHint) >> pure []
         where
           blockHint = if Map.member n (fnBlock fns) then "（ブロックコマンドの @" <> qualified <> " はあります）" else ""
-      Just f -> do
-        vals <- functionArgs ctx sp qualified (ifParams f) args
-        case vals of
-          Nothing -> pure []
-          Just vs
-            | length slots /= ifSlots f -> err "G02122" sp ("散文スロットの数が合いません: " <> qualified <> " は " <> tshow (ifSlots f) <> " 個の散文スロットを取りますが、" <> tshow (length slots) <> " 個あります") >> pure []
-            | otherwise -> do
-                slots' <- mapM (evalInlines ctx inHeading) slots
-                case ifCall f vs slots' sp of
-                  Left ds -> mapM_ report ds >> pure []
-                  Right out -> do
-                    let out' = map (fillKenten ctx) out
-                    ok <- outputChecked ctx sp out' []
-                    pure (if ok then out' else [])
+      Just f -> callInline ctx inHeading sp qualified f args slots
   where
     qualified = ns <> "." <> n
+
+-- | The call of an inline command of a .emet, by the name it is written with; after any error, the function is not called.
+callInline :: EvalContext -> Bool -> SrcSpan -> Text -> InlineFunction -> [A.Located A.Argument] -> [[A.Located A.Inline]] -> M [Inline]
+callInline ctx inHeading sp qualified f args slots = do
+  vals <- functionArgs ctx sp qualified (ifParams f) args
+  case vals of
+    Nothing -> pure []
+    Just vs
+      | length slots /= ifSlots f -> err "G02122" sp ("散文スロットの数が合いません: " <> qualified <> " は " <> tshow (ifSlots f) <> " 個の散文スロットを取りますが、" <> tshow (length slots) <> " 個あります") >> pure []
+      | otherwise -> do
+          slots' <- mapM (evalInlines ctx inHeading) slots
+          case ifCall f vs slots' sp of
+            Left ds -> mapM_ report ds >> pure []
+            Right out -> do
+              let out' = map (fillKenten ctx) out
+              ok <- outputChecked ctx sp out' []
+              pure (if ok then out' else [])
 
 -- | A block command of a .emet (docs/adr/0162); after any error, the function is not called.
 functionBlock :: EvalContext -> SrcSpan -> SrcSpan -> Text -> Text -> [A.Located A.Argument] -> [A.Located A.Block] -> M [Block]
@@ -837,22 +1106,28 @@ functionBlock ctx sp nsp ns n args body =
       Nothing -> err "G02009" nsp ("名前空間 " <> ns <> " にないブロックコマンドです: @" <> qualified <> inlineHint) >> pure []
         where
           inlineHint = if Map.member n (fnInline fns) then "（インラインのコマンドの [" <> qualified <> "] はあります）" else ""
-      Just f -> do
-        vals <- functionArgs ctx sp qualified (bfParams f) args
-        case vals of
-          Nothing -> pure []
-          Just vs
-            | not (bfBody f) && not (null body) -> err "G02123" sp ("本体を受け取らない関数のブロックコマンドに本体があります: @" <> qualified) >> pure []
-            | otherwise -> do
-                body' <- evalBlocks ctx body
-                case bfCall f vs body' sp of
-                  Left ds -> mapM_ report ds >> pure []
-                  Right out -> do
-                    let out' = map (fillKentenBlock ctx) out
-                    ok <- outputChecked ctx sp [] out'
-                    pure (if ok then out' else [])
+      Just f -> callBlock ctx sp ("@" <> qualified) f args body
   where
     qualified = ns <> "." <> n
+
+-- | The call of a block command of a .emet, by the name it is written with (@ included); after any error, the function is not called.
+callBlock :: EvalContext -> SrcSpan -> Text -> BlockFunction -> [A.Located A.Argument] -> [A.Located A.Block] -> M [Block]
+callBlock ctx sp shown f args body = do
+  vals <- functionArgs ctx sp (T.drop 1 shown) (bfParams f) args
+  case vals of
+    Nothing -> pure []
+    Just vs
+      | not (bfBody f) && not (null body) -> err "G02123" sp ("本体を受け取らない関数のブロックコマンドに本体があります: " <> shown) >> pure []
+      | otherwise -> do
+          body' <- evalBlocks ctx body
+          case bfCall f vs body' sp of
+            Left ds -> mapM_ report ds >> pure []
+            Right out -> do
+              let out' = map (fillKentenBlock ctx) out
+              ok <- outputChecked ctx sp [] out'
+              if ok
+                then let (placed, imgs) = dataImages body' out' in concat <$> mapM (memoryFigure sp body' imgs) placed
+                else pure []
 
 {- | The names a function put in its output, checked as the built-in
 commands check them (docs/adr/0162): a character style (G02018), a
@@ -888,6 +1163,7 @@ nameErrors ctx is bs =
       OrderedList items -> concatMap itemBlocks items
       DefList gs -> concat (concatMap dgDefs gs)
       FigureBlock f -> figCaption f
+      FrameBlock _ inner -> inner
       _ -> []
     blockInlines (Block _ _ _ body) = case body of
       Paragraph _ xs -> xs
@@ -956,24 +1232,298 @@ fillKentenBlock ctx (Block sp l lang body) = Block sp l lang $ case body of
   OrderedList items -> OrderedList [ListItem n (map (fillKentenBlock ctx) bs) | ListItem n bs <- items]
   DefList gs -> DefList [DefGroup (map (map f) ts) (map (map (fillKentenBlock ctx)) ds) | DefGroup ts ds <- gs]
   TableBlock t -> TableBlock t {tableCaption = map f <$> tableCaption t, tableHeader = map (map f) (tableHeader t), tableRows = map (map (map f)) (tableRows t)}
+  FrameBlock name bs -> FrameBlock name (map (fillKentenBlock ctx) bs)
   other -> other
   where
     f = fillKenten ctx
 
-{- | An attribute group and the block it applies to. Without a block after
-it, a last block command that is not an attribute (a figure, @style with a
-body) is the target (docs/adr ADR 0005).
+-- ------------------------------------------------------------------ the commands written in a row
+
+{- | What a command written in a row with others does with what follows it
+(root ADR 0459), by what its name resolves to where it is written.
 -}
-attributed :: EvalContext -> SrcSpan -> [A.Located A.Block] -> Maybe (A.Located A.Block) -> M [Block]
-attributed ctx sp cmds0 target
-  -- a file setting inside an attribute group is out of place (docs/adr ADR 0014)
+data CommandKind
+  = -- | takes the result of the commands after it, or the body, as its body
+    TakesBody
+  | -- | an attribute of the first block of that result
+    Attribute
+  | -- | puts out blocks of its own and takes no body
+    PutsOut
+  | -- | a name whose calls report nothing (a .emet not loaded, a name of G02272): it puts out nothing
+    Unresolved
+  deriving stock (Eq)
+
+{- | The paragraph style a @style passes to the blocks of its body (root
+ADR 0460): the line of the @style, the name (Nothing after G02047, as
+body), and whether the style keeps its lines.
+-}
+data Passed = Passed
+  { psCommand :: !SrcSpan,
+    psName :: !(Maybe Text),
+    psKeeps :: !Bool
+  }
+
+-- | The kind of a command of a group, looked up as 'standalone' and 'builtinBlock' look it up, without noting any use.
+commandKind :: EvalContext -> A.Located A.Block -> M CommandKind
+commandKind ctx (A.Located _ b) = case b of
+  A.BlockCommand (A.Located _ name) _ _
+    | Just o <- parseOverridableBlock name, Map.member o (phBlockOverrides (ctxPlugins ctx)) -> pure TakesBody
+    | Just _ <- parseOverridableBlock name ->
+        gets (Map.lookup (BlockSpace, name) . stListedFns) >>= \case
+          Nothing -> pure PutsOut
+          Just ref -> pure (listedKind name ref)
+    | name `elem` ["note", "endnote", "frame", "style", "lang"] -> pure TakesBody
+    | name `elem` attributeCommands -> pure Attribute
+    | name `elem` builtinBlockCommands || name `elem` settingCommands -> pure PutsOut
+    | Map.member name (phBlocks (ctxPlugins ctx)) -> pure TakesBody
+    | Just (ns, n) <- splitNamespace name ->
+        gets (Map.lookup ns . stFunctions) >>= \case
+          Just (Loaded fns) -> pure (maybe PutsOut functionKind (Map.lookup n (fnBlock fns)))
+          Just Unloaded -> pure Unresolved
+          Nothing -> pure PutsOut
+    | otherwise ->
+        gets (Map.lookup (BlockSpace, name) . stListedFns) >>= \case
+          Nothing -> pure PutsOut
+          Just ref -> pure (listedKind name ref)
+  _ -> pure PutsOut
+  where
+    functionKind f = if bfBody f then TakesBody else PutsOut
+    listedKind name = \case
+      Loaded fns | Just f <- Map.lookup name (fnBlock fns) -> functionKind f
+      _ -> Unresolved
+
+{- | The commands written in a row and their body (root ADR 0459): the
+file settings out of place first (G02049), then the breaks, which go
+before the rest (docs/adr ADR 0017); the rest is one command, the later
+ones inside the earlier ones ('commandRow'). The body is the next block,
+or the blocks between ::: lines.
+-}
+attributed :: EvalContext -> Maybe Passed -> SrcSpan -> [A.Located A.Block] -> Maybe (A.Located A.Block) -> M [Block]
+attributed ctx passed sp cmds0 target
+  -- a file setting inside a group is out of place (docs/adr ADR 0014)
   | any isSettingCommand cmds0 = do
       mapM_ (misplacedSetting . A.locSpan) (filter isSettingCommand cmds0)
-      case (filter (not . isSettingCommand) cmds0, target) of
-        ([], Just t) -> evalBlock ctx t
-        ([], Nothing) -> pure []
-        (cmds, _) -> attributed ctx sp cmds target
-  | otherwise = attributedWith ctx sp cmds0 target
+      attributed ctx passed sp (filter (not . isSettingCommand) cmds0) target
+  | (breaks@(_ : _), rest) <- partition isBreakCommand cmds0 = do
+      bs <- concat <$> mapM (evalBlock ctx) breaks
+      (bs <>) <$> attributed ctx passed sp rest target
+  | null cmds0 = case target of
+      Nothing -> pure []
+      Just (A.Located _ (A.Fenced inner)) -> do
+        err "G02123" sp "本体を受け取らないコマンドに ::: で囲んだ本体があります"
+        concat <$> mapM (evalWith ctx passed) inner
+      Just t -> evalWith ctx passed t
+  | otherwise = commandRow ctx passed sp cmds0 target
+
+-- | A block evaluated with the paragraph style of a @style around it, or as it is.
+evalWith :: EvalContext -> Maybe Passed -> A.Located A.Block -> M [Block]
+evalWith ctx = maybe (evalBlock ctx) (evalStyled ctx)
+
+{- | The commands of a group, without its settings and breaks, as one
+command (root ADR 0459): a command that takes a body takes the commands
+after it with the body; an attribute goes to the first block of what
+follows; a command that puts out blocks is evaluated where it is written,
+its blocks before the rest. G02013 for an attribute, @style or @lang
+outside @note and @endnote, which are left out; G02012 for one written
+twice, the second left out; G02011 once for the group when a command
+that puts out blocks has an attribute outside it, or the next block after
+it; G02123 for the blocks between ::: lines after it. A group with a name
+the evaluation does not resolve reports neither G02011 nor G02123.
+-}
+commandRow :: EvalContext -> Maybe Passed -> SrcSpan -> [A.Located A.Block] -> Maybe (A.Located A.Block) -> M [Block]
+commandRow ctx passed sp cmds0 target = do
+  kinds0 <- mapM (commandKind ctx) cmds0
+  let tagged0 = zip kinds0 cmds0
+      (outside, fromNote) = break (isNote . snd) tagged0
+      noteName = case fromNote of
+        ((_, A.Located _ (A.BlockCommand (A.Located _ n) _ _)) : _) -> n
+        _ -> "note"
+      wrapper (k, c) = k == Attribute || isStyleCommand c || isLangCommand c
+      misplaced = if null fromNote then [] else filter wrapper outside
+  forM_ misplaced $ \case
+    (_, A.Located asp (A.BlockCommand (A.Located _ n) _ _)) -> err "G02013" asp ("@" <> n <> " は @" <> noteName <> " には付けられません")
+    _ -> pure ()
+  let tagged1 = (if null fromNote then outside else filter (not . wrapper) outside) <> fromNote
+      once = [(n, i) | (i, (k, c@(A.Located _ (A.BlockCommand (A.Located _ n) _ _)))) <- zip [0 :: Int ..] tagged1, k == Attribute || isStyleCommand c || isLangCommand c]
+      repeated = [i | (j, (n, i)) <- zip [0 :: Int ..] once, n `elem` map fst (take j once)]
+      -- the first @style is kept; of the others, the one written last (golem-eval ADR 0003, docs/adr ADR 0187)
+      dropped = [i | (j, (n, i)) <- zip [0 :: Int ..] once, if n == "style" then n `elem` map fst (take j once) else n `elem` map fst (drop (j + 1) once)]
+  mapM_ (\(_, (_, A.Located asp _)) -> err "G02012" asp "同じ属性を二度書いています") [x | x@(i, _) <- zip [0 :: Int ..] tagged1, i `elem` repeated]
+  let tagged = [x | (i, x) <- zip [0 :: Int ..] tagged1, i `notElem` dropped]
+      kinds = map fst tagged
+      quiet = Unresolved `elem` kinds
+      nextBlock = case target of
+        Just (A.Located _ (A.Fenced _)) -> False
+        Just _ -> True
+        Nothing -> False
+      fenced = isJust target && not nextBlock
+      -- G02011 for the commands of a list: an attribute before a command
+      -- that puts out blocks and is not the last, or the next block after
+      -- the last that puts out blocks
+      g02011 ks = case reverse ks of
+        [] -> False
+        (lastK : before) ->
+          let earlier = reverse before
+           in or [Attribute `elem` take i earlier | (i, k) <- zip [0 ..] earlier, k == PutsOut]
+                || (lastK == PutsOut && nextBlock)
+      -- the commands inside the first that takes a body report for themselves
+      suffix = case break (== TakesBody) kinds of
+        (_, _ : rest@(_ : _)) -> Just rest
+        _ -> Nothing
+  when (not quiet && g02011 kinds && not (maybe False g02011 suffix)) $
+    err "G02011" sp "属性のまとまりに属性でないコマンドがあります"
+  when (not quiet && TakesBody `notElem` kinds && fenced && lastOf kinds == Just PutsOut) $
+    err "G02123" sp "本体を受け取らないコマンドに ::: で囲んだ本体があります"
+  (pre, r) <- go tagged
+  pure (pre <> r)
+  where
+    lastOf ks = case reverse ks of
+      (k : _) -> Just k
+      [] -> Nothing
+    isNote = \case
+      A.Located _ (A.BlockCommand (A.Located _ n) _ _) -> n `elem` ["note", "endnote"]
+      _ -> False
+    keeps = maybe False psKeeps passed || any (keepsLinesStyle (ctxParaStyles ctx)) cmds0
+    -- the blocks of the body: in the line style, the lines of the next paragraph, unless a style keeps them
+    bodyBlocks = case target of
+      Nothing -> []
+      Just (A.Located _ (A.Fenced bs)) -> bs
+      Just (A.Located _ (A.Paragraph is))
+        | ssParagraphSeparator (ctxSource ctx) == LineSeparated && not keeps -> splitParagraph is
+      Just t -> [t]
+    evalBody = concat <$> mapM (evalWith ctx passed) bodyBlocks
+    -- the commands after one that takes a body, with the body
+    inner = \case
+      [] -> bodyBlocks
+      [(_, c)] | isNothing target -> [c]
+      rest@((_, A.Located csp _) : _) -> [A.Located (mkSpan (spanFile sp) (spanStart csp) (spanEnd sp)) (A.Attributed (map snd rest) target)]
+    go = \case
+      [] -> ([],) <$> evalBody
+      xs@((Attribute, _) : _) -> do
+        let (attrs, rest) = span ((== Attribute) . fst) xs
+        (pre, r) <- go rest
+        when (null r && null pre && isNothing target && Unresolved `notElem` map fst rest) $
+          err "G02010" sp "属性の後にブロックがありません"
+        (pre,) <$> attach ctx (map snd attrs) r
+      ((TakesBody, c) : rest) -> ([],) <$> evalWith ctx passed (withBody c (inner rest))
+      ((_, c) : rest)
+        | null rest -> do
+            out <- evalWith ctx passed c
+            after <- evalBody
+            pure ([], out <> after)
+        | otherwise -> do
+            out <- evalWith ctx passed c
+            (pre, r) <- go rest
+            pure (out <> pre, r)
+    withBody c body = case c of
+      A.Located csp (A.BlockCommand n args own) -> A.Located csp (A.BlockCommand n args (own <> body))
+      other -> other
+
+isLangCommand :: A.Located A.Block -> Bool
+isLangCommand = \case
+  A.Located _ (A.BlockCommand (A.Located _ "lang") _ _) -> True
+  _ -> False
+
+-- | @style with the name of a paragraph style that keeps its lines.
+keepsLinesStyle :: Map Text LineBreaks -> A.Located A.Block -> Bool
+keepsLinesStyle paraStyles = \case
+  A.Located _ (A.BlockCommand (A.Located _ "style") [A.Located _ (A.Positional v)] _) | Just n <- nameArg v -> Map.lookup n paraStyles == Just KeepLines
+  _ -> False
+
+{- | The attributes on the first of the blocks (docs/adr ADR 0005, golem-eval
+ADR 0003): its label, the attributes of its kind (G02013 for the others),
+G02134 for @nonumber on a code block or a table without a caption.
+-}
+attach :: EvalContext -> [A.Located A.Block] -> [Block] -> M [Block]
+attach ctx attrs0 bs = do
+  attrs <- catMaybes <$> mapM uniqueAttrKeys attrs0
+  let named = [(n, asp) | A.Located asp (A.BlockCommand (A.Located _ n) _ _) <- attrs]
+  case bs of
+    (Block bsp label0 lang0 body : rest) -> do
+      -- where G04007 points: the @number line (golem-syntax ADR 0002)
+      case [asp | ("number", asp) <- named] of
+        (asp : _) -> modify' (\s -> s {stNumberSites = Map.insert bsp asp (stNumberSites s)})
+        [] -> pure ()
+      (label, body') <- foldl (\acc x -> acc >>= \a -> applyAttr ctx a x) (pure (label0, body)) attrs
+      -- G02134: @nonumber on a code block without a caption, whichever line comes first (docs/adr/0200)
+      body'' <- case body' of
+        CodeBlock c
+          | codeNoNumber c,
+            Nothing <- codeCaption c -> do
+              mapM_ (\asp -> err "G02134" asp "キャプションのないコードブロックは番号を持たないので、@nonumber は要りません") (take 1 [asp | ("nonumber", asp) <- named])
+              pure (CodeBlock c {codeNoNumber = False})
+        -- likewise a table (docs/adr/0262)
+        TableBlock tb
+          | tableNoNumber tb,
+            Nothing <- tableCaption tb -> do
+              mapM_ (\asp -> err "G02134" asp "キャプションのない表は番号を持たないので、@nonumber は要りません") (take 1 [asp | ("nonumber", asp) <- named])
+              pure (TableBlock tb {tableNoNumber = False})
+        _ -> pure body'
+      pure (Block bsp label lang0 body'' : rest)
+    [] -> pure []
+
+{- | A block of the body of @style (root ADR 0460): the paragraphs, those
+of lists and those inside @lang and attributes evaluated in the style;
+a table with the style for its cells; the paragraphs and tables of what
+other block commands put out in the style afterwards. A heading, a block
+without paragraphs or tables, @frame, @note, @endnote and an inner @style
+are as they are.
+-}
+evalStyled :: EvalContext -> Passed -> A.Located A.Block -> M [Block]
+evalStyled ctx ps lb@(A.Located sp b) = case b of
+  A.Paragraph is -> styledParagraph ctx sp (psName ps) is
+  A.BulletList items -> one . BulletList <$> mapM (fmap (ListItem Nothing) . inner) items
+  A.OrderedList items -> one . OrderedList <$> mapM (fmap (ListItem Nothing) . inner) items
+  A.DefList gs -> one . DefList <$> mapM (\(A.DefGroup ts ds) -> DefGroup <$> mapM (evalInlines ctx False) ts <*> mapM inner ds) gs
+  A.Table {} -> evalBlock ctx lb >>= mapM (styledOutput ctx ps)
+  A.Attributed cmds t -> attributed ctx (Just ps) sp cmds t
+  A.Fenced bs -> inner bs
+  A.BlockCommand (A.Located _ n) args body
+    | n `elem` ["style", "frame", "note", "endnote"] -> evalBlock ctx lb
+    | n == "lang", not (null body) -> prepareArgs args >>= maybe (pure []) (\args' -> langBodyWith inner sp args' body)
+    | otherwise -> evalBlock ctx lb >>= mapM (styledOutput ctx ps)
+  _ -> evalBlock ctx lb
+  where
+    inner = fmap concat . mapM (evalStyled ctx ps)
+    one x = [block sp x]
+
+{- | The paragraph style of a @style on a block a command put out (root ADR
+0460): its paragraphs without a style, those of its lists too, and the
+cells of its tables (docs/adr/0262). An unknown style is G02047.
+-}
+styledOutput :: EvalContext -> Passed -> Block -> M Block
+styledOutput ctx ps b = case blockBody b of
+  Paragraph Nothing is -> case psName ps of
+    Just n
+      | Map.notMember n (ctxParaStyles ctx) -> err "G02047" (blockSpan b) ("定義されていない段落スタイルです: " <> n) >> pure b
+      | n == "body" -> pure b
+      | otherwise -> pure b {blockBody = Paragraph (Just n) is}
+    Nothing -> pure b
+  BulletList items -> (\xs -> b {blockBody = BulletList xs}) <$> mapM item items
+  OrderedList items -> (\xs -> b {blockBody = OrderedList xs}) <$> mapM item items
+  DefList gs -> (\xs -> b {blockBody = DefList xs}) <$> mapM (\(DefGroup ts ds) -> DefGroup ts <$> mapM (mapM (styledOutput ctx ps)) ds) gs
+  TableBlock t
+    | Nothing <- tableStyle t,
+      Just n <- psName ps,
+      Map.notMember n (ctxParaStyles ctx) ->
+        err "G02047" (psCommand ps) ("定義されていない段落スタイルです: " <> n) >> pure b
+    | Nothing <- tableStyle t,
+      Just n <- psName ps,
+      n /= "table" ->
+        pure b {blockBody = TableBlock t {tableStyle = Just n}}
+  _ -> pure b
+  where
+    item (ListItem n bs) = ListItem n <$> mapM (styledOutput ctx ps) bs
+
+-- | Whether some block has a paragraph or a table, in its lists too (G02046, root ADR 0460).
+hasParagraphOrTable :: [Block] -> Bool
+hasParagraphOrTable = any $ \b -> case blockBody b of
+  Paragraph {} -> True
+  TableBlock _ -> True
+  BulletList items -> any (hasParagraphOrTable . itemBlocks) items
+  OrderedList items -> any (hasParagraphOrTable . itemBlocks) items
+  DefList gs -> any (any hasParagraphOrTable . dgDefs) gs
+  _ -> False
 
 {- | @channel, the list of a channel a plugin declares (golem-doc ADR
 0007): one name, G02090 otherwise; style= the paragraph style of its
@@ -998,105 +1548,10 @@ channelBlock ctx sp args = do
 misplacedSetting :: SrcSpan -> M ()
 misplacedSetting sp = err "G02049" sp "@manifest、@style-def、@hyphenation-exceptions はファイルの最初に置きます"
 
-attributedWith :: EvalContext -> SrcSpan -> [A.Located A.Block] -> Maybe (A.Located A.Block) -> M [Block]
-attributedWith ctx sp cmds target
-  -- the breaks of the group go before its target; the attributes skip them (docs/adr ADR 0017)
-  | (breaks@(_ : _), rest) <- partition isBreakCommand cmds = do
-      bs <- concat <$> mapM (evalBlock ctx) breaks
-      others <- case (rest, target) of
-        ([], Just t) -> evalBlock ctx t
-        ([], Nothing) -> pure []
-        _ -> attributedWith ctx sp rest target
-      pure (bs <> others)
-  | otherwise = attributedGroup ctx sp cmds target
-
 isBreakCommand :: A.Located A.Block -> Bool
 isBreakCommand = \case
   A.Located _ (A.BlockCommand (A.Located _ n) _ _) -> n `elem` ["page-break", "column-break", "no-page-break", "need-lines", "page-lines", "blank-line", "separator"]
   _ -> False
-
-attributedGroup :: EvalContext -> SrcSpan -> [A.Located A.Block] -> Maybe (A.Located A.Block) -> M [Block]
-attributedGroup ctx sp cmds target = case target of
-  Nothing
-    | (not . any isAttr) cmds -> concat <$> mapM (evalBlock ctx) cmds
-    | (lastCmd : before) <- reverse cmds,
-      not (isAttr lastCmd),
-      isBlockCommand lastCmd,
-      all isAttr before ->
-        withAttrs (reverse before) lastCmd
-    | not (isAttr (last cmds)) && isBlockCommand (last cmds) ->
-        err "G02011" sp "属性のまとまりに属性でないコマンドがあります" >> concat <$> mapM (evalBlock ctx) (filter (not . isAttr) cmds)
-    | otherwise -> err "G02010" sp "属性の後にブロックがありません" >> concat <$> mapM (evalBlock ctx) (filter (not . isAttr) cmds)
-  -- the commands that are not attributes are evaluated as well, in order (golem-eval ADR 0003)
-  Just t -> do
-    let nonAttrs = filter (not . isAttr) cmds
-    unless (null nonAttrs) $ err "G02011" sp "属性のまとまりに属性でないコマンドがあります"
-    before <- concat <$> mapM (evalBlock ctx) nonAttrs
-    (before <>) <$> withAttrs (filter isAttr cmds) t
-  where
-    isAttr (A.Located _ (A.BlockCommand (A.Located _ n) _ body)) = n `elem` attributeCommands && not (n `elem` bodyFormCommands && not (null body))
-    isAttr _ = False
-    isBlockCommand = \case
-      A.Located _ (A.BlockCommand {}) -> True
-      _ -> False
-    foldM' f z = foldl (\acc x -> acc >>= \a -> f a x) (pure z)
-    -- @note takes no attribute (docs/adr/0263)
-    withAttrs attrs0 t@(A.Located _ (A.BlockCommand (A.Located _ name) _ _))
-      | name `elem` ["note", "endnote"] = do
-          mapM_ (\(A.Located asp c) -> case c of A.BlockCommand (A.Located _ n) _ _ -> err "G02013" asp ("@" <> n <> " は @" <> name <> " には付けられません"); _ -> pure ()) attrs0
-          evalBlock ctx t
-    withAttrs attrs0 t = do
-      attrs <- catMaybes <$> mapM uniqueAttrKeys attrs0
-      -- every line of an attribute already given (golem-eval ADR 0003)
-      let named = [(n, asp) | A.Located asp (A.BlockCommand (A.Located _ n) _ _) <- attrs]
-          repeated = [asp | (i, (n, asp)) <- zip [0 :: Int ..] named, n `elem` map fst (take i named)]
-      mapM_ (\asp -> err "G02012" asp "同じ属性を二度書いています") repeated
-      targetBlocks <- case (t, [c | c <- attrs, isStyleCommand c]) of
-        (A.Located psp (A.Paragraph is), A.Located csp (A.BlockCommand _ args _) : _) -> styleName ctx csp args >>= \n -> styledParagraph ctx psp n is
-        (A.Located tsp (A.Paragraph is), []) -> evalBlock ctx (A.Located tsp (A.Paragraph is))
-        -- @style applies to every paragraph of @printings (docs/adr ADR 0033)
-        (A.Located _ (A.BlockCommand (A.Located _ "printings") _ _), A.Located csp (A.BlockCommand _ args _) : _) -> do
-          n <- styleName ctx csp args
-          let styled b = case blockBody b of
-                Paragraph _ is -> b {blockBody = Paragraph n is}
-                _ -> b
-          map styled <$> evalBlock ctx t
-        (other, _) -> evalBlock ctx (joinTarget other)
-      -- the language of @lang, the one written last (docs/adr ADR 0187)
-      lang <- foldM' (\l (A.Located asp c) -> case c of A.BlockCommand (A.Located _ "lang") args _ -> maybe l Just <$> langTag asp args; _ -> pure l) Nothing attrs
-      case targetBlocks of
-        (Block bsp _ lang0 body : rest) -> do
-          -- where G04007 points: the @number line (golem-syntax ADR 0002)
-          case [asp | ("number", asp) <- named] of
-            (asp : _) -> modify' (\s -> s {stNumberSites = Map.insert bsp asp (stNumberSites s)})
-            [] -> pure ()
-          (label, body') <- foldM' (applyAttr ctx) (Nothing, body) attrs
-          -- G02134: @nonumber on a code block without a caption, whichever line comes first (docs/adr/0200)
-          body'' <- case body' of
-            CodeBlock c
-              | codeNoNumber c,
-                Nothing <- codeCaption c -> do
-                  mapM_ (\asp -> err "G02134" asp "キャプションのないコードブロックは番号を持たないので、@nonumber は要りません") (take 1 [asp | ("nonumber", asp) <- named])
-                  pure (CodeBlock c {codeNoNumber = False})
-            -- likewise a table (docs/adr/0262)
-            TableBlock tb
-              | tableNoNumber tb,
-                Nothing <- tableCaption tb -> do
-                  mapM_ (\asp -> err "G02134" asp "キャプションのない表は番号を持たないので、@nonumber は要りません") (take 1 [asp | ("nonumber", asp) <- named])
-                  pure (TableBlock tb {tableNoNumber = False})
-            _ -> pure body'
-          {- the blocks of a block command without a language of their own
-          take it; otherwise the block after the attributes (docs/adr ADR 0187) -}
-          let rest' = if isCommandTarget t then map (withLang lang) rest else rest
-          pure (withLang lang (Block bsp label lang0 body'') : rest')
-        [] -> pure []
-    isCommandTarget = \case
-      A.Located _ (A.BlockCommand {}) -> True
-      _ -> False
-    -- a target that is not a paragraph keeps no newlines
-    joinTarget = \case
-      A.Located tsp (A.Paragraph is) -> A.Located tsp (A.Paragraph (joinSoftBreaks is))
-      other -> other
 
 {- | @printings: one paragraph for each printing of meta.printings, as
 @2026年10月16日　初版第1刷発行@; the year in kanji-digits, the other
@@ -1345,9 +1800,13 @@ them. A forced break, a page control and blank lines in the body are not
 at the top of the document (G02059, G02071, G02093).
 -}
 langBody :: EvalContext -> SrcSpan -> [A.Located A.Argument] -> [A.Located A.Block] -> M [Block]
-langBody ctx sp args body = do
+langBody ctx = langBodyWith (evalBlocks ctx)
+
+-- | The body form of @lang, its blocks evaluated by the function given (the body of @style passes its paragraph style, root ADR 0460).
+langBodyWith :: ([A.Located A.Block] -> M [Block]) -> SrcSpan -> [A.Located A.Argument] -> [A.Located A.Block] -> M [Block]
+langBodyWith evalBody sp args body = do
   tag <- langTag sp args
-  bs <- evalBlocks ctx body
+  bs <- evalBody body
   let (ds, bs') = concat <$> traverse belowTop bs
   mapM_ report ds
   pure (map (withLang tag) bs')
@@ -1384,6 +1843,7 @@ belowTop = inner
       OrderedList items -> rebuild OrderedList <$> traverse item items
       DefList gs -> rebuild DefList <$> traverse (\(DefGroup ts ds) -> DefGroup ts <$> traverse nested ds) gs
       FigureBlock f -> rebuild (\c -> FigureBlock f {figCaption = c}) <$> nested (figCaption f)
+      FrameBlock name bs' -> rebuild (FrameBlock name) <$> nested bs'
       _ -> ([], [b])
       where
         rebuild f x = [Block sp lbl lang (f x)]
@@ -1548,6 +2008,39 @@ noteDefinition ctx kind sp args body = case args of
       Block bsp l lang (Paragraph (Just _) is) -> [Block bsp l lang (Paragraph Nothing is)]
       _ -> []
 
+{- | @frame NAME and its paragraphs (root ADR 0438): a text frame of
+style.toml that takes no room in the flow. The name is one word of the
+letters of a style name (G02255); the body holds paragraphs only
+(G02256), without @style (G02013), as the body of a @note. Whether
+[frames] has the name is checked once the style is known (G03289).
+-}
+frameBlock :: EvalContext -> SrcSpan -> [A.Located A.Argument] -> [A.Located A.Block] -> M [Block]
+frameBlock ctx sp args body = case args of
+  [A.Located _ (A.Positional v)]
+    | Just name <- nameArg v,
+      frameName name -> do
+        bs <- concat <$> mapM inBody body
+        pure [block sp (FrameBlock name bs)]
+  _ -> err "G02255" sp "@frame にはフレームの名前を一つ書きます" >> pure []
+  where
+    frameName name = case T.uncons name of
+      Just (c, rest) -> isAsciiLower c && T.all (\x -> isAsciiLower x || isDigit x || x == '-') rest
+      Nothing -> False
+    inBody lb@(A.Located bsp b) = case b of
+      A.Paragraph _ -> concatMap paragraphOf <$> evalBlock ctx lb
+      A.Attributed cmds t@(Just (A.Located _ (A.Paragraph _))) | any isStyleCommand cmds -> do
+        mapM_ (\(A.Located csp _) -> err "G02013" csp "@style はフレームの中の段落には付けられません") (filter isStyleCommand cmds)
+        concatMap paragraphOf <$> evalBlock ctx (A.Located bsp (A.Attributed (filter (not . isStyleCommand) cmds) t))
+      A.Attributed _ (Just (A.Located _ (A.Paragraph _))) -> concatMap paragraphOf <$> evalBlock ctx lb
+      A.BlockCommand (A.Located _ "style") _ inner -> do
+        err "G02013" bsp "@style はフレームの中の段落には付けられません"
+        concat <$> mapM inBody [A.Located psp (A.Paragraph (joinSoftBreaks is)) | A.Located psp (A.Paragraph is) <- inner]
+      A.ErrorBlock -> pure []
+      _ -> err "G02256" bsp "フレームの中身には段落だけを書けます" >> pure []
+    paragraphOf = \case
+      Block bsp l lang (Paragraph _ is) -> [Block bsp l lang (Paragraph Nothing is)]
+      _ -> []
+
 {- | The notes written by name take the bodies of their @note
 (docs/adr/0263): G02137 for a name no @note of the file defines, G02139
 for a second [note] of the same name, which puts out nothing, as one of
@@ -1605,6 +2098,7 @@ mapBlockInlines f = map blk
       TableBlock t -> TableBlock t {tableCaption = inls <$> tableCaption t, tableHeader = map inls (tableHeader t), tableRows = map (map inls) (tableRows t)}
       CodeBlock c -> CodeBlock c {codeCaption = inls <$> codeCaption c}
       FigureBlock fig -> FigureBlock fig {figCaption = map blk (figCaption fig)}
+      FrameBlock name bs -> FrameBlock name (map blk bs)
       other -> other
     inls = concatMap (f . inner)
     inner = \case
@@ -1649,30 +2143,23 @@ styleName _ sp = \case
   [A.Located _ (A.Positional v)] | Just n <- nameArg v -> pure (Just n)
   _ -> err "G02047" sp "@style には段落スタイルの名前を一つ書きます" >> pure Nothing
 
-{- | The body form of @style (docs/adr ADR 0005): every paragraph of the
-body in the style.
+{- | The body form of @style (docs/adr ADR 0005): the blocks of the body in
+order, with the paragraph style passed to them (root ADR 0460,
+'evalStyled'). G02046 when the result has neither a paragraph nor a
+table; the blocks are put out all the same.
 -}
 styleBody :: EvalContext -> SrcSpan -> Int -> [A.Located A.Argument] -> [A.Located A.Block] -> M [Block]
 styleBody ctx sp headerEnd args body
   -- no body at all, or a body of comments only (the command spans more than its line)
   | null body && spanEnd sp <= headerEnd + 1 = err "G02010" sp "@style の後にブロックがありません" >> pure []
   | null body = err "G02046" sp "@style の本体に段落がありません" >> pure []
-  | not (null others) = mapM_ (\osp -> err "G02045" osp "@style の本体には段落だけを置けます。段落は空行で区切ります") others >> pure []
   | otherwise = do
       name <- styleName ctx sp args
-      bs <- concat <$> mapM (\(psp, is) -> styledParagraph ctx psp name is) paragraphs
-      case bs of
-        [] -> err "G02046" sp "@style の本体に段落がありません" >> pure []
-        _ -> pure bs
-  where
-    paragraphs = [(psp, is) | A.Located psp (A.Paragraph is) <- body]
-    others = [bsp | A.Located bsp b <- body, not (isParagraph b), not (isErrorBlock b)]
-    isParagraph = \case
-      A.Paragraph _ -> True
-      _ -> False
-    isErrorBlock = \case
-      A.ErrorBlock -> True
-      _ -> False
+      let keeps = maybe False (\n -> Map.lookup n (ctxParaStyles ctx) == Just KeepLines) name
+      -- the blocks without paragraphs or tables, breaks and separators among them, are put out as they are
+      bs <- concat <$> mapM (evalStyled ctx (Passed sp name keeps)) body
+      unless (hasParagraphOrTable bs) $ err "G02046" sp "@style の本体に段落がありません"
+      pure bs
 
 {- | A paragraph in a paragraph style (docs/adr ADR 0005). An unknown style
 is G02047 and the paragraph is body. With line-breaks = "keep" each line
@@ -1756,6 +2243,7 @@ unknownParaStyles ctx (Document _ bs) = concatMap go bs
       OrderedList items -> concatMap (concatMap go . itemBlocks) items
       DefList gs -> concatMap (concatMap (concatMap go) . dgDefs) gs
       FigureBlock f -> concatMap go (figCaption f)
+      FrameBlock _ inner -> concatMap go inner
       _ -> []
 
 {- | Spaces and tabs at the start and the end of a line are not text,
@@ -1820,7 +2308,7 @@ them: the diagnostics, and whether the figure passes.
 -}
 figureChecks :: EvalContext -> SrcSpan -> Figure -> ([Diagnostic], Bool)
 figureChecks ctx sp f =
-  let st0 = St Map.empty Map.empty Map.empty [] Set.empty Map.empty [] 0 0 0 [] Map.empty Map.empty [] [] [] [] Map.empty
+  let st0 = St Map.empty Map.empty Map.empty [] Set.empty Map.empty [] 0 0 0 [] Map.empty Map.empty [] [] [] [] Map.empty [] Set.empty Map.empty Map.empty [] Set.empty Set.empty Set.empty
       (ok, st) = runState (checkFigure sp (fmap isJust . asset ctx sp) f) st0
    in (stDiags st, ok)
 
@@ -1948,6 +2436,7 @@ figure ctx sp args body = do
       CodeBlock _ -> Just "コードブロック"
       Heading {} -> Just "見出し"
       ChannelOutput _ -> Just "一覧の出力"
+      FrameBlock _ _ -> Just "フレーム"
     -- a caption has no paragraph style of its own (docs/adr ADR 0005, golem-driver ADR 0010)
     noStyle csp = err "G02013" csp "@style は図版のキャプションには付けられません"
     unstyled = \case
@@ -2480,7 +2969,20 @@ noteRefs e = do
   modify' (\s -> s {stRefs = Set.union (stRefs s) (Set.fromList names)})
   let nsRefs = nsRefsOf e
   modify' (\s -> s {stNsRefs = Map.unionWith Set.union (stNsRefs s) nsRefs})
+  -- the names listed by @import that the expression uses (G05003, root ADR 0451)
+  modify' $ \s ->
+    let listed = Map.keysSet (stListedVars s) <> Set.fromList [n | (ExprSpace, n) <- Map.keys (stListedFns s)]
+     in s {stListedRefs = Set.union (stListedRefs s) (Set.intersection listed (Set.fromList (names <> callsOf e)))}
   where
+    callsOf (A.Located _ x) = case x of
+      A.ECall f xs | isNothing (splitNamespace f) -> f : concatMap callsOf xs
+      A.ECall _ xs -> concatMap callsOf xs
+      A.EArray xs -> concatMap callsOf xs
+      A.EHash kvs -> concatMap (callsOf . snd) kvs
+      A.EUnary _ a -> callsOf a
+      A.EBinary _ a b -> callsOf a <> callsOf b
+      A.ERange a b -> callsOf a <> callsOf b
+      _ -> []
     nsRefsOf (A.Located _ x) = case x of
       A.EVar (ns : n : _) -> Map.singleton ns (Set.singleton n)
       A.EArray xs -> Map.unionsWith Set.union (map nsRefsOf xs)
@@ -2592,12 +3094,19 @@ codeSlots (A.Located _ name) args slots
 evalCommand :: EvalContext -> Bool -> SrcSpan -> A.Located A.Name -> [A.Located A.Argument] -> [[A.Located A.Inline]] -> M [Inline]
 evalCommand ctx inHeading sp (A.Located nsp name) args slots
   | Just (Overridable o) <- parsed, Just pc <- Map.lookup o (phOverrides (ctxPlugins ctx)) = plugin pc
+  -- an overridable command a name listed by @import overrides (root ADR 0453)
+  | Just b@(Overridable _) <- parsed = listedFunction InlineSpace name >>= maybe (builtin ctx inHeading sp b args slots) listed
   | Just b <- parsed = builtin ctx inHeading sp b args slots
   | Just pc <- pluginCommandName name >>= (`Map.lookup` phCommands (ctxPlugins ctx)) = plugin pc
   | Just (ns, n) <- splitNamespace name = functionInline ctx inHeading sp nsp ns n args slots
-  | otherwise = err "G02022" nsp ("未知のコマンドです: " <> name) >> pure []
+  | otherwise =
+      -- an inline command listed by @import (root ADR 0451)
+      listedFunction InlineSpace name >>= maybe (err "G02022" nsp ("未知のコマンドです: " <> name) >> pure []) listed
   where
     parsed = parseBuiltin name
+    listed = \case
+      Loaded fns | Just f <- Map.lookup name (fnInline fns) -> callInline ctx inHeading sp name f args slots
+      _ -> pure []
     plugin pc = do
       vals <- pluginArgs ctx sp args
       slots' <- mapM (evalInlines ctx inHeading) slots

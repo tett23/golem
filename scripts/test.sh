@@ -6,7 +6,8 @@
 # fixtures/fetch-public-domain.sh, plugin-licenses.sh
 # (docs/adr/0133-third-party-licenses-of-sample-plugins.md),
 # wasmtime-advisories.sh (docs/adr/0157, docs/adr/0166) and
-# check-local-wasmtime.sh with .githooks/pre-push (docs/adr/0418). Each
+# check-local-wasmtime.sh with .githooks/pre-push (docs/adr/0418) and
+# bench/path-drawing/measure.sh (root ADR 0439). Each
 # script that
 # writes into the repository it is in runs as a copy in a fake root in a
 # temporary directory; nothing here uses the network. The
@@ -779,6 +780,28 @@ if [ "$(grep -c 'VERSION does not exist' "$WORK/err")" = 1 ]; then ok; else ng "
 lw_push "$LW/equal" "refs/heads/main $LW_SHA1 refs/heads/main $LW_ZERO"
 expect "root ADR 0418 I1: the hook passes a push with the pinned wasmtime" 0
 if [ "$(lw_tree)" = "$LW_BEFORE" ]; then ok; else ng "root ADR 0418 I3: the check writes no file"; fi
+
+# ---------------------------------------------------------------- bench/path-drawing/measure.sh
+
+# A copy of the benchmark in a fake root, with a fake cabal whose golem
+# writes the PDF and a fake font of the fixture (root ADR 0439).
+PD=$WORK/pd
+mkdir -p "$PD/scripts/bench" "$PD/modules/golem-driver/test/fixtures/kanikosen/fonts"
+cp -R "$HERE/bench/path-drawing" "$PD/scripts/bench/"
+rm -rf "$PD/scripts/bench/path-drawing/fonts" "$PD/scripts/bench/path-drawing/build"
+printf 'font\n' >"$PD/modules/golem-driver/test/fixtures/kanikosen/fonts/NotoSerifJP-Regular.otf"
+printf 'licence\n' >"$PD/modules/golem-driver/test/fixtures/kanikosen/fonts/LICENSE-NotoSerifJP.txt"
+fake "$PD/bin" golem 'mkdir -p build/pdf && echo built >build/pdf/book.pdf && echo "golem $*"; [ -f fonts/ja.otf ] && [ "$*" = "build --target pdf" ]'
+fake "$PD/bin" cabal "case \"\$1\" in build) exit 0 ;; list-bin) echo \"$PD/bin/golem\" ;; *) exit 1 ;; esac"
+run env PATH="$PD/bin:$PATH" sh "$PD/scripts/bench/path-drawing/measure.sh"
+expect "root ADR 0439 I5: measure.sh runs" 0
+if tail -n 1 "$WORK/out" | grep -Eq '^[0-9]+$'; then ok; else ng "root ADR 0439 I5: the last line of measure.sh is one integer"; fi
+if [ "$(grep -c '^run [1-5]: [0-9]* ms$' "$WORK/out")" = 5 ]; then ok; else ng "root ADR 0439 I5: measure.sh prints the time of five runs"; fi
+if grep -q golem "$WORK/out"; then ng "root ADR 0439 I5: the output of golem is not on the standard output"; else ok; fi
+if [ ! -e "$PD/scripts/bench/path-drawing/build" ]; then ok; else ng "root ADR 0439 I5: measure.sh removes build/"; fi
+fake "$PD/bin" golem 'exit 1'
+run env PATH="$PD/bin:$PATH" sh "$PD/scripts/bench/path-drawing/measure.sh"
+expect "root ADR 0439 I5: measure.sh fails when golem fails" 1
 
 # ----------------------------------------------------------------
 printf '%s tests, %s failures\n' "$COUNT" "$FAILURES"

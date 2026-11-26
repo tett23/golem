@@ -200,8 +200,13 @@ evaluateProjectWith files overlay profile root = do
               -- style.toml, which the context comes from, when a plugin asks for it: the LSP watches it (docs/adr/0121)
               contextFiles = Set.fromList ["style.toml" | not (null (phContextNames hook))]
               -- no G02022 after the plugins failed to load (golem-plugin ADR 0003), nor G02090 (golem-doc ADR 0007),
-              -- nor G02009 for their block commands (docs/adr/0122)
-              quiet = if null pluginErrors then id else \r -> r {erDiagnostics = filter ((`notElem` [DiagnosticCode "G02022", DiagnosticCode "G02090", DiagnosticCode "G02009"]) . diagCode) (erDiagnostics r)}
+              -- nor G02009 for their block commands (docs/adr/0122), nor G02011 and G02123 for the
+              -- commands written in a row with such a block command (root ADR 0459)
+              quiet = if null pluginErrors then id else \r -> r {erDiagnostics = dropUnknown (erDiagnostics r)}
+              dropUnknown ds =
+                let unknown = [diagSpan d | d <- ds, diagCode d == DiagnosticCode "G02009"]
+                    inRow d = diagCode d `elem` [DiagnosticCode "G02011", DiagnosticCode "G02123"] && any (spanContains (diagSpan d)) unknown
+                 in filter (\d -> diagCode d `notElem` [DiagnosticCode "G02022", DiagnosticCode "G02090", DiagnosticCode "G02009"] && not (inRow d)) ds
           if hasErrors synDiags
             then do
               loaded <- loadAssets files overlay project
@@ -223,7 +228,9 @@ evaluateProjectWith files overlay profile root = do
               (bibDiags, citeKeys, _) <- loadBibliography files manifest
               let results = Map.map quiet (evalAll profile project style assets citeKeys hook table)
                   s0Diags = concatMap erDiagnostics (Map.elems results)
-                  projectDiags = defaultStyleNotice <> defaultSeparatorNotice <> styleNoticeDiags <> masterDiags <> runningVarDiags <> pluginDiags <> laDiagnostics loaded <> bibDiags
+                  -- the syntax diagnostics short of errors: the info G01031 (root ADR 0459)
+                  syntaxInfos = concatMap sfSyntaxDiagnostics (Map.elems (projectSources project))
+                  projectDiags = defaultStyleNotice <> defaultSeparatorNotice <> styleNoticeDiags <> syntaxInfos <> masterDiags <> runningVarDiags <> pluginDiags <> laDiagnostics loaded <> bibDiags
                   reassemble = assembleResults (phChannels hook) handlers (lfProgram functions) style styleFid (fromMaybe "" styleText) manifest project projectDiags
                   (book, s1Diags) = reassemble results
                   again f sf = quiet (reeval profile project style assets citeKeys hook table results f sf)
@@ -277,7 +284,23 @@ assembleResults channels handlers program style styleFid styleText manifest proj
             [ numberVerseDocument (maybe style (withLocalStyles style . erStyles) (Map.lookup fid results)) doc
             | doc@(Document fid _) <- bookDocs book
             ]
-       in (Just book {bookDocs = numberedDocs, bookTitleSeparators = separators, bookImages = Map.unions (map erImages (Map.elems results)), bookSeparators = resolvedSeparators}, separatorDiags <> s1Diags)
+          -- G03289: a @frame of a name [frames] does not have (root ADR 0438)
+          frameDiags =
+            [ diagnostic "G03289" Error sp ("[frames] にないフレームの名前です: " <> name)
+            | Document _ bs <- resolvedDocs,
+              Block sp _ _ (FrameBlock name _) <- framesIn bs,
+              Map.notMember name (stFrames style)
+            ]
+       in (Just book {bookDocs = numberedDocs, bookTitleSeparators = separators, bookImages = Map.unions (map erImages (Map.elems results)), bookSeparators = resolvedSeparators}, separatorDiags <> frameDiags <> s1Diags)
+
+-- | The text frames of blocks, at any depth, in order (root ADR 0438).
+framesIn :: [Block] -> [Block]
+framesIn = concatMap $ \b -> case blockBody b of
+  FrameBlock {} -> [b]
+  BulletList items -> framesIn (concatMap itemBlocks items)
+  OrderedList items -> framesIn (concatMap itemBlocks items)
+  DefList gs -> framesIn (concat (concatMap dgDefs gs))
+  _ -> []
 
 -- | Resolve names only after plugin and Emet filters have run (root ADR 0398).
 resolveSeparators :: Handlers -> Maybe Program -> Style -> FileId -> Text -> [Document] -> ([Document], Map (SrcSpan, Text) SeparatorAppearance, [Diagnostic])
@@ -359,16 +382,17 @@ evalAll profile project style assets citeKeys hook table = foldl' step Map.empty
 -- | S0 of one file, with the exports of its imports taken from @acc@.
 reeval :: Profile -> Project -> Style -> Map FilePath Asset -> Set.Set Text -> PluginHook -> FunctionTable -> Map FileId EvalResult -> FileId -> SourceFile -> EvalResult
 reeval profile project style assets citeKeys hook table acc fid sf =
-  let ft = projectFiles project
-      meta = metadataValues (manifestMetadata (projectManifest project))
+  let meta = metadataValues (manifestMetadata (projectManifest project))
       importsOfFile f = let ImportGraph g = projectImports project in Map.findWithDefault [] f g
+      -- each @import line gives the exports of the file the import graph says it points at,
+      -- by the path as the line writes it, whatever its ./, .. or links (root ADR 0455)
       exports =
-        Map.fromList
-          [ (path, erExports r)
-          | (tfid, _) <- importsOfFile fid,
-            Just path <- [lookupPath tfid ft],
-            Just r <- [Map.lookup tfid acc]
-          ]
+        ResolvedImports $
+          Map.fromList
+            [ (isPath site, erExports r)
+            | (tfid, site) <- importsOfFile fid,
+              Just r <- [Map.lookup tfid acc]
+            ]
       ctx =
         EvalContext
           { ctxFile = fid,
@@ -402,7 +426,8 @@ evaluateLoose path text =
   let fid = FileId 0
       (ast, _, synDiags) = parseAst fid text
       -- a file outside the project knows the built-in styles only (docs/adr ADR 0005)
-      ctx = EvalContext fid path Dev Map.empty Map.empty Map.empty Set.empty (Map.keysSet (stCharStyles defaultStyle)) (paraLineBreaks defaultStyle) "sesame" Set.empty Map.empty noPlugins defaultSourceSettings defaultStyle noFunctions
+      -- the imports of variable files are not resolved, as those of the .emet (root ADR 0455)
+      ctx = EvalContext fid path Dev Map.empty Map.empty UnresolvedImports Set.empty (Map.keysSet (stCharStyles defaultStyle)) (paraLineBreaks defaultStyle) "sesame" Set.empty Map.empty noPlugins defaultSourceSettings defaultStyle noFunctions
       res = evalFile ctx ast
       syntax = checkText fid text <> synDiags
    in res {erDiagnostics = if hasErrors syntax then syntax else syntax <> erDiagnostics res}
@@ -469,9 +494,11 @@ runningVars e =
         (Just (mname, MasterDef {mdRunningHead = Just rh}), Just r) ->
           let refs = Map.fromListWith (&&) [(n, q) | c <- [rhOdd rh, rhEven rh], (RefVar n, q) <- runningRefs c]
               lookupVar = \case
-                [v] -> Map.lookup v (erExports r)
-                [ns, v] -> listToMaybe [x | (tfid, site) <- Map.findWithDefault [] fid graph, isNamespace site == ns, Just tr <- [Map.lookup tfid (evResults e)], Just x <- [Map.lookup v (erExports tr)]]
+                -- its own, or one an @import lists, by its alias (root ADR 0451, root ADR 0458)
+                [v] -> Map.lookup v (erExports r) <|> imported (\site -> [lnName l | l <- importNames site, lnAlias l == v])
+                [ns, v] -> imported (\site -> [v | importNamespace site == Just ns])
                 _ -> Nothing
+              imported origs = listToMaybe [x | (tfid, site) <- Map.findWithDefault [] fid graph, o <- origs site, Just tr <- [Map.lookup tfid (evResults e)], Just x <- [Map.lookup o (erExports tr)]]
               at = mkSpan fid 0 0
               related = [(mkSpan (evStyleFile e) 0 0, "マスターページ " <> mname <> " の柱の書式")]
               one (n, optional) = case lookupVar n of
@@ -666,6 +693,7 @@ assetRefs (A.File _ bs) = concatMap blk bs
     blk (A.Located _ b) = case b of
       A.BlockCommand (A.Located _ name) args body -> cmd name args <> concatMap blk body
       A.Attributed cs t -> concatMap blk cs <> maybe [] blk t
+      A.Fenced inner -> concatMap blk inner
       A.BulletList items -> concatMap (concatMap blk) items
       A.OrderedList items -> concatMap (concatMap blk) items
       A.DefList gs -> concatMap (concatMap (concatMap blk) . A.dgDefs) gs

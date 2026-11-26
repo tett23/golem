@@ -1,4 +1,4 @@
-@import fn/book.emet as book
+@import fn/book.emet * as book
 
 @label deps
 # 依存関係を読む

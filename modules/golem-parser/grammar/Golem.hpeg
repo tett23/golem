@@ -8,6 +8,25 @@
 %syntax
 %language OverloadedStrings
 
+%{
+-- The indentation of a block, and whether it is between the ::: lines of
+-- a body (root ADR 0459). The parameter ind of the rules is the number of
+-- spaces, plus fenceBit between ::: lines, where a line of ::: at that
+-- indentation ends a paragraph. A deeper indentation drops the bit: only a
+-- line of ::: at the indentation of the line that opened closes.
+fenceBit :: Int
+fenceBit = 1048576
+
+col :: Int -> Int
+col n = mod n fenceBit
+
+fenced :: Int -> Int
+fenced n = col n + fenceBit
+
+inFence :: Int -> Bool
+inFence n = n >= fenceBit
+}%
+
 %token Text
 %token SlotText
 %token CellText
@@ -26,6 +45,7 @@
 %token Number
 %token StringLit
 %token Fence
+%token DivMark
 %token CodeLine
 %token Lang
 %token LBr
@@ -206,7 +226,7 @@ ReservedBlock <- Ind(ind) &'@!' (&{ False } '@!')^reserved { () }
 # ------------------------------------------------------------ basics
 
 Ind(n :: Int) :: ()
-Ind <- &{ n == 0 } { () }
+Ind <- &{ col n == 0 } { () }
      / ' ' Ind(n - 1) { () }
 
 Ws :: ()
@@ -270,7 +290,7 @@ Paragraph(ind :: Int) :: ()
 Paragraph <- Ind(ind) ![ \t] !BlockStart Inline(ind)+ (Nl / !.) { () }
 
 LineContinuation(ind :: Int) :: ()
-LineContinuation <- Nl !BlankLine Ind(ind) !BlockStart { () }
+LineContinuation <- Nl !BlankLine Ind(ind) !BlockStart !(&{ inFence ind } DivLine) { () }
 
 Inline(ind :: Int) :: ()
 Inline <- Escape { () }
@@ -575,7 +595,29 @@ RParen <- ')' { () }
 # ------------------------------------------------------------ block commands
 
 BlockGroup(ind :: Int) :: ()
-BlockGroup <- BlockCommand(ind)+ (&(Ind(ind) !BlockCommandStart ![ \t] !BlankLine) AttributedBlock(ind))? { () }
+# The commands written in a row and their body (root ADR 0459): the blocks
+# between ::: lines, or the next block, right after the line of the last
+# command when it has no indented body.
+BlockGroup <- cs:BlockCommand(ind)+ (&{ not (or (take 1 (reverse cs))) } GroupBody(ind))? { () }
+
+GroupBody(ind :: Int) :: ()
+GroupBody <- Div(ind) { () }
+           / &(Ind(ind) !BlockCommandStart ![ \t] !BlankLine) AttributedBlock(ind) { () }
+
+# The blocks between ::: lines (root ADR 0459). Without the line that
+# closes, the body runs to the end of the file or of the outer body, and
+# the parser reports G01030.
+Div(ind :: Int) :: ()
+Div <- Ind(ind) DivMark Sp (Nl / !.) DivBlocks(fenced ind) (BlankLines? Ind(ind) DivMark Sp (Nl / !.))? { () }
+
+DivBlocks(ind :: Int) :: ()
+DivBlocks <- (BlankLines? !(Ind(ind) DivLine) &(Ind(ind) ![ \t] !BlankLine .) Block(ind))* { () }
+
+DivLine :: ()
+DivLine <- ':::' Sp (Nl / !.) { () }
+
+DivMark :: ()
+DivMark <- ':::' { () }
 
 BlockCommandStart :: ()
 BlockCommandStart <- '@' [a-z] { () }
@@ -590,9 +632,9 @@ AttributedBlock <- ( Heading(ind)
                    / Paragraph(ind)
                    ) { () }
 
-BlockCommand(ind :: Int) :: ()
-BlockCommand <- Ind(ind) At SetIdent Ws SetName Sp Eq ExprBody (Nl / !.) { () }
-              / Ind(ind) At Ident Arguments Sp (Nl / !.) CommandBody(ind)? { () }
+BlockCommand(ind :: Int) :: Bool
+BlockCommand <- Ind(ind) At SetIdent Ws SetName Sp Eq ExprBody (Nl / !.) { False }
+              / Ind(ind) At Ident Arguments Sp (Nl / !.) b:CommandBody(ind)? { maybe False (const True) b }
 
 At :: ()
 At <- '@' { () }
@@ -604,7 +646,7 @@ SetName :: ()
 SetName <- ExprIdent { () }
 
 CommandBody(ind :: Int) :: ()
-CommandBody <- &(Ind(ind + 2) ![ \t] !BlankLine .) Blocks(ind + 2) { () }
+CommandBody <- &(Ind(col ind + 2) ![ \t] !BlankLine .) Blocks(col ind + 2) { () }
 
 # ------------------------------------------------------------ lists
 
@@ -615,7 +657,7 @@ OrderedList(ind :: Int) :: ()
 OrderedList <- ListItem(ind, 1) (BlankLines? ListItem(ind, 1))* { () }
 
 ListItem(ind :: Int, ordered :: Int) :: ()
-ListItem <- Ind(ind) ListMark(ordered) Ws Inline(ind + 2)+ (Nl / !.) ItemTail(ind + 2) { () }
+ListItem <- Ind(ind) ListMark(ordered) Ws Inline(col ind + 2)+ (Nl / !.) ItemTail(col ind + 2) { () }
 
 ListMark(ordered :: Int) :: ()
 ListMark <- &{ ordered == 0 } BulletMark { () }
@@ -639,7 +681,7 @@ DefGroup(ind :: Int) :: ()
 DefGroup <- DefTerm(ind)+ DefBody(ind) (BlankLines? DefNew(ind) DefBody(ind))* { () }
 
 DefTerm(ind :: Int) :: ()
-DefTerm <- Ind(ind) TermMark Ws HeadInline(ind + 2)+ (Nl / !.) { () }
+DefTerm <- Ind(ind) TermMark Ws HeadInline(col ind + 2)+ (Nl / !.) { () }
 
 TermMark :: ()
 TermMark <- '=' { () }
@@ -651,7 +693,7 @@ NewDefMark :: ()
 NewDefMark <- '=:' { () }
 
 DefBody(ind :: Int) :: ()
-DefBody <- &(Ind(ind + 2) ![ \t] !BlankLine .) Block(ind + 2) (BlankLines? &(Ind(ind + 2) ![ \t] !BlankLine .) Block(ind + 2))* { () }
+DefBody <- &(Ind(col ind + 2) ![ \t] !BlankLine .) Block(col ind + 2) (BlankLines? &(Ind(col ind + 2) ![ \t] !BlankLine .) Block(col ind + 2))* { () }
 
 # ------------------------------------------------------------ tables
 

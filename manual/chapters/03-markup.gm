@@ -395,7 +395,7 @@ PDF では、引用符、ダッシュ、三点リーダーのように和文に�
 HTML と EPUB には [code: lang] の属性を、PDF にはタグ付き PDF の言語の情報を書きます。
 画面の読み上げソフトは、この情報で読み上げの言語を切り替えます。
 
-@import common/values.gm as values
+@import common/values.gm * as values
 
 ## 変数をファイルで共有する
 
@@ -409,7 +409,7 @@ HTML と EPUB には [code: lang] の属性を、PDF にはタグ付き PDF の�
 このファイルを [code: common/values.gm] とすると、章の原稿からは次のように使います。
 
 ```
-@import common/values.gm as values
+@import common/values.gm * as values
 
 本書は[= values.edition]です。
 ```
@@ -417,6 +417,19 @@ HTML と EPUB には [code: lang] の属性を、PDF にはタグ付き PDF の�
 [code: @import] で取り込めるのは、[code: @set] で定義した変数と、関数を書くファイル（[code: .emet]）の関数です。
 関数は、第[ref-number emet-intro]章「[ref-title emet-intro]」と[ref-title app-emet]（[ref-page app-emet] ページ）で説明します。
 取り込んだ変数は、[code: as] で付けた名前を前に付けて参照します。
+[code: *] を落とした [code: @import common/values.gm as values] はエラーになります。
+[code: golem fmt] を動かすと、[code: * as] の形に書き換わります。
+
+使う変数の名前を [code: { }] の中に [code: ,] で区切って並べると、名前を前に付けずに参照できます。
+
+```
+@import common/values.gm { price, edition }
+
+本書は[= edition]です。
+```
+
+並べた名前が、組み込みのコマンドや式の名前、プラグインのコマンド、同じファイルの [code: @set] の変数、ほかの [code: @import] が並べた名前と同じなら、エラーになります。
+どの名前がどのファイルから来たかは、[code: @import] の行で読めます。
 取り込むファイルは、章として [code: manifest.toml] に並べる必要はありません。
 このマニュアルも、版面の字数と行数を [code: common/values.gm] に書いて取り込み、ここで「一行 [= values.characters] 字、一ページ [= values.lines] 行」と組んでいます。
 
@@ -909,7 +922,7 @@ URL は引用符で囲みます。
 空白を含む URL のような形の誤りは、エラー（G02125）になります。
 リンクの中には、リンク、相互参照、脚注、傍注、引用を置けません（G02128）。
 
-電子配布用の PDF でリンクをクリックできるようにするには、[code: style.toml] の [code: \[color\]] の [code: intent] を省いて組みます。
+電子配布用の PDF でリンクをクリックできるようにするには、画面で読むための PDF を [code: golem build --target pdf-screen] で作ります（「[ref-title pdf-screen]」、[ref-page pdf-screen] ページ）。
 PDF/X-4 の入稿用 PDF では、リンクの文字を同じ位置に印刷し、本文のクリック領域を省きます。
 文書内のしおりからは、これまでどおり該当のページを開けます。
 HTML と EPUB では、リンクの要素になります。
@@ -1045,7 +1058,29 @@ InDesign と違い、段落スタイルは行送りを持たず、本文はど�
 この段落には、マニュアルの [code: style.toml] で定義した段落スタイル [code: memo] を付けています。
 小さめのゴシック体で、二字下げて組んでいます。
 
+[code: @style] の次の行に書いた一つのブロックが、[code: @style] の本体になります。
 いくつもの段落に同じ段落スタイルを付けるときは、[code: @style 名前] の次の行から、空白二つで字下げして段落を並べます。
+字下げの代わりに、[code: :::] だけの行で前後を囲んでもかまいません。
+
+```
+@style memo
+:::
+一つめの段落。
+
+二つめの段落。
+:::
+```
+
+本体には、段落のほかに箇条書きや表やコードブロックも書けます。
+箇条書きの中の段落にも段落スタイルが付き、表はセルの段落スタイルになります。
+コードブロックや見出しはそのまま組まれ、段落スタイルは付きません。
+
+本体を受け取るほかのブロックコマンド（[code: @note]、[code: @frame]、[code: @lang]、関数やプラグインのコマンド）も、同じ三つの書き方で本体を受け取ります。
+本体を受け取るコマンドを続けて書くと、後のコマンドが前のコマンドの本体になります。
+たとえば、[code: .emet] でト書きを組む関数 [code: @stage-direction] を定義したとします（「[ref-title emet-intro]」、[ref-page emet-intro] ページ）。
+[code: @style memo] の次の行に [code: @stage-direction] を書けば、[code: @stage-direction] が組んだ段落に [code: memo] が付きます。
+[code: :::] で囲んだ中の最後がブロックコマンドの行なら、閉じる [code: :::] の前に空行を一つ置きます。
+空行が無いと、その [code: :::] は内側のコマンドの本体を開く行になります。
 
 組み込みの段落スタイル [code: verse] は、段落の中の改行をそのまま行の区切りにします。
 詩や歌詞、戯曲の台詞のように、行分けに意味がある文章に使います。
@@ -1107,6 +1142,30 @@ PDF では、行アキと次の段落の最初の行を同じページに置き�
 PDF では、そのような行アキは次の段落と同じページに入らず、必ず捨てられるためです。
 ページを改めたいときは、[code: @page-break] を使ってください。
 HTML と EPUB では空の行を、プレーンテキストでは空行を、行アキの行数だけ足します。
+
+## テキストフレームに組む
+
+章の扉の引用のように、本文の外の枠（テキストフレーム）に文字を組むときは、[code: @frame] にフレームの名前を書き、その下に字下げして段落を書きます。
+
+```
+第一章の最後の段落。
+
+@frame chapter-quote
+  旅はいつも、地図の端から始まる。
+
+  ――ある旅人の手帳より
+```
+
+フレームの位置と形は、[code: style.toml] の [code: \[frames.chapter-quote\]] に書きます（第[ref-number style]章「テキストフレーム」）。
+原稿に書くのはフレームの名前だけです。
+PDF では、[code: @frame] の直前の段落の最後の行があるページにフレームを置きます。
+直前に行のあるブロックが無ければ、直後のブロックの最初の行のページに置きます。
+[code: @frame] は本文の中で場所を取らないので、前後の段落の間隔は [code: @frame] が無いときと同じです。
+HTML と EPUB では、段落を [code: @frame] の位置に囲みとして書き、プレーンテキストでは [code: @frame] の位置の段落として書きます。
+
+本体に書けるのは段落だけです。
+リストや表を書くとエラー（G02256）になり、段落に [code: @style] を付けるとエラー（G02013）になります。
+名前を一つ書かない [code: @frame] はエラー（G02255）、[code: style.toml] に無い名前はエラー（G03289）です。
 
 ## 改ページ
 

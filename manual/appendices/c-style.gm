@@ -732,9 +732,29 @@ PDF の文字と罫線の指定色は、プロセスカラー（CMYK）だけで
 HTML と EPUB では、CMYK の値を RGB に近似して使います。
 
 @nonumber
+## [code: \[frames.名前\]]
+
+ページの好きな位置に置くテキストフレームです（第5章「テキストフレーム」）。
+PDF でだけ形と位置を使います。
+四角のキー（[code: x]、[code: y]、[code: width]、[code: height]）か [code: path] のどちらか一方を書きます。
+
+| キー | 意味 |
+|:---|:---|
+| [code: x]、[code: y] | 仕上がりの寸法の左上からの位置です。[code: y] は下へ向かって増えます。 |
+| [code: width]、[code: height] | 四角のフレームの幅と高さです。0 より大きい長さです。 |
+| [code: path] | 四角でないフレームの形です。SVG のパスの書き方の [code: M]、[code: L]、[code: C]、[code: Z] で書き、部分パスを [code: Z] で閉じます。 |
+| [code: unit] | [code: path] の座標の単位です。[code: "mm"]（書かないとき）、[code: "pt"]、[code: "Q"] のどれかです。 |
+| [code: x-from] | [code: x] を測る端です。[code: "left"]（書かないとき）、[code: "inside"]（ノド）、[code: "outside"]（小口）のどれかです。左右固定モードでは [code: "left"] だけです。 |
+| [code: paragraph-style] | 中の文字を組む段落スタイルです。書かなければ [code: body] です。 |
+| [code: writing-mode] | [code: "horizontal"] か [code: "vertical"] です。書かなければ [code: \[page\]] と同じです。 |
+| [code: wrap] | [code: "none"]（書かないとき）なら本文と重なり、[code: "around"] なら本文の行を短くしてフレームを避け、表、コードブロック、図版はフレームを越えた位置から置きます。[code: "around"] はマスターページに置くフレームだけで使えます。 |
+| [code: text] | マスターページに置くときにフレームに組む文字です。 |
+
+長さには [code: zw] も使え、フレームの段落スタイルの文字の大きさで測ります。
+
 ## [code: \[masters.名前\]]
 
-柱とノンブルを置くマスターページです。
+柱とノンブルとテキストフレームを置くマスターページです。
 PDF でだけ有効です。
 章は [code: body] という名前のマスターページを使い、[code: manifest.toml] の章の項目の [code: master] で別のものを選べます。
 
@@ -742,6 +762,7 @@ PDF でだけ有効です。
 |:---|:---|
 | [code: running-head] | 柱です。[code: { position = "top-outside", content = "heading.1.short" }] のように、位置と内容を書きます。左右のページで変えるときは、[code: content] の代わりに [code: even]（偶数ページ）と [code: odd]（奇数ページ）の両方を書きます。書かなければ柱を組みません。 |
 | [code: folio] | ノンブルです。[code: { position = "bottom-outside", format = "{n}" }] のように、位置と書式を書きます。書かなければノンブルを組みません。 |
+| [code: frames] | そのマスターページのすべてのページに置くテキストフレームの名前の配列です。[code: \["ornament"\]] のように書きます。名前は [code: \[frames.名前\]] にあるものです。 |
 | [code: character-style] | [code: running-head] と [code: folio] の中に書くキーです。柱、ノンブルの文字に当てる文字スタイルの名前を、[code: { position = "bottom-outside", format = "{n}", character-style = "folio" }] のように書きます。この例の [code: folio] は、[code: \[character-styles.folio\]] に定義した文字スタイルです。書かなければ、本文の書体と版面の文字の大きさで組みます。柱とノンブルには別々の文字スタイルを指定でき、左右のページの柱には同じ文字スタイルを当てます。 |
 
 位置には、[code: top-] または [code: bottom-] に [code: outside]、[code: inside]、[code: center]、[code: left]、[code: right] を続けた値を書きます。
@@ -770,7 +791,7 @@ PDF でだけ有効です。
 | [code: {heading.<階層>.number}] | 見出しの番号だけです。番号のない見出しでは値がありません。 |
 | [code: {meta.キー}] | [code: manifest.toml] の [code: \[metadata\]] の値です。キーは [code: title]、[code: title_reading]、[code: edition]、[code: publisher]、[code: date]、[code: language]、[code: id] です。 |
 | [code: {set.名前}] | そのページの章のファイルで [code: @set] した変数です。 |
-| [code: {set.名前空間.名前}] | その章のファイルが [code: @import ... as 名前空間] で取り込んだ変数です。 |
+| [code: {set.名前空間.名前}] | その章のファイルが [code: @import ... * as 名前空間] で取り込んだ変数です。 |
 
 見出しの差し込みの末尾には [code: .last] を付けられます。
 差し込みの値がない行は描きません。

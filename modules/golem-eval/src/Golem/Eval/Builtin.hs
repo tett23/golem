@@ -14,6 +14,11 @@ module Golem.Eval.Builtin
     pluginCommandName,
     unPluginCommandName,
     builtinBlockCommands,
+    OverridableBlock (..),
+    overridableBlockName,
+    parseOverridableBlock,
+    overridableBlockCommands,
+    fixedBlockCommands,
   )
 where
 
@@ -150,19 +155,52 @@ pluginCommandName n
 unPluginCommandName :: PluginCommandName -> Text
 unPluginCommandName (PluginCommandName n) = n
 
+{- | The built-in block commands a plugin (block-overrides) or a name
+listed by @import may override (root ADR 0453): the ones that make the
+content of the output alone, which no other mechanism reads.
+-}
+data OverridableBlock
+  = BlockToc
+  | BlockIndex
+  | BlockBibliography
+  | BlockPrintings
+  | BlockSeparator
+  deriving stock (Eq, Ord, Show, Enum, Bounded)
+
+overridableBlockName :: OverridableBlock -> Text
+overridableBlockName = \case
+  BlockToc -> "toc"
+  BlockIndex -> "index"
+  BlockBibliography -> "bibliography"
+  BlockPrintings -> "printings"
+  BlockSeparator -> "separator"
+
+-- | The overridable block command of a name, the inverse of 'overridableBlockName'.
+parseOverridableBlock :: Text -> Maybe OverridableBlock
+parseOverridableBlock n = lookup n [(overridableBlockName b, b) | b <- [minBound .. maxBound]]
+
+-- | The names of the overridable block commands (root ADR 0453).
+overridableBlockCommands :: [Text]
+overridableBlockCommands = map overridableBlockName [minBound .. maxBound]
+
 {- | The names of the built-in block commands, the file settings and the
-attributes among them: a plugin may not provide a block command of one of
-these names (docs/adr/0122).
+attributes among them (docs/adr/0122): the overridable ones, then the
+fixed ones (root ADR 0453). A plugin provides a block command of one of
+these names only to override an overridable one by block-overrides.
 -}
 builtinBlockCommands :: [Text]
-builtinBlockCommands =
+builtinBlockCommands = overridableBlockCommands <> fixedBlockCommands
+
+{- | The names of the built-in block commands that neither a plugin nor a
+listed name may override (root ADR 0453), the names G02270 counts in the
+blocks: the evaluation, the pagination, the references and the channels
+take what they mean as given.
+-}
+fixedBlockCommands :: [Text]
+fixedBlockCommands =
   [ "import",
     "set",
-    "toc",
-    "index",
-    "bibliography",
     "channel",
-    "printings",
     "page-break",
     "column-break",
     "no-page-break",
@@ -190,5 +228,7 @@ builtinBlockCommands =
     -- docs/adr/0263
     "note",
     -- root ADR 0412
-    "endnote"
+    "endnote",
+    -- root ADR 0438
+    "frame"
   ]

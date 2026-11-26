@@ -1,4 +1,4 @@
-@import fn/text.emet as t
+@import fn/text.emet * as t
 
 # 文字
 

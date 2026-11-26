@@ -16,4 +16,4 @@ import Golem.Typeset.Flow (Assumed (..), composeEnv, paraLook)
 
 -- | No assumed page numbers: the first round of the page references, and a text without them.
 emptyAssumed :: Assumed
-emptyAssumed = Assumed Map.empty Map.empty
+emptyAssumed = Assumed Map.empty Map.empty Map.empty Map.empty

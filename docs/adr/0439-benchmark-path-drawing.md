@@ -1,6 +1,6 @@
 # ADR 0439: SVG の図版のパスの描画の速さを、Emet が乱数で作る図形で測る
 
-Status: accepted-pending
+Status: superseded [{"part":"実装の時期","by":[],"kind":"note","note":"メンテナーは 2026-11-25 に、IR と ABI の検査をすべての実装の後に行うと決め、この ADR を先に実装してよいとした。"}]
 
 ## 文脈
 

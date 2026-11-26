@@ -520,7 +520,8 @@ golemDoc =
       docPdfUa = Nothing,
       docStructure = structElem SDocument [KidLeaf (LeafId [0])],
       docPageLabels = [],
-      docOutline = []
+      docOutline = [],
+      docScreen = False
     }
   where
     box = Rect 0 0 (100 * 65536) (100 * 65536)

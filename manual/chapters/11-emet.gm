@@ -1,18 +1,18 @@
 @label emet-intro
 # Emet 入門
 
-@import functions/intro/hello.emet as hello
-@import functions/intro/numbers.emet as numbers
-@import functions/intro/compare.emet as compare
-@import functions/intro/strings.emet as strings
-@import functions/intro/where.emet as bind
-@import functions/intro/apply.emet as apply
-@import functions/intro/cases.emet as cases
-@import functions/intro/lists.emet as lists
-@import functions/intro/maybe.emet as maybe
-@import functions/intro/records.emet as records
-@import functions/intro/authors.emet as authors
-@import functions/intro/answers.emet as answers
+@import functions/intro/hello.emet * as hello
+@import functions/intro/numbers.emet * as numbers
+@import functions/intro/compare.emet * as compare
+@import functions/intro/strings.emet * as strings
+@import functions/intro/where.emet * as bind
+@import functions/intro/apply.emet * as apply
+@import functions/intro/cases.emet * as cases
+@import functions/intro/lists.emet * as lists
+@import functions/intro/maybe.emet * as maybe
+@import functions/intro/records.emet * as records
+@import functions/intro/authors.emet * as authors
+@import functions/intro/answers.emet * as answers
 
 税込みの価格を、原稿の式で [code: \[= div(1800 * 110, 100)\]] と書いたとします。
 一か所なら、これで足ります。
@@ -54,7 +54,7 @@ $ cd emet-practice
 次に、原稿の [code: chapters/01.gm] を次のように書き換えます。
 
 ```
-@import functions/practice.emet as p
+@import functions/practice.emet * as p
 
 # はじめに
 

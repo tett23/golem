@@ -1,6 +1,6 @@
 # ADR 0142: `@import` の引数を評価器で展開しない
 
-Status: accepted
+Status: superseded [{"part":null,"by":[],"kind":"note","note":"@import の形は、[root ADR 0451](0451-import-listed-names-without-a-namespace.md) で「パス * as 名前空間」と「パス { 名前, … }」になった。展開を G03009 とする決定は変わらない。"}]
 
 ## 文脈
 

@@ -61,7 +61,7 @@ functionCtx :: EvalContext
 functionCtx = baseCtx {ctxFunctions = FunctionTable (Map.singleton "functions/book.emet" book) False Set.empty, ctxCharStyles = Set.singleton "strong"}
 
 withImport :: Text -> Text
-withImport body = "@import functions/book.emet as book\n\n" <> body
+withImport body = "@import functions/book.emet * as book\n\n" <> body
 
 codesOf :: Text -> [Text]
 codesOf src = map diagCodeText (fst (evalSource functionCtx (withImport src)))

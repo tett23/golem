@@ -10,6 +10,7 @@ import Golem.TestSupport.PackageDirectory (enterPackageDirectory)
 import Golem.TestSupport.Skipped (defaultMainReportingSkips)
 import LinkSpec (linkTests)
 import OpenTypeFeaturesSpec (openTypeFeaturesTests)
+import PdfScreenSpec (pdfScreenTests)
 import PdfSpec
 import PlatesSpec (platesTests)
 import PopplerSpec (popplerTests)
@@ -56,6 +57,7 @@ tests =
       scriptsTests,
       decorationsTests,
       pdfPipelineTests,
+      pdfScreenTests,
       testGroup "ruby placement (golem-layout ADR 0009)" rubyTests,
       testGroup "vertical glyphs turned without a vertical form (ADR 0015)" turnedTests,
       testGroup "kenten in the PDF (golem-driver ADR 0019)" kentenTests,

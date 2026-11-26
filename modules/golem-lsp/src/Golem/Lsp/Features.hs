@@ -13,6 +13,8 @@ module Golem.Lsp.Features
     renameLabel,
     renameLayoutValue,
     renameEmet,
+    renameVariable,
+    renameAlias,
     emetTextOf,
     Completion (..),
     cmpLabel,
@@ -26,6 +28,7 @@ module Golem.Lsp.Features
     formatting,
     Outline (..),
     outline,
+    foldingRanges,
     Encoding (..),
     toLineCol,
     fromLineCol,
@@ -39,9 +42,10 @@ module Golem.Lsp.Features
 where
 
 import Control.Applicative ((<|>))
+import Control.Monad (forM_, unless, when)
 import Data.ByteString qualified as BS
 import Data.Char (isAsciiLower, isAsciiUpper, isDigit)
-import Data.Either (fromRight)
+import Data.Either (fromRight, rights)
 import Data.List (nub, sortOn)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (fromMaybe, isJust, isNothing, listToMaybe, mapMaybe)
@@ -60,7 +64,7 @@ import Golem.Evaluate (Evaluated (..), metadataValues)
 import Golem.Fmt (FormatResult (..), format)
 import Golem.Lsp.Toml (Context (..), Quote (..), contextAt, definedPaths)
 import Golem.Lsp.Workspace
-import Golem.Parser (parse)
+import Golem.Parser (parse, parseAst)
 import Golem.Parser.AST
 import Golem.Parser.CST qualified as C
 import Golem.Parser.SourceSettings (paragraphSeparators, sourceKeys)
@@ -128,6 +132,10 @@ data Occurrence
     OccCommand Bool Text
   | -- | a call of a pub fn of a .emet in an expression, ns.f(...)
     OccFunction Text
+  | -- | a name in the list of an @import, with the path (root ADR 0451): the original name of an item
+    OccListed Text Text
+  | -- | the alias of an item of a list that differs from its original name, with the path and the original name (root ADR 0458)
+    OccAlias Text Text Text
   deriving stock (Show)
 
 labelCommands :: [Text]
@@ -139,8 +147,18 @@ noteCommands = ["note", "sidenote", "endnote"]
 
 -- | Every occurrence in a file with its span.
 occurrences :: File -> [(SrcSpan, Occurrence)]
-occurrences (File _ bs) = concatMap block bs
+occurrences file@(File _ bs) = concatMap block bs
   where
+    -- the names the @import lines of the file list, which .gm calls without a namespace: the aliases (root ADR 0451, root ADR 0458)
+    listed = [a | Right site <- importsOf file, a <- map lnAlias (importNames site)]
+    called name = T.isInfixOf "." name || name `elem` listed
+    -- the original name of each item, and its alias when it is written apart; an alias written as the original name is the original name
+    listedIn bsp p args =
+      concat
+        [ (nsp, OccListed p n) : [(asp, if a == n then OccListed p n else OccAlias p n a) | asp /= nsp]
+        | Right site <- [importSite bsp args],
+          ListedName n nsp a asp <- importNames site
+        ]
     block (Located sp b) = case b of
       Paragraph is -> concatMap inline is
       Heading _ is -> concatMap inline is
@@ -149,12 +167,13 @@ occurrences (File _ bs) = concatMap block bs
       DefList gs -> concatMap (\g -> concatMap (concatMap inline) (dgTerms g) <> concatMap (concatMap block) (dgDefs g)) gs
       Table _ h rows -> concatMap (concatMap inline) h <> concatMap (concatMap (concatMap inline)) rows
       SetVar (Located vsp v) e -> (vsp, OccVar Nothing v) : expr e
-      BlockCommand (Located nsp name) args body -> [(nsp, OccCommand False name) | T.isInfixOf "." name] <> blockCommand sp name args <> concatMap block body
+      BlockCommand (Located nsp name) args body -> [(nsp, OccCommand False name) | called name] <> blockCommand sp name args <> concatMap block body
       Attributed cs t -> concatMap block cs <> maybe [] block t
+      Fenced fbs -> concatMap block fbs
       _ -> []
-    blockCommand _ name args = case (name, args) of
-      ("import", Located asp (Positional (Word p)) : _) -> [(asp, OccImport p)]
-      ("import", Located asp (Positional (StringLit p)) : _) -> [(asp, OccImport p)]
+    blockCommand importSp name args = case (name, args) of
+      ("import", Located asp (Positional (Word p)) : _) -> (asp, OccImport p) : listedIn importSp p args
+      ("import", Located asp (Positional (StringLit p)) : _) -> (asp, OccImport p) : listedIn importSp p args
       ("label", Located asp (Positional (Word l)) : _) -> [(asp, OccLabelDef l)]
       ("style", [Located asp (Positional (Word n))]) -> [(asp, OccStyleRef ParagraphKind n)]
       -- a regex style names a paragraph style and a character style (docs/adr ADR 0015)
@@ -167,7 +186,7 @@ occurrences (File _ bs) = concatMap block bs
     inline (Located sp i) = case i of
       Expr e -> (sp, OccExpr e) : expr e
       Command (Located nsp name) args slots ->
-        [(nsp, OccCommand True name) | T.isInfixOf "." name]
+        [(nsp, OccCommand True name) | called name]
           <> ( case (name, args) of
                  (n, Located asp (Positional (Word l)) : _)
                    | n `elem` labelCommands -> [(asp, OccLabelRef l)] <> [(sp, OccPageRef l) | n == "ref-page"]
@@ -198,7 +217,7 @@ occurrences (File _ bs) = concatMap block bs
       EVar (ns : v : _) -> [(sp, OccVar (Just ns) v)]
       EArray es -> concatMap expr es
       EHash kvs -> concatMap (expr . snd) kvs
-      ECall f es -> [(sp, OccFunction f) | T.isInfixOf "." f] <> concatMap expr es
+      ECall f es -> [(sp, OccFunction f) | called f] <> concatMap expr es
       EUnary _ a -> expr a
       EBinary _ a b -> expr a <> expr b
       ERange a b -> expr a <> expr b
@@ -216,13 +235,33 @@ its syntax, so that a file being typed with an error keeps them.
 emetImports :: Source -> Map.Map Text FilePath
 emetImports src =
   Map.fromList
-    [ (isNamespace site, p)
+    [ (ns, p)
     | Right site <- importsOf (srcAst src),
-      ".emet" `T.isSuffixOf` isPath site,
-      Right p <- [normalizeRelative (T.unpack (isPath site))]
+      Just ns <- [importNamespace site],
+      Right p <- [emetPath (isPath site)]
     ]
 
--- | The function of a .emet a name of a source calls: ns.name of a kind.
+{- | The names a source lists by @import of a .emet (root ADR 0451), by
+their aliases (root ADR 0458), with the path of the .emet and the original
+name: the first @import that lists a name.
+-}
+emetListed :: Source -> Map.Map Text (FilePath, Text)
+emetListed src =
+  Map.fromListWith
+    (\_ first -> first)
+    [ (lnAlias l, (p, lnName l))
+    | Right site <- importsOf (srcAst src),
+      l <- importNames site,
+      Right p <- [emetPath (isPath site)]
+    ]
+
+-- | The path of a .emet an @import names, from the root.
+emetPath :: Text -> Either () FilePath
+emetPath path
+  | ".emet" `T.isSuffixOf` path = either (const (Left ())) Right (normalizeRelative (T.unpack path))
+  | otherwise = Left ()
+
+-- | The function of a .emet a name of a source calls: ns.name of a kind, or a name listed by @import.
 exportOf :: Workspace -> Source -> Kind -> Text -> Maybe Export
 exportOf ws src kind q = programOf ws >>= \p -> exportIn p src kind q
 
@@ -230,9 +269,16 @@ exportOf ws src kind q = programOf ws >>= \p -> exportIn p src kind q
 exportIn :: Program -> Source -> Kind -> Text -> Maybe Export
 exportIn p src kind q = do
   let (ns, rest) = T.breakOn "." q
-  n <- T.stripPrefix "." rest
-  path <- Map.lookup ns (emetImports src)
+  (path, n) <- case T.stripPrefix "." rest of
+    Just n -> (,n) <$> Map.lookup ns (emetImports src)
+    Nothing -> Map.lookup q (emetListed src)
   listToMaybe [e | e <- Map.findWithDefault [] path (programExports p), exKind e == kind, exName e == n]
+
+-- | The function a name in the list of an @import names (root ADR 0451): the first kind the .emet gives it.
+listedExport :: Program -> Text -> Text -> Maybe Export
+listedExport p path n = do
+  file <- either (const Nothing) Just (emetPath path)
+  listToMaybe [e | e <- Map.findWithDefault [] file (programExports p), exName e == n, exKind e `elem` [KindInline, KindBlock, KindFn]]
 
 -- | The declaration of a function of a .emet.
 exportLocation :: Export -> Location
@@ -248,11 +294,11 @@ callsIn p ws e =
   [ loc s sp
   | s <- allSources ws,
     (sp, occ) <- occurrences (srcAst s),
-    Just (kind, q) <- [called occ],
-    Just e' <- [exportIn p s kind q],
-    exPath e' == exPath e,
-    exKind e' == exKind e,
-    exName e' == exName e
+    case occ of
+      -- the name in the list of an @import (root ADR 0451), and the alias of the item (root ADR 0458)
+      OccListed path n -> n == exName e && emetPath path == Right (exPath e)
+      OccAlias path n _ -> n == exName e && emetPath path == Right (exPath e)
+      _ -> or [exPath e' == exPath e && exKind e' == exKind e && exName e' == exName e | Just (kind, q) <- [called occ], Just e' <- [exportIn p s kind q]]
   ]
   where
     called = \case
@@ -266,6 +312,8 @@ occurrenceExport :: Workspace -> Source -> Occurrence -> Maybe Export
 occurrenceExport ws src = \case
   OccCommand inline q -> exportOf ws src (if inline then KindInline else KindBlock) q
   OccFunction q -> exportOf ws src KindFn q
+  OccListed path n -> programOf ws >>= \p -> listedExport p path n
+  OccAlias path n _ -> programOf ws >>= \p -> listedExport p path n
   _ -> Nothing
 
 -- | The innermost occurrence at an offset.
@@ -290,7 +338,12 @@ definition ws path off = case sourceOf ws path of
   Just src | Just e <- occurrenceAt src off >>= occurrenceExport ws src . snd -> [exportLocation e]
   Just src -> case snd <$> occurrenceAt src off of
     Just (OccImport p) -> [Location (T.unpack p) 0 0 | T.unpack p `elem` wsSourceFiles ws || any ((== T.unpack p) . srcPath) (allSources ws)]
-    Just (OccVar Nothing v) -> [loc src sp | Just r <- [srcResult src], (d, sp) <- usageDefined (erUsage r), d == v]
+    Just (OccVar Nothing v) -> case [loc src sp | Just r <- [srcResult src], (d, sp) <- usageDefined (erUsage r), d == v] of
+      [] -> listedVar src (\a _ -> a == v)
+      own -> own
+    -- a variable in the list of an @import (root ADR 0451), by its original name or its alias (root ADR 0458)
+    Just (OccListed _ v) -> listedVar src (\_ n -> n == v)
+    Just (OccAlias _ n _) -> listedVar src (\_ o -> o == n)
     Just (OccVar (Just ns) v) ->
       [ loc t sp
       | Just r <- [srcResult src],
@@ -307,6 +360,19 @@ definition ws path off = case sourceOf ws path of
     Just (OccStyleRef k n) -> styleDefs src k n
     Just (OccStyleDef k n) -> styleDefs src k n
     _ -> []
+  where
+    -- the @set of the original name of an item an @import of the source lists, the item chosen by its alias and its original name (root ADR 0451, root ADR 0458)
+    listedVar src which =
+      nub
+        [ loc t sp
+        | Just r <- [srcResult src],
+          (a, n, target, _) <- usageListed (erUsage r),
+          which a n,
+          Just t <- [sourceOf ws target],
+          Just tr <- [srcResult t],
+          (d, sp) <- usageDefined (erUsage tr),
+          d == n
+        ]
 
 styleDefs :: Source -> StyleKind -> Text -> [Location]
 styleDefs src k n = take 1 [loc src sp | (sp, OccStyleDef k' n') <- occurrences (srcAst src), k' == k, n' == n]
@@ -332,7 +398,11 @@ references :: Workspace -> FilePath -> Int -> [Location]
 references ws path off = case sourceOf ws path of
   -- a function of a .emet: the calls of it in the sources (docs/adr/0162)
   Nothing -> [l | Just text <- [emetText ws path], Just prog <- [programOf ws], Just e <- [emetExportAt prog path text off], l <- callsOf ws e]
+  -- an alias: the alias, the references by it in the file and the definition of the original name (root ADR 0458)
+  Just src | Just al <- aliasAt ws src off -> nub (aliasPlaces ws src al <> originalDefinition ws src al)
   Just src | Just e <- occurrenceAt src off >>= occurrenceExport ws src . snd -> callsOf ws e
+  -- a variable of @set: the places its rename writes (root ADR 0454)
+  Just _ | Right var <- variableAtOffset ws path off -> variableOccurrences ws Nothing var
   Just src -> case snd <$> occurrenceAt src off of
     Just (OccLabelRef l) -> nub (labelDefs ws l <> labelRefs ws l)
     Just (OccLabelDef l) -> nub (labelDefs ws l <> labelRefs ws l)
@@ -358,7 +428,35 @@ references ws path off = case sourceOf ws path of
 
 -- ------------------------------------------------------------------ rename
 
-data RenameError = NotALabel | LabelExists Text | InvalidName Text | NotALayoutValue | LayoutValueExists Text | InvalidLayoutValue Text | EmetRename R.RenameError
+data RenameError
+  = NotALabel
+  | LabelExists Text
+  | InvalidName Text
+  | NotALayoutValue
+  | LayoutValueExists Text
+  | InvalidLayoutValue Text
+  | EmetRename R.RenameError
+  | -- | the position is no name of the expressions or of the list of an @import (root ADR 0454)
+    NotAVariable
+  | -- | a name that points at no variable of @set
+    NotASetVariable Text
+  | ReservedVariable Text
+  | InvalidVariable Text
+  | VariableSyntax FilePath
+  | VariableTaken FilePath Text
+  | ListedTaken FilePath Text
+  | BuiltinTaken Text
+  | -- | a file that lists the variable with an error for its name: the file, the name, the code
+    ListedUnclear FilePath Text Text
+  | -- | a variable in the format of a running head of style.toml: the format, its line and column
+    RunningHeadVariable Text Int Int
+  | NewNameReferenced FilePath Text
+  | -- | the position is no alias of a list of an @import nor a reference by one (root ADR 0458)
+    NotAnAlias
+  | -- | a new alias that breaks the rules of the names of a space of use of the original name
+    InvalidAlias Text
+  | -- | a new alias that is a command of the language or of a plugin, or a name the file lists
+    AliasTaken Text
   deriving stock (Eq, Show)
 
 -- | The message of an error of renaming, as the editor shows it.
@@ -378,6 +476,20 @@ renameMessage = \case
     R.RenameTaken n -> "同じ有効範囲の名前と重なります: " <> n
     R.RenameNotCommand n -> ".gm のコマンドの名前は、英小文字で始まり、英小文字と数字だけで書きます: " <> n
     R.RenameSyntax p -> "構文の誤りのあるファイルがあるため、名前を変えられません: " <> T.pack p
+  NotAVariable -> "変数の上で名前を変更してください"
+  NotASetVariable n -> "@set の変数ではないので、名前を変えられません: " <> n
+  ReservedVariable n -> "予約語は @set の変数の名前に使えません: " <> n
+  InvalidVariable n -> "@set の変数の名前に使えない名前です: " <> n
+  VariableSyntax p -> "書き換えるファイルに構文の誤りがあるため、名前を変えられません: " <> T.pack p
+  VariableTaken p n -> T.pack p <> " で @set した変数と名前が重なります: " <> n
+  ListedTaken p n -> T.pack p <> " の @import が並べた名前と重なります: " <> n
+  BuiltinTaken n -> "組み込みの式の名前と重なります: " <> n
+  ListedUnclear p n c -> T.pack p <> " は " <> n <> " について " <> c <> " のエラーがあり、どの変数を指すか決められないため、名前を変えられません"
+  RunningHeadVariable f l c -> "style.toml の柱の書式 " <> f <> "（" <> T.pack (show l) <> " 行 " <> T.pack (show c) <> " 列）がどのファイルの変数を指すかはページで決まるため、名前を変えられません"
+  NewNameReferenced p n -> T.pack p <> " に、改名すると変数を指す名前 " <> n <> " がすでにあります"
+  NotAnAlias -> "別名の上で名前を変更してください"
+  InvalidAlias n -> "別名の形が不正です: " <> n
+  AliasTaken n -> "組み込みのコマンド、プラグインのコマンド、そのファイルが取り込んだ名前と重なります: " <> n
 
 -- | Renames a label in its definition and every reference.
 renameLabel :: Workspace -> FilePath -> Int -> Text -> Either RenameError [(Location, Text)]
@@ -462,12 +574,14 @@ renameEmet ws manifest path off new = do
               | e <- Map.findWithDefault [] p (programExports prog),
                 exFunction e == old,
                 exKind e == kind,
-                Just l <- map (nameIn old) (callsIn prog ws e)
+                -- the aliases and the references by them stay (root ADR 0458)
+                Just l <- map (nameIn old) (filter (`notElem` byAlias) (callsIn prog ws e))
               ]
                 <> [l | kind == KindFilter, l <- filterNames manifest p old]
         _ -> []
   pure ([(Location p s e, new) | (p, s, e) <- R.rnEdits r] <> [(l, new) | l <- gmEdits])
   where
+    byAlias = [loc s sp | s <- allSources ws, (sp, occ) <- occurrences (srcAst s), byAliasIn s occ]
     -- the name after the namespace in a call of .gm: ns.name
     nameIn old (Location p s e) = do
       src <- sourceOf ws p
@@ -476,9 +590,14 @@ renameEmet ws manifest path off new = do
           (pre, rest) = BS.breakSubstring needle piece
           after = BS.drop (BS.length needle) rest
           isNameByte b = b == 95 || b == 45 || (b >= 48 && b <= 57) || (b >= 65 && b <= 90) || (b >= 97 && b <= 122)
-      if BS.null rest || maybe False (isNameByte . fst) (BS.uncons after)
-        then Nothing
-        else Just (Location p (s + BS.length pre + 1) (s + BS.length pre + BS.length needle))
+          plain = TE.encodeUtf8 old
+          -- a name listed by @import, called without a namespace (root ADR 0451)
+          unqualified = plain `BS.isPrefixOf` piece && not (maybe False (\(b, _) -> isNameByte b || b == 46) (BS.uncons (BS.drop (BS.length plain) piece)))
+          found
+            | unqualified = Just (Location p s (s + BS.length plain))
+            | BS.null rest || maybe False (isNameByte . fst) (BS.uncons after) = Nothing
+            | otherwise = Just (Location p (s + BS.length pre + 1) (s + BS.length pre + BS.length needle))
+      found
 
 -- | The program of the last evaluation that checked the functions (docs/adr/0170).
 lastProgramOf :: Workspace -> Maybe Program
@@ -573,6 +692,7 @@ codeBlockAt off (File _ blocks) = any inside blocks
       CodeBlock {} -> spanStart sp <= off && off < spanEnd sp
       BlockCommand _ _ body -> any inside body
       Attributed commands body -> any inside commands || maybe False inside body
+      Fenced fbs -> any inside fbs
       BulletList items -> any (any inside) items
       OrderedList items -> any (any inside) items
       DefList groups -> any (any (any inside) . dgDefs) groups
@@ -587,6 +707,7 @@ completions ws path off = case sourceOf ws path of
   Just src
     | codeBlockAt off (srcAst src) -> []
     | Just names <- namespaceCompletions ws src off -> names
+    | Just names <- importListCompletions ws src off -> names
   Just src ->
     let before = TE.decodeUtf8Lenient (BS.take off (TE.encodeUtf8 (srcText src)))
         lineBefore = T.takeWhileEnd (/= '\n') before
@@ -609,8 +730,12 @@ completions ws path off = case sourceOf ws path of
           Nothing -> Nothing
         meta = maybe Map.empty (metadataValues . manifestMetadata . projectManifest . evProject) (wsEvaluated ws)
         projectVars = projectVarsOf ws
+        -- the names the file lists by @import, without a namespace (root ADR 0451)
+        listedOf k = [Completion n CkCommand | n <- listedNamesOf ws src k]
+        -- a listed name over a built-in command is one candidate (root ADR 0453)
+        commandsAnd builtins k = [Completion n CkCommand | n <- nub (builtins <> listedNamesOf ws src k)]
      in if maybe False (T.all nameChar) (T.stripPrefix "@" (T.stripStart lineBefore))
-          then [Completion n CkCommand | n <- builtinBlockCommands]
+          then commandsAnd builtinBlockCommands KindBlock
           else
             if "@import " `T.isPrefixOf` T.stripStart lineBefore
               then [Completion (T.pack p) CkPath | p <- wsSourceFiles ws, p /= path]
@@ -632,26 +757,30 @@ completions ws path off = case sourceOf ws path of
                               if "@separator " `T.isPrefixOf` T.stripStart lineBefore && length (T.words lineBefore) <= 2 && not ("[" `T.isInfixOf` lineBefore)
                                 then [Completion n CkSettingValue | n <- separatorNames]
                                 else
-                                  if isNothing open
-                                    then []
-                                    else case metaPath of
-                                      -- the keys of meta and of meta.roles (docs/adr ADR 0033)
-                                      Just ["meta", _] -> [Completion k CkSettingKey | k <- Map.keys meta]
-                                      Just ["meta", "roles", _] | Just (VHash rs) <- Map.lookup "roles" meta -> [Completion k CkSettingKey | k <- Map.keys rs]
-                                      -- the keys of [vars] and of its tables (docs/adr/0185)
-                                      Just ("vars" : keyPath@(_ : _)) | Just keys <- varKeys projectVars (init keyPath) -> [Completion k CkSettingKey | k <- keys]
-                                      Just [_] | inOperand lastOpen -> expressionNames
-                                      Just _ -> []
-                                      _ -> case ws' of
-                                        [] -> commandNames
-                                        [_] | not (T.isSuffixOf " " lastOpen) -> commandNames
-                                        (cmd : _)
-                                          | cmd `elem` labelCommands -> [Completion l CkLabel | l <- labels]
-                                          -- label= after the command of a note (root ADR 0422)
-                                          | cmd `elem` noteCommands, not ("label=" `T.isInfixOf` lastOpen) -> [Completion "label=" CkSettingKey]
-                                          | cmd == "color" -> [Completion n CkSwatch | n <- Map.keys (stSwatches style)]
-                                          | cmd == "style" -> [Completion n CkCharStyle | n <- charNames]
-                                        _ -> []
+                                  -- the names of the text frames after @frame (root ADR 0438)
+                                  if "@frame " `T.isPrefixOf` T.stripStart lineBefore && length (T.words lineBefore) <= 2 && not ("[" `T.isInfixOf` lineBefore)
+                                    then [Completion n CkSettingValue | n <- Map.keys (stFrames style)]
+                                    else
+                                      if isNothing open
+                                        then []
+                                        else case metaPath of
+                                          -- the keys of meta and of meta.roles (docs/adr ADR 0033)
+                                          Just ["meta", _] -> [Completion k CkSettingKey | k <- Map.keys meta]
+                                          Just ["meta", "roles", _] | Just (VHash rs) <- Map.lookup "roles" meta -> [Completion k CkSettingKey | k <- Map.keys rs]
+                                          -- the keys of [vars] and of its tables (docs/adr/0185)
+                                          Just ("vars" : keyPath@(_ : _)) | Just keys <- varKeys projectVars (init keyPath) -> [Completion k CkSettingKey | k <- keys]
+                                          Just [_] | inOperand lastOpen -> expressionNames <> listedOf KindFn <> [Completion n CkSettingKey | n <- listedVarNames src]
+                                          Just _ -> []
+                                          _ -> case ws' of
+                                            [] -> commandsAnd commandNames KindInline
+                                            [_] | not (T.isSuffixOf " " lastOpen) -> commandsAnd commandNames KindInline
+                                            (cmd : _)
+                                              | cmd `elem` labelCommands -> [Completion l CkLabel | l <- labels]
+                                              -- label= after the command of a note (root ADR 0422)
+                                              | cmd `elem` noteCommands, not ("label=" `T.isInfixOf` lastOpen) -> [Completion "label=" CkSettingKey]
+                                              | cmd == "color" -> [Completion n CkSwatch | n <- Map.keys (stSwatches style)]
+                                              | cmd == "style" -> [Completion n CkCharStyle | n <- charNames]
+                                            _ -> []
   where
     nameChar c = isAsciiLower c || isAsciiUpper c || isDigit c || c == '_' || c == '-'
     inOperand expression =
@@ -666,7 +795,61 @@ completions ws path off = case sourceOf ws path of
       | n <- builtinExpressionNames
       ]
     -- the built-in commands, then those of the plugins (docs/adr ADR 0031)
-    commandNames = [Completion c CkCommand | c <- builtinInlineCommands <> maybe [] evPluginCommands (wsEvaluated ws)]
+    commandNames = builtinInlineCommands <> maybe [] evPluginCommands (wsEvaluated ws)
+
+-- | The names a source lists by @import of a .emet that are functions of a kind, by their aliases (root ADR 0451, root ADR 0458).
+listedNamesOf :: Workspace -> Source -> Kind -> [Text]
+listedNamesOf ws src kind =
+  [ n
+  | Just p <- [lastProgramOf ws],
+    (n, (path, o)) <- Map.toList (emetListed src),
+    any (\e -> exKind e == kind && exName e == o) (Map.findWithDefault [] path (programExports p))
+  ]
+
+-- | The variables a source lists by @import of a .gm, by their aliases (root ADR 0451, root ADR 0458).
+listedVarNames :: Source -> [Text]
+listedVarNames src = nub [n | Right site <- importsOf (srcAst src), not (".emet" `T.isSuffixOf` isPath site), n <- map lnAlias (importNames site)]
+
+{- | Completion in the list of names of an @import (root ADR 0451): the
+names a .emet gives .gm, or the variables a .gm sets. Nothing when the
+cursor is not in the braces of an @import.
+-}
+importListCompletions :: Workspace -> Source -> Int -> Maybe [Completion]
+importListCompletions ws src off = do
+  let before = TE.decodeUtf8Lenient (BS.take off (TE.encodeUtf8 (srcText src)))
+      lineBefore = T.takeWhileEnd (/= '\n') before
+  rest <- T.stripPrefix "@import " (T.stripStart lineBefore)
+  let (written, braces) = T.breakOn "{" rest
+      path = T.dropAround (== '"') (T.strip written)
+      -- the item before the cursor; only its first piece, the original name, is completed (root ADR 0458)
+      item = T.takeWhileEnd (\c -> c /= '{' && c /= ',') braces
+      firstPiece = case T.words item of
+        [] -> True
+        [_] -> not (" " `T.isSuffixOf` item)
+        _ -> False
+  if T.null braces || "}" `T.isInfixOf` braces
+    then Nothing
+    else
+      Just $
+        if not firstPiece
+          then []
+          else
+            if ".emet" `T.isSuffixOf` path
+              then
+                nub
+                  [ Described (exName e) CkCommand (exSignature e)
+                  | Just p <- [lastProgramOf ws],
+                    Right file <- [emetPath path],
+                    e <- Map.findWithDefault [] file (programExports p),
+                    exKind e `elem` [KindInline, KindBlock, KindFn]
+                  ]
+              else
+                [ Completion v CkSettingKey
+                | Right file <- [normalizeRelative (T.unpack path)],
+                  Just t <- [sourceOf ws file],
+                  Just r <- [srcResult t],
+                  v <- nub (map fst (usageDefined (erUsage r)))
+                ]
 
 -- | The namespace vars of the project (docs/adr/0185); empty without a project.
 projectVarsOf :: Workspace -> Map.Map Text Value
@@ -1019,6 +1202,7 @@ outline ws path = case sourceOf ws path of
     h (Located sp b) = case b of
       Heading l is -> [(sp, l, is)]
       Attributed _ (Just t) -> h t
+      Fenced fbs -> concatMap h fbs
       _ -> []
     title src is = T.strip (T.concat (map (piece src) is))
     piece src (Located sp i) = case i of
@@ -1031,6 +1215,29 @@ outline ws path = case sourceOf ws path of
     nest (o : rest) =
       let (kids, others) = span ((> olLevel o) . olLevel) rest
        in o {olChildren = nest kids} : nest others
+
+-- ------------------------------------------------------------------ folding ranges
+
+{- | The folding ranges of a source (root ADR 0459): for each body between
+::: lines, the line that opens and the line that closes, or the last line
+of the body when it is not closed; zero-based, in the order of the lines
+that open.
+-}
+foldingRanges :: Text -> [(Int, Int)]
+foldingRanges text = sortOn fst (walk 0 (fst (parse (FileId 0) text)))
+  where
+    bytes = TE.encodeUtf8 text
+    lineAt off = BS.count 10 (BS.take off bytes)
+    walk start n =
+      let placed = zip (scanl (+) start (map C.elementWidth (C.nodeChildren n))) (C.nodeChildren n)
+          here = case C.nodeKind n of
+            C.NDiv ->
+              case [off | (off, C.ElemToken t) <- placed, C.tokKind t == C.KDivMark] of
+                [open] -> [(lineAt open, lineAt (max open (start + C.nodeWidth n - 1)))]
+                (open : close : _) -> [(lineAt open, lineAt close)]
+                [] -> []
+            _ -> []
+       in here <> concat [walk off m | (off, C.ElemNode m) <- placed]
 
 -- ------------------------------------------------------------------ semantic tokens
 
@@ -1190,6 +1397,8 @@ tokenType (Place parent inExpr first idents word) = \case
   C.KPipe -> plain SemanticTokenTypes_Operator
   C.KDelim -> plain SemanticTokenTypes_Operator
   C.KFence -> plain SemanticTokenTypes_Keyword
+  -- the ::: of the lines around a body (root ADR 0459)
+  C.KDivMark -> plain SemanticTokenTypes_Keyword
   -- \*[ and **[ and their closing bracket (golem-lsp ADR 0008)
   k | parent == C.NSplatArgument, k `elem` [C.KStar, C.KRBracket] -> plain SemanticTokenTypes_Operator
   -- the spaces of commands and expressions, without the indentation of a
@@ -1206,3 +1415,356 @@ tokenType (Place parent inExpr first idents word) = \case
   where
     plain t = Just (t, [])
     exprPunctuation = [C.KDot, C.KLParen, C.KRParen, C.KComma, C.KLBracket, C.KRBracket, C.KLBrace, C.KRBrace, C.KColon]
+
+-- ------------------------------------------------------------------ variables of @set
+
+-- | A variable of @set: the file that sets it and its name (root ADR 0454).
+type SetVariable = (FilePath, Text)
+
+-- | The names a file sets with @set, wherever they are, with the spans of the names.
+setSites :: File -> [(Text, SrcSpan)]
+setSites (File _ bs) = concatMap go bs
+  where
+    go (Located _ b) = case b of
+      SetVar (Located vsp v) _ -> [(v, vsp)]
+      BulletList items -> concatMap (concatMap go) items
+      OrderedList items -> concatMap (concatMap go) items
+      DefList gs -> concatMap (concatMap (concatMap go) . dgDefs) gs
+      BlockCommand _ _ body -> concatMap go body
+      Attributed cs t -> concatMap go cs <> maybe [] go t
+      Fenced fbs -> concatMap go fbs
+      _ -> []
+
+setNamesOf :: Source -> [Text]
+setNamesOf = map fst . setSites . srcAst
+
+-- | The @import lines of a source.
+importSitesOf :: Source -> [ImportSite]
+importSitesOf = rights . importsOf . srcAst
+
+{- | The file an @import line of a variable file points at: through the
+import graph of the project (root ADR 0455), by the path as the line
+writes it. Nothing for a .emet, or outside the project.
+-}
+importTarget :: Workspace -> Source -> ImportSite -> Maybe FilePath
+importTarget ws s site
+  | ".emet" `T.isSuffixOf` isPath site = Nothing
+  | otherwise =
+      listToMaybe
+        [ sfPath sf
+        | srcInProject s,
+          Just e <- [wsEvaluated ws],
+          let ImportGraph g = projectImports (evProject e),
+          (tfid, site') <- Map.findWithDefault [] (srcFile s) g,
+          isPath site' == isPath site,
+          Just sf <- [Map.lookup tfid (projectSources (evProject e))]
+        ]
+
+-- | Whether an occurrence is a name of the expressions or of the list of an @import.
+isVariableOccurrence :: Occurrence -> Bool
+isVariableOccurrence = \case
+  OccVar _ _ -> True
+  OccListed _ _ -> True
+  OccAlias {} -> True
+  _ -> False
+
+-- | The name an occurrence of a variable writes.
+occurrenceName :: Occurrence -> Maybe Text
+occurrenceName = \case
+  OccVar _ v -> Just v
+  OccListed _ n -> Just n
+  OccAlias _ _ a -> Just a
+  _ -> Nothing
+
+{- | The variable of @set an occurrence at a span of a source points at
+(root ADR 0454), with @extra@ a variable taken as set besides those the
+files set. A name without a namespace is the variable the file sets, or
+the one an @import before it lists; a name with a namespace is of the
+file the last @import before it with that namespace points at; a name in
+a list is of the file the line points at. A name without a namespace an
+@import lists under an alias is the variable of its original name, and so
+is the alias in the list (root ADR 0458). Nothing for a name that points
+at no variable of @set, or at more than one.
+-}
+variableAt :: Workspace -> Maybe SetVariable -> Source -> SrcSpan -> Occurrence -> Maybe SetVariable
+variableAt ws extra s sp = \case
+  OccVar Nothing v
+    | v `elem` setNamesOf s || extra == Just (srcPath s, v) -> Just (srcPath s, v)
+    | otherwise -> case nub [(f, lnName l) | site <- before, l <- importNames site, lnAlias l == v, Just f <- [importTarget ws s site]] of
+        [(f, n)] | sets f n -> Just (f, n)
+        _ -> Nothing
+  OccVar (Just ns) v -> case [site | site <- before, importNamespace site == Just ns] of
+    [] -> Nothing
+    sites -> listToMaybe (reverse sites) >>= importTarget ws s >>= \f -> if sets f v then Just (f, v) else Nothing
+  OccListed _ n -> inList n
+  OccAlias _ n _ -> inList n
+  _ -> Nothing
+  where
+    inList n = case [site | site <- importSitesOf s, spanStart (isSpan site) <= spanStart sp, spanStart sp <= spanEnd (isSpan site)] of
+      (site : _) -> importTarget ws s site >>= \f -> if sets f n then Just (f, n) else Nothing
+      [] -> Nothing
+    before = [site | site <- importSitesOf s, spanEnd (isSpan site) <= spanStart sp]
+    sets f v = extra == Just (f, v) || maybe False ((v `elem`) . setNamesOf) (sourceOf ws f)
+
+{- | Every occurrence of a variable of @set (root ADR 0454), with the span
+of its name: its @set and its references in the file that sets it, the
+name after the namespace in the files that import it with a namespace,
+and the name in the list and the references in the files that list it,
+the aliases of the lists and the references by them included (root ADR
+0458).
+-}
+variableOccurrences :: Workspace -> Maybe SetVariable -> SetVariable -> [Location]
+variableOccurrences ws extra var = map fst (variableOccurrencesNamed ws extra var)
+
+-- | The same, with the name each writes.
+variableOccurrencesNamed :: Workspace -> Maybe SetVariable -> SetVariable -> [(Location, Text)]
+variableOccurrencesNamed ws extra var@(f, _) =
+  -- the file that sets it first
+  sortOn ((/= f) . locPath . fst) . nub $
+    [ (Location (srcPath s) (spanStart nsp) (spanEnd nsp), written)
+    | s <- allSources ws,
+      (sp, occ) <- occurrences (srcAst s),
+      isVariableOccurrence occ,
+      variableAt ws extra s sp occ == Just var,
+      let nsp = nameSpan sp occ,
+      Just written <- [occurrenceName occ]
+    ]
+  where
+    -- the name of ns.name, after the namespace
+    nameSpan sp = \case
+      OccVar (Just ns) v -> let start = spanStart sp + BS.length (TE.encodeUtf8 ns) + 1 in SrcSpan (spanFile sp) start (start + BS.length (TE.encodeUtf8 v))
+      _ -> sp
+
+-- | The variable of @set at an offset of a file; Left when there is none.
+variableAtOffset :: Workspace -> FilePath -> Int -> Either RenameError SetVariable
+variableAtOffset ws path off = case sourceOf ws path >>= \s -> (s,) <$> occurrenceAt s off of
+  Just (s, (sp, occ))
+    | isVariableOccurrence occ -> maybe (Left (NotASetVariable (fromMaybe "" (occurrenceName occ)))) Right (variableAt ws Nothing s sp occ)
+  _ -> Left NotAVariable
+
+-- | The reserved names, which no variable of @set takes (G02275).
+reservedVariableNames :: [Text]
+reservedVariableNames = ["doc", "meta", "vars", "true", "false", "nil"]
+
+-- | Whether a name can be written as the name of a @set and as a name of an expression.
+validVariableName :: Text -> Bool
+validVariableName n =
+  not (T.null n)
+    && not (T.any (`elem` ['.', ',', '{', '}']) n)
+    && let (file, _, ds) = parseAst (FileId 0) ("@set " <> n <> " = 1\n\n[= " <> n <> "]\n")
+        in not (hasErrors ds) && map fst (setSites file) == [n] && [v | (_, OccVar Nothing v) <- occurrences file] == [n, n]
+
+{- | The places of style.toml that write a variable in the format of a
+running head: @{set.name}@ and @{set.ns.name}@, with the name and its line
+and column from 1.
+-}
+runningHeadVariables :: Text -> [(Text, Text, Int, Int)]
+runningHeadVariables style =
+  [ (whole, name, l, c + 1)
+  | (l, line) <- zip [1 ..] (T.lines style),
+    (c, whole) <- finds line,
+    let name = T.takeWhileEnd (/= '.') (T.dropEnd 1 whole)
+  ]
+  where
+    finds = go 0
+      where
+        go off t = case T.breakOn "{set." t of
+          (_, "") -> []
+          (pre, rest) ->
+            let (body, after) = T.breakOn "}" rest
+                c = off + T.length pre
+             in if T.null after then [] else (c, body <> "}") : go (c + T.length body + 1) (T.drop 1 after)
+
+{- | Renames a variable of @set (root ADR 0454): its @set, its references
+in the file that sets it, the name after the namespace in the files that
+import it with a namespace, and the name in the list and the references in
+the files that list it. NotAVariable when the position is no name of the
+expressions or of a list, for the rename of a label.
+-}
+renameVariable :: Workspace -> Maybe Text -> FilePath -> Int -> Text -> Either RenameError [(Location, Text)]
+renameVariable ws style path off new = do
+  var@(f, old) <- variableAtOffset ws path off
+  -- the aliases and the references by them stay (root ADR 0458)
+  let edits = [l | (l, written) <- variableOccurrencesNamed ws Nothing var, written == old]
+      files = nub (f : map locPath edits)
+      sourcesOf = mapMaybe (sourceOf ws)
+      -- the files that list the variable without an alias, with their lines that list it so; an item with an alias refers not to the original name (root ADR 0458)
+      listers = [(s, ls) | s <- sourcesOf files, srcPath s /= f, let ls = [site | site <- importSitesOf s, any (unaliased old) (importNames site), importTarget ws s site == Just f], not (null ls)]
+      fSource = sourceOf ws f
+      clash = new /= old
+  when (new `elem` reservedVariableNames) (Left (ReservedVariable new))
+  unless (validVariableName new) (Left (InvalidVariable new))
+  forM_ (sourcesOf files) $ \s -> when (hasErrors (snd (parse (FileId 0) (srcText s)))) (Left (VariableSyntax (srcPath s)))
+  forM_ fSource $ \s -> do
+    when (clash && new `elem` setNamesOf s) (Left (VariableTaken f new))
+    when (clash && new `elem` [lnAlias l | site <- importSitesOf s, l <- importNames site]) (Left (ListedTaken f new))
+  when (clash && new `elem` builtinExpressionNames) (Left (BuiltinTaken new))
+  forM_ listers $ \(h, ls) -> do
+    let hp = srcPath h
+        listedOld = [site | site <- importSitesOf h, old `elem` map lnAlias (importNames site)]
+    when (length listedOld > 1) (Left (ListedUnclear hp old "G02272"))
+    when (old `elem` setNamesOf h) (Left (ListedUnclear hp old "G02274"))
+    when (old `elem` builtinExpressionNames) (Left (ListedUnclear hp old "G02277"))
+    when (clash && new `elem` setNamesOf h) (Left (VariableTaken hp new))
+    when (clash && new `elem` [lnAlias l | site <- importSitesOf h, l <- importNames site, site `notElem` ls || not (unaliased old l)]) (Left (ListedTaken hp new))
+    -- a reference to the new name after the list, which would point at the variable
+    when (clash && not (null [() | (sp, OccVar Nothing v) <- occurrences (srcAst h), v == new, any (\site -> spanEnd (isSpan site) <= spanStart sp) ls])) (Left (NewNameReferenced hp new))
+  forM_ (maybe [] runningHeadVariables style) $ \(whole, name, l, c) ->
+    when (name `elem` [old, new]) (Left (RunningHeadVariable whole l c))
+  -- a name written already that would point at the variable after the rename
+  when clash $
+    forM_ (variableOccurrences ws (Just (f, new)) (f, new)) $
+      \l -> Left (NewNameReferenced (locPath l) new)
+  pure [(l, new) | l <- edits]
+
+-- ------------------------------------------------------------------ aliases of the lists
+
+-- | Whether an item of a list is a name without an alias, or with the name as its alias.
+unaliased :: Text -> ListedName -> Bool
+unaliased n l = lnName l == n && lnAlias l == n
+
+{- | An alias a position stands on (root ADR 0458): the path of the @import,
+the original name, the alias, the items of the file that give the alias, and
+the kinds of the definition of the original name (KindFn for a variable).
+-}
+data AliasSite = AliasSite
+  { alPath :: !Text,
+    alName :: !Text,
+    alAlias :: !Text,
+    alItems :: ![(ImportSite, ListedName)],
+    alKinds :: ![Kind]
+  }
+
+-- | The items of the lists of a source with an alias apart from the original name.
+aliasItems :: Source -> [(ImportSite, ListedName)]
+aliasItems src = [(site, l) | site <- importSitesOf src, l <- importNames site, lnAlias l /= lnName l]
+
+-- | The kinds of the definition an item of a list names: those the .emet gives it, or KindFn for a variable.
+itemKinds :: Workspace -> ImportSite -> ListedName -> [Kind]
+itemKinds ws site l
+  | ".emet" `T.isSuffixOf` isPath site =
+      nub
+        [ exKind e
+        | Just p <- [lastProgramOf ws],
+          Right file <- [emetPath (isPath site)],
+          e <- Map.findWithDefault [] file (programExports p),
+          exName e == lnName l,
+          exKind e `elem` [KindInline, KindBlock, KindFn]
+        ]
+  | otherwise = [KindFn]
+
+{- | Whether an occurrence after an @import line refers to an item by its
+alias: a call of a kind the item gives, or a variable of a variable file.
+-}
+refersBy :: Workspace -> Source -> Text -> (ImportSite, ListedName) -> (SrcSpan, Occurrence) -> Bool
+refersBy ws src a (site, l) (sp, occ) =
+  spanEnd (isSpan site) <= spanStart sp && case occ of
+    OccVar Nothing v -> v == a && not (".emet" `T.isSuffixOf` isPath site) && v `notElem` setNamesOf src
+    OccCommand True q -> q == a && KindInline `elem` itemKinds ws site l
+    OccCommand False q -> q == a && KindBlock `elem` itemKinds ws site l
+    OccFunction q -> q == a && KindFn `elem` itemKinds ws site l
+    _ -> False
+
+-- | The alias at an offset of a source: an alias in a list, or a reference by one.
+aliasAt :: Workspace -> Source -> Int -> Maybe AliasSite
+aliasAt ws src off = do
+  o@(sp, occ) <- occurrenceAt src off
+  a <- occurrenceAlias occ
+  let items = [it | it@(_, l) <- aliasItems src, lnAlias l == a, case occ of OccAlias {} -> lnAliasSpan l == sp; _ -> refersBy ws src a it o]
+  (site, l) <- listToMaybe items
+  let all' = [it | it@(_, l') <- aliasItems src, lnAlias l' == a]
+  pure (AliasSite (isPath site) (lnName l) a all' (nub (concatMap (uncurry (itemKinds ws)) all')))
+  where
+    occurrenceAlias = \case
+      OccAlias _ _ a -> Just a
+      OccVar Nothing v -> Just v
+      OccCommand _ q -> Just q
+      OccFunction q -> Just q
+      _ -> Nothing
+
+-- | The span of a name in an occurrence: the first place of the name in the text of the span.
+nameLoc :: Source -> SrcSpan -> Text -> Location
+nameLoc src sp n =
+  let piece = BS.take (spanEnd sp - spanStart sp) (BS.drop (spanStart sp) (TE.encodeUtf8 (srcText src)))
+      start = spanStart sp + BS.length (fst (BS.breakSubstring (TE.encodeUtf8 n) piece))
+   in Location (srcPath src) start (start + BS.length (TE.encodeUtf8 n))
+
+-- | The aliases of the items of an alias in its file, and the references by it there.
+aliasPlaces :: Workspace -> Source -> AliasSite -> [Location]
+aliasPlaces ws src al =
+  nub $
+    [loc src (lnAliasSpan l) | (_, l) <- alItems al]
+      <> [nameLoc src sp (alAlias al) | o@(sp, _) <- occurrences (srcAst src), any (\it -> refersBy ws src (alAlias al) it o) (alItems al)]
+
+-- | The definition of the original name of an alias: the declaration in the .emet, or the @set in the variable file.
+originalDefinition :: Workspace -> Source -> AliasSite -> [Location]
+originalDefinition ws src al
+  | ".emet" `T.isSuffixOf` alPath al = [exportLocation e | Just p <- [lastProgramOf ws], Just e <- [listedExport p (alPath al) (alName al)]]
+  | otherwise =
+      nub
+        [ loc t nsp
+        | (site, _) <- alItems al,
+          f <- maybe (either (const []) pure (normalizeRelative (T.unpack (isPath site)))) pure (importTarget ws src site),
+          Just t <- [sourceOf ws f],
+          (d, nsp) <- setSites (srcAst t),
+          d == alName al
+        ]
+
+-- | Whether an occurrence of a source is an alias of a list of a .emet, or a call by one.
+byAliasIn :: Source -> Occurrence -> Bool
+byAliasIn s = \case
+  OccAlias {} -> True
+  OccCommand _ q -> aliased q
+  OccFunction q -> aliased q
+  _ -> False
+  where
+    aliased q = maybe False ((/= q) . snd) (Map.lookup q (emetListed s))
+
+{- | Whether a name keeps the rules of the names of a kind (G02278): those
+of the commands of .gm for the inline and the block commands, those of the
+expressions for the functions of the expressions and the variables.
+-}
+fitsKind :: Text -> Kind -> Bool
+fitsKind n kind = case (kind, T.uncons n) of
+  (KindFn, Just (c, rest)) -> (letter c || c == '_') && T.all (\x -> letter x || isDigit x || x == '_') rest
+  (_, Just (c, rest)) -> isAsciiLower c && T.all (\x -> isAsciiLower x || isDigit x || x == '-') rest
+  (_, Nothing) -> False
+  where
+    letter x = isAsciiLower x || isAsciiUpper x
+
+{- | Renames an alias of a list of an @import (root ADR 0458), from the
+alias in the list or from a reference by it: the aliases of the items
+that give it and the references by it, in that file alone. The checks of
+the rename of a variable of @set (root ADR 0454) fall on the new alias:
+its form, a reserved word, the clashes in the file (with the commands of
+the language, which the alias would override or not reach, and of the
+plugins), the running heads (on the old alias too) and a syntax error.
+NotAnAlias when the position is neither, for the other renames.
+-}
+renameAlias :: Workspace -> Maybe Text -> FilePath -> Int -> Text -> Either RenameError [(Location, Text)]
+renameAlias ws style path off new = do
+  src <- maybe (Left NotAnAlias) Right (sourceOf ws path)
+  al <- maybe (Left NotAnAlias) Right (aliasAt ws src off)
+  let old = alAlias al
+      kinds = alKinds al
+      clash = new /= old
+      plugins = maybe [] evPluginCommands (wsEvaluated ws)
+      afterImports sp = any (\(site, _) -> spanEnd (isSpan site) <= spanStart sp) (alItems al)
+  when (hasErrors (snd (parse (FileId 0) (srcText src)))) (Left (VariableSyntax path))
+  when (new `elem` reservedVariableNames) (Left (ReservedVariable new))
+  unless (all (fitsKind new) (if null kinds then [KindFn] else kinds)) (Left (InvalidAlias new))
+  when clash $ do
+    when (new `elem` [lnAlias l | site <- importSitesOf src, l <- importNames site]) (Left (ListedTaken path new))
+    when (KindFn `elem` kinds && new `elem` setNamesOf src) (Left (VariableTaken path new))
+    when (KindFn `elem` kinds && new `elem` builtinExpressionNames) (Left (BuiltinTaken new))
+    when (KindInline `elem` kinds && new `elem` (builtinInlineCommands <> plugins)) (Left (AliasTaken new))
+    when (KindBlock `elem` kinds && new `elem` (builtinBlockCommands <> plugins)) (Left (AliasTaken new))
+    -- a name written already after the lists, which the new alias would reach
+    forM_ (occurrences (srcAst src)) $ \(sp, occ) -> case occ of
+      OccVar Nothing v | v == new, afterImports sp -> Left (NewNameReferenced path new)
+      OccCommand _ q | q == new, afterImports sp -> Left (NewNameReferenced path new)
+      OccFunction q | q == new, afterImports sp -> Left (NewNameReferenced path new)
+      _ -> pure ()
+  forM_ (maybe [] runningHeadVariables style) $ \(whole, name, l, c) ->
+    when (name `elem` [old, new]) (Left (RunningHeadVariable whole l c))
+  pure [(l, new) | l <- aliasPlaces ws src al]

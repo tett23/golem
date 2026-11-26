@@ -1,0 +1,14 @@
+[page]
+size = "A4"
+layout = "single"
+writing-mode = "horizontal"
+
+[page.grid]
+font-size = "10pt"
+characters = 40
+lines = 40
+line-pitch = "16pt"
+position = { top = "20mm", left = "25mm" }
+
+[fonts.body]
+ja = "fonts/ja.otf"

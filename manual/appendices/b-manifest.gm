@@ -108,11 +108,13 @@ chapters = [
 | キー | 意味 |
 |:---|:---|
 | [code: \[targets.pdf\]] | PDF の設定です。[code: isbn] に紙の本の ISBN を書けます。[code: pdfa = "2a"] で PDF/A-2a に、[code: pdfua = "1"] で PDF/UA-1 に準拠させます。 |
+| [code: \[targets.pdf-screen\]] | 画面で読む PDF の設定です。書けるのは [code: pdfua = "1"] だけで、PDF/UA-1 に準拠させます。書いても、[code: --target] を省いた [code: golem build] は画面で読む PDF を作りません（「[ref-title pdf-screen]」、[ref-page pdf-screen] ページ）。 |
 | [code: \[targets.epub\]] | EPUB の設定です。[code: isbn] に電子版の ISBN を書けます。書けば EPUB の識別子に使います。[code: page-map] には、固定ページ版と本文の対応表の JSON のパスを書けます（「[ref-title epub-page-list]」、[ref-page epub-page-list] ページ）。[code: fonts] は HTML と同じです。 |
 | [code: \[targets.html\]] | HTML の設定です。[code: fonts] に [code: "embed"] を書くとフォントのファイルを同梱し、[code: "generic"]（既定）では総称の書体だけを指定します（「[ref-title web-fonts]」、[ref-page web-fonts] ページ）。 |
 | [code: \[targets.text\]] | プレーンテキストの設定です。[code: variants] に [code: "vertical"]（縦書き用）と [code: "horizontal"]（横書き用）の一方か両方を並べます。省くと両方を作ります。 |
 
 [code: golem build] は、[code: --target] を指定しなければ、このテーブルにかかわらず四つの形式をすべて作ります。
+画面で読む PDF は、[code: --target pdf-screen] を指定したときだけ作ります。
 
 @nonumber
 ## [code: \[source\]]
@@ -145,9 +147,12 @@ chapters = [
 | キー | 意味 |
 |:---|:---|
 | [code: url] | 配布物の URL です（文字列、必須）。[code: https://] で始め、バージョンを固定した URL を書きます。 |
-| [code: overrides] | このプラグインで置き換える組み込みのコマンドの名前です（文字列の配列）。 |
+| [code: overrides] | このプラグインで置き換える組み込みのインラインのコマンドの名前です（文字列の配列）。 |
+| [code: block-overrides] | このプラグインで置き換える組み込みのブロックコマンドの名前です（文字列の配列）。 |
 
-[code: overrides] に書けるのは、[code: strong]、[code: bold]、[code: italic]、[code: code]、[code: ruby]、[code: kenten]、[code: color]、[code: style]、[code: tcy]、[code: number-text] です。
+[code: overrides] に書けるのは、[code: strong]、[code: bold]、[code: italic]、[code: code]、[code: ruby]、[code: kenten]、[code: color]、[code: style]、[code: warichu]、[code: upright]、[code: tcy]、[code: number-text] の十二です。
+[code: block-overrides] に書けるのは、[code: toc]、[code: index]、[code: bibliography]、[code: printings]、[code: separator] の五つです。
+二つのキーに分かれているのは、[code: style] や [code: index] のように、インラインのコマンドとブロックコマンドの両方にある名前があるからです。
 
 @nonumber
 ## [code: \[\[filters\]\]]

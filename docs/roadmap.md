@@ -33,11 +33,11 @@ v0.1.0-rc4 と v1.0.0 のどちらで扱うかは、まだ決めていない。
 
 - **IR と ABI の設計と妥当性の検査**：意味論の IR とプラグインの ABI を設計し、その設計が妥当であることを検査する。どちらも v1.0.0 の後に変えると互換を壊すので、v1.0.0 の前に扱う。検査の方法は、着手するときに ADR で決める。記法、IR、ABI を変えるほかの項目は、この項目の後に扱う。
 - **余白などのブロックの命令が重なったときの AST から IR への変換**：`@blank-line`、`@need-lines`、`@page-lines`、`@page-break`、`@column-break`、`@no-page-break` など、余白や改ページを決めるブロックの命令が、ほかのブロックを挟まずに複数並んだときに、AST をどの IR に変換するかを一般の規則として定める。今は `@blank-line` どうしの足し合わせ、`@blank-line` と改ページの組み合わせ（G04010）など、組み合わせごとに個別に決めているだけで（[docs/adr/0046](adr/0046-blank-line-command.md)、[docs/adr/0030](adr/0030-manual-page-break-control.md)）、決めていない組み合わせの変換は定義されていない。段落スタイルの分割禁止と連動（[ADR 0261](adr/0261-keep-options-of-paragraph-styles.md)）は改ページの手での制御と同じ仕組みで組んだ。
-- **パス（未実装）**：閉じていないパスの上に文字を置けるようにする。字ごとの位置と回転を有理数で決める方法を ADR で決める。図版の輪郭の書き方と、輪郭に沿う回り込みも ADR で決める（[Golem ADR 0382](adr/0382-figure-extent-and-captions.md) の輪郭の指定）。円と星形の閉じたパスのテキストフレームの見本を見た目の回帰テストに足し、文字が形の内側に置かれていることを目で確かめる受けいれ条件 A1 は、「任意のテキストフレームの配置」のマスターページのフレームを実装した後に確かめる（[root ADR 0437](adr/0437-paths-and-the-box-model.md)）。
-- **任意のテキストフレームの配置（未実装）**：本文を流し込むフレーム（版面と段）のほかに、ページの任意の位置にテキストフレームを置き、その中に文字を組めるようにする。InDesign でページにテキストフレームを置くことにあたる。テキストフレームは「パス」の閉じたパスとして表し、その内側に文字を置くので、「パス」の後に扱う。フレームを置く書き方（原稿のブロックコマンドか、マスターページか、その両方か）、位置と大きさの基準と単位、本文の流れとの関係（回り込みと重なり）、フレームどうしをつないで文字を流すか、HTML と EPUB での扱い、v2 以降に回したレベル 2 と 3 のフレーム（「フレーム」）との関係を ADR で決める（2026-11-09 の tett23 の決定で v1.0.0 に置いた）。[root ADR 0438](adr/0438-place-text-frames-anywhere-on-a-page.md) で決めた。
+- **パス（未実装）**：閉じていないパスの上に文字を置けるようにする。字ごとの位置と回転を有理数で決める方法を ADR で決める。図版の輪郭の書き方と、輪郭に沿う回り込みも ADR で決める（[Golem ADR 0382](adr/0382-figure-extent-and-captions.md) の輪郭の指定）。円と星形の閉じたパスのテキストフレームの見本を目で確かめる受けいれ条件 A1 は、「手で確かめる項目」の「閉じたパスのテキストフレームの見本」に移した（[root ADR 0437](adr/0437-paths-and-the-box-model.md)）。
 
 ### テストと CI
 
+- **行の帯の区間のテストの高速化**：[root ADR 0447](adr/0447-find-the-strip-intervals-by-pieces-between-vertices-and-crossings.md) のテスト設計は、0 から 10 の格子の上の頂点が 3 から 6 の多角形をすべて列挙すると書く。今は、テストの時間の上限に収めるため、頂点の数ごとに全体から均等に選んだ 40 個で確かめている（メンテナーが 2026-11-25 に認めた）。`stripInside` とテストを速くし、選ぶ数を増やすか、すべてを列挙する。着手するときに ADR を作る。
 - **軽量な形式手法の残りの範囲**：規則を不変条件として書き、小さな入力のすべてで確かめる手法を、範囲ごとに一つの ADR と一つのプルリクエストで広げる（[docs/adr/0208](adr/0208-widen-lightweight-formal-methods.md) の 1）。次の範囲では、試作で調べた入力を回帰テストに取り込み、CI で常時調べる範囲を実行時間から決める。
   - **パーサーと `golem fmt` の往復（未実装）**：文法から作る短い原稿を列挙し、`golem fmt` の往復と diagnostics の位置の不変条件で確かめる。[ADR 0351](adr/0351-prove-parser-formatter-round-trips.md) に従い、実際の文法から作った Lean モデルの結果を、パーサーと整形処理の出力に照らして確かめる。
   - **位置の変換**：UTF-16 の列、`pages.json`、LSP の位置の変換を、サロゲートペアを含む短い文字列の列挙で確かめる。家族の絵文字では、ゼロ幅接合子（ZWJ）の前後の文字境界と、一つのサロゲートペアの途中を区別する。
@@ -45,10 +45,7 @@ v0.1.0-rc4 と v1.0.0 のどちらで扱うかは、まだ決めていない。
   - **ページ分割の Lean 検証（未実装）**：[ADR 0352](adr/0352-prove-pagination-in-lean.md) に従い、既存の Alloy モデルの 42 コマンドを Lean の定理または具体例に対応付ける。境界入力でモデルの結果とレイアウトエンジンの出力を照合する。
   - **ページ分割の残りの要素**：罫線、コード、段の切り替え、手での制御、表、回り込む図版を、改ページの列挙の要素に足す。表と回り込む図版も含め、本文の各行と図版がそれぞれ一度ずつ出力されることを確かめる（[golem-layout ADR 0025](golem-layout/adr/0025-need-lines-and-blank-lines-after-figures-sent-on.md)）。
   - **画像の実効解像度と診断の境界**：整数の ppi がしきい値を下回る場合に G09006 が出ることを調べる。実効解像度が 1 ppi の入力に対し、しきい値 0、1、2 で native CLI を各 3 回動かすと、G09006 はそれぞれ 0、0、1 件だった。同じ述語を wasm32 のプリフライトのテストでも検査する。
-- **プルリクエストの CI の時間の記録（未実装）**：golem-driver のテストを分けた後の、プルリクエストの CI の 20 回の中央値を `docs/ci-timings/` に記録する（[root ADR 0416](adr/0416-shorten-the-build-of-the-pull-request-ci.md) の A1）。記録したら、0416 を実装済みにする。
-- **warning の検査の失敗が止んだことの記録（未実装）**：ログの無いジョブ、キャッシュの復元の失敗、ランナーの action の取り直し、wasm のキャッシュの追い出しの四つの原因で、`ci` の warning の検査が 20 回の実行のあいだ失敗しないことを数えて記録する（[root ADR 0427](adr/0427-warning-gate-and-jobs-without-logs.md) の A1）。記録したら、0427 を実装済みにする。
-
-- **パスの描画のベンチマーク（未実装）**：Golem が PDF にパスを書き出す速さを測るベンチマークを設ける。入力は、乱数で多数の図形を作るジェネラティブアートとする。図形を作るコードは Emet（`.emet` の関数）で書き、乱数のシード値は Golem の `manifest.toml` から取るので、同じ入力からは同じ PDF ができる。ベンチマークのための乱数なので、生成器の実装（線形合同法、メルセンヌツイスタなど）は問わない。生成した図形を Golem に渡す形、ベンチマークの予算、記録の置き場所（`docs/benchmarks/`）は ADR で決める。[root ADR 0439](adr/0439-benchmark-path-drawing.md) で決めた。
+- **プルリクエストの CI の時間の記録（未実装）**：tests-rest の脚を二つに分けた後の、プルリクエストの CI の 20 回の中央値を `docs/ci-timings/` に記録する（[root ADR 0457](adr/0457-split-the-tests-rest-runner-in-two.md) の A1）。記録したら、0457 を実装済みにする。中央値が 300 秒を超えたら、0457 の「測る」の節のとおり、次の手を新しい ADR で決める。
 
 ### 記法と設定の値
 
@@ -65,8 +62,6 @@ v0.1.0-rc4 と v1.0.0 のどちらで扱うかは、まだ決めていない。
 
 - **CFF2 の可変フォントの PDF への埋め込み（未実装）**：CFF2 の輪郭のフォントは、PDF に埋め込むと読めないので、PDF の組版で G08019 として拒む（[golem-font ADR 0003](golem-font/adr/0003-reject-cff2-fonts-in-pdf.md)）。CFF2 を CFF に変換して受け付けるのは、同梱の HarfBuzz の変換でグリフが崩れたので、HarfBuzz を更新し、変換の前と後で使うすべてのグリフの描画を比べる回帰テストを通してからにする（[golem-font ADR 0001](golem-font/adr/0001-shaping-and-metrics.md)、[golem-driver ADR 0004](golem-driver/adr/0004-pdf-emphasis-and-character-styles.md)、[Golem ADR 0358](adr/0358-font-instance-selection.md)）。
 - **HTML と EPUB での可変フォントのインスタンス（未決）**：役割の `instance` と `axes` は、PDF だけが使う（[Golem ADR 0358](adr/0358-font-instance-selection.md)）。`fonts = "embed"` の HTML と EPUB はフォントのファイルをそのまま同梱するので、可変フォントの座標はブラウザーと読書環境が CSS の規則で決め、PDF と違う太さで描かれうる。CSS の `font-variation-settings` で座標を渡すか、固定したフォントを同梱するかを、ADR で決める。
-
-- **プレーンな PDF 1.7 のターゲット（未実装）**：PDF/X-4 の制約を持たない PDF 1.7 を出力のターゲットに足す。今の PDF は、`[color]` の `intent` の有無によらず版 1.6 で書き、`intent` があれば PDF/X-4 の出力インテントを書く（仕様書の「PDF/X-4 と出力インテント」の節）。ターゲットの名前、今の PDF との違い（色空間、透明、注釈、出力インテント）、PDF/A と PDF/UA の宣言との関係は ADR で決める。[root ADR 0431](adr/0431-plain-pdf-1-7-target.md) で決めた。
 
 ### スタイル
 
@@ -145,7 +140,7 @@ v2.0.0-rc1 は、数式の組版かその下準備、あるいはその両方を
     - 「楕円曲線関数入門」のような本：曲線のグラフや図で、TikZ が座標の図を描けることを確かめる。
 - **式の超越関数**：三角関数、指数関数、対数関数と、浮動小数点数の指数による累乗（[golem-eval ADR 0001](golem-eval/adr/0001-expression-language-and-numerics.md)）。
 - **改ページの大域の最適化**：見開きの単位の最適化と、段組みの段の高さの調整を含む（[golem-layout ADR 0003](golem-layout/adr/0003-pagination-and-s2.md)）。
-- **フレーム**：レベル 2 と 3 のフレーム。型は定義してあり、v1 では値を書くとエラーになる（[golem-layout-spec ADR 0001](golem-layout-spec/adr/0001-page-geometry.md)、[golem-project ADR 0002](golem-project/adr/0002-style-toml.md)）。
+- **フレーム**：レベル 2 と 3 のフレーム。型はまだ無い。`style.toml` の `[frames]` の表は独立したテキストフレームに使っているので、レベル 2 と 3 のフレームは別のキーの名前にする（[root ADR 0438](adr/0438-place-text-frames-anywhere-on-a-page.md)、[golem-layout-spec ADR 0001](golem-layout-spec/adr/0001-page-geometry.md)、[golem-project ADR 0002](golem-project/adr/0002-style-toml.md)）。
 - **段組みの拡張**：v1 で実装する段組み（仕様書の [「style.toml」の節](specifications.md#styletoml) の段組み、[docs/adr/0018](adr/0018-multi-column-layout.md)）を超える部分。段抜きの見出し、索引のほかで一冊の中で段数を切り替えること、段組みの版面での回り込みと段をまたぐ除外領域を含む（[golem-driver ADR 0003](golem-driver/adr/0003-pdf-heading-styles.md)、[golem-driver ADR 0005](golem-driver/adr/0005-pdf-wrapped-figures.md)、[golem-driver ADR 0007](golem-driver/adr/0007-pdf-index-and-bibliography.md)、[golem-layout ADR 0004](golem-layout/adr/0004-wrapped-figures.md)）。段の高さの調整は「改ページの大域の最適化」に、段組みの版面での傍注の領域は「傍注の拡張」に含める。索引の段組みは [docs/adr/0025](adr/0025-index-columns.md) で v1 に入れた。
 - **notice の局所的な抑制**：textlint の無効にするコメントのように、`.gm` の中で notice を局所的に抑制するブロックコマンド。今の抑制は `manifest.toml` の `silence-notices` と `--no-notices` による本の全体の単位であり、縮めた図版の notice の G07039 も図版ごとには抑制できない。本の全体での抑制で困る例が出たら、別の ADR で加える（[golem-driver ADR 0034](golem-driver/adr/0034-fit-figures-to-column.md)）。
 - **目次の拡張**：章ごとの小目次（v1 の `@toc` は文書に一つだけ）、リーダーの字の設定、折り返した題のぶら下げ、図目次と表目次（[golem-driver ADR 0009](golem-driver/adr/0009-pdf-toc-page-numbers.md)）。
@@ -200,8 +195,11 @@ v3 の GUI は、次の原則に従って作る。
 実装は終わり、自動のテストも通っているが、ADR が求める手作業の確かめがまだ残っている項目をここにまとめる。
 確かめたら、結果を実装のプルリクエストか `docs/audits/` の記録に書き、この一覧から消す。
 
-- **閉じたパスのテキストフレームの見本**：[root ADR 0437](adr/0437-paths-and-the-box-model.md) の A1（円と星形の閉じたパスのテキストフレームを持つ見本を組み、文字が形の内側に置かれていることを PDF で目で確かめる）が残っている。テキストフレームを置く手段は [root ADR 0438](adr/0438-place-text-frames-anywhere-on-a-page.md) のマスターページのフレームなので、0438 を実装した後に確かめる。
+- **閉じたパスのテキストフレームの見本**：[root ADR 0437](adr/0437-paths-and-the-box-model.md) の A1（円と星形の閉じたパスのテキストフレームを持つ見本を組み、文字が形の内側に置かれていることを PDF で目で確かめる）が残っている。見本は、見た目の回帰テストの入力 `specimens-frames` の 3 ページ目（マスターページ `shapes` の円と星形のフレーム）である。
+- **テキストフレームの見本**：[root ADR 0438](adr/0438-place-text-frames-anywhere-on-a-page.md) の A1（扉の飾りの文と回り込むフレーム（マスターページが置くフレーム）と、章の引用（`@frame`）を持つ見本を組み、フレームの位置と本文の回り込みを PDF で目で確かめる）が残っている。見本は、見た目の回帰テストの入力 `specimens-frames` の 1 ページ目と 2 ページ目である。
+- **回り込むフレームのまわりのブロックの見本**：[root ADR 0456](adr/0456-keep-every-block-off-around-frames.md) の A1（回り込むフレームと、表、コードブロック、図版、回り込む図版の脇の段落、見出しを持つ見本を組み、どれもフレームと重ならないことと、送った後の空きが組版として不自然でないことを PDF で目で確かめる）が残っている。見本は、見た目の回帰テストの入力 `specimens-frames` の 4 ページ目から 9 ページ目（`chapters/03-blocks.gm`。表、コードブロック、見出し、図版、フレームと反対の側の回り込む図版、同じ側の回り込む図版の順）である。
 - **エディタ向けの構文の定義の読み込み**：`tools/editors/README.md` の読み込ませ方のうち、Visual Studio Code の手順（手元の拡張機能の `package.json` を VS Code が読むこと）を、実際のエディタで確かめていない。文法そのものは、VS Code と同じ `vscode-textmate` で読む `vscode-tmgrammar-test` が、CI の `editors` ジョブで確かめている。Neovim の手順のうち nvim-treesitter を使わないものは CI の `editors-lsp` ジョブが、Helix の手順は `editors` ジョブが確かめる。nvim-treesitter で GitHub から入れる手順は、Neovim 0.12.6 と nvim-treesitter の main ブランチの `e289100` で、ヘッドレスで確かめた（[docs/adr/0170](adr/0170-emet-editor-support.md)、[docs/adr/0171](adr/0171-neovim-setup-from-github-and-emet-lsp.md)、[docs/adr/0231](adr/0231-run-the-lsp-and-the-editor-grammars-in-headless-neovim-and-helix.md)）。
+- **画面で読む PDF の見え方**：`pdf-screen` で組んだマニュアルを Acrobat Reader と macOS のプレビューで開き、リンクが押せること、`[figures]` の `color` で置き換えた PDF の図版を除いて色が HTML の出力と同じに見えること、塗り足しとトンボが無いことを、手で確かめていない。版、ページの寸法、リンクの注釈、色の値、図版の色は、golem-pdf と golem-driver のテストが確かめる（[root ADR 0431](adr/0431-plain-pdf-1-7-target.md) の A1、[root ADR 0445](adr/0445-keep-the-cmyk-recoloring-of-pdf-figures-in-pdf-screen.md)）。
 - **CIDSystemInfo と異体字**（v1.0.0 のリリースで確かめる）：Adobe-Japan1 の ROS を持つ実際のフォント（小塚明朝 Pr6N など）で組んだ PDF を Acrobat のプリフライトにかけ、IVS の異体字が出ることと、InDesign の書き出しと同じであることを確かめていない。リポジトリにそうしたフォントがないためである（[golem-pdf ADR 0006](golem-pdf/adr/0006-cid-system-info.md)）。フォントの `ROS` が `CIDSystemInfo` に写ることは、`ROS` を Adobe-Japan1-7 に書き換えた Source Han Sans のサブセットで、golem-font と golem-driver のテストが確かめる（[docs/adr/0232](adr/0232-check-inks-fonts-figures-links-and-epubs-structurally-in-ci.md)）。
 - **プリフライトと商用のプリフライトの差**（v1.0.0 のリリースで確かめる）：Golem の G09014 が出なかった PDF を Acrobat のプリフライト（PDF/X-4 の適合の検査）にかけ、Acrobat が PDF/X-4 の誤りを報告するかを確かめていない。差があれば `Golem.Pdf.X4.verify` に足す要件を ADR にし、結果は `docs/audits/` に残す。同じ条件の文書を InDesign のプリフライトにかけ、同じ種類の問題が両方で出るかも確かめていない（[golem-cli ADR 0006](golem-cli/adr/0006-preflight.md)）。
 - **トンボのレジストレーションの色**（v1.0.0 のリリースで確かめる）：トンボを付けた PDF を Acrobat のプリフライトとインキの総量の検査にかけること、InDesign の書き出しと同じ形であることを確かめていない。トンボが全版に出ることと本文に特色が混ざらないことは、golem-driver のテストが内容のストリームの色で確かめる（[golem-pdf ADR 0007](golem-pdf/adr/0007-registration-crop-marks.md)、[docs/adr/0232](adr/0232-check-inks-fonts-figures-links-and-epubs-structurally-in-ci.md)）。
@@ -246,7 +244,25 @@ v1 より後のバージョンのための事項には、そのバージョン�
 
 ### その他の未決事項
 
+- **テキストフレームの実装で ADR に無かった判断**：[root ADR 0438](adr/0438-place-text-frames-anywhere-on-a-page.md) の実装で、ADR に書いていない次の扱いを決めた。メンテナーが、そのまま認めるか、ADR で直すかを決める。
+  - `@frame` の中の段落の注を、PDF に置かない。
+  - 同じページに同じフレームが二つあるとき（G07140）は、どちらも置かない。
+  - フレームの中では、段落スタイルの字下げを使わない。
+  - フレームの線を、タグを付けない装飾（アーティファクト）として描く。
+  - ADR の表に無い diagnostics を足した。`@frame` の書き方の誤りは G02255 と G02256 にした。フレームのまわりの行を短くする計算が収まらないときは G07141 にした。
+- **回り込むフレームのまわりのブロックの実装で ADR に無かった判断**：[root ADR 0456](adr/0456-keep-every-block-off-around-frames.md) の実装で、ADR に書いていない次の扱いを決めた。メンテナーが、そのまま認めるか、ADR で直すかを決める。
+  - 「フレームが無ければその段に収まる」かは、ブロックの全体ではなく、分けられない最小の部分（図版の全体、表の見出しの行と最初の行、コードブロックの最初の部分）で判断する。長い表は段の区切りで分けて置けるからである。
+  - 図版の行の方向の範囲は、キャプションのある回り込まない図版では段の幅とし、キャプションの無い図版と回り込む図版では画像の幅とする。キャプションの行の長さを、ページ分割の前に求めないためである。
+  - 格子に揃える版面の置けない範囲は、版面の格子の文字の大きさの仮想ボディがフレームと重なる格子の行とし、表の文字の大きさは使わない。
+  - 段の区切りで繰り返した表の見出しの行が、次の段でフレームと重なるときも、見出しの行と次の行をフレームの後から置く。置けなければ、段の始まりに置く。
+  - G07142 になった回り込む図版の脇の段落は、段の行長で組み直さず、除外の幅で短くした行のまま置く。G07142 で PDF は書かないので、組み直しても出力に現れないからである。
+  - ページ、見開きの保持（`keep-parts`）の中の表は、送らない。保持の中の表は別の組み方で置くからである。
+- **名前を並べる `@import` で残った扱い**：[root ADR 0451](adr/0451-import-listed-names-without-a-namespace.md) の実装で、次のことが残った。
+  - G02270 は `@separator` を組み込みのコマンドとして数える。しかし、プラグインが定義できない組み込みのブロックのコマンドの一覧には `@separator` が無いので、プラグインはまだ `@separator` を定義できる。どちらに揃えるかを決める。
+  - 言語サーバーには `@set` の変数の名前を変える機能が無い。そのため、ADR の名前の変更は、取り込んだ関数にだけ当てはまる。
+  - プロジェクトの外で評価するとき、並べた変数のファイルが評価の文脈に無いと G02276 になる。この場合の扱いを ADR は決めていない。
 - **奥付の多言語化と日本語の例外**：版と刷、日付、発行履歴の表記について、日本語の例外と他言語の奥付の実例を集め、書式で必要な条件分岐と数の表記を検討する。
+- **パスの描画の予算**：[root ADR 0439](adr/0439-benchmark-path-drawing.md) は、パスの描画のベンチマークの予算の値を決めなかった。[最初の記録](benchmarks/2026-11-26-path-drawing.md) を見て、値と比べるマシンを別の ADR で決め、`docs/budgets.md` に写す。
 - **画像フレームの導入時期**：InDesign のように画像と画像を収めるフレームを別々に扱う方式へ移行するかを検討する。時期の候補は v1.x、v2、v3 である。
 - **Linux の Neovim での `silence-notices` の保存**：Neovim 0.12.6 は、`workspace/didChangeWatchedFiles` の動的な登録を macOS と Windows でだけ申し出て、Linux では申し出ない（`vim.lsp.protocol.make_client_capabilities`）。golem lsp は、ディスクの `manifest.toml` の変更をこの通知でだけ知る。この登録を申し出ないクライアントでは、`silence-notices` にコードを加えて保存しても、LSP を起動し直すまで notice が消えない（macOS の Neovim で、能力を Linux と同じにして確かめた）。CI の `editors-lsp` の notice のテストは、クライアントの能力でこの登録を申し出て確かめている。`manifest.toml` の保存（`textDocument/didSave`）でも評価し直すかが決まっていない（[docs/adr/0231](adr/0231-run-the-lsp-and-the-editor-grammars-in-headless-neovim-and-helix.md)）。[docs/adr/0231](adr/0231-run-the-lsp-and-the-editor-grammars-in-headless-neovim-and-helix.md) の I3 は、この登録を申し出るクライアントについての性質と読む（[docs/adr/0259](adr/0259-record-what-the-audit-of-the-ci-release-and-tooling-adrs-found-on-2026-11-09.md)）。
 - **PDF/X-4 の要件と規格の本文の照合**：[golem-pdf ADR 0002](golem-pdf/adr/0002-pdf-x-4.md) は、規格の本文を参照せずに要件を書き、本文と照合して差分があれば新しい ADR を作るとしたが、照合の結果を記した ADR はない。文書情報辞書と XMP の値を一致させる要件も、本文では確かめていない（[golem-pdf ADR 0005](golem-pdf/adr/0005-producer.md)）。v1 の PDF を PDF/X-4 として出すまでに、本文と照合するか、商用のプリフライトでの確認で代えるかが決まっていない。

@@ -240,7 +240,7 @@ cellLimitTests =
       [] -> ""
       h : rest -> TE.encodeUtf8 (T.concat (bar h : T.concat ["|", T.replicate h "---|", "\n"] : map bar rest))
     bar n = "| " <> T.intercalate " | " (replicate n "x") <> " |\n"
-    fromEmet name = "@import functions/book.emet as book\n\n@book." <> name <> "\n"
+    fromEmet name = "@import functions/book.emet * as book\n\n@book." <> name <> "\n"
     -- tables of Emet of 9,091 rows of 11 cells (N + 1)
     emetFile =
       ( "functions/book.emet",

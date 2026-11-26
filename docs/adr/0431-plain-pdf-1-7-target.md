@@ -1,6 +1,6 @@
 # ADR 0431: PDF/X-4 を宣言しない、画面で読むための PDF 1.7 のターゲットを足す
 
-Status: superseded-pending [{"part":"実装することの書き方の色の項のうち図版の色の明示的な置換、不変条件の I4（スウォッチで塗る文字、罫線、背景に狭める）、境界の表の [figures] の color の行、受けいれ条件の A1 の色の比べ方","by":["docs/adr/0445-keep-the-cmyk-recoloring-of-pdf-figures-in-pdf-screen.md"],"kind":"replace"}]
+Status: superseded [{"part":"実装することの書き方の色の項のうち図版の色の明示的な置換、不変条件の I4（スウォッチで塗る文字、罫線、背景に狭める）、境界の表の [figures] の color の行、受けいれ条件の A1 の色の比べ方","by":["docs/adr/0445-keep-the-cmyk-recoloring-of-pdf-figures-in-pdf-screen.md"],"kind":"replace"}]
 
 ## 文脈
 

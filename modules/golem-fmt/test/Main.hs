@@ -183,6 +183,34 @@ tests =
             expected = "[cmd %%注%%]\n\n[cmd x %%注%%: 本文]\n\n[cmd \"x\" %%甲%% %%乙%% key=y]\n\n[= 1+ %%注%% 2]\n"
         formatted source @?= expected
         formatted expected @?= expected,
+      testCase "root ADR 0451 I5: the form without * is written with * as" $ do
+        formatted "@import common/values.gm as v\n\n[= v.price]\n" @?= "@import common/values.gm * as v\n\n[= v.price]\n"
+        formatted "@import   \"a b.gm\"   as   v\n" @?= "@import \"a b.gm\" * as v\n"
+        formatted "@label x\n@import f.emet as f\n" @?= "@label x\n@import f.emet * as f\n"
+        formatted "@import f.emet * as f\n" @?= "@import f.emet * as f\n",
+      testCase "root ADR 0451 I6: a list of names is written { a, b }" $ do
+        formatted "@import f.emet {a,b}\n" @?= "@import f.emet { a, b }\n"
+        formatted "@import f.emet {  a ,b   }\n" @?= "@import f.emet { a, b }\n"
+        formatted "@import f.emet { 名前,  tax-included }\n" @?= "@import f.emet { 名前, tax-included }\n"
+        formatted "@import f.emet { a }\n" @?= "@import f.emet { a }\n",
+      testCase "root ADR 0451 I6: a malformed @import and one with a comment are left alone" $ do
+        formatted "@import f.emet { a b }\n" @?= "@import f.emet { a b }\n"
+        formatted "@import f.emet {}\n" @?= "@import f.emet {}\n"
+        formatted "@import f.emet as\n" @?= "@import f.emet as\n"
+        formatted "@import f.emet %%注%% as f\n" @?= "@import f.emet %%注%% as f\n",
+      testCase "root ADR 0451 I5: formatting the imports is idempotent" $
+        mapM_ (\src -> formatted (formatted src) @?= formatted src) ["@import a.gm as v\n", "@import f.emet {a,b}\n", "@import \"x.gm\"  as  w\n\n@import f.emet{ c }\n"],
+      testCase "root ADR 0458 I6: an item with an alias is written a as b" $ do
+        formatted "@import f.emet {a as b}\n" @?= "@import f.emet { a as b }\n"
+        formatted "@import f.emet {  a   as   b ,c,d as e}\n" @?= "@import f.emet { a as b, c, d as e }\n"
+        formatted "@import f.emet { as as b, c as as }\n" @?= "@import f.emet { as as b, c as as }\n",
+      testCase "root ADR 0458 I6: an alias written as the original name is dropped" $ do
+        formatted "@import f.emet { total as total }\n" @?= "@import f.emet { total }\n"
+        formatted "@import f.emet { as as as, a }\n" @?= "@import f.emet { as, a }\n",
+      testCase "root ADR 0458 I6: a malformed list with as is left alone" $
+        mapM_ (\src -> formatted src @?= src) ["@import f.emet { a as }\n", "@import f.emet { a as b as c }\n", "@import f.emet { as as }\n"],
+      testCase "root ADR 0458 I6: formatting the aliases is idempotent" $
+        mapM_ (\src -> formatted (formatted src) @?= formatted src) ["@import f.emet {a as b,c}\n", "@import f.emet { x as x }\n"],
       testCase "Golem ADR 0339 I5: missing quotes prevent rewriting" $
         case format "[cmd key=x%%注%%]\n" of
           Unformattable ds -> map diagCode ds @?= [DiagnosticCode "G01102"]
@@ -278,6 +306,19 @@ tests =
         ],
       testCase "code blocks and comments are untouched" $
         formatted "```\n  a   \n```\n\n本文%%  コメント   %%\n" @?= "```\n  a   \n```\n\n本文%%  コメント   %%\n",
+      testCase "root ADR 0459 I7: the three forms of a body stay as they are" $
+        mapM_
+          (\s -> formatted s @?= s)
+          [ "@stage-direction\n  一\n",
+            "@stage-direction\n一\n",
+            "@stage-direction\n:::\n一\n\n二\n:::\n",
+            "@a\n:::\n@b\n:::\n一\n\n二\n:::\n\n三\n:::\n",
+            "@a\n:::\n@figure x.png\n\n:::\n"
+          ],
+      testCase "root ADR 0459 I7: the blocks between ::: lines are formatted as a body without indentation" $ do
+        let s = "@stage-direction   x\n:::\n一   \n\n\n\n二\n:::   \n"
+        formatted s @?= "@stage-direction x\n:::\n一\n\n二\n:::\n"
+        astFingerprint (formatted s) @?= astFingerprint s,
       tableTests,
       grammarRoundTrips
     ]

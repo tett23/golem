@@ -148,7 +148,7 @@ golem new mybook
 | `golem new DIR [--language ja\|en] [--no-fonts] [--screen]` | プロジェクトを作る（下に詳しく書く） |
 | `golem plugin lock` | マニフェストのプラグインを取得し、ハッシュを `plugins.lock` に書く |
 | `golem plugin fetch` | `plugins.lock` のとおりにプラグインを取得してキャッシュに置く |
-| `golem build [--target html\|epub\|text\|pdf] [--profile dev\|prod] [--marks japanese\|western\|none] [--no-notices] [-v\|--verbose]` | 出力を `build/` に書く。`--target` を省くと四つのターゲットをすべて作る。`--marks` は PDF に付けるトンボ（既定は none）。`--no-notices` はその実行に限り notice を出さない。`--verbose`（`-v`）は info も出す |
+| `golem build [--target html\|epub\|text\|pdf\|pdf-screen] [--profile dev\|prod] [--marks japanese\|western\|none] [--no-notices] [-v\|--verbose]` | 出力を `build/` に書く。`--target` は何度でも書ける。`--target` を省くと、画面で読む PDF（`pdf-screen`）を除く四つのターゲットをすべて作る。`--marks` は PDF に付けるトンボ（既定は none）。`--no-notices` はその実行に限り notice を出さない。`--verbose`（`-v`）は info も出す |
 | `golem check [--profile dev\|prod] [--marks japanese\|western\|none] [--no-notices] [-v\|--verbose]` | 出力を書かずに検査する |
 | `golem preflight [--rules FILE] [--marks japanese\|western\|none] [--format human\|json]` | PDF を prod で組み、書かずに入稿の前の検査（プリフライト）を行う。設定は `--rules` のファイル、なければ `preflight.toml`、それもなければ組み込みの `print`。PDF を組めた場合は SHA-256、組めなかった場合はエラー件数と未検査の項目を出す |
 | `golem stats [--chars-per-line N] [--lines-per-page N]` | PDF を書き出さずに本文の文字数、ワード数、組版後の行数を数え、ページ数に換算する（[Golem ADR 0355](docs/adr/0355-manuscript-statistics.md)） |
@@ -212,6 +212,15 @@ PDF では約物と罫線の区切りを後続の最初の行と同じ段に置�
 空の段へ送っても保持できなければ、[G07134](docs/diagnostics.md#g07134) で生成を止める。
 
 段落を分けずに行を改めるには、行の末尾に `\` を書く（強制改行、[docs/adr/0016](docs/adr/0016-hard-line-breaks.md)）。
+
+### テキストフレーム
+
+ページの任意の位置にテキストフレームを置き、その中に文字を組める（[root ADR 0438](docs/adr/0438-place-text-frames-anywhere-on-a-page.md)）。
+フレームの位置と形（矩形か閉じたパス）は `style.toml` の `[frames.名前]` に書き、マスターページの `frames` に挙げるか、原稿に `@frame 名前` と段落を書いて置く。
+マスターページが置くフレームは `wrap = "around"` で本文を避けられる。
+本文の行はフレームの分だけ短くなり、表、コードブロック、図版はフレームを越えた位置に送られる（[root ADR 0456](docs/adr/0456-keep-every-block-off-around-frames.md)）。
+HTML と EPUB は `@frame` の段落をその位置の `aside` に書き、マスターページのフレームの文字は書かない。
+規則は [docs/specifications.md](docs/specifications.md) の「テキストフレーム」の節にある。
 
 ### 原稿の変数
 
@@ -388,6 +397,12 @@ CI がその PDF を veraPDF で検証する（[docs/adr/0183](docs/adr/0183-tag
 ルビの親文字の中の `[ref-number]` と `[ref-title]` も `Reference` になる。
 読みのある区切りの参照は、親文字の `RB` の中に置く（[Golem ADR 0360](docs/adr/0360-ruby-base-references.md)）。
 読みのない区切りの参照は、`Ruby` の外の、区切りの字が入る親の構造の要素の中に置く（[Golem ADR 0393](docs/adr/0393-references-in-ruby-segments-without-readings.md)）。
+
+画面で読む PDF は `golem build --target pdf-screen` で作り、`build/pdf-screen/` に書く（[root ADR 0431](docs/adr/0431-plain-pdf-1-7-target.md)）。
+画面で読む PDF は、入稿する PDF と組版を共有する PDF 1.7 で、出力インテント、塗り足し、トンボを持たず、リンクを押せ、スウォッチの色を HTML と同じ sRGB で書く。
+`--target pdf --target pdf-screen` で、入稿する PDF と画面で読む PDF を一度のビルドで作る。
+`[figures]` の `color` で色を置き換えた図版のうち、PDF の図版は入稿する PDF と同じ CMYK のまま書き、SVG、PNG、JPEG の図版は HTML と同じ sRGB で書く（[root ADR 0445](docs/adr/0445-keep-the-cmyk-recoloring-of-pdf-figures-in-pdf-screen.md)）。
+`manifest.toml` の `[targets.pdf-screen]` に `pdfua = "1"` を書けば、画面で読む PDF に PDF/UA-1 を宣言する。
 
 入稿する PDF は `golem build --target pdf --profile prod` で作る。
 prod の PDF ビルドがエラーで書けなければ、前の `build/pdf/` と `pages.json` を片付ける。dev では前の結果を残す（[ADR 0326](./docs/adr/0326-discard-stale-pdf-after-build-errors.md)）。
@@ -844,20 +859,23 @@ x86-64 では、さらに次のことを行う。
 - EPUB が epubcheck を通ることを確かめる。
 - 組んだ二つのマニュアルの PDF と HTML を成果物 `manual` と `manual-dev` として上げる。
 - 見た目の回帰テストの 23 の PDF を `scripts/visual/build.sh` で組んで成果物 `visual-pdfs` として上げる（[docs/adr/0095](./docs/adr/0095-visual-job-in-ci.md)）。
+- `outputs` が、すべてのパッケージのソースの tarball を `cabal sdist all` で作る。
+  `.cabal` の `extra-source-files`、`extra-doc-files`、`data-files` のワイルドカードがチェックアウトのファイルに一つも当たらなければ、`cabal install` と同じく失敗する（[docs/adr/0452](./docs/adr/0452-check-the-file-lists-of-the-packages-with-cabal-sdist-in-ci.md)）。
 - 実行の環境を変えても出力が変わらないことを `scripts/env-determinism/check.sh` で確かめる。
   プルリクエストでは `--quick` で小さな入力だけを検査し、`main` への push とリリースではすべての入力を検査する（[docs/adr/0029](./docs/adr/0029-environment-variation-determinism-test.md)、[docs/adr/0038](./docs/adr/0038-env-determinism-quick-on-pull-requests.md)）。
 
 ジョブは、アーキテクチャごとに複数のランナーに分かれる（[docs/adr/0140](./docs/adr/0140-ci-split-test-runners-and-visual-pdfs-first.md)、[docs/adr/0155](./docs/adr/0155-split-aarch64-test-runner.md)）。
-x86-64 では同じコミットを六つのランナーでビルドする。
-`tests-driver-a` と `tests-driver-b` が golem-driver のテストのスイートを二つに分けて、`tests-rest` がそのほかのスイートを（振り分けは `scripts/ci/test-suites.sh` が `.cabal` から決める）受け持つ（[docs/adr/0416](./docs/adr/0416-shorten-the-build-of-the-pull-request-ci.md)）。
+x86-64 では同じコミットを七つのランナーでビルドする。
+`tests-driver-a` と `tests-driver-b` が golem-driver のテストのスイートを二つに分けて、`tests-rest-a` と `tests-rest-b` がそのほかのスイートを二つに分けて（振り分けは `scripts/ci/test-suites.sh` が `.cabal` から決める）受け持つ（[docs/adr/0416](./docs/adr/0416-shorten-the-build-of-the-pull-request-ci.md)、[docs/adr/0457](./docs/adr/0457-split-the-tests-rest-runner-in-two.md)）。
 `tests-driver-a` は golem-driver-pdf-test、golem-driver-cli-test、golem-driver-global-test を、`tests-driver-b` は golem-driver-page-test、golem-driver-output-test、golem-driver-parallel-test を走らせる。
+`tests-rest-a` は golem-emet-test と golem-parser-test を、`tests-rest-b` はそのほかのスイートを走らせる。
 `outputs` は、ほかのジョブが待つ成果物（`editors-lsp` の golem、見た目の回帰テストの PDF（`visual` を待たせないよう最初に組む）、`wasm` と比べるネイティブの一覧、`verapdf` の PDF）を作る。
 `outputs-checks` は、そのほかの出力の手順（epubcheck、決定性の検査の出力、マニュアル）を、`env` は環境を変える検査を受け持つ（[docs/adr/0395](./docs/adr/0395-bring-the-pull-request-ci-under-five-minutes.md)）。
-aarch64 では四つのランナーでビルドし、x86-64 と同じく `tests-driver-a`、`tests-driver-b`、`tests-rest` がテストのスイートを、`outputs` が決定性の検査の出力を受け持つ。
+aarch64 では五つのランナーでビルドし、x86-64 と同じく `tests-driver-a`、`tests-driver-b`、`tests-rest-a`、`tests-rest-b` がテストのスイートを、`outputs` が決定性の検査の出力を受け持つ。
 
 ランナーは、自分が使うものだけを組む（`scripts/ci/build-targets.sh`、[docs/adr/0395](./docs/adr/0395-bring-the-pull-request-ci-under-five-minutes.md)）。
 テストのランナーは自分が走らせるテストのスイートを、出力と環境の検査のランナーは実行ファイルの `golem` だけを組む。
-`tests-rest` は、`peg-hs` と、テストのスイートが組まない `golem` のほかの、ネイティブで組める実行ファイルも組む。
+`tests-rest-a` は `peg-hs` も、`tests-rest-b` はテストのスイートが組まない `golem` のほかの、ネイティブで組める実行ファイルも組む。
 `dist-newstyle` を保存するジョブ `cache-dist` は、保存するキャッシュがすべてを含むよう `cabal build all` で組む。
 `ci` は `cache-dist` を待たないので、`cabal build all` はプルリクエストの CI の時間に入らない（[docs/adr/0416](./docs/adr/0416-shorten-the-build-of-the-pull-request-ci.md)）。
 ビルドの計画を読む検査（`scripts/ci/test-only-deps.sh` と `scripts/ci/doc-deps.sh`）がどのランナーでもすべての部品を見るよう、計画を `cabal build all` のものに作り直し、組んだときの計画と要素の一覧が等しいことを `scripts/ci/same-plan.sh` で確かめる。
@@ -895,6 +913,16 @@ GitHub API が利用上限を返したときは、応答に従って待ってか
 集約ジョブの警告検査でも、ジョブ一覧の取得が利用上限に達したら最大 60 分待つ（[Golem ADR 0349](./docs/adr/0349-retry-ci-job-list-on-rate-limit.md)）。
 全ページを取得してから各ジョブのログを検査する。
 
+待ち終えた後の取り寄せは、`actions/download-artifact` ではなく `scripts/ci/download-artifact.sh` で行う（[docs/adr/0442](./docs/adr/0442-download-the-waited-artifacts-with-retries-checked-by-digest.md)、[docs/adr/0446](./docs/adr/0446-pick-the-newest-artifact-of-a-name-across-attempts.md)）。
+`wait-pdfs.sh` が見つけた直後の成果物を `actions/download-artifact` が見つけられずに失敗したことがあり、このスクリプトは取れるまで取り直す。
+一覧の API で、この実行の同じ名前の期限切れでない成果物のうち `created_at` がいちばん新しいものを選び、その zip を取り寄せて、SHA-256 が成果物の `digest` と一致したら展開する。
+上げる側のジョブを再実行した実行では、前の試行の成果物が同じ名前で一覧に残るので、いちばん新しいものを選ぶ。
+選んだ成果物の id と `created_at` と、名前の一致した成果物の数は標準エラーに書く。
+成果物がない、選んだ成果物に `digest` がない、取り寄せが 404 か利用上限で失敗した、のどれかなら、5 秒おきに 12 回まで取り直す。
+いちばん新しいものが二つ以上あるとき、SHA-256 が一致しないとき、取り寄せがほかの理由（401 や 403 など）で失敗したときは、取り直さずに失敗する。
+成果物の zip を取り寄せるには、トークンに `actions: read` が要る。
+`wasm`、`editors-lsp`、`verapdf` も同じスクリプトで取り寄せる。
+
 上がった `visual-pdfs` を取り寄せ、固定した版の shem で 72 dpi の PPM に描き、ページごとの SHA-256 が `scripts/visual/pages/` の参照と一致することを `scripts/visual/check.sh` で確かめる。
 shem は、shem のアーカイブを `third_party/downloads` に `scripts/visual/fetch-shem.sh` のハッシュをキーにキャッシュし、`fetch-shem.sh` を 10 分の上限で実行して取る。
 戻したアーカイブは SHA-256 を照合してから展開する（[docs/adr/0243](./docs/adr/0243-retry-every-download-and-cache-the-archives-checked-by-sha-256.md)）。
@@ -902,7 +930,7 @@ shem は、shem のアーカイブを `third_party/downloads` に `scripts/visua
 
 失敗したときは、`scripts/visual/report.sh` がジョブの要約に、shem が読めなかった PDF と、変わったページ（違う画素の数と矩形）を書く。
 変わったページの前と後の画像と差分の画像、このコミットの参照の一覧は、成果物 `visual-diff` として上げる。
-前の画像は、ベースのコミットか、その 20 個までの first-parent の祖先の `ci.yml` の push の実行の成果物 `visual-pdfs` から描くので、このジョブだけがトークンに `actions: read` を持つ（[docs/adr/0093](./docs/adr/0093-fetch-shem-pinned-by-version-and-sha256.md)、[docs/adr/0094](./docs/adr/0094-visual-regression-page-hashes-at-72-dpi.md)、[docs/adr/0095](./docs/adr/0095-visual-job-in-ci.md)、[docs/adr/0096](./docs/adr/0096-before-and-after-images-of-changed-pages.md)）。
+前の画像は、ベースのコミットか、その 20 個までの first-parent の祖先の `ci.yml` の push の実行の成果物 `visual-pdfs` から描くので、このジョブはトークンに `actions: read` を持つ（[docs/adr/0093](./docs/adr/0093-fetch-shem-pinned-by-version-and-sha256.md)、[docs/adr/0094](./docs/adr/0094-visual-regression-page-hashes-at-72-dpi.md)、[docs/adr/0095](./docs/adr/0095-visual-job-in-ci.md)、[docs/adr/0096](./docs/adr/0096-before-and-after-images-of-changed-pages.md)）。
 
 ##### `release-scripts`
 
@@ -944,7 +972,7 @@ Helix は版とアーカイブの SHA-256 で固定する。
 `editors-lsp` は、ヘッドレスの Neovim 0.12.6 で、golem lsp とエディタの文法を `tools/editors/nvim/test.sh` で確かめる（[docs/adr/0231](./docs/adr/0231-run-the-lsp-and-the-editor-grammars-in-headless-neovim-and-helix.md)）。
 確かめるのは、位置の符号化、diagnostic の列の丸め、notice の severity と quickfix と `silence-notices`、空白の semantic tokens とその強調のグループ、`style.toml` と `preflight.toml` の補完の一覧と選んだ後の行、`tools/editors/README.md` の nvim-treesitter を使わない手順である。
 各テストの期待を反転すると失敗することも `--self-test` で確かめる。
-`changes` だけを待ち、`build` の x86-64 の `outputs` が上げる成果物 `golem-linux-x86_64` を `scripts/visual/wait-pdfs.sh` で待つ。
+`changes` だけを待ち、`build` の x86-64 の `outputs` が上げる成果物 `golem-linux-x86_64` を `scripts/visual/wait-pdfs.sh` で待ち、`visual` と同じく `scripts/ci/download-artifact.sh` で取り寄せる（トークンに `actions: read` を持つ）。
 Neovim は `tools/editors/fetch-nvim.sh` が版とアーカイブの SHA-256 で固定する。
 
 ##### `wasm`
@@ -959,7 +987,7 @@ ghc-wasm-meta の 9.10 の flavour のツールチェーンを `scripts/fetch-gh
 
 組んだ `golem.wasm` は、二つの方法で確かめる。
 `setup-node` の Node LTS の `node:wasi` で `scripts/wasm/run.mjs` から動かし、エクスポートとインポート、読めない入力の枠、`[plugins]` を書いたマニフェスト（G06106）、同じインスタンスと新しいインスタンスでの繰り返しを確かめる。
-`scripts/wasm/compare.sh` で入力ごとの PDF と diagnostics の JSON と終了コードの SHA-256 の一覧を作り、`build` の x86-64 の `outputs` がネイティブの `golem` で作って上げる一覧 `wasm-native-list` を `scripts/visual/wait-pdfs.sh` で待って、`diff` で比べる。
+`scripts/wasm/compare.sh` で入力ごとの PDF と diagnostics の JSON と終了コードの SHA-256 の一覧を作り、`build` の x86-64 の `outputs` がネイティブの `golem` で作って上げる一覧 `wasm-native-list` を `scripts/visual/wait-pdfs.sh` で待ち、`visual` と同じく `scripts/ci/download-artifact.sh` で取り寄せて（トークンに `actions: read` を持つ）、`diff` で比べる。
 `golem.wasm` と一覧は成果物 `golem-wasm` として上げる。
 
 キャッシュは三つに分ける。
@@ -974,6 +1002,7 @@ ghc-wasm-meta の 9.10 の flavour のツールチェーンを `scripts/fetch-gh
 
 `verapdf` は、`build` の x86-64 の `outputs` が上げる成果物 `conformance-pdfs` の PDF を、veraPDF で PDF/A-2a と PDF/UA-1 として検証する（`scripts/ci/verapdf.sh`、[docs/adr/0183](./docs/adr/0183-tagged-pdf-and-pdf-a.md)）。
 `visual` と同じく `changes` だけを待って `build` と同時に始まり、Nix の導入と veraPDF の取得を終えてから、`conformance-pdfs` が上がるのを `scripts/visual/wait-pdfs.sh` で待つ（上限は 60 分、ジョブは 75 分。`outputs` が上げずに終わると失敗する）。
+待ち終えたら、`visual` と同じく `scripts/ci/download-artifact.sh` で取り寄せる（トークンに `actions: read` を持つ）。
 `build` の全体を待たないので、CI の臨界経路にない（[docs/adr/0244](./docs/adr/0244-take-verapdf-off-the-critical-path-of-ci.md)）。
 
 ##### `caches`
@@ -1164,7 +1193,7 @@ step を一つも走らせずに取り消されたジョブは、ジョブの一
 リリースノートを書く AI の API キーは、リポジトリの秘密情報 `ANTHROPIC_API_KEY` に置く。
 
 - `ci`：`ci.yml` を再利用可能なワークフローとして呼ぶ。
-  呼び出したワークフローは呼ぶジョブの権限までしか持てないので、`ci.yml` のジョブが求める権限（`visual` の `actions: read` と、`main` への push でだけ走る `caches` の `actions: write`）を与える。
+  呼び出したワークフローは呼ぶジョブの権限までしか持てないので、`ci.yml` のジョブが求める権限（`visual`、`wasm`、`editors-lsp`、`verapdf` の `actions: read` と、`main` への push でだけ走る `caches` の `actions: write`）を与える。
   `actions: write` を受け取るのは `caches` だけで、タグの push では `caches` は走らない。
   ほかのジョブが `actions: write` を求めないことと、ジョブが求めない権限を与えないことは、`scripts/ci/test.sh` が確かめる（[ADR 0287](./docs/adr/0287-keep-actions-write-of-the-ci-call-in-release-yml-for-the-caches-job-alone.md)）。
 - `version`：`scripts/release/check-version.sh` で `VERSION` とタグを検査し、タグのコミットが `main` に含まれることを確かめる。

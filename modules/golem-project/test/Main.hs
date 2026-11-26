@@ -19,12 +19,14 @@ import Data.Text.IO qualified as TIO
 import FeaturesSpec qualified
 import FilesSpec qualified
 import FontLicensesSpec qualified
+import FramesSpec qualified
 import FunctionsSpec qualified
 import GenericFontsSpec qualified
 import Golem.Assemble (NoteNumbering (..))
 import Golem.Assemble.Formats (MarkFormat (..), arabic, asterisksNotation, circledNotation, kanjiNotation, lowerAlphaNotation, notationName, noteSymbolsNotation)
 import Golem.Assemble.ListMarkers (ListNumberStyle (..), NumberFormat (..))
 import Golem.Length qualified as L
+import Golem.Parser (parseAst)
 import Golem.Parser.SourceSettings
 import Golem.Project hiding (loadProject)
 import Golem.Project qualified as P
@@ -161,8 +163,8 @@ sourceTests =
       testCase "a chapter entry overrides [source]; imported files take [source]"
         $ withProject
           [ ("manifest.toml", manifestWith ["\"a.gm\"", "{ file = \"b.gm\", paragraph-separator = \"blank-line\" }"] "[source]\nparagraph-separator = \"line\"\n"),
-            ("a.gm", "@import c.gm as c\n"),
-            ("b.gm", "@import c.gm as c\n"),
+            ("a.gm", "@import c.gm * as c\n"),
+            ("b.gm", "@import c.gm * as c\n"),
             ("c.gm", "@set x = 1\n")
           ]
         $ \root -> do
@@ -440,6 +442,27 @@ pdfConformanceTests =
     parse extra = parseManifest (FileId 0) (manifestWith ["\"a.gm\""] ("[targets.pdf]\n" <> extra))
     conformance t = (tgPdfA t, tgPdfUa t)
 
+-- | [targets.pdf-screen] (root ADR 0431).
+pdfScreenTableTests :: TestTree
+pdfScreenTableTests =
+  testGroup
+    "[targets.pdf-screen] (root ADR 0431)"
+    [ testCase "root ADR 0431 I8: a manifest with [targets.pdf-screen] alone is not G03001" $
+        fmap (tgPdfScreen . manifestTargets) (alone "") @?= Right (Just Nothing),
+      testCase "root ADR 0431 I8: pdfua = \"1\" is read" $
+        fmap (tgPdfScreen . manifestTargets) (alone "pdfua = \"1\"\n") @?= Right (Just (Just PdfUa1)),
+      testCase "root ADR 0431 I8: a key other than pdfua, and a pdfua other than \"1\", are G03001" $
+        mapM_
+          (\v -> (v, codes (alone v)) @?= (v, ["G03001"]))
+          ["pdfa = \"2a\"\n", "pdfua = \"2\"\n", "pdfua = 1\n", "isbn = \"978-4-00-000000-0\"\n", "intent = \"x.icc\"\n"],
+      testCase "root ADR 0431 I8: without [targets.pdf-screen] the PDF for the screen is not configured" $
+        fmap (tgPdfScreen . manifestTargets) (parseManifest (FileId 0) (manifest ["\"a.gm\""])) @?= Right Nothing,
+      testCase "root ADR 0431 I8: pdfua of [targets.pdf-screen] is completed with \"1\"" $
+        manifestChoiceValues ["targets", "pdf-screen", "pdfua"] False @?= ["1"]
+    ]
+  where
+    alone extra = parseManifest (FileId 0) (T.replace "[targets.html]" ("[targets.pdf-screen]\n" <> extra) (manifest ["\"a.gm\""]))
+
 -- | A plugin in the project, declared with path (docs/adr/0109).
 pluginPathTests :: TestTree
 pluginPathTests =
@@ -694,25 +717,25 @@ diagnosticCodeTests =
           codes r @?= ["G03016"]
           msgs r @?= ["manifest.toml がありません"],
       testCase "a missing import is G03002 at the @import" $
-        withProject [("manifest.toml", manifest ["\"a.gm\""]), ("a.gm", "@import c.gm as c\n@import nope.gm as x\n"), ("c.gm", "")] $ \root -> do
+        withProject [("manifest.toml", manifest ["\"a.gm\""]), ("a.gm", "@import c.gm * as c\n@import nope.gm * as x\n"), ("c.gm", "")] $ \root -> do
           r <- loadProject root
           codes r @?= ["G03002"]
           msgs r @?= ["ファイルがありません: nope.gm"]
-          either (map (\d -> (spanFile (diagSpan d), spanStart (diagSpan d)))) (const []) r @?= [(FileId 1, 18)],
+          either (map (\d -> (spanFile (diagSpan d), spanStart (diagSpan d)))) (const []) r @?= [(FileId 1, 20)],
       testCase "absolute paths and links out of the root are G03003" $ do
-        withProject [("manifest.toml", manifest ["\"a.gm\""]), ("a.gm", "@import /abs.gm as x\n")] $ \root -> do
+        withProject [("manifest.toml", manifest ["\"a.gm\""]), ("a.gm", "@import /abs.gm * as x\n")] $ \root -> do
           r <- loadProject root
           codes r @?= ["G03003"]
           msgs r @?= ["絶対パスは使えません: /abs.gm"]
         withSystemTempDirectory "golem-outside" $ \outside -> do
           TIO.writeFile (outside </> "x.gm") ""
-          withProject [("manifest.toml", manifest ["\"a.gm\""]), ("a.gm", "@import x.gm as x\n")] $ \root -> do
+          withProject [("manifest.toml", manifest ["\"a.gm\""]), ("a.gm", "@import x.gm * as x\n")] $ \root -> do
             createFileLink (outside </> "x.gm") (root </> "x.gm")
             r <- loadProject root
             codes r @?= ["G03003"]
             msgs r @?= ["プロジェクトルートの外を指しています: x.gm"],
       testCase "a cycle of three files" $
-        withProject [("manifest.toml", manifest ["\"a.gm\""]), ("a.gm", "@import b.gm as b\n"), ("b.gm", "@import c.gm as c\n"), ("c.gm", "@import a.gm as a\n")] $ \root -> do
+        withProject [("manifest.toml", manifest ["\"a.gm\""]), ("a.gm", "@import b.gm * as b\n"), ("b.gm", "@import c.gm * as c\n"), ("c.gm", "@import a.gm * as a\n")] $ \root -> do
           r <- loadProject root
           codes r @?= ["G03005"]
           msgs r @?= ["import が循環しています: a.gm → b.gm → c.gm → a.gm"]
@@ -738,19 +761,76 @@ diagnosticCodeTests =
           r <- loadProject root
           codes r @?= ["G03001"]
           msgs r @?= ["章は、ファイルのパス、表、配列のどれかで書きます (chapters[0])"],
-      testCase "a malformed @import is G03009" $
+      testCase "root ADR 0451 I6: a malformed @import is G03009" $
         mapM_
           ( \src -> withProject [("manifest.toml", manifest ["\"a.gm\""]), ("a.gm", src), ("x.gm", "")] $ \root -> do
               r <- loadProject root
               assertEqual (T.unpack src) ["G03009"] (codes r)
-              assertEqual (T.unpack src) ["@import は「@import パス as 名前空間」の形で書きます"] (msgs r)
+              assertEqual (T.unpack src) ["@import は「@import パス * as 名前空間」か「@import パス { 名前, 名前 as 別名, … }」の形で書きます"] (msgs r)
           )
           [ "@import x.gm\n",
             "@import x.gm as\n",
-            "@import [= 1] as x\n",
+            "@import [= 1] * as x\n",
             "@import x.gm as x extra\n",
-            "@import x.gm\n@label a\n# 見出し\n"
+            "@import x.gm * as x extra\n",
+            "@import x.gm\n@label a\n# 見出し\n",
+            "@import x.gm { }\n",
+            "@import x.gm {}\n",
+            "@import x.gm { a, }\n",
+            "@import x.gm { , a }\n",
+            "@import x.gm { a,, b }\n",
+            "@import x.gm * { a }\n",
+            "@import x.gm { a } as ns\n",
+            "@import x.gm *\n",
+            "@import x.gm { a b }\n",
+            "@import x.gm { a\n",
+            "@import x.gm a }\n",
+            "@import x.gm { a } }\n",
+            "@import x.gm { \"a\" }\n"
           ],
+      testCase "root ADR 0451 I5: the form without * is G03295, with the form to write" $
+        mapM_
+          ( \(src, shown) -> withProject [("manifest.toml", manifest ["\"a.gm\""]), ("a.gm", src), ("x.gm", "")] $ \root -> do
+              r <- loadProject root
+              assertEqual (T.unpack src) ["G03295"] (codes r)
+              assertEqual (T.unpack src) ["「@import パス as 名前空間」の形は使えません。「@import " <> shown <> " * as x」と書きます"] (msgs r)
+          )
+          [("@import x.gm as x\n", "x.gm"), ("@import \"x.gm\" as x\n", "\"x.gm\"")],
+      testCase "root ADR 0451 I6: the two forms are read, with the places of the names" $ do
+        let sitesOf src = let (f, _, _) = parseAst (FileId 1) src in [fmap (\s -> (isPath s, isForm s)) e | e <- importsOf f]
+            at = mkSpan (FileId 1)
+        sitesOf "@import x.gm * as v\n" @?= [Right ("x.gm", ImportAll "v" (at 18 19))]
+        sitesOf "@import x.gm { a }\n" @?= [Right ("x.gm", ImportNames [listedName "a" (at 15 16)])]
+        sitesOf "@import x.gm { a, bc }\n" @?= [Right ("x.gm", ImportNames [listedName "a" (at 15 16), listedName "bc" (at 18 20)])]
+        sitesOf "@import x.gm {a,bc}\n" @?= [Right ("x.gm", ImportNames [listedName "a" (at 14 15), listedName "bc" (at 16 18)])]
+        sitesOf "@import x.gm {a ,bc }\n" @?= [Right ("x.gm", ImportNames [listedName "a" (at 14 15), listedName "bc" (at 17 19)])]
+        sitesOf "@import \"x.gm\" { 値 }\n" @?= [Right ("x.gm", ImportNames [listedName "値" (at 17 20)])],
+      testCase "root ADR 0458 I4: an item is an original name and an alias, read by place" $ do
+        let itemsOf src = let (f, _, _) = parseAst (FileId 1) src in [fmap (map (\l -> (lnName l, lnAlias l)) . namesOf) e | e <- importsOf f]
+            namesOf s = case isForm s of
+              ImportNames ns -> ns
+              ImportAll _ _ -> []
+            at = mkSpan (FileId 1)
+        itemsOf "@import x.gm { as }\n" @?= [Right [("as", "as")]]
+        itemsOf "@import x.gm { as as b }\n" @?= [Right [("as", "b")]]
+        itemsOf "@import x.gm { a as as }\n" @?= [Right [("a", "as")]]
+        itemsOf "@import x.gm { a, as }\n" @?= [Right [("a", "a"), ("as", "as")]]
+        itemsOf "@import x.gm { a as b, c }\n" @?= [Right [("a", "b"), ("c", "c")]]
+        itemsOf "@import x.gm {a as b,c as d}\n" @?= [Right [("a", "b"), ("c", "d")]]
+        itemsOf "@import x.gm { fooasbar }\n" @?= [Right [("fooasbar", "fooasbar")]]
+        itemsOf "@import x.gm { total as total }\n" @?= [Right [("total", "total")]]
+        let (f, _, _) = parseAst (FileId 1) "@import x.gm { ab as cd, e }\n"
+        [isForm s | Right s <- importsOf f] @?= [ImportNames [ListedName "ab" (at 15 17) "cd" (at 21 23), listedName "e" (at 25 26)]],
+      testCase "root ADR 0458 I4: a list that breaks the reading by place is G03009" $
+        mapM_
+          ( \src -> withProject [("manifest.toml", manifest ["\"a.gm\""]), ("a.gm", src), ("x.gm", "")] $ \root -> do
+              r <- loadProject root
+              assertEqual (T.unpack src) ["G03009"] (codes r)
+          )
+          ["@import x.gm { a as }\n", "@import x.gm { a as b as c }\n", "@import x.gm { a b }\n", "@import x.gm { as as }\n", "@import x.gm { a as b c }\n", "@import x.gm { as b }\n", "@import x.gm { a as, b }\n"],
+      testCase "root ADR 0451 I6: both forms load in a project" $
+        withProject [("manifest.toml", manifest ["\"a.gm\""]), ("a.gm", "@import x.gm * as x\n@import x.gm { y }\n"), ("x.gm", "@set y = 1\n")] $ \root ->
+          loadProject root >>= (@?= []) . codes,
       testCase "a TOML syntax error in style.toml is G03006" $ do
         let r = parseStyle (FileId 0) "[page\n"
         codes r @?= ["G03006"]
@@ -807,6 +887,12 @@ tests =
         normalizeRelative "../x.gm" @?= Left EscapesRoot
         normalizeRelative "/etc/passwd" @?= Left Absolute
         normalizeRelative "https://example.com/a.gm" @?= Left Url,
+      testCase "root ADR 0439 I7: a path of the scheme data: is a URL, in any case" $ do
+        normalizeRelative "data:image/svg+xml,<svg></svg>" @?= Left Url
+        normalizeRelative "DATA:image/png,x" @?= Left Url
+        normalizeRelative "data" @?= Right "data"
+        normalizeRelative "data/a.svg" @?= Right "data/a.svg"
+        normalizeRelative "images/data:a.svg" @?= Right "images/data:a.svg",
       testCase "F4: normalizeRelative makes the empty path the empty path (docs/adr/0225)" $ do
         normalizeRelative "" @?= Right ""
         normalizeRelative "." @?= Right ""
@@ -814,10 +900,10 @@ tests =
       testCase "loads chapters and imports in a deterministic order"
         $ withProject
           [ ("manifest.toml", manifest ["\"ch/01.gm\"", "[\"ch/02.gm\", { file = \"ch/03.gm\", master = \"body\" }]"]),
-            ("ch/01.gm", "@import common/v.gm as v\n\n本文。\n"),
-            ("ch/02.gm", "@import common/v.gm as v\n@import common/w.gm as w\n"),
+            ("ch/01.gm", "@import common/v.gm * as v\n\n本文。\n"),
+            ("ch/02.gm", "@import common/v.gm * as v\n@import common/w.gm * as w\n"),
             ("ch/03.gm", "三。\n"),
-            ("common/v.gm", "@import common/w.gm as w\n@set x = 1\n"),
+            ("common/v.gm", "@import common/w.gm * as w\n@set x = 1\n"),
             ("common/w.gm", "@set y = 2\n")
           ]
         $ \root -> do
@@ -835,8 +921,8 @@ tests =
       testCase "import cycles are reported with their path"
         $ withProject
           [ ("manifest.toml", manifest ["\"a.gm\""]),
-            ("a.gm", "@import b.gm as b\n"),
-            ("b.gm", "@import a.gm as a\n")
+            ("a.gm", "@import b.gm * as b\n"),
+            ("b.gm", "@import a.gm * as a\n")
           ]
         $ \root -> do
           r <- loadProject root
@@ -845,17 +931,17 @@ tests =
             Left [d] -> length (diagRelated d) @?= 2
             _ -> pure (),
       testCase "self import is a cycle" $
-        withProject [("manifest.toml", manifest ["\"a.gm\""]), ("a.gm", "@import a.gm as a\n")] $ \root ->
+        withProject [("manifest.toml", manifest ["\"a.gm\""]), ("a.gm", "@import a.gm * as a\n")] $ \root ->
           loadProject root >>= (@?= ["G03005"]) . codes,
       testCase "missing files, escaping paths, URLs" $ do
         withProject [("manifest.toml", manifest ["\"nope.gm\""])] $ \root -> loadProject root >>= (@?= ["G03002"]) . codes
-        withProject [("manifest.toml", manifest ["\"a.gm\""]), ("a.gm", "@import ../x.gm as x\n")] $ \root -> loadProject root >>= (@?= ["G03003"]) . codes
-        withProject [("manifest.toml", manifest ["\"a.gm\""]), ("a.gm", "@import \"https://e.com/x.gm\" as x\n")] $ \root -> loadProject root >>= (@?= ["G03003"]) . codes,
+        withProject [("manifest.toml", manifest ["\"a.gm\""]), ("a.gm", "@import ../x.gm * as x\n")] $ \root -> loadProject root >>= (@?= ["G03003"]) . codes
+        withProject [("manifest.toml", manifest ["\"a.gm\""]), ("a.gm", "@import \"https://e.com/x.gm\" * as x\n")] $ \root -> loadProject root >>= (@?= ["G03003"]) . codes,
       testCase "case-only differences are errors"
         $ withProject
           [ ("manifest.toml", manifest ["\"a.gm\"", "\"b.gm\""]),
-            ("a.gm", "@import Common.gm as c\n"),
-            ("b.gm", "@import common.gm as c\n"),
+            ("a.gm", "@import Common.gm * as c\n"),
+            ("b.gm", "@import common.gm * as c\n"),
             ("Common.gm", "@set x = 1\n"),
             ("common.gm", "@set x = 1\n")
           ]
@@ -867,8 +953,8 @@ tests =
       testCase "symbolic links are resolved to the same file"
         $ withProject
           [ ("manifest.toml", manifest ["\"a.gm\"", "\"b.gm\""]),
-            ("a.gm", "@import real.gm as r\n"),
-            ("b.gm", "@import link.gm as r\n"),
+            ("a.gm", "@import real.gm * as r\n"),
+            ("b.gm", "@import link.gm * as r\n"),
             ("real.gm", "@set x = 1\n")
           ]
         $ \root -> do
@@ -887,6 +973,7 @@ tests =
       TomlMessageSpec.tests,
       ColophonSpec.tests,
       PathDataSpec.pathDataTests,
+      FramesSpec.tests,
       FeaturesSpec.tests,
       GenericFontsSpec.tests,
       FontLicensesSpec.tests,
@@ -1312,6 +1399,7 @@ tests =
       pluginDataTests,
       pluginPathTests,
       pdfConformanceTests,
+      pdfScreenTableTests,
       pageNumberingTests,
       indexStyleTests,
       hiddenFolioTests,
@@ -1347,7 +1435,7 @@ findCycleTests =
         order [(1, [2]), (2, [1]), (3, [])] @?= [3, 1, 2]
     ]
   where
-    site t = ImportSite (T.pack (show t)) "x" (mkSpan (FileId 0) 0 0)
+    site t = ImportSite (T.pack (show t)) (ImportAll "x" (mkSpan (FileId 0) 0 0)) (mkSpan (FileId 0) 0 0)
     graph es = ImportGraph (Map.fromList [(FileId f, [(FileId t, site t) | t <- ts]) | (f, ts) <- es])
     order :: [(Int, [Int])] -> [Int]
     order = map (\(FileId f) -> f) . topoOrder . graph

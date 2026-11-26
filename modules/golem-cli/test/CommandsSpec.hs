@@ -259,7 +259,7 @@ headingLimitTests =
     two file = [expected file 23 29 5, expected file 46 49 9]
     one file = [expected file 23 29 5]
     firstHeading = T.unlines (take 5 (T.lines headingLimitSource))
-    importing = "@import shared.gm as common\n"
+    importing = "@import shared.gm * as common\n"
     scenarios =
       [ ("identical files", "[\"a.gm\", \"b.gm\"]", [("a.gm", firstHeading), ("b.gm", firstHeading)], one "a.gm" <> one "b.gm"),
         ("single", "[\"a.gm\"]", [("a.gm", headingLimitSource)], two "a.gm"),

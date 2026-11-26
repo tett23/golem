@@ -113,6 +113,11 @@ module Golem.Project.Style
     effectiveHiddenFolio,
     HiddenFolioPages (..),
     MasterDef (..),
+    FrameDef (..),
+    FrameXFrom (..),
+    FrameWrap (..),
+    FrameShape (..),
+    frameShape,
     RunningHeadDef (..),
     RunningContent (..),
     RunningRef (..),
@@ -173,6 +178,7 @@ import Golem.Length (Sp (..))
 import Golem.Length qualified as L
 import Golem.Project.Feature
 import Golem.Project.Manifest (codedMessage, decodeStrictBy, decodeStrictTableWith, decodeStrictWith, failAtCode, maxNaturalInt, naturalIntOf, naturalOf, positionSpan, readTomlTable)
+import Golem.Project.PathData (Path (..), SubPath (..), pathUnit, readStylePath)
 import Golem.Project.Paths (normalizeRelative)
 import Golem.Project.Position qualified as P
 import Golem.Project.TomlMessage (schemaMessage)
@@ -1454,9 +1460,56 @@ data RunningHeadDef = RunningHeadDef
 data MasterDef = MasterDef
   { mdRunningHead :: !(Maybe RunningHeadDef),
     mdFolio :: !(Maybe (Text, Text)), -- position, format
-    mdFolioCharacterStyle :: !(Maybe Text)
+    mdFolioCharacterStyle :: !(Maybe Text),
+    -- | the text frames the master page puts on its pages, in the order written (root ADR 0438)
+    mdFrames :: ![Text]
   }
   deriving stock (Eq, Show)
+
+{- | Where the x of a text frame is measured from (root ADR 0438): the left
+edge of the trimmed page, the edge at the spine (towards the fore-edge)
+or the fore-edge (towards the spine). The last two mirror the frame on
+the left and right pages.
+-}
+data FrameXFrom = FromLeft | FromInside | FromOutside
+  deriving stock (Eq, Show)
+
+-- | How the body goes with a text frame (root ADR 0438): over it, or shortened around its bounding rectangle.
+data FrameWrap = FrameWrapNone | FrameWrapAround
+  deriving stock (Eq, Show)
+
+{- | A text frame of @[frames.<name>]@ (root ADR 0438): its rectangle (x, y,
+width and height) or its path, as written; the origin is the top of the
+trimmed page, y going down. The checks of the style make sure a frame
+has exactly one of the two ('frameShape').
+-}
+data FrameDef = FrameDef
+  { frX :: !(Maybe Dim),
+    frY :: !(Maybe Dim),
+    frWidth :: !(Maybe Dim),
+    frHeight :: !(Maybe Dim),
+    -- | the path in sp, its y going down from the top of the trimmed page
+    frPath :: !(Maybe Path),
+    frXFrom :: !FrameXFrom,
+    frParagraphStyle :: !(Maybe Text),
+    -- | horizontal or vertical; Nothing is that of [page]
+    frWritingMode :: !(Maybe Text),
+    frWrap :: !FrameWrap,
+    -- | the text of a frame a master page puts (no expression)
+    frText :: !(Maybe Text)
+  }
+  deriving stock (Eq, Show)
+
+-- | The shape of a text frame: its rectangle (x, y, width, height) or its path.
+data FrameShape = FrameRect !Dim !Dim !Dim !Dim | FramePath !Path
+  deriving stock (Eq, Show)
+
+-- | The shape of a frame that has exactly one: all four keys of the rectangle, or a path.
+frameShape :: FrameDef -> Maybe FrameShape
+frameShape f = case (frX f, frY f, frWidth f, frHeight f, frPath f) of
+  (Just x, Just y, Just w, Just h, Nothing) -> Just (FrameRect x y w h)
+  (Nothing, Nothing, Nothing, Nothing, Just p) -> Just (FramePath p)
+  _ -> Nothing
 
 {- | [lists] (golem-driver ADR 0013): the bullet and the number format of
 each depth, and the gap between a marker and the text. Without bullets,
@@ -1899,6 +1952,8 @@ data Style = Style
     stIntent :: !(Maybe FilePath),
     stSwatches :: !(Map Text Swatch),
     stMasters :: !(Map Text MasterDef),
+    -- | the text frames by their names (root ADR 0438)
+    stFrames :: !(Map Text FrameDef),
     -- | [toc] leader: "dots" or "none" (golem-driver ADR 0009)
     stTocLeader :: !Text,
     -- | [printings] format: the format of a line of @printings, Nothing for the default (docs/adr ADR 0375)
@@ -1955,6 +2010,7 @@ defaultStyle =
       stIntent = Nothing,
       stSwatches = Map.empty,
       stMasters = Map.empty,
+      stFrames = Map.empty,
       stTocLeader = "dots",
       stPrintingsFormat = Nothing,
       stLists = defaultListStyle,
@@ -2665,9 +2721,50 @@ instance FromValue MasterDef where
   fromValue = parseTableFromValue $ do
     rh <- optKey "running-head"
     fo <- optKey "folio"
+    frames <- fromMaybe [] <$> optKey "frames"
     let pc (PosContent a b _) = (a, b)
         cs (PosContent _ _ n) = n
-    pure (MasterDef rh (pc <$> fo) (fo >>= cs))
+    pure (MasterDef rh (pc <$> fo) (fo >>= cs) frames)
+
+{- | A text frame (root ADR 0438). A width or a height of 0 is wrong at its
+value; the path is read in its unit. Which keys of the shape are written
+is checked with the style ('frameShapeChecks').
+-}
+instance FromValue FrameDef where
+  fromValue = parseTableFromValue $ do
+    x <- fmap (\(DimV d) -> d) <$> optKey "x"
+    y <- fmap (\(DimV d) -> d) <$> optKey "y"
+    w <- optKeyOf "width" positive
+    h <- optKeyOf "height" positive
+    unitText <- optKeyOf "unit" $ \case
+      Text' l t -> either (\_ -> failAt l ("パスの unit は mm、pt、Q のどれかです: " <> T.unpack t)) pure (pathUnit (Just t))
+      v -> failAt (valueAnn v) "パスの unit は文字列で書きます"
+    let unit = fromMaybe L.Mm unitText
+    path <- optKeyOf "path" $ \case
+      Text' l t -> either (\e -> failAt l ("パスのデータが読めません: " <> show e)) pure (readStylePath unit t)
+      v -> failAt (valueAnn v) "パスは文字列で書きます"
+    xFrom <- optKeyOf "x-from" $ \case
+      Text' _ "left" -> pure FromLeft
+      Text' _ "inside" -> pure FromInside
+      Text' _ "outside" -> pure FromOutside
+      v -> failAt (valueAnn v) "x-from は left、inside、outside のどれかです"
+    para <- optKey "paragraph-style"
+    wm <- optKeyOf "writing-mode" $ \case
+      Text' _ t | t `elem` ["horizontal", "vertical"] -> pure t
+      v -> failAt (valueAnn v) "writing-mode は horizontal か vertical です"
+    wrap <- optKeyOf "wrap" $ \case
+      Text' _ "none" -> pure FrameWrapNone
+      Text' _ "around" -> pure FrameWrapAround
+      v -> failAt (valueAnn v) "wrap は none か around です"
+    text <- optKey "text"
+    pure (FrameDef x y w h path (fromMaybe FromLeft xFrom) para wm (fromMaybe FrameWrapNone wrap) text)
+    where
+      positive v = do
+        DimV d <- fromValue v
+        case d of
+          Abs n | n <= 0 -> failAt (valueAnn v) "フレームの幅と高さは 0 より大きい長さです"
+          Zw r | r <= 0 -> failAt (valueAnn v) "フレームの幅と高さは 0 より大きい長さです"
+          _ -> pure d
 
 instance FromValue Swatch where
   fromValue = parseTableFromValue $ do
@@ -3040,6 +3137,8 @@ instance FromValue Style where
     TablesSec tnum tcap <- fromMaybe (TablesSec Nothing Nothing) <$> optKey "tables"
     ColorSec intent swatches <- fromMaybe (ColorSec Nothing Map.empty) <$> optKey "color"
     masters <- fromMaybe Map.empty <$> optKey "masters"
+    -- the text frames (root ADR 0438)
+    frames <- fromMaybe Map.empty <$> optKey "frames"
     (_ :: Maybe VerseV) <- optKey "verse"
     TocSec leader <- fromMaybe (TocSec Nothing) <$> optKey "toc"
     printingFormat <- optKeyOf "printings" (parseTableFromValue (optKeyOf "format" (withValue printingTemplate)))
@@ -3096,6 +3195,7 @@ instance FromValue Style where
           stIntent = T.unpack <$> intent,
           stSwatches = swatches,
           stMasters = masters,
+          stFrames = frames,
           stTocLeader = fromMaybe (stTocLeader d) leader,
           stPrintingsFormat = fromMaybe Nothing printingFormat,
           stLists = lists,
@@ -3446,6 +3546,7 @@ styleChecks owner s =
     <> paragraphDimensionChecks s
     <> ruleStyleChecks s
     <> singlePageChecks s
+    <> frameChecks s
     <> [("G03029", "", path, m) | (path, m, _) <- hiddenFolioChecks (effectiveHiddenFolio s)]
     <> fontRoleChecks s
     <> styleReferenceChecks owner s
@@ -3554,7 +3655,7 @@ numberFormatChecks s =
 -- | G03006: the names of the character and paragraph styles.
 styleNameChecks :: Style -> [(Text, Text, [Scope], Text)]
 styleNameChecks s =
-  [("G03006", n, styleKeys [kind, n], "スタイルの名前は英小文字で始まり、英小文字、数字、- だけからなります: " <> n) | (kind, n) <- map ("character-styles",) (Map.keys (stCharStyles s)) <> map ("paragraph-styles",) (Map.keys (stParaStyles s)) <> map ("separators",) (Map.keys (stSeparators s)), not (validStyleName n)]
+  [("G03006", n, styleKeys [kind, n], "スタイルの名前は英小文字で始まり、英小文字、数字、- だけからなります: " <> n) | (kind, n) <- map ("character-styles",) (Map.keys (stCharStyles s)) <> map ("paragraph-styles",) (Map.keys (stParaStyles s)) <> map ("separators",) (Map.keys (stSeparators s)) <> map ("frames",) (Map.keys (stFrames s)), not (validStyleName n)]
 
 separatorChecks :: Style -> [(Text, Text, [Scope], Text)]
 separatorChecks s =
@@ -3827,6 +3928,8 @@ styleReferenceChecks owner s =
             <> [("", styleKeys ["lists", "marker-style"], "[lists] の marker-style の文字スタイルがありません: " <> n) | Just n <- [lsMarkerStyle (stLists s)], Map.notMember n cs]
             <> [("", styleKeys ["sidenotes", "marker-style"], "[sidenotes] の marker-style の文字スタイルがありません: " <> n) | Just n <- [stSidenotes s >>= snMarkerStyle], Map.notMember n cs]
             <> [("", styleKeys ["composition", "ruby", "reading-style"], "[composition.ruby] の reading-style の文字スタイルがありません: " <> n) | Just n <- [rdReadingStyle (compRuby (stComposition s))], Map.notMember n cs]
+            -- the paragraph style of a text frame (root ADR 0438)
+            <> [("", styleKeys ["frames", n, "paragraph-style"], "フレーム " <> n <> " の段落スタイルがありません: " <> p) | (n, FrameDef {frParagraphStyle = Just p}) <- Map.toList (stFrames s), Map.notMember p ps]
             <> [("", styleKeys ["masters", master, part, "character-style"], "マスター " <> master <> " の " <> part <> " の文字スタイルがありません: " <> name) | (master, def) <- Map.toList (stMasters s), (part, Just name) <- [("running-head", mdRunningHead def >>= rhCharacterStyle), ("folio", mdFolioCharacterStyle def)], Map.notMember name cs]
             <> [ (n, charKey n "based-on", "文字スタイル " <> n <> " の based-on がありません: " <> b)
                | (n, CharStyleDef {csBasedOn = Just b}) <- Map.toList cs,
@@ -3958,6 +4061,34 @@ spineAlignChecks s =
   ]
 
 -- | Constraints independent of the body or whether a master is used.
+
+{- | The checks of the text frames (root ADR 0438), each cause its own
+code: both or neither of the rectangle and the path (G03285), only some
+of the keys of the rectangle (G03286), a path with a subpath that is not
+closed (G03287), and a name in the frames of a master page that
+[frames] does not have (G03289). x-from inside and outside of the
+single-page mode (G03288) is in 'singlePageChecks'.
+-}
+frameChecks :: Style -> [(Text, Text, [Scope], Text)]
+frameChecks s =
+  concat
+    [ let rect = [k | (k, Just _) <- [("x", frX f), ("y", frY f), ("width", frWidth f), ("height", frHeight f)]]
+       in case (frPath f, rect) of
+            (Just _, _ : _) -> [("G03285", "", styleKeys ["frames", n, "path"], "フレーム " <> n <> " は矩形のキー（x、y、width、height）と path の両方を持っています。どちらか一方を書きます")]
+            (Nothing, []) -> [("G03285", "", styleKeys ["frames", n], "フレーム " <> n <> " は矩形のキー（x、y、width、height）も path も持っていません。どちらか一方を書きます")]
+            (Nothing, ks)
+              | length ks < 4 -> [("G03286", "", styleKeys ["frames", n], "フレーム " <> n <> " の矩形のキーが足りません: " <> T.intercalate "、" [k | k <- ["x", "y", "width", "height"], k `notElem` ks])]
+            (Just p, [])
+              | not (all subClosed (pathSubPaths p)) -> [("G03287", "", styleKeys ["frames", n, "path"], "フレーム " <> n <> " の path に閉じていない部分パスがあります。部分パスを Z で閉じます")]
+            _ -> []
+    | (n, f) <- Map.toList (stFrames s)
+    ]
+    <> [ ("G03289", "", styleKeys ["masters", m, "frames"], "マスター " <> m <> " の frames に、[frames] にないフレームの名前があります: " <> n)
+       | (m, md) <- Map.toList (stMasters s),
+         n <- mdFrames md,
+         Map.notMember n (stFrames s)
+       ]
+
 singlePageChecks :: Style -> [(Text, Text, [Scope], Text)]
 singlePageChecks s
   | not (singlePage s) = []
@@ -3968,6 +4099,11 @@ singlePageChecks s
            | (name, md) <- Map.toList (stMasters s),
              (kind, Just pos) <- [("running-head", rhPosition <$> mdRunningHead md), ("folio", fst <$> mdFolio md)],
              any (`T.isSuffixOf` pos) ["-inside", "-outside"]
+           ]
+        -- the x of a text frame from the spine or the fore-edge (root ADR 0438)
+        <> [ ("G03288", "", styleKeys ["frames", n, "x-from"], "左右固定モードではフレームの x-from に inside と outside を使えません。left を使います（frames." <> n <> ".x-from）")
+           | (n, f) <- Map.toList (stFrames s),
+             frXFrom f `elem` [FromInside, FromOutside]
            ]
 
 -- ------------------------------------------------------------------ styles in a file
@@ -4298,6 +4434,8 @@ styleSchema =
       ("tables", NTable [("number", str), ("caption-position", enum captionPositionValues)]),
       ("color", NTable [("intent", str), ("swatches", NNamed (Just Swatches) (NTable [("cmyk", NArray int)]))]),
       ("masters", NNamed (Just Masters) masterNode),
+      -- the text frames (root ADR 0438)
+      ("frames", NNamed (Just Frames) frameNode),
       ("verse", NRejected),
       ("printings", NTable [("format", str)]),
       ("toc", NTable [("leader", enum leaderValues)]),
@@ -4391,7 +4529,23 @@ styleSchema =
         [ ( "running-head",
             NTable [("position", enum masterPositions), ("content", runningContent), ("even", runningContent), ("odd", runningContent), ("character-style", ref CharStyles)]
           ),
-          ("folio", NTable [("position", enum masterPositions), ("content", str), ("format", str), ("character-style", ref CharStyles)])
+          ("folio", NTable [("position", enum masterPositions), ("content", str), ("format", str), ("character-style", ref CharStyles)]),
+          ("frames", NArray (ref Frames))
+        ]
+    -- a text frame (root ADR 0438)
+    frameNode =
+      NTable
+        [ ("x", dim),
+          ("y", dim),
+          ("width", dim),
+          ("height", dim),
+          ("unit", enum ["mm", "pt", "Q"]),
+          ("path", str),
+          ("x-from", enum ["left", "inside", "outside"]),
+          ("paragraph-style", ref ParaStyles),
+          ("writing-mode", enum writingModeValues),
+          ("wrap", enum ["none", "around"]),
+          ("text", str)
         ]
     runningContent = NEither [str, NArray str]
     akiSetNode =

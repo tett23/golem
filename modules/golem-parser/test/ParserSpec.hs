@@ -71,6 +71,8 @@ fragments =
     "```",
     "@set x = 1",
     "@label a",
+    ":::",
+    "@label a\n:::\n本文\n\n# 見出し\n:::",
     "%%",
     "%%=",
     "\\[",
@@ -103,7 +105,7 @@ tests =
         parseOk "Golem は[ruby: 組/版|くみ/はん]の結果を出力する[note: 決定性。]。\n本書は第[= version]版である。\n%% 図 %%\n",
       testCase "headings" $ parseOk "# はじめに\n\n## 節\n\n### 項\n",
       testCase "attributes and block commands" $
-        parseOk "@import common/values.gm as values\n@set version = \"1.0\"\n\n@label intro\n@nonumber\n# はじめに\n\n本文。\n",
+        parseOk "@import common/values.gm * as values\n@set version = \"1.0\"\n\n@label intro\n@nonumber\n# はじめに\n\n本文。\n",
       testCase "lists" $ parseOk "- 印刷用の PDF\n- 電子書籍\n  - EPUB\n  - HTML\n\n+ 一\n+ 二\n",
       testCase "definition lists" $
         parseOk "= 決定性\n  同じ入力から同じ出力を得る性質。\n\n= HTTP\n= HyperText Transfer Protocol\n  共有する。\n\n= モナド\n  圏論。\n=:\n  プログラミング。\n",

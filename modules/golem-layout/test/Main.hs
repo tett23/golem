@@ -3,6 +3,7 @@ module Main (main) where
 import AdjustOrderSpec (adjustOrderTests)
 import AkiTableSpec (akiTableTests)
 import AlignSpec (alignTests)
+import AvoidSpec (avoidTests)
 import BookPartsEnum (bookPartsEnumTests)
 import BookPartsSpec qualified
 import BoxModelSpec (boxModelTests)
@@ -419,6 +420,7 @@ tests =
       urlBreakTests,
       pullInTests,
       physicalPaginateTests,
+      avoidTests,
       freeGeometryTests,
       adjustOrderTests,
       unbreakablePairsTests,

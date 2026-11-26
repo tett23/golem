@@ -195,6 +195,8 @@ block c ind (Block sp _ _ body) = case body of
     Just (SeparatorTextAppearance _ _ _ content _) -> content
     Just SeparatorRuleAppearance {} -> "---"
     Nothing -> ""
+  -- the paragraphs of a text frame at the place of the command, an empty line between two (root ADR 0438)
+  FrameBlock _ bs -> T.intercalate "\n\n" (filter (not . T.null) (map (block c ind) bs))
   ChannelOutput BibliographyOutput ->
     -- the entry, or the key that has none (golem-doc ADR 0004, 0005)
     T.intercalate "\n" ["[" <> T.pack (show n) <> "] " <> maybe k entryText (Map.lookup k (cBibliography c)) | (k, n) <- bibliographyAt (cBook c) sp]
@@ -230,6 +232,7 @@ blockInlines (Block _ _ _ body) = case body of
   DefList gs -> concatMap (\(DefGroup ts ds) -> concatMap deep ts <> concatMap (concatMap blockInlines) ds) gs
   TableBlock t -> concatMap deep (tableHeader t) <> concatMap (concatMap deep) (tableRows t)
   FigureBlock f -> concatMap blockInlines (figCaption f)
+  FrameBlock _ bs -> concatMap blockInlines bs
   _ -> []
   where
     deep = concatMap (\i -> i : nested i)

@@ -46,7 +46,7 @@ application/epub+zip
 <body>
 <nav epub:type="toc" id="toc">
 <h1>小さなビルドツール</h1>
-<ol><li><a href="chapters/01.xhtml#h-2-0">第1章　依存関係を読む</a><ol><li><a href="chapters/01.xhtml#h-2-67">1.1　依存のグラフ</a><ol><li><a href="chapters/01.xhtml#h-2-1515">1.1.1　循環する依存</a></li></ol></li><li><a href="chapters/01.xhtml#h-2-2563">1.2　依存を書くファイル</a><ol><li><a href="chapters/01.xhtml#h-2-3335">1.2.1　依存を自動で見つける</a></li><li><a href="chapters/01.xhtml#h-2-4501">1.2.2　読み込みのオプション</a></li></ol></li></ol></li><li><a href="chapters/02.xhtml#h-3-0">第2章　再ビルドを判定する</a><ol><li><a href="chapters/02.xhtml#h-3-46">2.1　時刻で比べる</a></li><li><a href="chapters/02.xhtml#h-3-1309">2.2　指紋で比べる</a><ol><li><a href="chapters/02.xhtml#h-3-1850">2.2.1　二つの方法の比べ方</a></li><li><a href="chapters/02.xhtml#h-3-3006">2.2.2　ハッシュの記録</a></li><li><a href="chapters/02.xhtml#h-3-4096">2.2.3　用語</a></li></ol></li></ol></li><li><a href="chapters/03.xhtml#h-4-0">第3章　同時に動かす</a><ol><li><a href="chapters/03.xhtml#h-4-38">3.1　動かす順</a></li><li><a href="chapters/03.xhtml#h-4-1100">3.2　出力を揃える</a><ol><li><a href="chapters/03.xhtml#h-4-1140">3.2.1　混ざる出力</a></li><li><a href="chapters/03.xhtml#h-4-1837">3.2.2　出力をためる</a></li></ol></li><li><a href="chapters/03.xhtml#h-4-2441">3.3　失敗を扱う</a><ol><li><a href="chapters/03.xhtml#h-4-2461">3.3.1　止めるか続けるか</a></li><li><a href="chapters/03.xhtml#h-4-3205">3.3.2　書きかけのファイル</a></li></ol></li><li><a href="chapters/03.xhtml#h-4-3944">3.4　作ったものを使い回す</a><ol><li><a href="chapters/03.xhtml#h-4-3979">3.4.1　キャッシュ</a></li><li><a href="chapters/03.xhtml#h-4-4657">3.4.2　使い回せる条件</a></li></ol></li><li><a href="chapters/03.xhtml#h-4-5308">3.5　まとめ</a></li><li><a href="chapters/03.xhtml#h-4-5893">参考文献</a></li></ol></li><li><a href="back.xhtml#h-5-10">索引</a></li></ol>
+<ol><li><a href="chapters/01.xhtml#h-2-0">第1章　依存関係を読む</a><ol><li><a href="chapters/01.xhtml#h-2-69">1.1　依存のグラフ</a><ol><li><a href="chapters/01.xhtml#h-2-1517">1.1.1　循環する依存</a></li></ol></li><li><a href="chapters/01.xhtml#h-2-2565">1.2　依存を書くファイル</a><ol><li><a href="chapters/01.xhtml#h-2-3337">1.2.1　依存を自動で見つける</a></li><li><a href="chapters/01.xhtml#h-2-4503">1.2.2　読み込みのオプション</a></li></ol></li></ol></li><li><a href="chapters/02.xhtml#h-3-0">第2章　再ビルドを判定する</a><ol><li><a href="chapters/02.xhtml#h-3-46">2.1　時刻で比べる</a></li><li><a href="chapters/02.xhtml#h-3-1309">2.2　指紋で比べる</a><ol><li><a href="chapters/02.xhtml#h-3-1850">2.2.1　二つの方法の比べ方</a></li><li><a href="chapters/02.xhtml#h-3-3006">2.2.2　ハッシュの記録</a></li><li><a href="chapters/02.xhtml#h-3-4096">2.2.3　用語</a></li></ol></li></ol></li><li><a href="chapters/03.xhtml#h-4-0">第3章　同時に動かす</a><ol><li><a href="chapters/03.xhtml#h-4-38">3.1　動かす順</a></li><li><a href="chapters/03.xhtml#h-4-1100">3.2　出力を揃える</a><ol><li><a href="chapters/03.xhtml#h-4-1140">3.2.1　混ざる出力</a></li><li><a href="chapters/03.xhtml#h-4-1837">3.2.2　出力をためる</a></li></ol></li><li><a href="chapters/03.xhtml#h-4-2441">3.3　失敗を扱う</a><ol><li><a href="chapters/03.xhtml#h-4-2461">3.3.1　止めるか続けるか</a></li><li><a href="chapters/03.xhtml#h-4-3205">3.3.2　書きかけのファイル</a></li></ol></li><li><a href="chapters/03.xhtml#h-4-3944">3.4　作ったものを使い回す</a><ol><li><a href="chapters/03.xhtml#h-4-3979">3.4.1　キャッシュ</a></li><li><a href="chapters/03.xhtml#h-4-4657">3.4.2　使い回せる条件</a></li></ol></li><li><a href="chapters/03.xhtml#h-4-5308">3.5　まとめ</a></li><li><a href="chapters/03.xhtml#h-4-5893">参考文献</a></li></ol></li><li><a href="back.xhtml#h-5-10">索引</a></li></ol>
 </nav>
 </body>
 </html>
@@ -128,11 +128,11 @@ code { padding-inline: 0.25em; }
 <nav epub:type="toc" class="toc">
 <ol>
 <li class="toc-1"><a href="chapters/01.xhtml#h-2-0">第1章　<span class="kenten kenten-dot">依存関係を読む</span></a></li>
-<li class="toc-2"><a href="chapters/01.xhtml#h-2-67">1.1　<ruby>依存<rp>（</rp><rt>いぞん</rt><rp>）</rp></ruby>のグラフ</a></li>
-<li class="toc-3"><a href="chapters/01.xhtml#h-2-1515">1.1.1　循環する依存</a></li>
-<li class="toc-2"><a href="chapters/01.xhtml#h-2-2563">1.2　依存を書くファイル</a></li>
-<li class="toc-3"><a href="chapters/01.xhtml#h-2-3335">1.2.1　依存を自動で見つける</a></li>
-<li class="toc-3"><a href="chapters/01.xhtml#h-2-4501">1.2.2　読み込みのオプション</a></li>
+<li class="toc-2"><a href="chapters/01.xhtml#h-2-69">1.1　<ruby>依存<rp>（</rp><rt>いぞん</rt><rp>）</rp></ruby>のグラフ</a></li>
+<li class="toc-3"><a href="chapters/01.xhtml#h-2-1517">1.1.1　循環する依存</a></li>
+<li class="toc-2"><a href="chapters/01.xhtml#h-2-2565">1.2　依存を書くファイル</a></li>
+<li class="toc-3"><a href="chapters/01.xhtml#h-2-3337">1.2.1　依存を自動で見つける</a></li>
+<li class="toc-3"><a href="chapters/01.xhtml#h-2-4503">1.2.2　読み込みのオプション</a></li>
 <li class="toc-1"><a href="chapters/02.xhtml#h-3-0">第2章　<span class="kenten kenten-dot">再ビルドを判定する</span></a></li>
 <li class="toc-2"><a href="chapters/02.xhtml#h-3-46">2.1　時刻で比べる</a></li>
 <li class="toc-2"><a href="chapters/02.xhtml#h-3-1309">2.2　<ruby class="mono">指<rp>（</rp><rt>し</rt><rp>）</rp>紋<rp>（</rp><rt>もん</rt><rp>）</rp></ruby>で比べる</a></li>
@@ -168,26 +168,26 @@ code { padding-inline: 0.25em; }
 </head>
 <body>
 <h1 id="h-2-0"><span class="number">第1章</span>　<span class="kenten kenten-dot">依存関係を読む</span></h1>
-<h2 id="h-2-67"><span class="number">1.1</span>　<ruby>依存<rp>（</rp><rt>いぞん</rt><rp>）</rp></ruby>のグラフ</h2>
-<p>ビルドツール<span id="i-2-128"></span>の仕事は、<span class="kenten kenten-dot">変わったものだけを作り直す</span>ことである。そのためには、どのファイルがどのファイルから作られるかを知っていなければならない。この関係を<ruby class="mono">依<rp>（</rp><rt>い</rt><rp>）</rp>存<rp>（</rp><rt>ぞん</rt><rp>）</rp>関<rp>（</rp><rt>かん</rt><rp>）</rp>係<rp>（</rp><rt>けい</rt><rp>）</rp></ruby><span id="i-2-454"></span>と呼び、矢印でつないだ図にしたものをグラフと呼ぶ。図<a href="#fig-graph">1-1</a>は、四つのファイルの依存関係を表している。</p>
+<h2 id="h-2-69"><span class="number">1.1</span>　<ruby>依存<rp>（</rp><rt>いぞん</rt><rp>）</rp></ruby>のグラフ</h2>
+<p>ビルドツール<span id="i-2-130"></span>の仕事は、<span class="kenten kenten-dot">変わったものだけを作り直す</span>ことである。そのためには、どのファイルがどのファイルから作られるかを知っていなければならない。この関係を<ruby class="mono">依<rp>（</rp><rt>い</rt><rp>）</rp>存<rp>（</rp><rt>ぞん</rt><rp>）</rp>関<rp>（</rp><rt>かん</rt><rp>）</rp>係<rp>（</rp><rt>けい</rt><rp>）</rp></ruby><span id="i-2-456"></span>と呼び、矢印でつないだ図にしたものをグラフと呼ぶ。図<a href="#fig-graph">1-1</a>は、四つのファイルの依存関係を表している。</p>
 <figure id="fig-graph">
 <img src="../images/graph.svg" alt="四つの箱を矢印でつないだ依存関係のグラフ"/>
 <figcaption><span class="number">図1.1</span>　四つのファイルの依存関係。矢印は「作るのに使う」を表す。</figcaption>
 </figure>
 <p>一番上のファイルを作るには、その下の二つが要り、その二つを作るには、さらに一番下のファイルが要る。グラフを下から順にたどれば、どの順に作ればよいかが分かる。この順を求める手順は、トポロジカルソートとして知られている<a epub:type="noteref" class="noteref" href="#note-1" id="noteref-1">1</a>。</p>
-<h3 id="h-2-1515"><span class="number">1.1.1</span>　循環する依存</h3>
+<h3 id="h-2-1517"><span class="number">1.1.1</span>　循環する依存</h3>
 <p>グラフに循環があると、どこから作ればよいかが決まらない。AがBを要り、BがAを要るなら、どちらも先に作れないからである。ビルドツールは、循環を見つけたらエラーにして止まるのがよい。黙ってどちらかを先に作ると、作るたびに結果が変わってしまう。循環の見つけ方は、深さ優先の探索で、たどっている途中の頂点にもう一度出会うかどうかを調べるのが簡単である。探索の途中の頂点を覚えておくには、頂点ごとに「未訪問」「訪問中」「訪問済み」の三つの状態を持たせればよい。「訪問中」の頂点に出会ったら、そこから今の頂点までが循環である。</p>
 <p class="ps-quote">作り直すべきものだけを作り直し、作り直さなくてよいものには手を触れない。これがビルドツールの約束のすべてである。</p>
 <p class="ps-signature">ある古いビルドツールの手引きから</p>
-<h2 id="h-2-2563"><span class="number">1.2</span>　依存を書くファイル</h2>
+<h2 id="h-2-2565"><span class="number">1.2</span>　依存を書くファイル</h2>
 <p>依存関係は、一行に一つのターゲットと、そのターゲットが要るファイルを並べたテキストのファイルに書くことにする。次の例は、<code>deps.txt</code> という名前のファイルの中身である。</p>
 <pre><code>app.o app.c app.h config.h
 util.o util.c util.h
 app app.o util.o</code></pre>
 <p>一行目は、<code>app.o</code> が <code>app.c</code> と <code>app.h</code> と <code>config.h</code> から作られることを表す。三行目は、実行ファイルの <code>app</code> が二つのオブジェクトファイルから作られることを表す。ファイルの大きさは問わないが、この例のファイルは2 KiBほどの依存を書いても、読み込みに一秒もかからない。</p>
-<h3 id="h-2-3335"><span class="number">1.2.1</span>　依存を自動で見つける</h3>
+<h3 id="h-2-3337"><span class="number">1.2.1</span>　依存を自動で見つける</h3>
 <p>依存関係を手で書くのは、間違いのもとである。ヘッダーファイルを一つ足したのに <code>deps.txt</code> を直し忘れると、そのヘッダーを変えても作り直されない。そこで、多くのビルドツールは、コンパイラーに依存関係を書き出させる。C のコンパイラーの多くは、ソースファイルが読み込んだヘッダーファイルの一覧を、make の形式で書き出すオプションを持っている。この一覧を <code>deps.txt</code> に足せば、手で書く依存は、ソースファイルとターゲットの対応だけになる。ただし、書き出された一覧は、前回のコンパイルのときのものである。ヘッダーファイルを新しく読み込むようにソースを変えたときは、その変更そのものがソースファイルの変更なので、ソースファイルの時刻かハッシュで作り直しが決まる。作り直したときに、新しい一覧が書き出される。この順のおかげで、前回の一覧を使っても、見落としは起きない。</p>
-<h3 id="h-2-4501"><span class="number">1.2.2</span>　読み込みのオプション</h3>
+<h3 id="h-2-4503"><span class="number">1.2.2</span>　読み込みのオプション</h3>
 <p>ツールのオプションは、次の表のとおりである。この表は、Emet の関数が TSV のファイルを読んで作っている。</p>
 <p>ツールが受け付けるオプション。</p>
 <table>
@@ -206,8 +206,8 @@ app app.o util.o</code></pre>
 <p class="ps-box">ビルドツールを自分で作るのは、車輪の再発明に見えるかもしれない。しかし、小さなツールを一つ作ってみると、既存のツールが何を判断しているのかがよく分かる。どのファイルを作り直すかの判定、作る順の決め方、同時に動かす数の制御は、どのビルドツールにも共通する三つの柱である。この本では、その三つを順に作りながら、それぞれの判断の中身を確かめていく。作るのは、シェルスクリプトで百行に満たない小さなツールである。それでも、三つの柱の考え方は、大きなビルドツールと変わらない。大きなツールが持つ機能の多くは、この三つの柱の上に、速さや使いやすさのための工夫を積み重ねたものにすぎない。たとえば、リモートのキャッシュは再ビルドの判定を、分散ビルドは同時に動かす数の制御を、それぞれ広げたものと見ることができる。三つの柱が分かっていれば、新しいツールに出会っても、それがどの柱をどう広げたものかを考えれば、使い方の見当がつく。この見当のつけ方こそ、小さなツールを作る一番の収穫である。もちろん、作ったツールをそのまま仕事に使う必要はない。仕事では、多くの人が使い、多くの不具合が直されてきたツールを使うほうが安全である。小さなツールは、読んで理解するためのものであり、大きなツールの設定を読むときの手がかりになる。手元で動く小さな見本があれば、大きなツールの説明書の一文一文が、どの判断の話をしているのかを確かめながら読める。</p>
 <section class="notes">
 <h2>注</h2>
-<aside epub:type="footnote" id="note-1"><p><a href="#noteref-1">1</a> グラフの頂点を、辺の向きに矛盾しない順に並べる手順。<span class="cite">[<a href="../chapters/03.xhtml#cite-build-systems">1</a>]</span> は、ビルドツールをこの順の決め方と再ビルドの判定の組み合わせとして整理している。<span id="i-2-1437"></span></p></aside>
-<aside epub:type="footnote" id="note-2"><p><a href="#noteref-2">2</a> GNU make の同じ名前のオプション（<span class="cite">[<a href="../chapters/03.xhtml#cite-make">2</a>]</span>）と同じ意味にしている。<span id="i-2-4914"></span></p></aside>
+<aside epub:type="footnote" id="note-1"><p><a href="#noteref-1">1</a> グラフの頂点を、辺の向きに矛盾しない順に並べる手順。<span class="cite">[<a href="../chapters/03.xhtml#cite-build-systems">1</a>]</span> は、ビルドツールをこの順の決め方と再ビルドの判定の組み合わせとして整理している。<span id="i-2-1439"></span></p></aside>
+<aside epub:type="footnote" id="note-2"><p><a href="#noteref-2">2</a> GNU make の同じ名前のオプション（<span class="cite">[<a href="../chapters/03.xhtml#cite-make">2</a>]</span>）と同じ意味にしている。<span id="i-2-4916"></span></p></aside>
 </section>
 </body>
 </html>
@@ -390,7 +390,7 @@ done app.o</code></pre>
 <section class="index">
 <p class="index-heading">あ</p>
 <ul>
-<li>依存関係 / グラフ <a href="chapters/01.xhtml#i-2-454">1</a></li>
+<li>依存関係 / グラフ <a href="chapters/01.xhtml#i-2-456">1</a></li>
 </ul>
 <p class="index-heading">か</p>
 <ul>
@@ -407,17 +407,17 @@ done app.o</code></pre>
 </ul>
 <p class="index-heading">た</p>
 <ul>
-<li>トポロジカルソート <a href="chapters/01.xhtml#i-2-1437">1</a></li>
+<li>トポロジカルソート <a href="chapters/01.xhtml#i-2-1439">1</a></li>
 </ul>
 <p class="index-heading">は</p>
 <ul>
 <li>ハッシュ / 記録 <a href="chapters/02.xhtml#i-3-3147">1</a></li>
-<li>ビルドツール <a href="chapters/01.xhtml#i-2-128">1</a></li>
+<li>ビルドツール <a href="chapters/01.xhtml#i-2-130">1</a></li>
 <li>並列 <a href="chapters/03.xhtml#i-4-154">1</a>–<a href="chapters/03.xhtml#i-4-2671">2</a></li>
 </ul>
 <p class="index-heading">ま</p>
 <ul>
-<li>make / オプション <a href="chapters/01.xhtml#i-2-4914">1</a></li>
+<li>make / オプション <a href="chapters/01.xhtml#i-2-4916">1</a></li>
 <li>メモ化（キャッシュを見よ）</li>
 </ul>
 </section>

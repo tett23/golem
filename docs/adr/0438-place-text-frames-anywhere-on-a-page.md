@@ -1,6 +1,6 @@
 # ADR 0438: ページの任意の位置にテキストフレームを置く
 
-Status: accepted-pending
+Status: superseded [{"part":"IR と ABI","by":[],"kind":"note","note":"メンテナーは 2026-11-25 に、IR と ABI の検査をすべての実装の後に行うと決め、この ADR を先に実装してよいとした。"},{"part":"実装すること","by":["docs/adr/0456-keep-every-block-off-around-frames.md"],"kind":"supplement"}]
 
 ## 文脈
 

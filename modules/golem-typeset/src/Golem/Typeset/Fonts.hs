@@ -290,6 +290,7 @@ bookHasCode styleOf book = or [any (blockHas (styleOf fid)) bs | Document fid bs
       DefList gs -> or [any (any (inlineHas st)) (dgTerms g) || any (any (blockHas st)) (dgDefs g) | g <- gs]
       TableBlock t -> any (any (inlineHas st)) (fromMaybe [] (tableCaption t) : tableHeader t <> concat (tableRows t))
       FigureBlock fig -> any (blockHas st) (figCaption fig)
+      FrameBlock _ held -> any (blockHas st) held
       _ -> False
     inlineHas :: Style -> InlineF r -> Bool
     inlineHas st = \case
@@ -417,6 +418,8 @@ blockInlineLists (Block _ _ _ body) = case body of
   DefList gs -> concat [dgTerms g <> concatMap (concatMap blockInlineLists) (dgDefs g) | g <- gs]
   TableBlock t -> maybe [] pure (tableCaption t) <> tableHeader t <> concat (tableRows t)
   FigureBlock fig -> concatMap blockInlineLists (figCaption fig)
+  -- the paragraphs of a text frame (root ADR 0438)
+  FrameBlock _ held -> concatMap blockInlineLists held
   _ -> []
 
 {- | The look inside an inline element (golem-driver ADR 0004, docs/adr ADR

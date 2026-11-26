@@ -11,10 +11,12 @@ import FunctionLibrarySpec (functionLibraryTests)
 import FunctionsSpec (functionsTests)
 import Golem.TestSupport.PackageDirectory (enterPackageDirectory)
 import Golem.TestSupport.Skipped (defaultMainReportingSkips)
+import ImportGraphSpec (importGraphTests)
 #ifdef GOLEM_PLUGINS
 import NewPlanSpec (newPlanTests)
 #endif
 import NumberUnitBuildSpec (numberUnitBuildTests)
+import PathDrawingSpec (pathDrawingTests)
 import SecuritySpec
 import Test.Tasty
 import UnwritableNumbersSpec (unwritableNumbersTests)
@@ -42,7 +44,9 @@ tests =
         evalDiagnosticTests,
         functionsTests,
         callsTests,
+        pathDrawingTests,
         varsTests,
+        importGraphTests,
         unwritableNumbersTests,
         numberUnitBuildTests,
         functionLibraryTests,

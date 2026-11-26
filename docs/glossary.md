@@ -78,6 +78,7 @@ Golem の仕様書、言語仕様、ADR で使う用語をまとめる。
 - **回り込み**：図版の脇に本文を流し込むこと。図版の周りを除外領域とし、そこにかかる行の行長を短くする（[golem-layout ADR 0004](golem-layout/adr/0004-wrapped-figures.md)）。
 - **パス**：領域や図形の形。部分パスの並びで、部分パスは始点と、線分と三次のベジェ曲線の並びと、閉じているかの印を持つ。座標は sp で、左下を原点とする。矩形は閉じたパスの特別な形である（[仕様書](specifications.md)、[root ADR 0437](adr/0437-paths-and-the-box-model.md)）。
 - **ボックス**：レイアウトの内部で、文字を置く領域（版面、段、傍注の領域、テキストフレーム）と文字を避ける領域（回り込みの除外の領域）を表すもの。形（閉じたパス）を持ち、文字を置くボックスは書く向きと行の始まりの辺も持つ。段落スタイルの囲みとも行ボックスとも別のものである（[仕様書](specifications.md)、[root ADR 0437](adr/0437-paths-and-the-box-model.md)）。
+- **テキストフレーム**：ページの任意の位置に置き、その中に文字を組む枠。`style.toml` の `[frames.<名前>]` で矩形か閉じたパスの形と位置を決め、マスターページの `frames` か原稿の `@frame` で置く。ほかのフレームへ文字を流さない、独立したフレームであり、本文を流し込むフレーム（版面と段）とも、レベル 2 と 3 のフレームとも別のものである（[仕様書](specifications.md)、[root ADR 0438](adr/0438-place-text-frames-anywhere-on-a-page.md)）。
 - **段落スタイルの囲み**：段落スタイルの `background` と `border` で、段落の周りに塗る背景と引く枠線。続く段落を一つの囲みにまとめ、段やページで分かれる（[docs/adr/0271](adr/0271-paragraph-backgrounds-and-borders.md)）。
 - **行ボックス**：自由な配置で、本文の各行に割り当てる、行送りと同じ長さの範囲。その中心に文字の仮想ボディの中心を合わせ、隣り合う行ボックスを順に置く。文字を置く領域を表すボックスとは別のものである（[root ADR 0397](adr/0397-paragraph-line-pitch-and-dimensional-spacing.md)）。
 - **傍注**：版面の外の小口側に設けた傍注の領域に置く注（[golem-layout ADR 0006](golem-layout/adr/0006-sidenotes.md)）。

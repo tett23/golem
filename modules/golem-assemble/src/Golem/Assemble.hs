@@ -304,6 +304,7 @@ blockNotes outer (Block _ _ blang body) = case body of
   DefList gs -> concatMap (\(DefGroup ts ds) -> concatMap (deep l) ts <> concatMap (concatMap (blockNotes l)) ds) gs
   TableBlock t -> concatMap (deep l) (tableHeader t) <> concatMap (concatMap (deep l)) (tableRows t)
   FigureBlock f -> concatMap (blockNotes l) (figCaption f)
+  FrameBlock _ bs -> concatMap (blockNotes l) bs
   _ -> []
   where
     l = blang <|> outer
@@ -555,6 +556,7 @@ listNumberNotices cfg = concatMap (blocks . docBlocks)
       BulletList items -> map itemBlocks items
       DefList gs -> concatMap dgDefs gs
       FigureBlock f -> [figCaption f]
+      FrameBlock _ bs -> [bs]
       _ -> []
     numbersFrom _ [] = []
     numbersFrom next (ListItem n _ : rest) = let k = maybe next toInteger n in k : numbersFrom (k + 1) rest
@@ -675,6 +677,7 @@ allBlocks = concatMap go
         OrderedList items -> allBlocks (concatMap itemBlocks items)
         DefList gs -> allBlocks (concat (concatMap dgDefs gs))
         FigureBlock f -> allBlocks (figCaption f)
+        FrameBlock _ bs -> allBlocks bs
         _ -> []
 
 collectLabels :: NumSt -> [Document] -> (Map Text LabelTarget, [Diagnostic])
@@ -738,6 +741,7 @@ resolveDoc labels dv evalDeferred (Document fid bs) = Document fid <$> mapM blk 
         DefList gs -> DefList <$> mapM (\(DefGroup ts ds) -> DefGroup <$> mapM inls ts <*> mapM (mapM blk) ds) gs
         TableBlock t -> (\cap h rows -> TableBlock t {tableCaption = cap, tableHeader = h, tableRows = rows}) <$> traverse inls (tableCaption t) <*> mapM inls (tableHeader t) <*> mapM (mapM inls) (tableRows t)
         FigureBlock f -> (\c -> FigureBlock f {figCaption = c}) <$> mapM blk (figCaption f)
+        FrameBlock name bs' -> FrameBlock name <$> mapM blk bs'
         CodeBlock c -> (\cap -> CodeBlock c {codeCaption = cap}) <$> traverse inls (codeCaption c)
         other -> pure other
     item (ListItem n bs') = ListItem n <$> mapM blk bs'
@@ -832,6 +836,7 @@ renumberNotes cfg docs = evalState (zipWithM doc (zip (restarts (acNoteNumbering
         DefList gs -> DefList <$> mapM (\(DefGroup ts ds) -> DefGroup <$> mapM inls ts <*> mapM (mapM blk) ds) gs
         TableBlock t -> (\h rows -> TableBlock t {tableHeader = h, tableRows = rows}) <$> mapM inls (tableHeader t) <*> mapM (mapM inls) (tableRows t)
         FigureBlock f -> (\c -> FigureBlock f {figCaption = c}) <$> mapM blk (figCaption f)
+        FrameBlock name bs' -> FrameBlock name <$> mapM blk bs'
         other -> pure other
     item (ListItem n bs) = ListItem n <$> mapM blk bs
     inls = mapM inl

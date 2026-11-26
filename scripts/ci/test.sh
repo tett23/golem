@@ -1704,12 +1704,12 @@ if grep -qF "QUICK: \${{ github.event_name == 'pull_request' && '--quick' || '' 
 # ---------------------------------------------------------------- ci.yml and the parts of build
 # (docs/adr/0045-split-x86-build-and-pull-request-cache.md)
 
-# x86-64 builds six times: three runners for the tests (the suites of
-# golem-driver in two, and the rest), one for the outputs, one for the
-# artifacts, one for the environment check; aarch64 builds four times, for
-# the tests in three and for the outputs. No runner of build saves
+# x86-64 builds seven times: four runners for the tests (the suites of
+# golem-driver in two, and the rest in two), one for the outputs, one for
+# the artifacts, one for the environment check; aarch64 builds five times,
+# for the tests in four and for the outputs. No runner of build saves
 # dist-newstyle: cache-dist does (docs/adr/0045, docs/adr/0097,
-# docs/adr/0140, root ADR 0416)
+# docs/adr/0140, root ADR 0416, root ADR 0457)
 # the runner, part, tests, outputs, artifacts, env, suites and build of
 # each row of the matrix; build is the last key of a row
 matrix_rows() {
@@ -1721,17 +1721,20 @@ matrix_rows() {
 }
 # the x86-64 outputs are split in two runners: outputs makes the artifacts
 # that other jobs wait for, outputs-checks the rest (docs/adr/0395); the
-# tests of golem-driver are split in two runners (root ADR 0416)
+# tests of golem-driver are split in two runners (root ADR 0416), and the
+# other tests in two runners (root ADR 0457)
 if [ "$(matrix_rows "$CI_YML")" = "ubuntu-24.04 tests-driver-a true false false false driver-a driver-a
 ubuntu-24.04 tests-driver-b true false false false driver-b driver-b
-ubuntu-24.04 tests-rest true false false false rest rest
+ubuntu-24.04 tests-rest-a true false false false rest-a rest-a
+ubuntu-24.04 tests-rest-b true false false false rest-b rest-b
 ubuntu-24.04 outputs false false true false none golem
 ubuntu-24.04 outputs-checks false true false false none golem
 ubuntu-24.04 env false false false true none golem
 ubuntu-24.04-arm tests-driver-a true false false false driver-a driver-a
 ubuntu-24.04-arm tests-driver-b true false false false driver-b driver-b
-ubuntu-24.04-arm tests-rest true false false false rest rest
-ubuntu-24.04-arm outputs false true false false none golem" ]; then ok; else ng "ci.yml: the matrix of build has three runners of the tests on each architecture, the outputs of both in two runners on x86-64, and the environment check of x86-64 (docs/adr/0155, docs/adr/0395, root ADR 0416)"; fi
+ubuntu-24.04-arm tests-rest-a true false false false rest-a rest-a
+ubuntu-24.04-arm tests-rest-b true false false false rest-b rest-b
+ubuntu-24.04-arm outputs false true false false none golem" ]; then ok; else ng "ci.yml: the matrix of build has four runners of the tests on each architecture, the outputs of both in two runners on x86-64, and the environment check of x86-64 (docs/adr/0155, docs/adr/0395, root ADR 0416, root ADR 0457)"; fi
 # no runner of build has save (root ADR 0416)
 if awk '$0 == "  build:" { on = 1; next } on && /^  [a-z]/ { on = 0 } on' "$CI_YML" | grep -q '^            save:'; then ng "ci.yml: no row of the matrix of build has save (root ADR 0416)"; else ok; fi
 # the step that starts at a line that matches $1 has a line that matches $2
@@ -1747,14 +1750,14 @@ if step_has "$TEST_STEP" 'cabal test $(sh scripts/ci/test-suites.sh "$SUITES")' 
 fi
 if [ "$(grep -cE '^ +(- run: )?cabal test ' "$CI_YML")" = 1 ]; then ok; else ng "ci.yml: one step runs cabal test"; fi
 # the generated parser is checked where the suites of golem-parser run
-if step_if "name: Generated parser matches the grammar" "if: matrix.tests && matrix.suites == 'rest'"; then ok; else ng "ci.yml: the generated parser is checked on the runners of tests-rest, which build peg-hs"; fi
+if step_if "name: Generated parser matches the grammar" "if: matrix.tests && matrix.suites == 'rest-a'"; then ok; else ng "ci.yml: the generated parser is checked on the runners of tests-rest-a, which build peg-hs (root ADR 0457)"; fi
 if step_if "name: Outputs for the determinism check" "if: matrix.outputs"; then ok; else ng "ci.yml: the outputs are made on the runners of the outputs"; fi
 # the lines of the job $1 of ci.yml
 job_lines() { awk -v j="  $1:" '$0 == j { on = 1; next } on && /^  [a-z]/ { on = 0 } on' "$CI_YML"; }
 # the generated modules of golem-driver are checked in the same way, right
 # after the parser (docs/adr/0203)
 EMBEDDED_STEP="name: Generated modules match VERSION and docs/diagnostics.md"
-if step_if "$EMBEDDED_STEP" "if: matrix.tests && matrix.suites == 'rest'" &&
+if step_if "$EMBEDDED_STEP" "if: matrix.tests && matrix.suites == 'rest-a'" &&
   step_has "$EMBEDDED_STEP" "sh scripts/gen-embedded.sh" &&
   step_has "$EMBEDDED_STEP" "git diff --exit-code modules/golem-driver/src/Golem/Driver/Version/Embedded.hs modules/golem-evaluate/src/Golem/Evaluate/Explain/Embedded.hs" &&
   [ "$(awk '/^      - name: / { print }' "$CI_YML" | grep -A1 -F "name: Generated parser matches the grammar" | sed -n 2p)" = "      - $EMBEDDED_STEP" ]; then ok; else
@@ -1906,7 +1909,7 @@ if grep -qx '    runs-on: ubuntu-24.04' "$VJ" && grep -qx '    timeout-minutes: 
 # visual waits for visual-pdfs of the outputs runner before it downloads it
 # (docs/adr/0099)
 WAIT_AT=$(grep -n 'sh scripts/visual/wait-pdfs.sh' "$VJ" | head -1 | cut -d: -f1)
-DOWNLOAD_AT=$(grep -n 'uses: actions/download-artifact@' "$VJ" | head -1 | cut -d: -f1)
+DOWNLOAD_AT=$(grep -n 'run: sh scripts/ci/download-artifact.sh "$GITHUB_RUN_ID" visual-pdfs visual-pdfs' "$VJ" | head -1 | cut -d: -f1)
 if grep -qxF "        run: timeout -k 10 3600 sh scripts/visual/wait-pdfs.sh \"\$GITHUB_RUN_ID\" \"\$GITHUB_RUN_ATTEMPT\" 'build (ubuntu-24.04, outputs)'" "$VJ" &&
   [ -n "$WAIT_AT" ] && [ -n "$DOWNLOAD_AT" ] && [ "$WAIT_AT" -lt "$DOWNLOAD_AT" ]; then ok; else ng "ci.yml: visual waits for visual-pdfs of the outputs runner, then downloads it"; fi
 if grep -qF "name: build (\${{ matrix.runner }}, \${{ matrix.part }})" "$CI_YML" && awk '/^          - runner: ubuntu-24.04$/ { r = 1; next } r && /part: outputs$/ { f = 1 } { r = 0 } END { exit !f }' "$CI_YML"; then ok; else ng "ci.yml: the job that wait-pdfs.sh waits for is named build (ubuntu-24.04, outputs)"; fi
@@ -1923,7 +1926,7 @@ CACHE_AT=$(grep -n 'name: Restore the archives of the downloads' "$VJ" | head -1
 FETCH_AT=$(grep -n 'sh scripts/visual/fetch-shem.sh' "$VJ" | head -1 | cut -d: -f1)
 CHECK_AT=$(grep -n 'sh scripts/visual/check.sh' "$VJ" | head -1 | cut -d: -f1)
 if [ -n "$CACHE_AT" ] && [ -n "$FETCH_AT" ] && [ -n "$CHECK_AT" ] && [ "$CACHE_AT" -lt "$FETCH_AT" ] && [ "$FETCH_AT" -lt "$CHECK_AT" ]; then ok; else ng "ci.yml: visual restores the cache, fetches shem, then checks"; fi
-if visual_step "uses: actions/download-artifact@" | grep -qxF '          name: visual-pdfs'; then ok; else ng "ci.yml: visual downloads visual-pdfs"; fi
+if visual_step "name: Download visual-pdfs" | grep -qxF '        run: sh scripts/ci/download-artifact.sh "$GITHUB_RUN_ID" visual-pdfs visual-pdfs'; then ok; else ng "ci.yml: visual downloads visual-pdfs with download-artifact.sh (root ADR 0442)"; fi
 if grep -qF 'run: timeout -k 10 600 sh scripts/visual/check.sh --lists "$RUNNER_TEMP/visual-diff/pages" visual-pdfs' "$VJ" &&
   visual_step "name: The pages match the references" | grep -qxF '        shell: bash'; then ok; else
   ng "ci.yml: visual runs check.sh under timeout -k 10 600, with pipefail"
@@ -1979,7 +1982,7 @@ fi
 VP_NIX_AT=$(grep -n 'uses: cachix/install-nix-action@' "$VPJ" | head -1 | cut -d: -f1)
 VP_BUILD_AT=$(grep -n 'nix build ' "$VPJ" | head -1 | cut -d: -f1)
 VP_WAIT_AT=$(grep -n 'sh scripts/visual/wait-pdfs.sh' "$VPJ" | head -1 | cut -d: -f1)
-VP_DOWNLOAD_AT=$(grep -n 'uses: actions/download-artifact@' "$VPJ" | head -1 | cut -d: -f1)
+VP_DOWNLOAD_AT=$(grep -n 'run: sh scripts/ci/download-artifact.sh "$GITHUB_RUN_ID" conformance-pdfs conformance-pdfs' "$VPJ" | head -1 | cut -d: -f1)
 VP_CHECK_AT=$(grep -n 'sh scripts/ci/verapdf.sh' "$VPJ" | head -1 | cut -d: -f1)
 if [ -n "$VP_NIX_AT" ] && [ -n "$VP_BUILD_AT" ] && [ -n "$VP_WAIT_AT" ] && [ -n "$VP_DOWNLOAD_AT" ] && [ -n "$VP_CHECK_AT" ] &&
   [ "$VP_NIX_AT" -lt "$VP_WAIT_AT" ] && [ "$VP_BUILD_AT" -lt "$VP_WAIT_AT" ] &&
@@ -2458,7 +2461,8 @@ else
 fi
 
 # the report of a failure needs actions: read for the artifacts of other
-# runs: visual alone has it, and the workflow keeps contents: read
+# runs: visual has it, as wasm, editors-lsp and verapdf have for the zip of
+# the artifact they wait for (root ADR 0442), and the workflow keeps contents: read
 # (docs/adr/0096)
 if [ "$(awk '/^permissions:/ { on = 1; next } on && /^[^ ]/ { on = 0 } on && /^  [a-z]/' "$CI_YML")" = "  contents: read" ]; then ok; else ng "ci.yml: the permissions of the workflow are contents: read only"; fi
 # the warnings of CI (docs/adr/0245 sections 2 and 6): werror.sh in the
@@ -2470,7 +2474,7 @@ if job_of "$CI_YML" ci | grep -qF 'sh scripts/ci/job-logs.sh scripts/ci/warnings
 if [ "$(perms_of "$CI_YML" visual)" = "contents: read
 actions: read" ]; then ok; else ng "ci.yml: visual has contents: read and actions: read"; fi
 ACTIONS_READ_JOBS=$(ci_jobs "$CI_YML" | while IFS= read -r j; do if perms_of "$CI_YML" "$j" | grep -qx 'actions: read'; then printf '%s\n' "$j"; fi; done)
-if [ "$(printf '%s\n' "$ACTIONS_READ_JOBS" | LC_ALL=C sort | tr '\n' ' ')" = "ci visual " ]; then ok; else ng "ci.yml: no job but visual and ci (docs/adr/0245) has actions: read"; fi
+if [ "$(printf '%s\n' "$ACTIONS_READ_JOBS" | LC_ALL=C sort | tr '\n' ' ')" = "ci editors-lsp verapdf visual wasm " ]; then ok; else ng "ci.yml: no job but visual, ci (docs/adr/0245), and wasm, editors-lsp and verapdf (root ADR 0442) has actions: read"; fi
 # caches alone has a write permission, actions: write, to delete the stale
 # dist- caches of main; it runs on pushes to main only, after the saves of
 # build and wasm, and uses no action but checkout (docs/adr/0228)
@@ -5108,17 +5112,19 @@ run bt driver "$TS"
 expect "build-targets: an unknown part" 2
 # the runners of the outputs and the environment check build golem; the
 # runners of the tests build the suites they run; none builds all, which
-# cache-dist builds (docs/adr/0395, root ADR 0416)
+# cache-dist builds (docs/adr/0395, root ADR 0416, root ADR 0457)
 if [ "$(matrix_rows "$CI_YML" | awk '{ print $1, $2, $8 }')" = "ubuntu-24.04 tests-driver-a driver-a
 ubuntu-24.04 tests-driver-b driver-b
-ubuntu-24.04 tests-rest rest
+ubuntu-24.04 tests-rest-a rest-a
+ubuntu-24.04 tests-rest-b rest-b
 ubuntu-24.04 outputs golem
 ubuntu-24.04 outputs-checks golem
 ubuntu-24.04 env golem
 ubuntu-24.04-arm tests-driver-a driver-a
 ubuntu-24.04-arm tests-driver-b driver-b
-ubuntu-24.04-arm tests-rest rest
-ubuntu-24.04-arm outputs golem" ]; then ok; else ng "ci.yml: the runners build their targets, and none builds all (docs/adr/0395, root ADR 0416)"; fi
+ubuntu-24.04-arm tests-rest-a rest-a
+ubuntu-24.04-arm tests-rest-b rest-b
+ubuntu-24.04-arm outputs golem" ]; then ok; else ng "ci.yml: the runners build their targets, and none builds all (docs/adr/0395, root ADR 0416, root ADR 0457)"; fi
 if ci_step "name: cabal build (docs/adr/0395)" | grep -qF 'cabal build $(sh scripts/ci/build-targets.sh "$TARGETS")' &&
   ci_step "name: cabal build (docs/adr/0395)" | grep -qxF '          TARGETS: ${{ matrix.build }}'; then ok; else
   ng "ci.yml: cabal build builds the targets of build-targets.sh for the runner (docs/adr/0395)"
@@ -5253,7 +5259,8 @@ awk -F '\t' -v OFS='\t' '$1 == "suites" && $3 == "golem-driver:test:golem-driver
   sed 's|modules/golem-driver/src/Golem/Driver/Explain/Embedded.hs|modules/golem-evaluate/src/Golem/Evaluate/Explain/Embedded.hs|' |
   LC_ALL=C sort >"$WORK/before"
 run sh "$HERE/ci-checks.sh" "$CI_YML"
-grep -vF 'same-plan.sh' "$WORK/out" >"$WORK/a1" 2>/dev/null
+# the step of cabal sdist all is a check added after the ADR (root ADR 0452)
+grep -vF -e 'same-plan.sh' -e 'cabal sdist all' "$WORK/out" >"$WORK/a1" 2>/dev/null
 if [ "$CODE" = 0 ] && diff "$WORK/before" "$WORK/a1" >"$WORK/a1.diff"; then ok; else
   ng "ADR 0395 A1: the checks of a pull request are those of the commit before the ADR, on the same architectures"
   sed 's/^/  /' "$WORK/a1.diff" 2>/dev/null | head -40
@@ -5262,6 +5269,109 @@ run sh "$HERE/ci-checks.sh" "$CC/small.yml" "$TS"
 expect "ADR 0395 A1: a step is listed with the runners whose row of the matrix meets its if" 0 "$(cat "$CC/small.txt")"
 run sh "$HERE/ci-checks.sh" "$CC/unknown.yml" "$TS"
 if [ "$CODE" = 1 ] && grep -qF 'steps.x.outputs.y' "$WORK/err"; then ok; else ng "ADR 0395 A1: an if with a term that the list cannot decide fails"; fi
+
+# ---------------------------------------------------------------- root ADR 0457
+# (docs/adr/0457-split-the-tests-rest-runner-in-two.md)
+
+# tests-rest is split in two runners on each architecture: rest-a runs the
+# suites of REST_A of test-suites.sh and builds peg-hs, rest-b every other
+# suite of rest and the executables but golem. R57 is a tree of modules with
+# a suite of each part, a suite of golem-driver and executables
+R57=$WORK/r57/modules
+mkdir -p "$R57/golem-emet" "$R57/golem-parser" "$R57/golem-pdf" "$R57/golem-driver" "$R57/golem-plain"
+printf 'cabal-version: 3.0\nname: golem-emet\n\nlibrary\n\ntest-suite golem-emet-test\n  type: exitcode-stdio-1.0\n' >"$R57/golem-emet/golem-emet.cabal"
+printf 'cabal-version: 3.0\nname: golem-parser\n\nlibrary\n\ntest-suite golem-parser-test\n  type: exitcode-stdio-1.0\n' >"$R57/golem-parser/golem-parser.cabal"
+printf 'cabal-version: 3.0\nname: golem-pdf\n\nlibrary\n\ntest-suite golem-pdf-test\n  type: exitcode-stdio-1.0\n' >"$R57/golem-pdf/golem-pdf.cabal"
+printf 'cabal-version: 3.0\nname: golem-driver\n\nlibrary\n\ntest-suite golem-driver-pdf-test\n  type: exitcode-stdio-1.0\n' >"$R57/golem-driver/golem-driver.cabal"
+printf 'cabal-version: 3.0\nname: golem-plain\n\nlibrary\n\nexecutable plain-tool\n  main-is: M.hs\n\nexecutable wasm-only\n  main-is: W.hs\n  if !arch(wasm32)\n    buildable: False\n\nexecutable golem\n  main-is: G.hs\n' >"$R57/golem-plain/golem-plain.cabal"
+: >"$WORK/in"
+# split_rest SCRIPTS MODULES fails, with the reason on stderr, unless
+# SCRIPTS/test-suites.sh puts each suite of rest of MODULES in exactly one
+# of rest-a and rest-b, and the two together are rest (I1, I2)
+split_rest() {
+  sh "$1/test-suites.sh" rest "$2" | LC_ALL=C sort >"$WORK/r57-rest" || return 1
+  sh "$1/test-suites.sh" rest-a "$2" >"$WORK/r57-a" || return 1
+  sh "$1/test-suites.sh" rest-b "$2" >"$WORK/r57-b" || return 1
+  [ -s "$WORK/r57-rest" ] || { echo "rest is empty" >&2; return 1; }
+  d=$(LC_ALL=C sort "$WORK/r57-a" "$WORK/r57-b" | uniq -d)
+  [ -z "$d" ] || { echo "in both rest-a and rest-b: $d" >&2; return 1; }
+  [ "$(cat "$WORK/r57-a" "$WORK/r57-b" | LC_ALL=C sort)" = "$(cat "$WORK/r57-rest")" ] || { echo "rest-a and rest-b are not rest" >&2; return 1; }
+}
+run split_rest "$HERE" "$R57"
+expect "root ADR 0457 I1: test-suites: each suite of rest is in exactly one of rest-a and rest-b" 0
+run test_suites rest-a "$R57"
+expect "root ADR 0457 I1: test-suites: rest-a has the suites of REST_A" 0 "golem-emet:test:golem-emet-test
+golem-parser:test:golem-parser-test"
+run test_suites rest-b "$R57"
+expect "root ADR 0457 I1: test-suites: rest-b has the other suites of rest" 0 "golem-pdf:test:golem-pdf-test"
+run split_rest "$HERE" "$HERE/../../modules"
+expect "root ADR 0457 I2: test-suites: rest-a and rest-b of modules/ are rest, split in two" 0
+run test_suites rest-a
+expect "root ADR 0457 I1: tests-rest-a runs golem-emet-test, golem-parser-test and golem-typeset-test" 0 "golem-emet:test:golem-emet-test
+golem-parser:test:golem-parser-test
+golem-typeset:test:golem-typeset-test"
+# I3: a new suite that REST_A does not list is in rest-b
+printf '\ntest-suite golem-pdf-new-test\n  type: exitcode-stdio-1.0\n' >>"$R57/golem-pdf/golem-pdf.cabal"
+run test_suites rest-b "$R57"
+expect "root ADR 0457 I3: test-suites: a new suite not in REST_A is in rest-b" 0 "golem-pdf:test:golem-pdf-test
+golem-pdf:test:golem-pdf-new-test"
+# copies of the scripts with another REST_A: with a name in no module, and
+# with a suite of golem-driver
+mkdir -p "$WORK/r57/none" "$WORK/r57/driver"
+sed 's/^REST_A="\(.*\)"$/REST_A="\1 golem-no-such-test"/' "$HERE/test-suites.sh" >"$WORK/r57/none/test-suites.sh"
+cp "$HERE/build-targets.sh" "$WORK/r57/none/build-targets.sh"
+sed 's/^REST_A="\(.*\)"$/REST_A="\1 golem-driver-pdf-test"/' "$HERE/test-suites.sh" >"$WORK/r57/driver/test-suites.sh"
+if grep -q '^REST_A=".* golem-no-such-test"$' "$WORK/r57/none/test-suites.sh" &&
+  grep -q '^REST_A=".* golem-driver-pdf-test"$' "$WORK/r57/driver/test-suites.sh"; then ok; else
+  ng "root ADR 0457 I2: test-suites.sh has a line REST_A=\"...\""
+fi
+run split_rest "$WORK/r57/none" "$R57"
+expect "root ADR 0457 I2: test-suites: a name of REST_A in no module leaves rest-a and rest-b rest" 0
+run split_rest "$WORK/r57/driver" "$R57"
+if [ "$CODE" = 0 ] && ! grep -q '^golem-driver:' "$WORK/r57-a" "$WORK/r57-b"; then ok; else
+  ng "root ADR 0457 I1: test-suites: a suite of golem-driver in REST_A is in neither rest-a nor rest-b"
+fi
+# build_rest SCRIPTS MODULES fails, with the reason on stderr, unless the
+# targets of rest-a and rest-b of SCRIPTS/build-targets.sh together are
+# those of rest, each has the suites of its part, and rest-a has peg-hs
+# (I4, I5)
+build_rest() {
+  sh "$1/build-targets.sh" rest "$2" | LC_ALL=C sort >"$WORK/r57-brest" || return 1
+  sh "$1/build-targets.sh" rest-a "$2" | LC_ALL=C sort >"$WORK/r57-ba" || return 1
+  sh "$1/build-targets.sh" rest-b "$2" | LC_ALL=C sort >"$WORK/r57-bb" || return 1
+  [ -s "$WORK/r57-brest" ] || { echo "rest builds nothing" >&2; return 1; }
+  [ "$(LC_ALL=C sort -u "$WORK/r57-ba" "$WORK/r57-bb")" = "$(cat "$WORK/r57-brest")" ] || { echo "rest-a and rest-b do not build what rest builds" >&2; return 1; }
+  for p in a b; do
+    sh "$1/test-suites.sh" "rest-$p" "$2" | LC_ALL=C sort >"$WORK/r57-s$p" || return 1
+    [ -z "$(LC_ALL=C comm -23 "$WORK/r57-s$p" "$WORK/r57-b$p")" ] || { echo "rest-$p does not build its suites" >&2; return 1; }
+  done
+  grep -qx 'peg-cli:exe:peg-hs' "$WORK/r57-ba" || { echo "rest-a does not build peg-hs" >&2; return 1; }
+}
+run build_rest "$HERE" "$R57"
+expect "root ADR 0457 I4: build-targets: rest-a and rest-b build what rest builds" 0
+run build_rest "$HERE" "$HERE/../../modules"
+expect "root ADR 0457 I5: build-targets: rest-a and rest-b of modules/ build their suites, and rest-a builds peg-hs" 0
+run bt rest-a "$R57"
+expect "root ADR 0457 I5: build-targets: rest-a builds the suites of rest-a and peg-hs" 0 "$(test_suites rest-a "$R57")
+peg-cli:exe:peg-hs"
+run bt rest-b "$R57"
+expect "root ADR 0457 I4: build-targets: rest-b builds the suites of rest-b and the executables but golem and those not buildable" 0 "$(test_suites rest-b "$R57")
+golem-plain:exe:plain-tool"
+printf '\nexecutable plain-new-tool\n  main-is: N.hs\n' >>"$R57/golem-plain/golem-plain.cabal"
+run bt rest-b "$R57"
+if [ "$CODE" = 0 ] && grep -qx 'golem-plain:exe:plain-new-tool' "$WORK/out"; then ok; else ng "root ADR 0457 I4: build-targets: a new executable is built on rest-b"; fi
+run bt rest-a "$R57"
+if [ "$CODE" = 0 ] && ! grep -q ':exe:plain' "$WORK/out"; then ok; else ng "root ADR 0457 I4: build-targets: rest-a builds no executable but peg-hs"; fi
+run build_rest "$WORK/r57/none" "$R57"
+expect "root ADR 0457 I4: build-targets: a name of REST_A in no module leaves rest-a and rest-b what rest builds" 0
+# I6: the two checks of the generated modules run on tests-rest-a alone,
+# which runs the suites of rest-a and builds peg-hs, on each architecture
+if step_if "name: Generated parser matches the grammar" "if: matrix.tests && matrix.suites == 'rest-a'" &&
+  step_if "name: Generated modules match VERSION and docs/diagnostics.md" "if: matrix.tests && matrix.suites == 'rest-a'"; then ok; else
+  ng "root ADR 0457 I6: ci.yml: the checks of the generated parser and modules run where suites is rest-a"
+fi
+if [ "$(matrix_rows "$CI_YML" | awk '$7 == "rest-a" { print $1, $2, $8 }')" = "ubuntu-24.04 tests-rest-a rest-a
+ubuntu-24.04-arm tests-rest-a rest-a" ]; then ok; else ng "root ADR 0457 I6: ci.yml: suites is rest-a on tests-rest-a of each architecture alone, which builds rest-a"; fi
 
 # ---------------------------------------------------------------- the libraries of golem-html and golem-unicode
 # (docs/adr/0411 I5)
@@ -5561,6 +5671,217 @@ printf '%s\n' 'module Main where' '' 'foreign import capi unsafe "unistd.h sleep
 run unsafe_ffi_0435 "$UF"
 expect "root ADR 0435 I2: an unsafe import of a test is counted" 1
 if grep -qxF "unsafe-ffi: not in scripts/ci/unsafe-ffi.tsv: modules/x/test/Main.hs	sleep" "$WORK/err"; then ok; else ng "root ADR 0435 I2: the import of the test is written"; fi
+
+# ---------------------------------------------------------------- download-artifact.sh (root ADR 0442, root ADR 0446)
+# The fake gh records its arguments in $DA_CASE/gh.log. The n-th question
+# for the list of the artifacts reads $DA_CASE/list.n, or $DA_CASE/list
+# when there is none, and applies the --jq of the call to it with jq, as gh
+# does. The n-th download of an archive_download_url fails with the text
+# of $DA_CASE/fail.n when there is one, and otherwise prints the zip
+# $DA/src/ID.zip of the id in the URL. It fails from the 21st question for
+# the list, so that a script that never stops fails instead.
+DA=$WORK/download-artifact
+mkdir -p "$DA/bin" "$DA/src" "$DA/z"
+cat >"$DA/bin/gh" <<'FAKE'
+#!/bin/sh
+printf '%s\n' "$*" >>"$DA_CASE/gh.log"
+case "$2" in
+  *'/artifacts?name='*)
+    n=$(grep -c '/artifacts?name=' "$DA_CASE/gh.log")
+    [ "$n" -le 20 ] || { echo "fake gh: asked for the list more than 20 times" >&2; exit 65; }
+    f=$DA_CASE/list.$n
+    [ -f "$f" ] || f=$DA_CASE/list
+    while [ "$1" != --jq ]; do shift; done
+    jq -r "$2" "$f" ;;
+  https://*)
+    n=$(grep -c '^api https://' "$DA_CASE/gh.log")
+    if [ -f "$DA_CASE/fail.$n" ]; then cat "$DA_CASE/fail.$n" >&2; exit 1; fi
+    id=${2%/zip}
+    id=${id##*/}
+    cat "$DA_SRC/$id.zip" ;;
+  *) exit 64 ;;
+esac
+FAKE
+chmod +x "$DA/bin/gh"
+da_sha() { if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1"; else shasum -a 256 "$1"; fi | cut -d' ' -f1; }
+# da_zips: the zips of the artifacts 11, 12, 13, 21 and 22, each holding
+# a.txt with "artifact ID"
+da_zips() {
+  for id in 11 12 13 21 22; do
+    mkdir -p "$DA/z/$id" && printf '%s\n' "artifact $id" >"$DA/z/$id/a.txt" &&
+      (cd "$DA/z/$id" && zip -q "$DA/src/$id.zip" a.txt) || return 1
+  done
+}
+fixture "download-artifact: the zips" da_zips
+# the digest of the zip ID, as the list gives it
+da_digest() { printf '"sha256:%s"' "$(da_sha "$DA/src/$1.zip")"; }
+DA_BAD='"sha256:0000000000000000000000000000000000000000000000000000000000000000"'
+# da_art ID CREATED DIGEST [EXPIRED]: an artifact named pdfs of the list,
+# DIGEST being JSON (a string or null)
+da_art() {
+  printf '{"id":%s,"name":"pdfs","expired":%s,"created_at":"2026-11-24T05:%s:00Z","digest":%s,"archive_download_url":"https://api.github.com/repos/o/r/actions/artifacts/%s/zip"}' "$1" "${4:-false}" "$2" "$3" "$1"
+}
+# da_list FILE ART...: the list FILE of the case with the artifacts ART
+da_list() {
+  f=$1
+  shift
+  printf '{"total_count":%s,"artifacts":[%s]}\n' "$#" "$(IFS=,; printf '%s' "$*")" >"$DA/case/$f"
+}
+# da_case: a new case, with no list nor failure and no DIR
+da_case() { rm -rf "$DA/case" "$DA/out" && mkdir -p "$DA/case" && : >"$DA/case/gh.log"; }
+# da_run [ARG...]: download-artifact.sh 123 pdfs $DA/out, or ARG..., with
+# three attempts and no wait
+da_run() {
+  : >"$WORK/in"
+  if [ $# = 0 ]; then set -- 123 pdfs "$DA/out"; fi
+  run env PATH="$DA/bin:$PATH" DA_CASE="$DA/case" DA_SRC="$DA/src" DOWNLOAD_INTERVAL=0 DOWNLOAD_ATTEMPTS=3 sh "$HERE/download-artifact.sh" "$@"
+}
+da_lists() { grep -c '/artifacts?name=' "$DA/case/gh.log"; }
+da_downloads() { grep -c '^api https://' "$DA/case/gh.log"; }
+# da_got ID: DIR holds what the zip ID holds, and nothing else
+da_got() { [ "$(ls "$DA/out")" = a.txt ] && [ "$(cat "$DA/out/a.txt")" = "artifact $1" ]; }
+
+da_case
+da_list list "$(da_art 11 30 "$(da_digest 11)")"
+da_run
+expect "root ADR 0442 I1, I3, I6, root ADR 0446 I3: one artifact whose digest matches is downloaded at the first attempt" 0
+if da_got 11 && [ "$(da_lists)" = 1 ] && [ "$(da_downloads)" = 1 ]; then ok; else ng "root ADR 0442 I1, I3, root ADR 0446 I3: DIR holds the zip whose SHA-256 is the digest, after one attempt"; fi
+if grep -q '^api repos/{owner}/{repo}/actions/runs/123/artifacts?name=pdfs ' "$DA/case/gh.log"; then ok; else ng "root ADR 0442 I6: the list asked for has RUN and NAME in its path"; fi
+
+da_case
+da_list list.1
+da_list list "$(da_art 11 30 "$(da_digest 11)")"
+da_run
+expect "root ADR 0442 I3, root ADR 0446 I3: no artifact at the first attempt, one at the second" 0
+if da_got 11 && [ "$(da_lists)" = 2 ]; then ok; else ng "root ADR 0442 I3, root ADR 0446 I3: downloaded at the second attempt"; fi
+
+da_case
+da_list list.1 "$(da_art 11 30 null)"
+da_list list "$(da_art 11 30 "$(da_digest 11)")"
+da_run
+expect "root ADR 0442 I3, root ADR 0446 I3: no digest at the first attempt, one at the second" 0
+if da_got 11 && [ "$(da_lists)" = 2 ] && [ "$(da_downloads)" = 1 ]; then ok; else ng "root ADR 0442 I3, root ADR 0446 I3: an artifact without a digest is not downloaded"; fi
+
+da_case
+da_list list "$(da_art 11 30 "$(da_digest 11)" true)"
+da_run
+expect "root ADR 0442 I4, root ADR 0446 I3: an expired artifact is no artifact" 1
+if [ "$(da_lists)" = 3 ] && [ "$(da_downloads)" = 0 ] && [ ! -e "$DA/out" ]; then ok; else ng "root ADR 0442 I4, root ADR 0446 I3: an expired artifact is asked for DOWNLOAD_ATTEMPTS times and not downloaded"; fi
+
+da_case
+da_list list "$(da_art 11 30 "$(da_digest 11)")"
+echo 'gh: Not Found (HTTP 404)' >"$DA/case/fail.1"
+da_run
+expect "root ADR 0442 I3, root ADR 0446 I3: a download that fails with 404 is tried again" 0
+if da_got 11 && [ "$(da_lists)" = 2 ] && [ "$(da_downloads)" = 2 ]; then ok; else ng "root ADR 0442 I3, root ADR 0446 I3: the second attempt asks for the list and downloads again"; fi
+
+da_case
+da_list list.1
+da_list list.2
+da_list list "$(da_art 11 30 "$(da_digest 11)")"
+da_run
+expect "root ADR 0442 I3, root ADR 0446 I3: the artifact at exactly the DOWNLOAD_ATTEMPTS-th attempt" 0
+if da_got 11 && [ "$(da_lists)" = 3 ]; then ok; else ng "root ADR 0442 I3, root ADR 0446 I3: downloaded at the third of three attempts"; fi
+
+da_case
+da_list list
+da_run
+expect "root ADR 0442 I4, root ADR 0446 I3: no artifact at any of the DOWNLOAD_ATTEMPTS attempts" 1
+if [ "$(da_lists)" = 3 ] && [ "$(da_downloads)" = 0 ]; then ok; else ng "root ADR 0442 I4, root ADR 0446 I3: DOWNLOAD_ATTEMPTS attempts and no more"; fi
+if [ "$(tail -1 "$WORK/err")" = "download-artifact: pdfs of the run 123 is not downloaded after 3 attempts: the run has no artifact pdfs" ]; then ok; else ng "root ADR 0442 I4, root ADR 0446 I3: the last reason is written on stderr"; fi
+
+da_case
+da_list list "$(da_art 11 30 "$DA_BAD")"
+da_run
+expect "root ADR 0442 I2, root ADR 0446 I3: a zip whose SHA-256 is not the digest fails" 1
+if [ ! -e "$DA/out" ] && [ "$(da_lists)" = 1 ] && [ "$(da_downloads)" = 1 ]; then ok; else ng "root ADR 0442 I2, root ADR 0446 I3: the zip is not unpacked, nor downloaded again"; fi
+
+for da_status in 'Bad credentials (HTTP 401)' 'Resource not accessible by integration (HTTP 403)'; do
+  da_case
+  da_list list "$(da_art 11 30 "$(da_digest 11)")"
+  echo "gh: $da_status" >"$DA/case/fail.1"
+  da_run
+  expect "root ADR 0442 I7, root ADR 0446 I3: a download that fails with $da_status fails" 1
+  if [ ! -e "$DA/out" ] && [ "$(da_lists)" = 1 ] && [ "$(da_downloads)" = 1 ]; then ok; else ng "root ADR 0442 I7, root ADR 0446 I3: $da_status is not tried again"; fi
+done
+
+da_case
+da_list list
+da_run 123 pdfs
+expect "download-artifact: usage with two arguments" 2
+
+da_case
+da_list list "$(da_art 21 36 "$(da_digest 21)")" "$(da_art 12 42 "$(da_digest 12)")"
+da_run
+expect "root ADR 0446 I1: of two artifacts, the newer one is downloaded although its id is smaller" 0
+if da_got 12 && [ "$(grep '^api https://' "$DA/case/gh.log" | cut -d' ' -f2)" = https://api.github.com/repos/o/r/actions/artifacts/12/zip ]; then ok; else ng "root ADR 0446 I1: only the URL of the newer artifact is downloaded"; fi
+if grep -qx 'download-artifact: pdfs: the artifact 12 created at 2026-11-24T05:42:00Z, the newest of 2' "$WORK/err"; then ok; else ng "root ADR 0446 I1: the id, created_at and the number of the artifacts are written on stderr"; fi
+
+da_case
+da_list list "$(da_art 11 30 "$(da_digest 11)")" "$(da_art 13 50 "$(da_digest 13)")" "$(da_art 12 40 "$(da_digest 12)")"
+da_run
+expect "root ADR 0446 I1: of three artifacts, the newest one is downloaded" 0
+if da_got 13 && [ "$(da_downloads)" = 1 ] && grep -q '^api https://.*/artifacts/13/zip' "$DA/case/gh.log"; then ok; else ng "root ADR 0446 I1: only the newest of three is downloaded"; fi
+
+da_case
+da_list list "$(da_art 11 40 "$(da_digest 11)")" "$(da_art 12 40 "$(da_digest 12)")"
+da_run
+expect "root ADR 0446 I2: two artifacts created at the same newest time fail" 1
+if [ "$(da_downloads)" = 0 ] && [ "$(da_lists)" = 1 ] && [ ! -e "$DA/out" ]; then ok; else ng "root ADR 0446 I2: neither is downloaded, nor the list asked for again"; fi
+da_case
+da_list list "$(da_art 11 30 "$(da_digest 11)")" "$(da_art 12 40 "$(da_digest 12)")" "$(da_art 13 40 "$(da_digest 13)")"
+da_run
+expect "root ADR 0446 I2: two of three created at the same newest time fail" 1
+
+da_case
+da_list list.1 "$(da_art 21 36 "$(da_digest 21)")" "$(da_art 12 42 null)"
+da_list list "$(da_art 21 36 "$(da_digest 21)")" "$(da_art 12 42 "$(da_digest 12)")"
+da_run
+expect "root ADR 0446 I4: the newer artifact without a digest is asked for again" 0
+if da_got 12 && [ "$(da_lists)" = 2 ] && ! grep -q '/artifacts/21/zip' "$DA/case/gh.log"; then ok; else ng "root ADR 0446 I4: the older artifact is not downloaded"; fi
+
+da_case
+da_list list "$(da_art 21 36 "$(da_digest 21)")" "$(da_art 12 42 "$(da_digest 11)")"
+da_run
+expect "root ADR 0446 I5: the newer zip whose SHA-256 is not its digest fails" 1
+if [ ! -e "$DA/out" ] && [ "$(da_lists)" = 1 ] && [ "$(da_downloads)" = 1 ] && ! grep -q '/artifacts/21/zip' "$DA/case/gh.log"; then ok; else ng "root ADR 0446 I5: not unpacked, nor tried again, nor the older one downloaded"; fi
+
+# root ADR 0442 A1: every job of ci.yml that waits with wait-pdfs.sh uses
+# no actions/download-artifact, and downloads the artifact it waited for
+# with download-artifact.sh after the wait, in a step of 5 minutes with the
+# token of the wait
+da_a1() { # da_a1 WORKFLOW: the jobs that break A1, one per line
+  ci_jobs "$1" | while IFS= read -r j; do
+    job_of "$1" "$j" >"$WORK/da-job"
+    wait_line=$(grep -n 'sh scripts/visual/wait-pdfs.sh' "$WORK/da-job" | head -1)
+    [ -n "$wait_line" ] || continue
+    wait_at=${wait_line%%:*}
+    art=$(printf '%s\n' "$wait_line" | sed -n "s/.*'build (ubuntu-24.04, outputs)' *\([^ ]*\)\$/\1/p")
+    [ -n "$art" ] || art=visual-pdfs
+    step=$(awk -v s="$wait_at" -v a="$art" '
+      /^      - / { if (f) exit; buf = "" }
+      { buf = buf $0 "\n" }
+      NR > s && index($0, "run: sh scripts/ci/download-artifact.sh \"$GITHUB_RUN_ID\" " a " ") { f = 1 }
+      END { if (f) printf "%s", buf }' "$WORK/da-job")
+    if grep -q 'uses: actions/download-artifact@' "$WORK/da-job" || [ -z "$step" ] ||
+      ! printf '%s' "$step" | grep -qx '        timeout-minutes: 5' ||
+      ! printf '%s' "$step" | grep -qxF '          GH_TOKEN: ${{ github.token }}' ||
+      ! printf '%s' "$step" | grep -qxF '          GH_REPO: ${{ github.repository }}'; then
+      printf '%s\n' "$j"
+    fi
+  done
+}
+DA_A1=$(da_a1 "$CI_YML")
+if [ -z "$DA_A1" ] && [ "$(ci_jobs "$CI_YML" | while IFS= read -r j; do if job_of "$CI_YML" "$j" | grep -q 'sh scripts/visual/wait-pdfs.sh'; then printf '%s\n' "$j"; fi; done | LC_ALL=C sort | tr '\n' ' ')" = "editors-lsp verapdf visual wasm " ]; then ok; else
+  ng "root ADR 0442 A1: the jobs that wait download with download-artifact.sh after the wait ($(printf '%s' "$DA_A1" | tr '\n' ' '))"
+fi
+# the same check finds a job that still uses actions/download-artifact
+printf '%s\n' 'jobs:' '  x:' '    steps:' "      - run: timeout -k 10 3600 sh scripts/visual/wait-pdfs.sh \"\$GITHUB_RUN_ID\" \"\$GITHUB_RUN_ATTEMPT\" 'build (ubuntu-24.04, outputs)' a-b" '      - uses: actions/download-artifact@0 # v8' '        with:' '          name: a-b' >"$WORK/da-a1.yml"
+if [ "$(da_a1 "$WORK/da-a1.yml")" = x ]; then ok; else ng "root ADR 0442 A1: a job that waits and uses actions/download-artifact is found"; fi
+for j in wasm visual editors-lsp verapdf; do
+  if [ "$(perms_of "$CI_YML" "$j")" = "contents: read
+actions: read" ]; then ok; else ng "ci.yml: $j has contents: read and actions: read (root ADR 0442)"; fi
+done
 
 printf '%s tests, %s failures, %s skipped\n' "$COUNT" "$FAILURES" "$SKIPPED"
 [ "$FAILURES" -eq 0 ]

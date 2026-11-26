@@ -128,25 +128,26 @@ jobs:
     needs: changes
     if: needs.changes.outputs.build == 'true'
     timeout-minutes: 30
-    # On x86-64 six runners build the same commit: three run the tests
+    # On x86-64 seven runners build the same commit: four run the tests
     # (the suites of golem-driver in two, tests-driver-a and
-    # tests-driver-b, and the rest, by scripts/ci/test-suites.sh), outputs
-    # makes the artifacts that visual, verapdf, wasm and editors-lsp wait
-    # for (golem, the PDFs of the visual regression test, the native list
-    # of the comparison with golem.wasm and the PDFs of veraPDF),
-    # outputs-checks the other outputs (epubcheck, the determinism check,
-    # the two manuals), and env runs the environment check. On aarch64
-    # three runners run the tests, split in the same way, and one makes the
-    # outputs. The work is bound by the four cores of a runner, and the
-    # runners end at about the same time. None of them saves dist-newstyle:
-    # cache-dist does, outside the needs of ci (docs/adr/0045,
-    # docs/adr/0097, docs/adr/0140, docs/adr/0155, docs/adr/0395, root ADR
-    # 0416)
+    # tests-driver-b, and the rest in two, tests-rest-a and tests-rest-b,
+    # by scripts/ci/test-suites.sh), outputs makes the artifacts that
+    # visual, verapdf, wasm and editors-lsp wait for (golem, the PDFs of
+    # the visual regression test, the native list of the comparison with
+    # golem.wasm and the PDFs of veraPDF), outputs-checks the other outputs
+    # (epubcheck, the determinism check, the two manuals), and env runs the
+    # environment check. On aarch64 four runners run the tests, split in
+    # the same way, and one makes the outputs. The work is bound by the
+    # four cores of a runner, and the runners end at about the same time.
+    # None of them saves dist-newstyle: cache-dist does, outside the needs
+    # of ci (docs/adr/0045, docs/adr/0097, docs/adr/0140, docs/adr/0155,
+    # docs/adr/0395, root ADR 0416, root ADR 0457)
     #
     # build is what the runner builds (scripts/ci/build-targets.sh): the
-    # suites it runs on the runners of the tests (and on tests-rest the
-    # executables but golem), and golem alone where only golem runs
-    # (docs/adr/0395, root ADR 0416)
+    # suites it runs on the runners of the tests (and peg-hs on
+    # tests-rest-a, the executables but golem on tests-rest-b), and golem
+    # alone where only golem runs (docs/adr/0395, root ADR 0416, root ADR
+    # 0457)
     strategy:
       fail-fast: false
       matrix:
@@ -168,13 +169,21 @@ jobs:
             suites: driver-b
             build: driver-b
           - runner: ubuntu-24.04
-            part: tests-rest
+            part: tests-rest-a
             tests: true
             outputs: false
             artifacts: false
             env: false
-            suites: rest
-            build: rest
+            suites: rest-a
+            build: rest-a
+          - runner: ubuntu-24.04
+            part: tests-rest-b
+            tests: true
+            outputs: false
+            artifacts: false
+            env: false
+            suites: rest-b
+            build: rest-b
           - runner: ubuntu-24.04
             part: outputs
             tests: false
@@ -216,13 +225,21 @@ jobs:
             suites: driver-b
             build: driver-b
           - runner: ubuntu-24.04-arm
-            part: tests-rest
+            part: tests-rest-a
             tests: true
             outputs: false
             artifacts: false
             env: false
-            suites: rest
-            build: rest
+            suites: rest-a
+            build: rest-a
+          - runner: ubuntu-24.04-arm
+            part: tests-rest-b
+            tests: true
+            outputs: false
+            artifacts: false
+            env: false
+            suites: rest-b
+            build: rest-b
           - runner: ubuntu-24.04-arm
             part: outputs
             tests: false
@@ -434,6 +451,12 @@ jobs:
         with:
           name: golem-linux-x86_64
           path: golem-linux-x86_64
+      # cabal expands the wildcards of extra-source-files, extra-doc-files
+      # and data-files only when it makes the tarball of a package, as
+      # cabal install does; cabal build does not (root ADR 0452)
+      - name: Every package makes its source tarball (root ADR 0452)
+        if: matrix.artifacts
+        run: cabal sdist all --output-directory="$RUNNER_TEMP/sdist"
       - name: qpdf is installed
         if: matrix.tests || (matrix.runner == 'ubuntu-24.04' && matrix.outputs)
         timeout-minutes: 5
@@ -475,16 +498,17 @@ jobs:
           # each target is one word
           # shellcheck disable=SC2046
           cabal test $(sh scripts/ci/test-suites.sh "$SUITES")
-      # tests-rest builds peg-hs and runs golem-parser-test
+      # tests-rest-a builds peg-hs and runs golem-parser-test (root ADR 0457)
       - name: Generated parser matches the grammar
-        if: matrix.tests && matrix.suites == 'rest'
+        if: matrix.tests && matrix.suites == 'rest-a'
         run: |
           scripts/gen-parser.sh
           git diff --exit-code modules/golem-parser/src/Golem/Parser/Generated.hs modules/golem-parser/test/StrippedGrammar.hs modules/golem-emet/src/Golem/Emet/Generated.hs
       # the modules that embed VERSION in golem-driver and docs/diagnostics.md in
-      # golem-evaluate in place of Template Haskell (docs/adr/0203, root ADR 0434)
+      # golem-evaluate in place of Template Haskell, on tests-rest-a (docs/adr/0203,
+      # root ADR 0434, root ADR 0457)
       - name: Generated modules match VERSION and docs/diagnostics.md
-        if: matrix.tests && matrix.suites == 'rest'
+        if: matrix.tests && matrix.suites == 'rest-a'
         run: |
           sh scripts/gen-embedded.sh
           git diff --exit-code modules/golem-driver/src/Golem/Driver/Version/Embedded.hs modules/golem-evaluate/src/Golem/Evaluate/Explain/Embedded.hs
@@ -861,6 +885,10 @@ jobs:
     if: needs.changes.outputs.build == 'true'
     timeout-minutes: 75
     runs-on: ubuntu-24.04
+    # actions: read for the zip of wasm-native-list (docs/adr/0442)
+    permissions:
+      contents: read
+      actions: read
     env:
       HOSTTOOLS: ${{ github.workspace }}/third_party/hosttools
       # the templates of the native alex and happy, which they read from
@@ -1030,9 +1058,14 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: timeout -k 10 3600 sh scripts/visual/wait-pdfs.sh "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" 'build (ubuntu-24.04, outputs)' wasm-native-list
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-        with:
-          name: wasm-native-list
+      # the newest wasm-native-list of the run, checked by its digest and
+      # tried again until it can be downloaded (docs/adr/0442, docs/adr/0446)
+      - name: Download wasm-native-list (docs/adr/0442)
+        timeout-minutes: 5
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: sh scripts/ci/download-artifact.sh "$GITHUB_RUN_ID" wasm-native-list .
       - name: The PDFs and the diagnostics of golem.wasm are those of golem (docs/adr/0199, docs/adr/0238 I2)
         run: sh scripts/wasm/compare.sh --check wasm-native-list.txt wasm-list.txt
       # why the toolchain cache missed: the toolchain or the project
@@ -1089,7 +1122,8 @@ jobs:
     timeout-minutes: 75
     runs-on: ubuntu-24.04
     # actions: read for the artifact visual-pdfs of an earlier run, in the
-    # report of a failure; this job only (docs/adr/0035, docs/adr/0096)
+    # report of a failure, and for the zip of visual-pdfs of this run
+    # (docs/adr/0035, docs/adr/0096, docs/adr/0442)
     permissions:
       contents: read
       actions: read
@@ -1128,10 +1162,12 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: timeout -k 10 3600 sh scripts/visual/wait-pdfs.sh "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" 'build (ubuntu-24.04, outputs)'
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-        with:
-          name: visual-pdfs
-          path: visual-pdfs
+      - name: Download visual-pdfs (docs/adr/0442)
+        timeout-minutes: 5
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: sh scripts/ci/download-artifact.sh "$GITHUB_RUN_ID" visual-pdfs visual-pdfs
       # the limit only finds a shem that does not stop; the budget is 2
       # minutes, and a run over it does not fail (docs/adr/0095). --lists
       # keeps the references of these PDFs for the report (docs/adr/0096)
@@ -1333,6 +1369,10 @@ jobs:
     if: needs.changes.outputs.build == 'true'
     timeout-minutes: 75
     runs-on: ubuntu-24.04
+    # actions: read for the zip of golem-linux-x86_64 (docs/adr/0442)
+    permissions:
+      contents: read
+      actions: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -1361,10 +1401,12 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: timeout -k 10 3600 sh scripts/visual/wait-pdfs.sh "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" 'build (ubuntu-24.04, outputs)' golem-linux-x86_64
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-        with:
-          name: golem-linux-x86_64
-          path: golem-linux-x86_64
+      - name: Download golem-linux-x86_64 (docs/adr/0442)
+        timeout-minutes: 5
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: sh scripts/ci/download-artifact.sh "$GITHUB_RUN_ID" golem-linux-x86_64 golem-linux-x86_64
       # an artifact keeps no mode of its files
       - run: chmod +x golem-linux-x86_64/golem
       - name: golem lsp in a headless Neovim (docs/adr/0231)
@@ -1387,6 +1429,10 @@ jobs:
     if: needs.changes.outputs.build == 'true'
     timeout-minutes: 75
     runs-on: ubuntu-24.04
+    # actions: read for the zip of conformance-pdfs (docs/adr/0442)
+    permissions:
+      contents: read
+      actions: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -1409,10 +1455,12 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: timeout -k 10 3600 sh scripts/visual/wait-pdfs.sh "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" 'build (ubuntu-24.04, outputs)' conformance-pdfs
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-        with:
-          name: conformance-pdfs
-          path: conformance-pdfs
+      - name: Download conformance-pdfs (docs/adr/0442)
+        timeout-minutes: 5
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: sh scripts/ci/download-artifact.sh "$GITHUB_RUN_ID" conformance-pdfs conformance-pdfs
       - name: The PDFs pass PDF/A-2a and PDF/UA-1
         run: sh scripts/ci/verapdf.sh "$VERAPDF_STORE_PATH/bin/verapdf" conformance-pdfs
 

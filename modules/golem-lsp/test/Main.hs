@@ -2,6 +2,7 @@
 
 module Main (main) where
 
+import AliasLspSpec (aliasLspTests)
 import Control.Concurrent (forkIO)
 import Control.Monad (forM_, void)
 import Data.Aeson qualified as J
@@ -40,9 +41,10 @@ import MovedReferencesSpec (movedReferencesTests)
 import PositionEnumSpec (positionEnumTests)
 import PublishSpec (publishTests)
 import SemanticTokensSpec (semanticTokensTests)
+import SetRenameSpec (setRenameTests)
 import StaleS1Spec (staleS1Tests)
 import Support (codesOf)
-import System.Directory (copyFile, createDirectoryIfMissing, doesDirectoryExist, listDirectory, makeAbsolute)
+import System.Directory (canonicalizePath, copyFile, createDirectoryIfMissing, doesDirectoryExist, listDirectory, makeAbsolute)
 import System.Environment (lookupEnv)
 import System.FilePath (takeDirectory, (</>))
 import System.IO (hClose)
@@ -57,6 +59,21 @@ import TomlSpec (tomlTests)
 
 root :: FilePath
 root = "test/fixtures/proj"
+
+{- | A project of a.gm with a style.toml, the workspace opened on it
+(root ADR 0438).
+-}
+withFrameProject :: Text -> Text -> (Workspace -> IO a) -> IO a
+withFrameProject style source act = withSystemTempDirectory "golem-lsp-frames" $ \tmp0 -> do
+  tmp <- canonicalizePath tmp0
+  TIO.writeFile (tmp </> "manifest.toml") (manifestToml testManifest {tmChapters = ["a.gm"]})
+  TIO.writeFile (tmp </> "style.toml") style
+  TIO.writeFile (tmp </> "a.gm") source
+  openWorkspace tmp >>= act
+
+-- | A style with two text frames (root ADR 0438).
+frameStyle :: Text
+frameStyle = "[color.swatches]\naccent = { cmyk = [0, 80, 100, 0] }\n\n[paragraph-styles.quote]\nspace-between = 1\n\n[frames.quote]\nx = \"10mm\"\ny = \"10mm\"\nwidth = \"60mm\"\nheight = \"20mm\"\n\n[frames.note]\npath = \"M 0 0 L 60 0 L 60 20 Z\"\n"
 
 main :: IO ()
 main = do
@@ -186,6 +203,14 @@ tests =
         map (slice ws) (definition ws "b.gm" (offsetIn src "n-one]" 1)) @?= ["n-one"]
         map locPath (definition ws "b.gm" (offsetIn src "n-one]" 1)) @?= ["b.gm"]
         fmap (map snd) (renameLabel ws "b.gm" (offsetIn src "n-one]" 1) "n-first") @?= Right ["n-first", "n-first"],
+      testCase "root ADR 0459: completion and definition in a body between ::: lines, and its folding range" $ do
+        ws0 <- openWorkspace root
+        let src = "@label sec\n:::\n# 見出し\n\n本文 [ref-title sec]。\n:::\n\n@stage\n:::\n一\n\n@note n\n:::\n二\n\n三\n:::\n\n:::\n\n[ref-page sec]\n"
+        ws <- updateFile ws0 "b.gm" src
+        assertBool "labels" ("sec" `elem` map cmpLabel (completions ws "b.gm" (offsetIn src "[ref-title " 11)))
+        map (slice ws) (definition ws "b.gm" (offsetIn src "sec]。" 1)) @?= ["sec"]
+        map (slice ws) (definition ws "b.gm" (offsetIn src "sec]\n" 1)) @?= ["sec"]
+        foldingRanges src @?= [(1, 5), (8, 18), (12, 16)],
       testCase "completion: a project without plugins has the built-in names only" $ do
         ws0 <- openWorkspace root
         ws <- updateFile ws0 "b.gm" "本文。\n\n["
@@ -210,6 +235,16 @@ tests =
         map cmpLabel (found (offsetIn src "@style " 7)) @?= ["body", "caption", "quote", "sidenote", "table", "toc-1", "toc-2", "toc-3", "toc-4", "toc-5", "toc-6", "verse"]
         map cmpKind (found (offsetIn src "@style " 7)) @?= replicate 12 CkParaStyle
         map cmpLabel (found (offsetIn src "[style " 7)) @?= ["bold", "code", "italic", "no-break", "note-mark", "strong", "subscript", "superscript", "toc-page-number", "url"],
+      testCase "root ADR 0438 I11: every name of [frames] is completed after @frame" $
+        withFrameProject frameStyle "前。\n\n@frame \n" $ \ws -> do
+          let src = textOf ws "a.gm"
+          map cmpLabel (completions ws "a.gm" (offsetIn src "@frame " 7)) @?= ["note", "quote"],
+      testCase "root ADR 0438: a name of @frame [frames] does not have is a diagnostic of the LSP" $
+        withFrameProject frameStyle "前。\n\n@frame missing\n  引用。\n" $ \ws ->
+          [c | d <- fromMaybe [] (Map.lookup "a.gm" (diagnosticsFor ws)), let { DiagnosticCode c = diagCode d }] @?= ["G03289"],
+      testCase "root ADR 0438: a frame of style.toml of neither shape is a diagnostic of the LSP" $
+        withFrameProject (frameStyle <> "\n[frames.empty]\ntext = \"x\"\n") "前。\n" $ \ws ->
+          assertBool (show (wsProjectErrors ws, diagnosticsFor ws)) ("G03285" `elem` [c | d <- wsProjectErrors ws <> concat (Map.elems (diagnosticsFor ws)), let DiagnosticCode c = diagCode d]),
       testCase "root ADR 0398 A5: separator name completion" $ do
         ws0 <- openWorkspace root
         ws <- updateFile ws0 "b.gm" "@separator \n"
@@ -348,7 +383,7 @@ tests =
         assertBool (show codes) (all (`notElem` codes) ["G03006", "G03010", "G08002"]),
       testCase "a missing import is reported on the file of the @import (golem-project ADR 0006)" $ withSystemTempDirectory "golem-lsp" $ \tmp -> do
         mapM_ (\f -> copyFile (root </> f) (tmp </> f)) ["manifest.toml", "b.gm"]
-        BS.writeFile (tmp </> "a.gm") "@import nope.gm as x\n"
+        BS.writeFile (tmp </> "a.gm") "@import nope.gm * as x\n"
         ws <- openWorkspace tmp
         let codesIn p = [c | d <- fromMaybe [] (Map.lookup p (diagnosticsFor ws)), let DiagnosticCode c = diagCode d]
         codesIn "a.gm" @?= ["G03002"]
@@ -625,6 +660,8 @@ tests =
             ],
       editingTests,
       functionsLspTests,
+      setRenameTests,
+      aliasLspTests,
       tableWatchTests,
       staleS1Tests,
       publishTests,

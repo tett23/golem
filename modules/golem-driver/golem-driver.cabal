@@ -147,6 +147,7 @@ test-suite golem-driver-pdf-test
     FontInstanceSpec
     LinkSpec
     OpenTypeFeaturesSpec
+    PdfScreenSpec
     PdfSpec
     PlatesSpec
     PopplerSpec
@@ -158,6 +159,9 @@ test-suite golem-driver-pdf-test
     TaggedPdfSpec
     TateChuYokoSpec
     VisualSubsetSpec
+  -- golem-html's cmykToRgb and the HTML of the figures, which the PDF for
+  -- the screen is compared with (root ADR 0445)
+  build-depends: golem-html
 
 -- The tests of the pages: paragraphs, headings, notes, figures and their
 -- placement, and page breaks (root ADR 0416).
@@ -171,6 +175,7 @@ test-suite golem-driver-page-test
   other-modules:
     AdjustOrderSpec
     AlignSpaceSpec
+    AroundBlocksSpec
     BoxesSpec
     CaptionSidenoteIndentSpec
     CaptionSidenoteParagraphsSpec
@@ -179,6 +184,7 @@ test-suite golem-driver-page-test
     CompressedNoteMarksSpec
     FigureSpec
     FileSpacesSpec
+    FramesSpec
     HeadingLevelsSpec
     KeepBookPartsSpec
     KeepOptionsSpec
@@ -258,7 +264,9 @@ test-suite golem-driver-cli-test
     ExceptionsSpec
     FunctionLibrarySpec
     FunctionsSpec
+    ImportGraphSpec
     NumberUnitBuildSpec
+    PathDrawingSpec
     SecuritySpec
     Support
     UnwritableNumbersSpec

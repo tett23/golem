@@ -1,6 +1,6 @@
 # ADR 0162: .gm から Emet の関数を使う
 
-Status: superseded [{"part":"区切りをブロック結果に許すことと区切り用関数の行アキ","by":["docs/adr/0398-styled-separators-in-manuscripts.md"]}]
+Status: superseded [{"part":"区切りをブロック結果に許すことと区切り用関数の行アキ","by":["docs/adr/0398-styled-separators-in-manuscripts.md"]},{"part":"取り込み","by":["docs/adr/0451-import-listed-names-without-a-namespace.md"],"kind":"supplement"},{"part":"呼び方","by":["docs/adr/0451-import-listed-names-without-a-namespace.md"],"kind":"supplement"},{"part":"LSP","by":["docs/adr/0451-import-listed-names-without-a-namespace.md"],"kind":"supplement"},{"part":"lint","by":["docs/adr/0451-import-listed-names-without-a-namespace.md"],"kind":"supplement"}]
 
 ## 文脈
 

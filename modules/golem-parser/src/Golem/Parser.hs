@@ -32,7 +32,7 @@ parse fid src =
   let (tree, errs) = G.parseSyntaxRecover src
       cst = convert tree
       recovered = recoverExpressionComments fid cst
-      extra = commentDiagnostics fid cst <> recovered
+      extra = commentDiagnostics fid cst <> recovered <> divDiagnostics fid cst
       unclosedAt p =
         any
           ( \x ->
@@ -51,6 +51,30 @@ parse fid src =
                  && any (spanContains (diagSpan d) . diagSpan) recovered
              )
    in (cst, sortOn (spanStart . diagSpan) (filter (not . covered) (map (syntaxErrorDiagnostic fid) errs) <> extra))
+
+{- | The diagnostics of the blocks between ::: lines (root ADR 0459), at
+the line that opens: G01030 without the line that closes, G01031 for one
+block alone between the two lines.
+-}
+divDiagnostics :: FileId -> Node -> [Diagnostic]
+divDiagnostics fid = walk 0
+  where
+    walk start n =
+      let here = case nodeKind n of
+            NDiv ->
+              let marks = [off | (off, ElemToken t) <- placed start n, tokKind t == KDivMark]
+                  inner = length [() | (_, e) <- placed start n, isBlock e]
+               in case marks of
+                    [open] -> [diagnostic "G01030" Error (mkSpan fid open (open + 3)) "::: を閉じる行がありません。ブロックコマンドの直後で閉じるときは、閉じる行の前に空行を置きます"]
+                    (open : _) | inner == 1 -> [diagnostic "G01031" Info (mkSpan fid open (open + 3)) "::: で囲まなくても、直後の一つのブロックは本体になります"]
+                    _ -> []
+            _ -> []
+       in here <> concat [walk off m | (off, ElemNode m) <- placed start n]
+    -- the children with their offsets
+    placed start n = zip (scanl (+) start (map elementWidth (nodeChildren n))) (nodeChildren n)
+    isBlock = \case
+      ElemNode m -> nodeKind m `elem` [NParagraph, NSeparatorLine, NHeading, NBulletList, NOrderedList, NDefList, NTable, NCodeBlock, NAttributed, NBlockCommand, NErrorNode]
+      ElemToken t -> tokKind t == KError
 
 -- Diagnostics whose spans and suggested edits depend on the lossless tokens.
 commentDiagnostics :: FileId -> Node -> [Diagnostic]

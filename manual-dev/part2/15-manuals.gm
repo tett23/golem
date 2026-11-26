@@ -83,7 +83,7 @@ Golem の原稿は、コミットのハッシュを読む手段を持たず、�
 奥付は次のように読む。
 
 ```text
-@import common/build-info.gm as build
+@import common/build-info.gm * as build
 
 - 版：[= build.edition]
 - コミット：[code: [= build.commit]][= build.uncommitted]

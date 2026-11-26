@@ -103,6 +103,10 @@ inferExpr env (Located _ e) = case e of
   ECall f _ | Just (ns, name) <- splitNamespace f -> case Map.lookup ns (envFunctions env) of
     Just (Loaded fns) -> argStatic . efResult <$> Map.lookup name (fnExpr fns)
     _ -> Nothing
+  -- a pub fn listed by @import (root ADR 0451)
+  ECall f _ | Just ref <- Map.lookup f (envListed env) -> case ref of
+    Loaded fns -> argStatic . efResult <$> Map.lookup f (fnExpr fns)
+    Unloaded -> Nothing
   ECall f args -> case (f, args) of
     ("sqrt", [_]) -> num TRat
     ("floor", [x]) -> numOf x >>= num . min TInt

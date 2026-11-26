@@ -257,6 +257,9 @@ data Targets = Targets
     tgPdfA :: !(Maybe PdfAPart),
     -- | [targets.pdf] pdfua: the PDF/UA the PDF declares (docs/adr ADR 0183)
     tgPdfUa :: !(Maybe PdfUaPart),
+    {- | [targets.pdf-screen]: the PDF for the screen is configured, with the
+    PDF/UA it declares (root ADR 0431); it is built only when chosen
+    -} tgPdfScreen :: !(Maybe (Maybe PdfUaPart)),
     tgEpubPageMap :: !(Maybe FilePath),
     -- | [targets.html] fonts: whether HTML embeds the fonts or names generic families (docs/adr/0423)
     tgHtmlFonts :: !WebFonts,
@@ -295,6 +298,8 @@ data PdfUaPart = PdfUa1
 data PluginDecl = PluginDecl
   { pdSource :: !PluginSource,
     pdOverrides :: ![Text],
+    -- | the built-in block commands the plugin overrides (root ADR 0453)
+    pdBlockOverrides :: ![Text],
     -- | the data the project passes to the plugin: names and project-relative paths (docs/adr/0105)
     pdData :: !(Map Text FilePath)
   }
@@ -569,7 +574,7 @@ manifestCode = \case
   _ -> "G03001"
 
 defaultTargets :: Targets
-defaultTargets = Targets Nothing Nothing True [] Nothing Nothing Nothing WebFontsGeneric WebFontsGeneric
+defaultTargets = Targets Nothing Nothing True [] Nothing Nothing Nothing Nothing WebFontsGeneric WebFontsGeneric
 
 instance FromValue Metadata where
   fromValue = parseTableFromValue $ do
@@ -677,6 +682,7 @@ applyEdits es s = foldl (flip seApply) s es
 instance FromValue Targets where
   fromValue = parseTableFromValue $ do
     pdf <- optKey "pdf"
+    screen <- optKey "pdf-screen"
     epub <- optKey "epub"
     html <- optKey "html"
     txt <- optKey "text"
@@ -688,6 +694,7 @@ instance FromValue Targets where
           tgText = maybe [] textVariants txt,
           tgPdfA = pdf >>= ptPdfA,
           tgPdfUa = pdf >>= ptPdfUa,
+          tgPdfScreen = fmap screenPdfUa screen,
           tgEpubPageMap = T.unpack <$> (epub >>= epubPageMap),
           tgHtmlFonts = maybe WebFontsGeneric webTableFonts html,
           tgEpubFonts = maybe WebFontsGeneric epubFonts epub
@@ -719,6 +726,7 @@ manifestChoiceValues path arrayElement = case (path, arrayElement) of
   (["metadata", group, "role"], False) | group `elem` ["creators", "contributors"] -> map roleWord [minBound .. maxBound]
   (["targets", "pdf", "pdfa"], False) -> map fst pdfAValues
   (["targets", "pdf", "pdfua"], False) -> map fst pdfUaValues
+  (["targets", "pdf-screen", "pdfua"], False) -> map fst pdfUaValues
   (["targets", target, "fonts"], False) | target `elem` ["html", "epub"] -> map fst webFontsValues
   (["targets", "text", "variants"], True) -> map fst textVariantNames
   (["diagnostics", "silence-notices"], True) -> [n | DiagnosticCode n <- noticeCodes]
@@ -728,16 +736,27 @@ manifestChoiceValues path arrayElement = case (path, arrayElement) of
     separators = map fst paragraphSeparators
 
 instance FromValue PdfTable where
-  fromValue = parseTableFromValue (PdfTable <$> optKey "isbn" <*> optKeyOf "pdfa" pdfa <*> optKeyOf "pdfua" pdfua)
+  fromValue = parseTableFromValue (PdfTable <$> optKey "isbn" <*> optKeyOf "pdfa" pdfa <*> optKeyOf "pdfua" pdfUaValue)
     where
       pdfa = \case
         Text' _ v | Just part <- lookup v pdfAValues -> pure part
         Text' l v -> failAt l (T.unpack ("pdfa に書けるのは \"2a\" だけです: " <> v))
         v -> typeError "string" v
-      pdfua = \case
-        Text' _ v | Just part <- lookup v pdfUaValues -> pure part
-        Text' l v -> failAt l (T.unpack ("pdfua に書けるのは \"1\" だけです: " <> v))
-        v -> typeError "string" v
+
+{- | [targets.pdf-screen] (root ADR 0431): pdfua alone, "1" alone, as in
+[targets.pdf]; any other key, pdfa among them, is unknown (G03001).
+-}
+newtype ScreenTable = ScreenTable {screenPdfUa :: Maybe PdfUaPart}
+
+instance FromValue ScreenTable where
+  fromValue = parseTableFromValue (ScreenTable <$> optKeyOf "pdfua" pdfUaValue)
+
+-- | A value of pdfua: "1" alone; any other value, and a value that is not a string, is G03001 at the value (docs/adr ADR 0183).
+pdfUaValue :: Value' l -> Matcher l PdfUaPart
+pdfUaValue = \case
+  Text' _ v | Just part <- lookup v pdfUaValues -> pure part
+  Text' l v -> failAt l (T.unpack ("pdfua に書けるのは \"1\" だけです: " <> v))
+  v -> typeError "string" v
 
 data IsbnTable = IsbnTable (Maybe Text) (Maybe Text) WebFonts
 
@@ -787,13 +806,13 @@ instance FromValue TextTable where
 -- | url or path, exactly one of them (docs/adr/0109).
 instance FromValue PluginDecl where
   fromValue v = do
-    (u, p, o, d) <- parseTableFromValue ((,,,) <$> optKey "url" <*> optKey "path" <*> optKey "overrides" <*> optKey "data") v
+    (u, p, o, bo, d) <- parseTableFromValue ((,,,,) <$> optKey "url" <*> optKey "path" <*> optKey "overrides" <*> optKey "block-overrides" <*> optKey "data") v
     src <- case (u, p) of
       (Just x, Nothing) -> pure (PluginUrl x)
       (Nothing, Just x) -> pure (PluginPath (T.unpack x))
       (Just _, Just _) -> failAt (valueAnn v) "プラグインには url と path のどちらか一方だけを書きます"
       (Nothing, Nothing) -> failAt (valueAnn v) "プラグインには url か path のどちらかを書きます"
-    pure (PluginDecl src (fromMaybe [] o) (maybe Map.empty (Map.map T.unpack) d))
+    pure (PluginDecl src (fromMaybe [] o) (fromMaybe [] bo) (maybe Map.empty (Map.map T.unpack) d))
 
 instance FromValue FilterDecl where
   fromValue v = do
@@ -1016,7 +1035,7 @@ parseManifest fid src = do
       loc = fromMaybe (mkSpan fid 0 0) (manifestValueSpan fid src ["metadata", "language"])
   unless (isLanguageTag tag) $
     Left [diagnostic "G03119" Error loc ("language を言語のタグの形で書きます: " <> tag)]
-  if tgHtml t || not (null (tgText t)) || isJust (tgPdf t) || isJust (tgEpub t)
+  if tgHtml t || not (null (tgText t)) || isJust (tgPdf t) || isJust (tgPdfScreen t) || isJust (tgEpub t)
     then Right m
     else Left [diagnostic "G03001" Error (mkSpan fid 0 0) "出力ターゲットが一つもありません"]
 
