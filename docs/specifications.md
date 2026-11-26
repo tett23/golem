@@ -1283,7 +1283,7 @@ G02276 は元の名前の位置で、ほかの diagnostic は別名の位置で�
 
 | 重なる相手 | 調べる場所 | コード |
 | --- | --- | --- |
-| 上書きできない組み込みのコマンドの名前（`@import`、`@set`、`[link]` など。「プラグイン」の節の「種類」の表） | インライン、ブロック | G02270 |
+| 上書きできない組み込みのコマンドの名前（`@import`、`@set`、`@frame`、属性など。「プラグイン」の節の「種類」の表） | ブロック | G02270 |
 | プロジェクトが宣言したプラグインのコマンドの名前（`overrides` と `block-overrides` で上書きを宣言したプラグインのコマンドを含む） | インライン、ブロック | G02271 |
 | 同じファイルのほかの `@import` が並べた名前 | 三つとも | G02272 |
 | 同じ並びの中で前に書いた名前 | 三つとも | G02273 |
@@ -1303,10 +1303,16 @@ G02272 は、重なる名前を並べたどちらの `@import` にも出し、G0
 どちらの定義を呼ぶかが `@import` の行の順で変わらないようにするためである。
 その呼び出しと参照は、式、インラインのコマンド、ブロックコマンドの一つごとに G02280 とする（[root ADR 0461](adr/0461-report-the-diagnostics-that-follow-from-another-error.md)）。
 
-並べた名前が、その使う場所で上書きできる組み込みのコマンド（「プラグイン」の節の「種類」の表）と同じなら、エラーにしない（[root ADR 0453](adr/0453-override-built-in-commands-by-listed-imports-and-plugins.md)）。
+並べた名前が、その使う場所で上書きできる組み込みのコマンド（「プラグイン」の節の「種類」の表）と同じなら、エラーにしない（[root ADR 0453](adr/0453-override-built-in-commands-by-listed-imports-and-plugins.md)、[root ADR 0471](adr/0471-override-built-in-commands-except-mechanisms-and-frames.md)）。
 その名前の呼び出しは、`@import` を書いたファイルの中で、`@import` の行より後で、組み込みのコマンドの代わりに取り込んだ関数を呼ぶ。
 `@import` の行より前の呼び出しと、ほかのファイルの呼び出しは、組み込みのコマンドを呼ぶ。
-たとえば、`pub inline "index"` と `pub block "index"` の両方を公開する `.emet` から `{ index }` を並べると、インラインの `index` は上書きできないので G02270 が一つ出て `[index …]` は組み込みのままになり、`@index` は取り込んだ関数を呼ぶ。
+インラインのコマンドはすべて上書きできるので、G02270 は、ブロックの上書きできない名前（Golem の仕組みを決めるものと `frame`）だけで出る。
+たとえば、`pub inline "index"` と `pub block "index"` の両方を公開する `.emet` から `{ index }` を並べると、`[index …]` と `@index` のどちらも取り込んだ関数を呼ぶ。
+`{ frame }` を並べると、G02270 が一つ出て、`@frame` は組み込みのままである。
+
+上書きしたファイルでは、上書きした名前の組み込みのコマンドを使えない（[root ADR 0471](adr/0471-override-built-in-commands-except-mechanisms-and-frames.md)）。
+たとえば、ブロックの `note` を上書きしたファイルでは、`@note` で注の本文を定義できないので、名前で引く `[note x]` はいつも G02137 になる。
+上書きした名前のほかのコマンドは組み込みのままであり、組み込みに戻すには、取り込みに別名を付ける（`{ note as n }`）。
 
 名前を探す順は、使う場所ごとに次のとおりである。
 
@@ -7728,7 +7734,7 @@ URL は、文字列リテラルか、文字列を値に持つ式文脈で書く�
 - URL がない、位置引数が二つ以上ある、キーワード引数を書いた、URL が文字列でない場合は G02124 とし、コマンドを実行しない。URL の位置引数が語で、散文スロットが `//` で始まるときは、メッセージに引用符の案内を添える。
 - 散文スロットを二つ以上書けば G02038 とする。
 
-`link` は、プラグインが上書きできない組み込みのコマンドである。
+`link` は組み込みのコマンドで、プラグインと名前を並べた取り込みで上書きできる（[root ADR 0471](adr/0471-override-built-in-commands-except-mechanisms-and-frames.md)）。
 リンクは見た目を変えず、色、下線、枠を付けない。
 
 ### URL の検査
@@ -9633,18 +9639,32 @@ ABI のバージョンと、ABI を変えるときの規則は、下の「シリ
 ただし、上書きできるのは、マニフェストで上書きを宣言した場合に限る（[docs/adr/0031](adr/0031-adr-code-mismatches.md)）。
 インラインのコマンドは `overrides` で、ブロックコマンドは `block-overrides` で宣言する（[root ADR 0453](adr/0453-override-built-in-commands-by-listed-imports-and-plugins.md)）。
 名前を並べた取り込みも、同じコマンドを上書きできる（「定義の取り込み」の節）。
-上書きできるコマンドとできないコマンドは、使う場所ごとに次のとおりである。
+上書きできるコマンドとできないコマンドは、使う場所ごとに次のとおりである（[root ADR 0471](adr/0471-override-built-in-commands-except-mechanisms-and-frames.md)）。
 
 | 使う場所 | 上書きできる | 上書きできない |
 | --- | --- | --- |
-| インライン | `strong`、`bold`、`italic`、`code`、`ruby`、`kenten`、`color`、`style`、`warichu`、`upright`、`tcy`、`number-text` の十二 | `ref-number`、`ref-title`、`ref-page`、`note`、`sidenote`、`endnote`、`index`、`cite`、`aki`、`link`、`lang`、`shy` の十二 |
-| ブロック | 出力の中身を作る `toc`、`index`、`bibliography`、`printings`、`separator` の五つ | 上の五つのほかのすべて。取り込みと変数（`import`、`set`）、スタイル（`style`、`style-def`）、ファイルの設定（`manifest`、`hyphenation-exceptions`）、属性、チャネル（`channel`）、図表とコード（`figure`、`table`、`listing`）、注（`note`、`endnote`）、フレーム（`frame`）、改ページと行の指定（`page-break`、`column-break`、`no-page-break`、`need-lines`、`page-lines`、`blank-line`）、言語（`lang`） |
+| インライン | すべての組み込みのコマンド（`strong`、`bold`、`italic`、`code`、`ruby`、`kenten`、`color`、`style`、`warichu`、`upright`、`tcy`、`number-text`、`ref-number`、`ref-title`、`ref-page`、`note`、`sidenote`、`endnote`、`index`、`cite`、`aki`、`link`、`lang`、`shy` の二十四） | なし |
+| ブロック | `toc`、`index`、`bibliography`、`printings`、`separator`、改ページと行の指定（`page-break`、`column-break`、`no-page-break`、`need-lines`、`page-lines`、`blank-line`）、図表とコード（`figure`、`table`、`listing`）、`style`、`lang`、注（`note`、`endnote`）の十八 | Golem の仕組みを決めるもの（`import`、`set`、`channel`、`manifest`、`style-def`、`hyphenation-exceptions` と、属性の `label`、`toc-title`、`number`、`nonumber`、`notoc`、`caption`、`column-widths`）と、`frame` の十四 |
 
-上書きできないコマンドは、評価、ページ分割、参照、チャネルの仕組みが、そのコマンドの意味を前提にするものである（[docs/adr/0187](adr/0187-inline-language-switch.md)、[docs/adr/0272](adr/0272-discretionary-hyphens-hyphenation-exceptions-and-no-break.md)）。
-たとえば、`link` を組み込みに固定するのは、`ref-number` や `note` と同じく、PDF のリンクになる要素だからである（[docs/adr/0182](adr/0182-external-links.md)）。
-上書きできるコマンドは、出力の中身だけを作り、ほかの仕組みがその中身を読まないものである。
-表のブロックの行の「上書きできない」は例を挙げたもので、属性（`label`、`caption` など）を含め、上書きできる五つのほかの組み込みのブロックコマンドの名前はすべて上書きできない。
-組み込みのブロックコマンドの名前の一覧は `Golem.Eval.Builtin.builtinBlockCommands` で、上書きできる五つ（`overridableBlockCommands`）と、上書きできない名前（`fixedBlockCommands`）に分かれる。
+上書きできないコマンドは、二つの種類に限る。
+一つは Golem の仕組みを決めるもので、取り込み、変数、チャネルの宣言、ファイルの設定、スタイルの定義、まとまりの属性は、評価がほかのすべてのコマンドを読む前提である。
+もう一つは無いと組版そのものができないもので、`frame` がこれに当たる。
+この二つの種類は、v1.0.0 で上書きできない基礎的な命令の基準を決めるまでの一覧である。
+組み込みのブロックコマンドの名前の一覧は `Golem.Eval.Builtin.builtinBlockCommands` で、上書きできる十八（`overridableBlockCommands`）と、上書きできない名前（`fixedBlockCommands`）に分かれる。
+
+評価とツールがコマンドの名前で特別に扱う箇所は、呼ぶ先が組み込みのコマンドのときだけ当てる（[root ADR 0471](adr/0471-override-built-in-commands-except-mechanisms-and-frames.md)）。
+上書きした名前の呼び出しは、ほかの取り込んだ関数とプラグインのコマンドと同じく、関数の型で扱いが決まる。
+評価の前の段とツールは、そのファイルの名前を並べた `@import` の行と、本のプラグインの上書きの宣言から、位置ごとに上書きした名前を求める（`Golem.Eval.File.fileOverrides`）。
+箇所ごとの扱いは次のとおりである。
+
+- 評価が次スタイルのために作る `@style` は、名前を引かず、組み込みの `@style` を直に呼ぶ。そのため、`style` を上書きしたファイルでも、次スタイルは当たる。
+- 改ページの仲間、`blank-line`、`separator` をまとまりから先に抜く扱いは、呼ぶ先が組み込みのときだけである。上書きした関数は、型で本体を取るかが決まる（[root ADR 0459](adr/0459-take-the-next-block-as-the-body-without-indentation.md)）。
+- 評価の前の正規化（`@style` と `@lang` の本体の改行を残す扱い、`@figure` の本体をキャプションとする扱い）と、行の区切りで段落を分ける扱いは、呼ぶ先が組み込みのときだけである。
+- 読むファイルの収集（`figure`、`table`、`listing` の引数）は、呼ぶ先が組み込みのときだけである。
+- G02012、G02013、G02114、G02077 などの、名前で決まるまとまりと引数の検査は、呼ぶ先が組み込みのときだけである。上書きした `@note` は属性を受け取る。
+- `@style` の本体の中で段落スタイルを当てない扱いは、呼ぶ先が組み込みの `@style`、`@frame`、`@note`、`@endnote` のときだけである。上書きした名前の結果には段落スタイルが当たる（[root ADR 0460](adr/0460-let-style-take-any-blocks-as-its-body.md)）。
+- 言語サーバーの補完、ホバー、定義への移動は、上書きした位置より後では、取り込んだ関数を示す。ラベルとスタイルの出現の収集と改名、スタイルの名前の補完、golem-lint の行を保つスタイルの判定は、呼ぶ先が組み込みのときだけ当てる。言語サーバーは、構文の誤りで評価できないファイルでは、`@import` の行だけから、`.emet` から並べた名前を、読み込めなかった `.emet` の名前と同じくすべての使う場所で上書きしたものとして扱う。
+- 散文スロットの短縮記法と `##N##` は、上書きした呼び出しにも名前で当てる（[root ADR 0453](adr/0453-override-built-in-commands-by-listed-imports-and-plugins.md)、[root ADR 0458](adr/0458-rename-listed-imports-with-as.md)）。
 
 ### 実行の範囲
 
@@ -9887,7 +9907,7 @@ data = { table = "data/words.tsv" }
 golem-evaluate が、インラインのコマンドの `overrides` と同じく、マニフェストと照らして次のものを報告する。
 
 - 組み込みのブロックコマンドと同じ名前を提供し、`block-overrides` に書いていない（`組み込みのブロックコマンドと衝突しています（block-overrides で宣言してください）: <プラグイン>.@<名前>`）。
-  上書きできない組み込みのブロックコマンドと同じ名前を提供した（`上書きできない組み込みのブロックコマンドと衝突しています: <プラグイン>.@<名前>`）。
+  上書きできない組み込みのブロックコマンド（Golem の仕組みを決めるものと `frame`）と同じ名前を提供した（`上書きできない組み込みのブロックコマンドと衝突しています: <プラグイン>.@<名前>`）。
   どちらも G06007 で、提供した名前ごとに一つ出す。
 - `block-overrides` に、プラグインが提供していないブロックコマンドを書いた（`プラグインが提供していないブロックコマンドを block-overrides に書いています: <プラグイン>.@<名前>`）。
   上書きできる組み込みのブロックコマンドでない名前を書いた（`上書きできる組み込みのブロックコマンドではありません: <プラグイン>.@<名前>`）。
