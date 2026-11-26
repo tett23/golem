@@ -43,7 +43,7 @@ import Control.Applicative ((<|>))
 import Control.Monad (forM_, unless, when)
 import Data.ByteString qualified as BS
 import Data.Char (isAsciiLower, isAsciiUpper, isDigit)
-import Data.Either (fromRight)
+import Data.Either (fromRight, rights)
 import Data.List (nub, sortOn)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (fromMaybe, isJust, isNothing, listToMaybe, mapMaybe)
@@ -1372,7 +1372,7 @@ setNamesOf = map fst . setSites . srcAst
 
 -- | The @import lines of a source.
 importSitesOf :: Source -> [ImportSite]
-importSitesOf s = [x | Right x <- importsOf (srcAst s)]
+importSitesOf = rights . importsOf . srcAst
 
 {- | The file an @import line of a variable file points at: through the
 import graph of the project (root ADR 0455), by the path as the line
@@ -1384,8 +1384,8 @@ importTarget ws s site
   | otherwise =
       listToMaybe
         [ sfPath sf
-        | Just e <- [wsEvaluated ws],
-          srcInProject s,
+        | srcInProject s,
+          Just e <- [wsEvaluated ws],
           let ImportGraph g = projectImports (evProject e),
           (tfid, site') <- Map.findWithDefault [] (srcFile s) g,
           isPath site' == isPath site,
@@ -1485,7 +1485,7 @@ runningHeadVariables style =
     let name = T.takeWhileEnd (/= '.') (T.dropEnd 1 whole)
   ]
   where
-    finds line = go 0 line
+    finds = go 0
       where
         go off t = case T.breakOn "{set." t of
           (_, "") -> []
