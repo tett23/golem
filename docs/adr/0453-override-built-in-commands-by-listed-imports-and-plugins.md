@@ -1,6 +1,6 @@
 # ADR 0453: 組み込みのコマンドを、名前を並べた取り込みとプラグインで上書きできるようにする
 
-Status: superseded [{"part":"名前を探す順","by":["docs/adr/0461-report-the-diagnostics-that-follow-from-another-error.md"],"kind":"supplement"}]
+Status: superseded [{"part":"名前を探す順","by":["docs/adr/0461-report-the-diagnostics-that-follow-from-another-error.md"],"kind":"supplement"},{"part":"上書きできるコマンド","by":["docs/adr/0471-override-built-in-commands-except-mechanisms-and-frames.md"],"kind":"replace"},{"part":"不変条件の I6","by":["docs/adr/0471-override-built-in-commands-except-mechanisms-and-frames.md"],"kind":"replace"},{"part":"テスト設計","by":["docs/adr/0471-override-built-in-commands-except-mechanisms-and-frames.md"],"kind":"supplement"},{"part":"トレードオフ","by":["docs/adr/0471-override-built-in-commands-except-mechanisms-and-frames.md"],"kind":"supplement"},{"part":"名前を探す順","by":["docs/adr/0471-override-built-in-commands-except-mechanisms-and-frames.md"],"kind":"supplement"}]
 
 ## 文脈
 
