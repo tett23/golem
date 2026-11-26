@@ -162,7 +162,7 @@ aroundBlocksTests =
     testCase "root ADR 0456 I1, I3: a table that reaches the frame from a row goes on past it without its header row again" $ do
       (geom, pl) <- layoutOk (aroundAt False 12 4 top0 bottom0) (fillers 3 <> table 10) []
       overFrame geom pl 4 top0 bottom0 @?= []
-      let segments = [(poNumber p, ts) | p <- plPages pl, ts <- poTables p, poNumber p == 1]
+      let segments = [(poNumber p, ts) | p <- plPages pl, poNumber p == 1, ts <- poTables p]
       case segments of
         [(_, first), (_, second)] -> do
           assertBool "the header row in the part before" (isJust (tsHeaderEnd first))

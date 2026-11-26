@@ -468,7 +468,7 @@ frames, but past them not, leaves it out; one that it does not fit even
 without them places it as before.
 -}
 spotOf :: Env -> St -> Int -> Int -> Spot Int
-spotOf env st i n = spotFrom env st i (sUsed st) n
+spotOf env st i = spotFrom env st i (sUsed st)
 
 -- | 'spotOf' from grid line @u@ of the column.
 spotFrom :: Env -> St -> Int -> Int -> Int -> Spot Int

@@ -2098,7 +2098,7 @@ besideLines built =
       units = cuUnits cu
       free = maybe False ((== AlignFree) . gridAlignment) (stPage (piStyle (feInput (bFlowEnv built))) >>= pageGrid)
       narrow = Map.fromList [(lbId l, fid) | FWrapped {fwId = fid, fwBeside = ls} <- bFlow built, l <- ls]
-      exclusionOf fid = Map.lookup fid (bFigures built) >>= \pf -> (\ex -> (exSide ex, exWidth ex)) <$> pfExclusion pf
+      exclusionOf fid = Map.lookup fid (bFigures built) >>= fmap (\ex -> (exSide ex, exWidth ex)) . pfExclusion
       -- the lines of the paragraphs beside each figure, from the line after it (in free placement, by their own units)
       paragraphs =
         [ (u, firstLine, length (cLines c))
@@ -2106,8 +2106,8 @@ besideLines built =
           Just figureFirst <- [Map.lookup i (bUnitFirsts built)],
           j <- besideParagraphs units (cuBesides cu) i,
           Just (c, off) <- [Map.lookup j (cuBesides cu)],
-          Just u <- [Map.lookup j units],
-          let firstLine = if free then Map.findWithDefault (figureFirst + 1 + off) j (bUnitFirsts built) else figureFirst + 1 + off
+          let firstLine = if free then Map.findWithDefault (figureFirst + 1 + off) j (bUnitFirsts built) else figureFirst + 1 + off,
+          Just u <- [Map.lookup j units]
         ]
    in Map.fromList [(lid, (uSpan u, Map.lookup lid narrow >>= exclusionOf)) | (u, firstLine, count) <- paragraphs, lid <- take count [firstLine ..]]
 
@@ -2147,7 +2147,7 @@ assumedMasters inp geom built pages
 
 -- | Whether a master page of the style has a frame of wrap around (root ADR 0456).
 hasAroundFrames :: PdfInput -> PageGeometry -> Bool
-hasAroundFrames inp geom = any (not . null . aroundFramesOf inp geom) (Map.keys (stMasters (piStyle inp)))
+hasAroundFrames inp geom = not (all (null . aroundFramesOf inp geom) (Map.keys (stMasters (piStyle inp))))
 
 {- | The areas of the frames of wrap around that a block that cannot be
 shortened is not placed over (root ADR 0456), in sp from the start edge of
