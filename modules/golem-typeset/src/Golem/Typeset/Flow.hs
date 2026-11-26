@@ -4355,7 +4355,7 @@ numberFigure fe cu i u (pf, ferrs, _, fmarks) nb = case pfExclusion pf of
             paras = [(j, c, off) | j <- besideParagraphs unitAt besides i, let (c, off) = besides Map.! j]
             parasAt = besideRows fe cu i
             -- what line k of the paragraph j loses to the exclusion (root ADR 0464)
-            takes j off distance k = besideTake fe ex (unitAt Map.! j) off distance k
+            takes j = besideTake fe ex (unitAt Map.! j)
             narrowed j off distance k
               | free = intersects (rowExtent (distance + fromIntegral k * unitPitch j) (unitPitch j) (lkSize (uLook (unitAt Map.! j)))) excluded
               | otherwise = off + k < exLines ex

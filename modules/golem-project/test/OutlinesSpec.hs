@@ -1,6 +1,7 @@
 -- | The outlines of figures in style.toml (root ADR 0464).
 module OutlinesSpec (tests) where
 
+import Control.Monad (void)
 import Data.Map.Strict qualified as Map
 import Data.Text (Text)
 import Golem.Project.PathData (Path (..), Segment (..), SubPath (..))
@@ -44,5 +45,5 @@ tests =
       testCase "root ADR 0464 I6: a closed outline is no error and is read" $ do
         let src = style "[outlines.c]\npath = \"M 0 0 L 1 0 L 1 1 Z\"\n"
         errors src @?= []
-        fmap (fmap (const ()) . outlinePath) (Map.lookup "c" (outlinesOf src)) @?= Just (Just ())
+        fmap (void . outlinePath) (Map.lookup "c" (outlinesOf src)) @?= Just (Just ())
     ]

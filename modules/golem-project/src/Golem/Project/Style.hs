@@ -1526,7 +1526,7 @@ outlineProblem p
 instance FromValue OutlineDef where
   fromValue = parseTableFromValue $ do
     path <- optKeyOf "path" $ \case
-      Text' _ t -> pure (either (\e -> Left (pdeReason e)) Right (readOutlinePath t))
+      Text' _ t -> pure (either (Left . pdeReason) Right (readOutlinePath t))
       _ -> pure (Left "パスは文字列で書きます")
     pure (OutlineDef (fromMaybe (Left "path がありません") path))
 

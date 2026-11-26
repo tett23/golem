@@ -129,8 +129,8 @@ triangles =
   [ "M " <> pt a <> " L " <> pt b <> " L " <> pt c <> " Z"
   | a <- grid,
     b <- grid,
-    c <- grid,
     a < b,
+    c <- grid,
     a /= c,
     b /= c
   ]
@@ -153,7 +153,7 @@ enumerated =
             inArea (a, b) =
               (0 <= b && b <= rat across && insidePolygons NonZero polys (a, b))
                 || (captioned && 700 <= b && b <= 780)
-         in [(a, b) | b <- bs, a <- as, inArea (a, b), a > rat (t - gap)] == [] && exWidth ex >= 0,
+         in null [(a, b) | b <- bs, a <- as, inArea (a, b), a > rat (t - gap)] && exWidth ex >= 0,
     testCase "root ADR 0464 I3: no line beside an outline loses more than beside the rectangle" $
       check $
         \ex _ _ _ t -> t <= exWidth ex,
@@ -166,7 +166,7 @@ enumerated =
     check p = do
       cases <-
         sequence
-          [ (\ps -> (ps, side, vertical, captioned)) <$> outline vertical side (100, 100) (along, across) src
+          [ (,side,vertical,captioned) <$> outline vertical side (100, 100) (along, across) src
           | src <- triangles,
             side <- [WrapStart, WrapEnd],
             vertical <- [False, True],

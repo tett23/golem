@@ -525,11 +525,12 @@ PNG と JPEG ではピクセル、SVG では [code: viewBox] の単位、PDF の
 読めないパスや閉じていないパスは、エラー（G03300）になります。
 
 ```toml
-[outlines.round]
-path = "M 200 100 C 200 155.2 155.2 200 100 200 C 44.8 200 0 155.2 0 100 C 0 44.8 44.8 0 100 0 C 155.2 0 200 44.8 200 100 Z"
+[outlines.diamond]
+path = "M 100 0 L 200 100 L 100 200 L 0 100 Z"
 ```
 
-原稿では、[code: @figure] に [code: wrap] と一緒に [code: outline=round] と書きます。
+この例は、200 × 200 の画像の中のひし形です。
+原稿では、[code: @figure] に [code: wrap] と一緒に [code: outline=diamond] と書きます。
 
 [code: color] は SVG、PNG、JPEG、取り込んだ PDF の単色図版に使います。
 白黒の濃淡で描いた図版では、白は白のまま、黒は指定色、灰色はその中間の濃度になります。

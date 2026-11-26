@@ -63,7 +63,7 @@ corners :: [RPoint]
 corners = [(x, y) | x <- [0, 2, 4], y <- [0, 2, 4]]
 
 triangles :: [[RPoint]]
-triangles = [[a, b, c] | a <- corners, b <- corners, c <- corners, a < b, b /= c, a /= c]
+triangles = [[a, b, c] | a <- corners, b <- corners, a < b, c <- corners, b /= c, a /= c]
 
 -- every fourth quadrilateral of the grid, in order: an even spread of the shapes
 quads :: [[RPoint]]

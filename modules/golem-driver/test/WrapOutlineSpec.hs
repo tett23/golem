@@ -68,7 +68,7 @@ tests =
         let dir = "test/fixtures/specimens/outlines/"
         style <- BS.readFile (dir <> "style.toml")
         source <- TE.decodeUtf8 <$> BS.readFile (dir <> "chapters/01-outlines.gm")
-        images <- mapM (\f -> (\b -> ("images/" <> f, b)) <$> BS.readFile (dir <> "images/" <> f)) ["circle.svg", "star.svg"]
+        images <- mapM (\f -> ("images/" <> f,) <$> BS.readFile (dir <> "images/" <> f)) ["circle.svg", "star.svg"]
         -- the fonts of the sample are copied in by hand (../README.md); the tests set it in their own
         let withoutFonts = BC.unlines [l | l <- BC.lines style, not ("ja = " `BS.isPrefixOf` l || "latin = " `BS.isPrefixOf` l || l == "[fonts.body]")]
         (_, pl) <- layoutOk withoutFonts source images
