@@ -129,7 +129,7 @@ import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Golem.Assemble
 import Golem.Assemble.ListMarkers
-import Golem.Assemble.Numbering (titleSeparator)
+import Golem.Assemble.Numbering (TitlePiece, formatSeparator, formatTitle, numberedTitleText, titleSeparator)
 import Golem.Bibliography (EntryPart (..))
 import Golem.Doc.FigureWidth (figureWidthSp, parseFigureWidth)
 import Golem.Doc.IR
@@ -1171,10 +1171,13 @@ empty; a line is trimmed of spaces (U+0020, U+3000) and left out when
 nothing is left.
 -}
 runningHeadLines :: Map Text Text -> Map [Text] Text -> Map [Text] Text -> RunningContent -> Map Int (Maybe HeadingInfo) -> [HeadingInfo] -> [Text]
-runningHeadLines = runningHeadLinesWith (const Nothing)
+runningHeadLines = runningHeadLinesWith (const (Nothing, Nothing))
 
-runningHeadLinesWith :: (HeadingInfo -> Maybe Text) -> Map Text Text -> Map [Text] Text -> Map [Text] Text -> RunningContent -> Map Int (Maybe HeadingInfo) -> [HeadingInfo] -> [Text]
-runningHeadLinesWith separator meta projectVars vars content start started = case content of
+{- | 'runningHeadLines' with the separator (Golem ADR 0372) and the title
+format (root ADR 0463) of the level and the file of each heading.
+-}
+runningHeadLinesWith :: (HeadingInfo -> (Maybe Text, Maybe [TitlePiece])) -> Map Text Text -> Map [Text] Text -> Map [Text] Text -> RunningContent -> Map Int (Maybe HeadingInfo) -> [HeadingInfo] -> [Text]
+runningHeadLinesWith titleStyle meta projectVars vars content start started = case content of
   RunningNone -> []
   RunningLines ls -> mapMaybe line (toList ls)
   where
@@ -1201,7 +1204,7 @@ runningHeadLinesWith separator meta projectVars vars content start started = cas
             render h = case form of
               HeadShort -> Just (short h)
               -- the separator of the language of the book (golem-html ADR 0002)
-              HeadNumbered -> Just (maybe (short h) (\n -> n <> titleSeparator (Map.findWithDefault "" "language" meta) (separator h) n (short h) <> short h) (hiNumberText h))
+              HeadNumbered -> Just (maybe (short h) (\n -> uncurry (numberedTitleText (Map.findWithDefault "" "language" meta)) (titleStyle h) n (short h)) (hiNumberText h))
               HeadNumber -> hiNumberText h
          in chosen >>= render
 
@@ -1217,7 +1220,38 @@ gives for the level of a heading, or for a caption with no level (Golem
 ADR 0372).
 -}
 bookNumberedTitle :: Book -> Maybe Int -> Text -> SrcSpan -> Maybe Text -> [Inline] -> [Inline]
-bookNumberedTitle book level lang sp num is = numberPrefix book level lang sp num is <> is
+bookNumberedTitle book level lang sp num is = case (num, Map.lookup (spanFile sp, level) (bookTitleFormats book)) of
+  -- the format of a numbered title, the inlines of the title at {title} (root ADR 0463)
+  (Just n, Just format) -> formatTitle (\t -> [Text sp t]) [Text sp n] is (formatSeparator lang (Map.lookup (spanFile sp, level) (bookTitleSeparators book))) format
+  _ -> numberPrefix book level lang sp num is <> is
+
+{- | Paragraphs that join at their ends: text put after paragraphs is put at
+the end of the last, before them at the start of the first.
+-}
+newtype Paragraphs = Paragraphs [[Inline]]
+
+instance Semigroup Paragraphs where
+  Paragraphs [] <> b = b
+  a <> Paragraphs [] = a
+  Paragraphs a <> Paragraphs (b : bs) = Paragraphs (init a <> [last a <> b] <> bs)
+
+instance Monoid Paragraphs where
+  mempty = Paragraphs []
+
+{- | The paragraphs of a caption with its number (docs/adr/0367): the number
+and the separator before the first paragraph, or the format of the caption
+with the paragraphs at {title} (root ADR 0463); one paragraph at the least.
+-}
+numberedParagraphs :: Book -> Text -> SrcSpan -> Maybe Text -> [[Inline]] -> [[Inline]]
+numberedParagraphs book lang sp num paras = case (num, Map.lookup (spanFile sp, Nothing) (bookTitleFormats book)) of
+  (Just n, Just format) ->
+    let Paragraphs ps = formatTitle (\t -> Paragraphs [[Text sp t]]) (Paragraphs [[Text sp n]]) (Paragraphs paras) (formatSeparator lang (Map.lookup (spanFile sp, Nothing) (bookTitleSeparators book))) format
+     in if null ps then [[]] else ps
+  _ ->
+    let prefix = numberPrefix book Nothing lang sp num (concat paras)
+     in case paras of
+          [] -> [prefix]
+          p : ps -> (prefix <> p) : ps
 
 {- | The number and the separator alone; the separator is left out when the
 title (the last argument, only its text is read) is empty (Golem ADR 0372).
@@ -1331,7 +1365,7 @@ runningHeads inp geom layout =
         | otherwise = case m >>= mgRunningHead of
             Nothing -> []
             Just (co, ce, _, _) ->
-              runningHeadLinesWith (\h -> Map.lookup (hiFile h, Just (hiLevel h)) (bookTitleSeparators (piBook inp))) meta projectVars (Map.findWithDefault Map.empty fid (piRunningVars inp)) (if odd (poNumber p) then co else ce) st (startedOn p)
+              runningHeadLinesWith (\h -> let key = (hiFile h, Just (hiLevel h)) in (Map.lookup key (bookTitleSeparators (piBook inp)), Map.lookup key (bookTitleFormats (piBook inp)))) meta projectVars (Map.findWithDefault Map.empty fid (piRunningVars inp)) (if odd (poNumber p) then co else ce) st (startedOn p)
    in Map.fromList [(poNumber p, one p st m fid) | (p, st, m, fid) <- zip4 pages starts (pageMasters inp geom layout) (pageFiles inp layout)]
 
 {- | G07051 (golem-driver ADR 0022): a line of a running head wider than the
@@ -3732,10 +3766,7 @@ placeFigure fe u fig content =
       -- the paragraphs of the caption, the number before the first (docs/adr/0367);
       -- the separator only when some paragraph has text (Golem ADR 0372)
       paras = [is | Block _ _ _ (Paragraph _ is) <- figCaption fig]
-      prefix = numberPrefix (piBook inp) Nothing (bookLanguage inp) (uSpan u) number (concat paras)
-      captionParas = case paras of
-        [] -> [prefix]
-        p : ps -> (prefix <> p) : ps
+      captionParas = numberedParagraphs (piBook inp) (bookLanguage inp) (uSpan u) number paras
       captionInlines = concat captionParas
       -- the caption in the role and size of the paragraph style caption (golem-driver ADR 0010)
       (_, cs) = paraFace (uStyle u) geom "caption"

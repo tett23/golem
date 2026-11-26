@@ -51,7 +51,7 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Golem.Assemble
 import Golem.Assemble.ListMarkers
-import Golem.Assemble.Numbering (titleSeparator)
+import Golem.Assemble.Numbering (formatSeparator, formatTitle, titleSeparator)
 import Golem.Bibliography (EntryPart (..))
 import Golem.Doc.Citation (CitePiece (..), citationPieces)
 import Golem.Doc.FigureWidth (FigureWidth (..), parseFigureWidth)
@@ -732,8 +732,7 @@ blockHtml c (Block sp lbl blang body) = case body of
     let tag = "h" <> T.pack (show l)
         info = Map.lookup sp (bookHeadings (cBook c))
         anchor = maybe (headingAnchor lbl sp) hiAnchor info
-        num = numberSpan c sp (Just l) (foldMap inlineText is) (info >>= hiNumberText)
-     in [el tag [("id", anchor)] (num <> inlines c is), nl]
+     in [el tag [("id", anchor)] (titledNodes (hcLanguage (cCfg c)) (cBook c) (spanFile sp) (Just l) True (info >>= hiNumberText) (foldMap inlineText is) (inlines c is)), nl]
   BulletList items -> [el "ul" (idAttr lbl <> listClass (NE.length . hlBullets)) (nl : concatMap (item inList Nothing) items), nl]
   OrderedList items ->
     let start = case items of
@@ -764,7 +763,7 @@ blockHtml c (Block sp lbl blang body) = case body of
         styleClass = maybe [] (\n -> [("class", "ps-" <> n)]) (tableStyle t)
         -- the caption, the first child whichever side it is on (docs/adr/0262)
         caption = case tableCaption t of
-          Just is -> [el "caption" [] (numberSpan c sp Nothing (foldMap inlineText is) (Map.lookup sp (bookTables (cBook c))) <> inlines c is), nl]
+          Just is -> [el "caption" [] (titledNodes (hcLanguage (cCfg c)) (cBook c) (spanFile sp) Nothing True (Map.lookup sp (bookTables (cBook c))) (foldMap inlineText is) (inlines c is)), nl]
           Nothing -> []
         colgroup
           | null (tableWidths t) = []
@@ -777,7 +776,7 @@ blockHtml c (Block sp lbl blang body) = case body of
         -- a caption or a file name: a figure (golem-driver ADR 0023)
         wrapped = isJust (codeCaption code) || isJust (codeFile code)
         caption =
-          [ el "figcaption" [] (maybe [] (\n -> [textOf (n <> titleSeparator (hcLanguage (cCfg c)) (Map.lookup (spanFile sp, Nothing) (bookTitleSeparators (cBook c))) n (foldMap inlineText is))]) (Map.lookup sp (bookListings (cBook c))) <> inlines c is)
+          [ el "figcaption" [] (titledNodes (hcLanguage (cCfg c)) (cBook c) (spanFile sp) Nothing False (Map.lookup sp (bookListings (cBook c))) (foldMap inlineText is) (inlines c is))
           | Just is <- [codeCaption code]
           ]
         file = [el "div" [("class", "code-file")] [textOf f] | Just f <- [codeFile code]]
@@ -799,11 +798,11 @@ blockHtml c (Block sp lbl blang body) = case body of
           then [el "figure" ([("class", "listing")] <> idAttr lbl) (caption <> file <> [pre]), nl]
           else [pre, nl]
   FigureBlock f ->
-    let num = numberSpan c sp Nothing (T.concat [foldMap inlineText is | Block _ _ _ (Paragraph _ is) <- figCaption f]) (Map.lookup sp (bookFigures (cBook c)))
-        -- a paragraph of the caption with a language is a span of it (docs/adr ADR 0187)
+    let -- a paragraph of the caption with a language is a span of it (docs/adr ADR 0187)
         cap = concat [maybe id (\l x -> [el "span" (langPairs l) x]) pl (inlines c is) | Block _ _ pl (Paragraph _ is) <- figCaption f]
+        captioned = titledNodes (hcLanguage (cCfg c)) (cBook c) (spanFile sp) Nothing True (Map.lookup sp (bookFigures (cBook c))) (T.concat [foldMap inlineText is | Block _ _ _ (Paragraph _ is) <- figCaption f]) cap
         -- no figcaption without a number and a caption (docs/adr/0200)
-        figcaption = if writesNothing (num <> cap) then [] else [el "figcaption" [] (num <> cap), nl]
+        figcaption = if writesNothing captioned then [] else [el "figcaption" [] captioned, nl]
      in [el "figure" (idAttr lbl) ([nl, el "img" ([("src", relLink (cHere c) (T.unpack (webOutput f))), ("alt", figAlt f)] <> figureWidthStyle (hcVertical (cCfg c)) (figWidth f)) [], nl] <> figcaption), nl]
   ChannelOutput (TocOutput d) -> toc c (Just d)
   ChannelOutput IndexOutput -> index c sp
@@ -881,11 +880,25 @@ separatorRuleSvg c sp name len weight color stroke =
               ]
    in el "svg" [("class", "separator-rule-svg"), ("xmlns", "http://www.w3.org/2000/svg"), ("aria-hidden", "true"), ("style", "display:inline-block;inline-size:" <> extent <> ";block-size:" <> pt weight <> ";vertical-align:middle;overflow:visible")] svgBody
 
-{- | The number of a heading or a caption in its span, and the separator
-of the language of the book after it as text (golem-html ADR 0002).
+{- | A numbered title of a file and a level: the title alone without a
+number; with one, the format of the level (root ADR 0463), or the number,
+in its span when @spanned@, and the separator (golem-html ADR 0002, Golem
+ADR 0372) before the title. From the language of the book, the book, the
+file, the level, whether the number has its span, the number, the text
+of the title and its nodes.
 -}
-numberSpan :: Ctx -> SrcSpan -> Maybe Int -> Text -> Maybe Text -> [Node]
-numberSpan c sp level title = maybe [] (\n -> [el "span" [("class", "number")] [textOf n], textOf (titleSeparator (hcLanguage (cCfg c)) (Map.lookup (spanFile sp, level) (bookTitleSeparators (cBook c))) n title)])
+titledNodes :: Text -> Book -> FileId -> Maybe Int -> Bool -> Maybe Text -> Text -> [Node] -> [Node]
+titledNodes lang book fid level spanned num titleText title = case num of
+  Nothing -> title
+  Just n -> case Map.lookup (fid, level) (bookTitleFormats book) of
+    -- the format: the number in its span at each {number}, the title at {title} (root ADR 0463)
+    Just format -> formatTitle (\t -> [textOf t]) [numberNode n] title (formatSeparator lang separator) format
+    Nothing
+      | spanned -> [numberNode n, textOf (titleSeparator lang separator n titleText)] <> title
+      | otherwise -> textOf (n <> titleSeparator lang separator n titleText) : title
+  where
+    separator = Map.lookup (fid, level) (bookTitleSeparators book)
+    numberNode n = el "span" [("class", "number")] [textOf n]
 
 item :: Ctx -> Maybe Integer -> ListItem -> [Node]
 item c value (ListItem _ bs) =
@@ -917,9 +930,7 @@ toc c depth =
                       [ Element
                           "a"
                           [("href", linkTo c (teFile e) (teAnchor e))]
-                          ( maybe [] (\n -> [textOf (n <> titleSeparator (hcLanguage (cCfg c)) (Map.lookup (teFile e, Just (teLevel e)) (bookTitleSeparators (cBook c))) n (foldMap inlineText (teTitle e)))]) (teNumber e)
-                              <> inlines c {cInLink = True, cPageBreaks = Map.empty} (teTitle e)
-                          )
+                          (titledNodes (hcLanguage (cCfg c)) (cBook c) (teFile e) (Just (teLevel e)) False (teNumber e) (foldMap inlineText (teTitle e)) (inlines c {cInLink = True, cPageBreaks = Map.empty} (teTitle e)))
                       ],
                     nl
                   ]
@@ -1972,9 +1983,7 @@ indexPage cfg ft book =
                 [ Element
                     "a"
                     [("href", PageLink (T.pack (pageBase ft (teFile te))) (teAnchor te))]
-                    ( maybe [] (\n -> [textOf (n <> titleSeparator (hcLanguage cfg) (Map.lookup (teFile te, Just (teLevel te)) (bookTitleSeparators book)) n (foldMap inlineText (teTitle te)))]) (teNumber te)
-                        <> titleNodes (teTitle te)
-                    )
+                    (titledNodes (hcLanguage cfg) book (teFile te) (Just (teLevel te)) False (teNumber te) (foldMap inlineText (teTitle te)) (titleNodes (teTitle te)))
                 ],
               nl
             ]

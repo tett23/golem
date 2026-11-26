@@ -53,6 +53,7 @@ import System.IO.Temp (withSystemTempDirectory)
 import System.Timeout (timeout)
 import Test.Tasty
 import Test.Tasty.HUnit
+import TitleFormatSpec qualified
 import TomlMessageSpec qualified
 import UnderlineSpec qualified
 import VarsSpec qualified
@@ -992,6 +993,7 @@ tests =
       NaturalKeySpec.tests,
       FunctionsSpec.tests,
       FilesSpec.tests,
+      TitleFormatSpec.tests,
       VarsSpec.tests,
       testCase "dimensions" $ do
         parseDim "1pt" @?= Just (Abs 65536)

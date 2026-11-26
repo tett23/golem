@@ -72,6 +72,7 @@ test-suite golem-project-test
                     SharedValuesSpec
                     Support
                     TomlMessageSpec
+                    TitleFormatSpec
                     VarsSpec
   build-depends:
     , base

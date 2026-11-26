@@ -128,6 +128,9 @@ module Golem.Project.Style
     HeadPick (..),
     parseRunningFormat,
     parseRunningFormatLegacy,
+    TitleFormatPart (..),
+    parseTitleFormat,
+    titleFormatSites,
     runningFormatSites,
     runningRefs,
     Swatch (..),
@@ -176,6 +179,7 @@ import Data.Text.Encoding qualified as TE
 import Golem.Assemble (NoteNumbering (..))
 import Golem.Assemble.Formats (Braces (..), FormatCause (..), FormatError (..), Legacy (..), MarkFormat (..), NumberSlotName (..), Piece (..), Slot (..), arabic, defaultMarkFormat, notationName, parseFormat, parseHeadingNumberFormatText, parseMarkFormat, parseNumberFormatText, unknownSlot)
 import Golem.Assemble.ListMarkers (NumberFormat, parseNumberFormat, parseNumberFormatLegacy)
+import Golem.Assemble.Numbering (TitlePiece (..))
 import Golem.Length (Sp (..))
 import Golem.Length qualified as L
 import Golem.Project.Feature
@@ -521,7 +525,9 @@ data ParaStyleDef = ParaStyleDef
     -- | the string between a number and its title (Golem ADR 0372)
     psNumberTitleSeparator :: !(Maybe Text),
     -- | number every nth nonempty source line of a paragraph that keeps lines (root ADR 0384)
-    psLineNumberInterval :: !(Maybe Int)
+    psLineNumberInterval :: !(Maybe Int),
+    -- | the format of a numbered caption (root ADR 0463)
+    psTitleFormat :: !(Maybe [TitleFormatPart])
   }
   deriving stock (Eq, Show)
 
@@ -671,7 +677,7 @@ noCharDef = CharStyleDef Nothing Nothing Nothing Nothing Nothing Nothing Nothing
 
 -- | A paragraph style with no key written.
 noParaDef :: ParaStyleDef
-noParaDef = ParaStyleDef Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing [] Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing
+noParaDef = ParaStyleDef Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing [] Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing
 
 -- | The keys body has without a definition (docs/adr ADR 0005, 0006, 0019; docs/adr/0020, 0189).
 bodyDefaults :: ParaStyleDef
@@ -1074,6 +1080,7 @@ overPara u b =
     (psOpeningIndent u <|> psOpeningIndent b)
     (psNumberTitleSeparator u <|> psNumberTitleSeparator b)
     (psLineNumberInterval u <|> psLineNumberInterval b)
+    (psTitleFormat u <|> psTitleFormat b)
 
 {- | The parent of a paragraph style: body and code have none (golem-driver
 ADR 0017), the others are based on body by default.
@@ -1224,7 +1231,9 @@ data HeadingStyle = HeadingStyle
     hsRuleAfter :: !(Maybe RuleSpec),
     hsBlockAlign :: !HeadingBlockAlign,
     -- | the string between the number and the title of a heading (Golem ADR 0372)
-    hsNumberTitleSeparator :: !(Maybe Text)
+    hsNumberTitleSeparator :: !(Maybe Text),
+    -- | the format of a numbered heading (root ADR 0463)
+    hsTitleFormat :: !(Maybe [TitleFormatPart])
   }
   deriving stock (Eq, Show)
 
@@ -1661,6 +1670,75 @@ runningFormatSites fid src = case readTomlTable src of
       Just (_, List' _ xs) <- [Map.lookup key rh],
       Text' pos t <- xs,
       Right parts <- [parseRunningFormat t]
+    ]
+
+{- | A piece of a title format (root ADR 0463) as written: a piece the
+outputs set, or a slot of [metadata], [vars] or a variable of the file of
+the heading or the caption (True with @?@), which the evaluation replaces
+by its text.
+-}
+data TitleFormatPart
+  = FormatPiece !TitlePiece
+  | FormatRef !RunningRef !Bool
+  deriving stock (Eq, Show)
+
+{- | A title format (root ADR 0463): text, the escapes and the slots
+@{number}@, @{title}@, @{separator}@, @{meta.<key>}@, @{set.<name>}@,
+@{set.<namespace>.<name>}@ and @{vars.<name>}@, each with @?@ at the end
+of its name or not. @{{@ and @}}@ are no braces. 'Left' is the reason of
+G03296: the first error read from the front.
+-}
+parseTitleFormat :: Text -> Either Text [TitleFormatPart]
+parseTitleFormat t
+  | T.any (== '\n') t = Left "改行があります"
+  | otherwise = Bifunctor.bimap formatReason (merge . map part . fst) (parseFormat EscapesOnly (bimap unknownSlot TextSlot . slot) t)
+  where
+    part = \case
+      PLit x -> FormatPiece (TitleText x)
+      PText p -> p
+      PNumber p _ -> p
+    slot name0 =
+      let (name, optional) = maybe (name0, False) (,True) (T.stripSuffix "?" name0)
+          unknown = Left ("未知の差し込みです: {" <> name0 <> "}")
+          slotRef r = Right (FormatRef r optional)
+       in case T.splitOn "." name of
+            ["number"] -> Right (FormatPiece TitleNumber)
+            ["title"] -> Right (FormatPiece TitleTitle)
+            ["separator"] -> Right (FormatPiece TitleSeparator)
+            ["meta", "creators"] -> Left "meta.creators は配列なので、題の書式に書けません。@set で文字列の変数を作ってください"
+            ["meta", k] | k `elem` runningMetaKeys -> slotRef (RefMeta k)
+            ("set" : ns@(_ : _)) | length ns <= 2 && all varName ns -> slotRef (RefVar ns)
+            ("vars" : ns@(_ : _)) | all varName ns -> slotRef (RefProjectVar ns)
+            _ -> unknown
+    varName n = case T.uncons n of
+      Just (c, r) -> (isAsciiLetter c || c == '_') && T.all (\x -> isAsciiLetter x || isDigit x || x == '_') r
+      Nothing -> False
+    isAsciiLetter c = isAsciiLower c || isAsciiUpper c
+    merge = \case
+      FormatPiece (TitleText a) : FormatPiece (TitleText b) : r -> merge (FormatPiece (TitleText (a <> b)) : r)
+      x : r -> x : merge r
+      [] -> []
+
+-- | The value of title-format (root ADR 0463): a format, or G03296 at the value; not a string is G03006.
+titleFormatOf :: Value' l -> Matcher l [TitleFormatPart]
+titleFormatOf v = fromValue v >>= \t -> either (\reason -> failAtCode (valueAnn v) "G03296" (T.unpack ("title-format を書式として読めません: " <> reason))) pure (parseTitleFormat t)
+
+{- | The title formats of style.toml, where they are written (root ADR
+0463): the span of each string of title-format in [headings.<l>] and in
+the paragraph styles, and its slots of [metadata], [vars] and variables, in
+order, with whether each has @?@. A value that is no format is left out:
+G03296 reports it.
+-}
+titleFormatSites :: FileId -> Text -> [(SrcSpan, [(RunningRef, Bool)])]
+titleFormatSites fid src = case readTomlTable src of
+  Nothing -> []
+  Just (MkTable top) ->
+    [ (positionSpan fid src (Just pos), [(r, q) | FormatRef r q <- parts])
+    | kind <- ["headings", "paragraph-styles"],
+      Just (_, Table' _ (MkTable styles)) <- [Map.lookup kind top],
+      (_, (_, Table' _ (MkTable st))) <- Map.toList styles,
+      Just (_, Text' pos t) <- [Map.lookup "title-format" st],
+      Right parts <- [parseTitleFormat t]
     ]
 
 {- | A rule of style.toml (golem-driver ADR 0024): the same keys and
@@ -2488,7 +2566,8 @@ instance FromValue ParaStyleDef where
         adjustment = ladj >>= \v -> lookup v (zip lineAdjustmentValues [minBound .. maxBound])
     separator <- optKey "number-title-separator"
     interval <- optKeyOf "line-number-interval" (keepCount 1 Nothing)
-    pure (ParaStyleDef b f s ((\x -> if x == "keep" then KeepLines else JoinLines) <$> lb) pitch sb sbDim ind fli' rs aki k t p bs bg pad' border bw bst bsides brad rb ra align sbefore sbeforeDim safter safterDim endInd fs kwn kal kfl kll start adjustment slim sord tord pw nxt ini (oind >>= \v -> lookup v (zip openingIndentValues [minBound .. maxBound])) separator interval)
+    format <- optKeyOf "title-format" titleFormatOf
+    pure (ParaStyleDef b f s ((\x -> if x == "keep" then KeepLines else JoinLines) <$> lb) pitch sb sbDim ind fli' rs aki k t p bs bg pad' border bw bst bsides brad rb ra align sbefore sbeforeDim safter safterDim endInd fs kwn kal kfl kll start adjustment slim sord tord pw nxt ini (oind >>= \v -> lookup v (zip openingIndentValues [minBound .. maxBound])) separator interval format)
     where
       keepCount :: Natural -> Maybe Natural -> Value' l -> Matcher l Int
       keepCount lo hi v =
@@ -2595,8 +2674,9 @@ instance FromValue HeadingStyle where
     rb <- optKeyOf "rule-before" ruleOrFalse
     ra <- optKeyOf "rule-after" ruleOrFalse
     separator <- optKey "number-title-separator"
+    format <- optKeyOf "title-format" titleFormatOf
     align <- enumKey "block-align" (map fst headingBlockAlignValues)
-    pure (HeadingStyle f s n (pb == Just "recto") ls (join rb) (join ra) (fromMaybe HeadingCenter (align >>= flip lookup headingBlockAlignValues)) separator)
+    pure (HeadingStyle f s n (pb == Just "recto") ls (join rb) (join ra) (fromMaybe HeadingCenter (align >>= flip lookup headingBlockAlignValues)) separator format)
 
 instance FromValue RubyStyleDef where
   fromValue = parseTableFromValue $ do
@@ -3847,6 +3927,7 @@ codeStyleChecks s =
             ("line-breaks", isJust (psLineBreaks d)),
             ("space-between", isJust (psSpaceBetween d) || isJust (psSpaceBetweenDim d)),
             ("number-title-separator", isJust (psNumberTitleSeparator d)),
+            ("title-format", isJust (psTitleFormat d)),
             ("line-number-interval", isJust (psLineNumberInterval d)),
             ("indent", isJust (psIndent d)),
             ("first-line-indent", isJust (psFirstLineIndent d)),
@@ -4522,6 +4603,7 @@ styleSchema =
           ("size", dim),
           ("number", str),
           ("number-title-separator", str),
+          ("title-format", str),
           ("page-break", enum pageBreakValues),
           ("block-align", enum (map fst headingBlockAlignValues)),
           ("lines", int),
@@ -4678,6 +4760,7 @@ paraStyleNode =
         ("line-pitch", NEither [enum ["auto"], dim]),
         ("space-between", NEither [int, dim]),
         ("number-title-separator", str),
+        ("title-format", str),
         ("space-before", NEither [int, dim]),
         ("space-after", NEither [int, dim]),
         ("align", enum alignValues),

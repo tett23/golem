@@ -40,6 +40,7 @@ import SinglePageSpec qualified
 import SoftHyphenSpec (softHyphenTests)
 import StylesSpec
 import Test.Tasty
+import TitleFormatSpec (titleFormatTests)
 import VerseLineNumbersSpec (verseLineNumberTests)
 import WrapOutlineSpec qualified
 
@@ -115,6 +116,7 @@ tests =
       testGroup "the paragraph style controls (docs/adr/0374)" paragraphStyleControlsTests,
       testGroup "the indents of captions and sidenotes that leave no character (docs/adr/0389)" captionSidenoteIndentTests,
       testGroup "the separator between a number and its title (Golem ADR 0372)" numberTitleSeparatorTests,
+      testGroup "the title formats of numbered headings and captions (root ADR 0463)" titleFormatTests,
       testGroup "verse line numbers (root ADR 0384)" verseLineNumberTests,
       testGroup "the rules of paragraph styles and headings (ADR 0027)" paragraphRuleTests,
       paragraphPitchTests,
