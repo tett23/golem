@@ -50,6 +50,8 @@ v0.1.0-rc4 と v1.0.0 のどちらで扱うかは、まだ決めていない。
 
 ### 記法と設定の値
 
+- **組み込みのコマンドの上書き（未実装）**：Golem の仕組みを決めるものと `frame` のほかの組み込みのコマンドを、ブロックでもインラインでも上書きできるようにし、名前で決まる扱いを、呼ぶ先が組み込みのときだけにする。 [root ADR 0471](adr/0471-override-built-in-commands-except-mechanisms-and-frames.md)。
+- **上書きできない基礎的な命令の用語と基準（未決）**：上書きすると基礎的なことができなくなる命令のほかは上書きできてよい、とメンテナーは決めた（2026-11-26）。どの命令を基礎的とするかの用語と基準を決め、[root ADR 0471](adr/0471-override-built-in-commands-except-mechanisms-and-frames.md) の二つの種類を、その基準で決め直す。
 - **ルビの区切りの記法（仕様を検討中）**：ルビの親文字と読みは `/` で区切るが、`/` は原稿の地の文の字でもあるので、ルビの中だけ `/` と書く例外になっている（[golem-parser ADR 0010](golem-parser/adr/0010-ruby-slash-escape-and-table-cell-breaks.md)）。式の値の中の `/` は区切りにならないなど、パースの例外が増えている。区切りの記法を、ほかの記法と同じ規則で読める形に改める。記法が変わるので v1.0.0 までに仕様を決める。
 
 ### diagnostics とビルドの結果
@@ -101,6 +103,7 @@ v0.1.0-rc4 と v1.0.0 のどちらで扱うかは、まだ決めていない。
 
 ## v1.x
 
+- **基礎の IR と、組み込みの命令の Emet への移行**：基礎の IR を定め、組み込みの命令のほとんどを Emet に移す（間に合えば v1.0.0）。`@import` を、driver のエフェクトのインターフェースで Emet に実装できるかを調べる。 [root ADR 0471](adr/0471-override-built-in-commands-except-mechanisms-and-frames.md)。
 v1.0.0 の後、v2 より前の minor のバージョンで扱う事項である。
 
 - **番号と題を区切る SVG**：見出しやキャプションの番号と題の間に、書き手が任意の SVG を指定できるようにする。v1 の文字列による区切りは [Golem ADR 0372](adr/0372-number-title-separator.md) で扱う。
