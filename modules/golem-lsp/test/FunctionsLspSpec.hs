@@ -135,7 +135,8 @@ functionsLspTests =
           ws' <- updateFile ws "fn/book.emet" (T.replace "pub block rule" "pub block line" (T.replace "\nrule =" "\nline =" bookEmet))
           codesOf ws' "a.gm" @?= ["G02009"]
           ws'' <- updateFile ws "fn/book.emet" (bookEmet <> "\nbroken :: Nat\nbroken = \"x\"\n")
-          codesOf ws'' "a.gm" @?= []
+          -- each call in a.gm of the .emet that could not be loaded is G02279 (root ADR 0461)
+          codesOf ws'' "a.gm" @?= ["G02279", "G02279", "G02279"]
           assertBool "an error in the .emet" (not (null (codesOf ws'' "fn/book.emet"))),
       testCase "formatting of a .emet" $
         withFunctions $ \_ ws -> do
