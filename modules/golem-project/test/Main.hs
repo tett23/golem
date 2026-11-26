@@ -18,6 +18,7 @@ import Data.Text.Encoding qualified as TE
 import Data.Text.IO qualified as TIO
 import FeaturesSpec qualified
 import FilesSpec qualified
+import FitCharactersSpec qualified
 import FontLicensesSpec qualified
 import FramesSpec qualified
 import FunctionsSpec qualified
@@ -994,6 +995,7 @@ tests =
       FunctionsSpec.tests,
       FilesSpec.tests,
       TitleFormatSpec.tests,
+      FitCharactersSpec.tests,
       VarsSpec.tests,
       testCase "dimensions" $ do
         parseDim "1pt" @?= Just (Abs 65536)
@@ -2701,6 +2703,8 @@ localStyleTests =
               "stretch-order" -> "word-space"
               "opening-indent" -> "half"
               "line-number-interval" -> "5"
+              "drop-lines" -> "2"
+              "fit-characters" -> "4"
               _ -> "x"
             known k key = not (isLeftE (localStyleDef k [(key, LocalWord (valueOf key))]))
         assertBool "char" (all (known CharacterKind) charStyleKeys)

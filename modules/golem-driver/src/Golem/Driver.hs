@@ -345,7 +345,19 @@ buildCore inMemory opts0 = do
                   then writeTargets inMemory opts e diagFid book missing webWritable
                   else pure ([], listDiags, Nothing)
               pure (BuildResult (finish (evDiags <> fileDiags <> marksDiags <> sidenoteDiags <> activeDiags <> outDiags)) infos written, pdf, bleed, Just targets)
-        _ -> pure (BuildResult (finish (evDiags <> fileDiags <> marksDiags <> sidenoteDiags)) infos [], Nothing, bleed, Just targets)
+        _ -> do
+          -- G07144 of golem check, which does not lay out the book: its paragraphs of fit-characters composed (root ADR 0466)
+          fitDiags <- case evBook e of
+            Just book
+              | optCheckOnly opts,
+                pdfAny,
+                not (hasErrors (finish evDiags)),
+                null marksDiags,
+                any (any (isJust . psFitCharacters) . Map.elems) (stParaStyles (evStyle e) : map lsParaStyles locals) -> do
+                  (_, _, bib) <- loadBibliography (optFiles opts) (projectManifest project)
+                  fitCharacterDiagnostics (optFonts opts) (pdfInputOf opts e diagFid book bib)
+            _ -> pure []
+          pure (BuildResult (finish (evDiags <> fileDiags <> marksDiags <> sidenoteDiags <> fitDiags)) infos [], Nothing, bleed, Just targets)
   where
     -- the profile, then the notices silenced by the manifest or by --no-notices (golem-syntax ADR 0002),
     -- then the infos of silence-info, and every info without --verbose (docs/adr 0104)

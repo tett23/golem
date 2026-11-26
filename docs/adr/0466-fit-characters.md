@@ -1,6 +1,6 @@
 # ADR 0466: 段落スタイルの fit-characters で字取りを組む
 
-Status: accepted-pending
+Status: accepted
 
 ## 文脈
 

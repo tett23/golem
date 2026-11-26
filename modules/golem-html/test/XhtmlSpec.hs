@@ -304,11 +304,11 @@ chapterNoteTests =
 
 -- | A paragraph style that sets nothing but its rules.
 ruled :: Maybe HtmlRule -> Maybe HtmlRule -> HtmlParaStyle
-ruled b a = HtmlParaStyle Nothing False 0 "0" "0" noFeatures b a defaultAlignDecls 0 0 "0em" [] Nothing Nothing Nothing
+ruled b a = HtmlParaStyle Nothing False 0 "0" "0" noFeatures b a defaultAlignDecls 0 0 "0em" [] Nothing Nothing Nothing Nothing
 
 -- | A paragraph style of the defaults of body (docs/adr/0189).
 plainPara :: HtmlParaStyle
-plainPara = HtmlParaStyle Nothing False 0 "0em" "0em" noFeatures Nothing Nothing defaultAlignDecls 0 0 "0em" [] Nothing Nothing Nothing
+plainPara = HtmlParaStyle Nothing False 0 "0em" "0em" noFeatures Nothing Nothing defaultAlignDecls 0 0 "0em" [] Nothing Nothing Nothing Nothing
 
 -- | The rules of the CSS that have a declaration of the keys of docs/adr/0189, but those of the cells of tables.
 alignSpaceLines :: HtmlConfig -> [Text]
@@ -1095,7 +1095,7 @@ langTests =
     ]
 
 xhtmlTests :: TestTree
-xhtmlTests = testGroup "XHTML and CSS (golem-html ADR 0001)" (tests <> [indexPageTests, langTests, pageBreakTests, genericFontTests, fontLicenseTests, openingIndentTests, styleArgumentTests])
+xhtmlTests = testGroup "XHTML and CSS (golem-html ADR 0001)" (tests <> [indexPageTests, langTests, pageBreakTests, genericFontTests, fontLicenseTests, openingIndentTests, fitCharactersTests, styleArgumentTests])
 
 {- | The table of root ADR 0469 I2, the same as in the tests of golem-typeset:
 a paragraph, the language of its block, and whether its first character
@@ -1271,4 +1271,20 @@ styleArgumentTests =
         let t = (plainTable [AlignDefault] [[txt "a"]] []) {tableStyle = Just (keyedRef "quote" [("line-pitch", "16pt")])}
             html = bodyA cfg0 (bookOf [Block (at 1) Nothing Nothing (TableBlock t)])
         assertBool (T.unpack html) ("<table class=\"ps-quote pso-1\">" `T.isInfixOf` html)
+    ]
+
+-- | The width and the spacing of a paragraph style of fit-characters in HTML and EPUB (root ADR 0466).
+fitCharactersTests :: TestTree
+fitCharactersTests =
+  testGroup
+    "root ADR 0466"
+    [ testCase "root ADR 0466 I1: a style without fit-characters writes no width" $
+        filter (T.isInfixOf "text-justify") (cssLines "" cfg0 {hcParaStyles = Map.fromList [("body", plainPara), ("x", plainPara)]}) @?= [],
+      testCase "root ADR 0466 I2: a style of fit-characters = 4 is 4em wide, justified between its characters" $
+        filter (T.isInfixOf "text-justify") (cssLines "" cfg0 {hcParaStyles = Map.fromList [("body", plainPara), ("title", plainPara {hpsFitCharacters = Just 4})]})
+          @?= ["p.ps-title { width: 4em; text-align: justify; text-align-last: justify; text-justify: inter-character; }"],
+      testCase "root ADR 0466 I2: a style of a file writes its rule under the class of the file" $ do
+        let local = HtmlLocalStyles Map.empty (Map.fromList [("title", plainPara {hpsFitCharacters = Just 3})]) Nothing Nothing Map.empty
+        filter (T.isInfixOf "text-justify") (cssLines "" cfg0 {hcLocalStyles = Map.singleton fidA local})
+          @?= ["body.file-1 p.ps-title { width: 3em; text-align: justify; text-align-last: justify; text-justify: inter-character; }"]
     ]

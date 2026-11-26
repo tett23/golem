@@ -82,6 +82,7 @@ htmlParaStyles style =
           (htmlBox style n d)
           (physicalParagraph d)
           (openingHalf d)
+          (fitCharacters d)
       )
     | n <- Map.keys (stParaStyles style),
       -- toc-<l> as built in writes nothing: the table of contents of HTML is as before (docs/adr/0264)
