@@ -13,6 +13,7 @@ module Golem.Lsp.Features
     renameLabel,
     renameLayoutValue,
     renameEmet,
+    renameVariable,
     emetTextOf,
     Completion (..),
     cmpLabel,
@@ -39,9 +40,10 @@ module Golem.Lsp.Features
 where
 
 import Control.Applicative ((<|>))
+import Control.Monad (forM_, unless, when)
 import Data.ByteString qualified as BS
 import Data.Char (isAsciiLower, isAsciiUpper, isDigit)
-import Data.Either (fromRight)
+import Data.Either (fromRight, rights)
 import Data.List (nub, sortOn)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (fromMaybe, isJust, isNothing, listToMaybe, mapMaybe)
@@ -60,7 +62,7 @@ import Golem.Evaluate (Evaluated (..), metadataValues)
 import Golem.Fmt (FormatResult (..), format)
 import Golem.Lsp.Toml (Context (..), Quote (..), contextAt, definedPaths)
 import Golem.Lsp.Workspace
-import Golem.Parser (parse)
+import Golem.Parser (parse, parseAst)
 import Golem.Parser.AST
 import Golem.Parser.CST qualified as C
 import Golem.Parser.SourceSettings (paragraphSeparators, sourceKeys)
@@ -381,6 +383,8 @@ references ws path off = case sourceOf ws path of
   -- a function of a .emet: the calls of it in the sources (docs/adr/0162)
   Nothing -> [l | Just text <- [emetText ws path], Just prog <- [programOf ws], Just e <- [emetExportAt prog path text off], l <- callsOf ws e]
   Just src | Just e <- occurrenceAt src off >>= occurrenceExport ws src . snd -> callsOf ws e
+  -- a variable of @set: the places its rename writes (root ADR 0454)
+  Just _ | Right var <- variableAtOffset ws path off -> variableOccurrences ws Nothing var
   Just src -> case snd <$> occurrenceAt src off of
     Just (OccLabelRef l) -> nub (labelDefs ws l <> labelRefs ws l)
     Just (OccLabelDef l) -> nub (labelDefs ws l <> labelRefs ws l)
@@ -406,7 +410,29 @@ references ws path off = case sourceOf ws path of
 
 -- ------------------------------------------------------------------ rename
 
-data RenameError = NotALabel | LabelExists Text | InvalidName Text | NotALayoutValue | LayoutValueExists Text | InvalidLayoutValue Text | EmetRename R.RenameError
+data RenameError
+  = NotALabel
+  | LabelExists Text
+  | InvalidName Text
+  | NotALayoutValue
+  | LayoutValueExists Text
+  | InvalidLayoutValue Text
+  | EmetRename R.RenameError
+  | -- | the position is no name of the expressions or of the list of an @import (root ADR 0454)
+    NotAVariable
+  | -- | a name that points at no variable of @set
+    NotASetVariable Text
+  | ReservedVariable Text
+  | InvalidVariable Text
+  | VariableSyntax FilePath
+  | VariableTaken FilePath Text
+  | ListedTaken FilePath Text
+  | BuiltinTaken Text
+  | -- | a file that lists the variable with an error for its name: the file, the name, the code
+    ListedUnclear FilePath Text Text
+  | -- | a variable in the format of a running head of style.toml: the format, its line and column
+    RunningHeadVariable Text Int Int
+  | NewNameReferenced FilePath Text
   deriving stock (Eq, Show)
 
 -- | The message of an error of renaming, as the editor shows it.
@@ -426,6 +452,17 @@ renameMessage = \case
     R.RenameTaken n -> "同じ有効範囲の名前と重なります: " <> n
     R.RenameNotCommand n -> ".gm のコマンドの名前は、英小文字で始まり、英小文字と数字だけで書きます: " <> n
     R.RenameSyntax p -> "構文の誤りのあるファイルがあるため、名前を変えられません: " <> T.pack p
+  NotAVariable -> "変数の上で名前を変更してください"
+  NotASetVariable n -> "@set の変数ではないので、名前を変えられません: " <> n
+  ReservedVariable n -> "予約語は @set の変数の名前に使えません: " <> n
+  InvalidVariable n -> "@set の変数の名前に使えない名前です: " <> n
+  VariableSyntax p -> "書き換えるファイルに構文の誤りがあるため、名前を変えられません: " <> T.pack p
+  VariableTaken p n -> T.pack p <> " で @set した変数と名前が重なります: " <> n
+  ListedTaken p n -> T.pack p <> " の @import が並べた名前と重なります: " <> n
+  BuiltinTaken n -> "組み込みの式の名前と重なります: " <> n
+  ListedUnclear p n c -> T.pack p <> " は " <> n <> " について " <> c <> " のエラーがあり、どの変数を指すか決められないため、名前を変えられません"
+  RunningHeadVariable f l c -> "style.toml の柱の書式 " <> f <> "（" <> T.pack (show l) <> " 行 " <> T.pack (show c) <> " 列）がどのファイルの変数を指すかはページで決まるため、名前を変えられません"
+  NewNameReferenced p n -> T.pack p <> " に、改名すると変数を指す名前 " <> n <> " がすでにあります"
 
 -- | Renames a label in its definition and every reference.
 renameLabel :: Workspace -> FilePath -> Int -> Text -> Either RenameError [(Location, Text)]
@@ -1313,3 +1350,189 @@ tokenType (Place parent inExpr first idents word) = \case
   where
     plain t = Just (t, [])
     exprPunctuation = [C.KDot, C.KLParen, C.KRParen, C.KComma, C.KLBracket, C.KRBracket, C.KLBrace, C.KRBrace, C.KColon]
+
+-- ------------------------------------------------------------------ variables of @set
+
+-- | A variable of @set: the file that sets it and its name (root ADR 0454).
+type SetVariable = (FilePath, Text)
+
+-- | The names a file sets with @set, wherever they are, with the spans of the names.
+setSites :: File -> [(Text, SrcSpan)]
+setSites (File _ bs) = concatMap go bs
+  where
+    go (Located _ b) = case b of
+      SetVar (Located vsp v) _ -> [(v, vsp)]
+      BulletList items -> concatMap (concatMap go) items
+      OrderedList items -> concatMap (concatMap go) items
+      DefList gs -> concatMap (concatMap (concatMap go) . dgDefs) gs
+      BlockCommand _ _ body -> concatMap go body
+      Attributed cs t -> concatMap go cs <> maybe [] go t
+      _ -> []
+
+setNamesOf :: Source -> [Text]
+setNamesOf = map fst . setSites . srcAst
+
+-- | The @import lines of a source.
+importSitesOf :: Source -> [ImportSite]
+importSitesOf = rights . importsOf . srcAst
+
+{- | The file an @import line of a variable file points at: through the
+import graph of the project (root ADR 0455), by the path as the line
+writes it. Nothing for a .emet, or outside the project.
+-}
+importTarget :: Workspace -> Source -> ImportSite -> Maybe FilePath
+importTarget ws s site
+  | ".emet" `T.isSuffixOf` isPath site = Nothing
+  | otherwise =
+      listToMaybe
+        [ sfPath sf
+        | srcInProject s,
+          Just e <- [wsEvaluated ws],
+          let ImportGraph g = projectImports (evProject e),
+          (tfid, site') <- Map.findWithDefault [] (srcFile s) g,
+          isPath site' == isPath site,
+          Just sf <- [Map.lookup tfid (projectSources (evProject e))]
+        ]
+
+-- | Whether an occurrence is a name of the expressions or of the list of an @import.
+isVariableOccurrence :: Occurrence -> Bool
+isVariableOccurrence = \case
+  OccVar _ _ -> True
+  OccListed _ _ -> True
+  _ -> False
+
+-- | The name an occurrence of a variable writes.
+occurrenceName :: Occurrence -> Maybe Text
+occurrenceName = \case
+  OccVar _ v -> Just v
+  OccListed _ n -> Just n
+  _ -> Nothing
+
+{- | The variable of @set an occurrence at a span of a source points at
+(root ADR 0454), with @extra@ a variable taken as set besides those the
+files set. A name without a namespace is the variable the file sets, or
+the one an @import before it lists; a name with a namespace is of the
+file the last @import before it with that namespace points at; a name in
+a list is of the file the line points at. Nothing for a name that points
+at no variable of @set, or at more than one.
+-}
+variableAt :: Workspace -> Maybe SetVariable -> Source -> SrcSpan -> Occurrence -> Maybe SetVariable
+variableAt ws extra s sp = \case
+  OccVar Nothing v
+    | v `elem` setNamesOf s || extra == Just (srcPath s, v) -> Just (srcPath s, v)
+    | otherwise -> case nub [f | site <- before, (n, _) <- importNames site, n == v, Just f <- [importTarget ws s site]] of
+        [f] | sets f v -> Just (f, v)
+        _ -> Nothing
+  OccVar (Just ns) v -> case [site | site <- before, importNamespace site == Just ns] of
+    [] -> Nothing
+    sites -> listToMaybe (reverse sites) >>= importTarget ws s >>= \f -> if sets f v then Just (f, v) else Nothing
+  OccListed _ n -> case [site | site <- importSitesOf s, spanStart (isSpan site) <= spanStart sp, spanStart sp <= spanEnd (isSpan site)] of
+    (site : _) -> importTarget ws s site >>= \f -> if sets f n then Just (f, n) else Nothing
+    [] -> Nothing
+  _ -> Nothing
+  where
+    before = [site | site <- importSitesOf s, spanEnd (isSpan site) <= spanStart sp]
+    sets f v = extra == Just (f, v) || maybe False ((v `elem`) . setNamesOf) (sourceOf ws f)
+
+{- | Every occurrence of a variable of @set (root ADR 0454), with the span
+of its name: its @set and its references in the file that sets it, the
+name after the namespace in the files that import it with a namespace,
+and the name in the list and the references in the files that list it.
+-}
+variableOccurrences :: Workspace -> Maybe SetVariable -> SetVariable -> [Location]
+variableOccurrences ws extra var@(f, n) =
+  -- the file that sets it first
+  sortOn ((/= f) . locPath) . nub $
+    [ Location (srcPath s) (spanStart nsp) (spanEnd nsp)
+    | s <- allSources ws,
+      (sp, occ) <- occurrences (srcAst s),
+      occurrenceName occ == Just n,
+      variableAt ws extra s sp occ == Just var,
+      let nsp = nameSpan sp occ
+    ]
+  where
+    -- the name of ns.name, after the namespace
+    nameSpan sp = \case
+      OccVar (Just ns) v -> let start = spanStart sp + BS.length (TE.encodeUtf8 ns) + 1 in SrcSpan (spanFile sp) start (start + BS.length (TE.encodeUtf8 v))
+      _ -> sp
+
+-- | The variable of @set at an offset of a file; Left when there is none.
+variableAtOffset :: Workspace -> FilePath -> Int -> Either RenameError SetVariable
+variableAtOffset ws path off = case sourceOf ws path >>= \s -> (s,) <$> occurrenceAt s off of
+  Just (s, (sp, occ))
+    | isVariableOccurrence occ -> maybe (Left (NotASetVariable (fromMaybe "" (occurrenceName occ)))) Right (variableAt ws Nothing s sp occ)
+  _ -> Left NotAVariable
+
+-- | The reserved names, which no variable of @set takes (G02275).
+reservedVariableNames :: [Text]
+reservedVariableNames = ["doc", "meta", "vars", "true", "false", "nil"]
+
+-- | Whether a name can be written as the name of a @set and as a name of an expression.
+validVariableName :: Text -> Bool
+validVariableName n =
+  not (T.null n)
+    && not (T.any (`elem` ['.', ',', '{', '}']) n)
+    && let (file, _, ds) = parseAst (FileId 0) ("@set " <> n <> " = 1\n\n[= " <> n <> "]\n")
+        in not (hasErrors ds) && map fst (setSites file) == [n] && [v | (_, OccVar Nothing v) <- occurrences file] == [n, n]
+
+{- | The places of style.toml that write a variable in the format of a
+running head: @{set.name}@ and @{set.ns.name}@, with the name and its line
+and column from 1.
+-}
+runningHeadVariables :: Text -> [(Text, Text, Int, Int)]
+runningHeadVariables style =
+  [ (whole, name, l, c + 1)
+  | (l, line) <- zip [1 ..] (T.lines style),
+    (c, whole) <- finds line,
+    let name = T.takeWhileEnd (/= '.') (T.dropEnd 1 whole)
+  ]
+  where
+    finds = go 0
+      where
+        go off t = case T.breakOn "{set." t of
+          (_, "") -> []
+          (pre, rest) ->
+            let (body, after) = T.breakOn "}" rest
+                c = off + T.length pre
+             in if T.null after then [] else (c, body <> "}") : go (c + T.length body + 1) (T.drop 1 after)
+
+{- | Renames a variable of @set (root ADR 0454): its @set, its references
+in the file that sets it, the name after the namespace in the files that
+import it with a namespace, and the name in the list and the references in
+the files that list it. NotAVariable when the position is no name of the
+expressions or of a list, for the rename of a label.
+-}
+renameVariable :: Workspace -> Maybe Text -> FilePath -> Int -> Text -> Either RenameError [(Location, Text)]
+renameVariable ws style path off new = do
+  var@(f, old) <- variableAtOffset ws path off
+  let edits = variableOccurrences ws Nothing var
+      files = nub (f : map locPath edits)
+      sourcesOf = mapMaybe (sourceOf ws)
+      -- the files that list the variable, with their lines that list it
+      listers = [(s, ls) | s <- sourcesOf files, srcPath s /= f, let ls = [site | site <- importSitesOf s, old `elem` map fst (importNames site), importTarget ws s site == Just f], not (null ls)]
+      fSource = sourceOf ws f
+      clash = new /= old
+  when (new `elem` reservedVariableNames) (Left (ReservedVariable new))
+  unless (validVariableName new) (Left (InvalidVariable new))
+  forM_ (sourcesOf files) $ \s -> when (hasErrors (snd (parse (FileId 0) (srcText s)))) (Left (VariableSyntax (srcPath s)))
+  forM_ fSource $ \s -> do
+    when (clash && new `elem` setNamesOf s) (Left (VariableTaken f new))
+    when (clash && new `elem` [n | site <- importSitesOf s, (n, _) <- importNames site]) (Left (ListedTaken f new))
+  when (clash && new `elem` builtinExpressionNames) (Left (BuiltinTaken new))
+  forM_ listers $ \(h, ls) -> do
+    let hp = srcPath h
+        listedOld = [site | site <- importSitesOf h, old `elem` map fst (importNames site)]
+    when (length listedOld > 1) (Left (ListedUnclear hp old "G02272"))
+    when (old `elem` setNamesOf h) (Left (ListedUnclear hp old "G02274"))
+    when (old `elem` builtinExpressionNames) (Left (ListedUnclear hp old "G02277"))
+    when (clash && new `elem` setNamesOf h) (Left (VariableTaken hp new))
+    when (clash && new `elem` [n | site <- importSitesOf h, (n, _) <- importNames site, site `notElem` ls || n /= old]) (Left (ListedTaken hp new))
+    -- a reference to the new name after the list, which would point at the variable
+    when (clash && not (null [() | (sp, OccVar Nothing v) <- occurrences (srcAst h), v == new, any (\site -> spanEnd (isSpan site) <= spanStart sp) ls])) (Left (NewNameReferenced hp new))
+  forM_ (maybe [] runningHeadVariables style) $ \(whole, name, l, c) ->
+    when (name `elem` [old, new]) (Left (RunningHeadVariable whole l c))
+  -- a name written already that would point at the variable after the rename
+  when clash $
+    forM_ (variableOccurrences ws (Just (f, new)) (f, new)) $
+      \l -> Left (NewNameReferenced (locPath l) new)
+  pure [(l, new) | l <- edits]
