@@ -70,7 +70,7 @@ import Golem.Parser.Read (checkTableText)
 import Golem.Parser.SourceSettings
 import Golem.Project.Imports (ImportForm (..), ImportSite (..), ListedName (..), importNames, importSite, importsOf)
 import Golem.Project.Paths (PathError (..), normalizeRelative, pathErrorMessage)
-import Golem.Project.Style (Dim (..), LineBreaks (..), LocalStyles (..), LocalValue (..), ParaStyleDef (..), Sp (..), Style (stOutlines, stParaStyles, stPrintingsFormat), StyleKind (..), checkLocalStyles, kentenShapeNames, localStyleDefWithValues, noLocalStyles, overPara, paraLineBreaks, paraStyleKeys, paraStyleWith, parseAki, parseDim, renderPrintingTemplate, withLocalStyles)
+import Golem.Project.Style (Dim (..), LineBreaks (..), LocalStyles (..), LocalValue (..), ParaStyleDef (..), Sp (..), Style (stOutlines, stPrintingsFormat), StyleKind (..), checkLocalStyles, kentenShapeNames, localStyleDefWithValues, noLocalStyles, paraLineBreaks, paraStyleKeys, paraStyleWith, parseAki, parseDim, renderPrintingTemplate, withLocalStyles)
 import Golem.Syntax
 import Golem.Syntax.LanguageTag (isLanguageTag)
 import Golem.Syntax.Sha256 (sha256)
@@ -2230,12 +2230,14 @@ styleKeys ctx sp name args = do
               Left ms -> mapM_ (\(code, m) -> report (styleDefValueDiagnostic "@style" code ksp m)) ms >> pure Nothing
               Right _ -> pure (Just (k, lv, ()))
   let local = ctxLocalStyles ctx
-      own = Map.lookup name (lsParaStyles local) <|> Map.lookup name (stParaStyles (ctxStyle ctx))
       before = checkLocalStyles (ctxStyle ctx) local
+      -- the style as @style-def paragraph KEY based-on=NAME with the keys defines it, KEY a name no style has
+      taken = Map.keysSet (ctxParaStyles ctx)
+      key = fromMaybe name (listToMaybe [k | i <- [1 :: Int ..], let k = name <> "-" <> tshow i, Set.notMember k taken])
       wrong = case localStyleDefWithValues (ctxStyle ctx) ParagraphKind [(k, lv) | (k, lv, _) <- read'] of
         Right (Right overrides) ->
-          let over = local {lsParaStyles = Map.insert name (maybe overrides (overPara overrides) own) (lsParaStyles local)}
-           in [(code, m) | c@(code, _, m) <- checkLocalStyles (ctxStyle ctx) over, c `notElem` before, code /= "G03100"]
+          let over = local {lsParaStyles = Map.insert key overrides {psBasedOn = Just name} (lsParaStyles local)}
+           in [(code, T.replace key name m) | c@(code, _, m) <- checkLocalStyles (ctxStyle ctx) over, c `notElem` before, code /= "G03100"]
         Right (Left _) -> []
         Left ms -> ms
       keysOf = Map.fromList [(k, styleValue lv) | (k, lv, _) <- read']

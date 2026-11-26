@@ -75,7 +75,6 @@ module Golem.Project.Style
     charStyleBackground,
     isUrlCharStyle,
     paraLineBreaks,
-    overPara,
     LocalStyles (..),
     exceptionTagErrors,
     exceptionWordErrors,
