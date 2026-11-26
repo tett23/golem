@@ -77,18 +77,24 @@ theorem I1_I2_generated_prose_slots (ind fuel : Nat) (input : List Char) :
                   | error reason => simp [runChoices, foldChoice, runSequence, next, repeated, read0, read1, read2, read3, read4]; rfl
                   | ok value => cases value <;> simp [runChoices, foldChoice, runSequence, next, repeated, read0, read1, read2, read3, read4] <;> rfl
 
+private def fenceGuard : Expr :=
+  .notPred (.choice [[.semanticPred true " inFence ind ", .ref "DivLine" []]])
+
 /-- Canonical LineContinuation for every input suffix and fuel budget, including
-    ordinary misses and errors. This is a recognition composition theorem;
-    Haskell actions, AST equality and formatting are separate obligations. -/
+    ordinary misses and errors. The last guard stops a paragraph at a line of
+    ::: between ::: lines (root ADR 0459); IndentedMarkerLine.fence_guard_outside
+    and fence_guard_inside give its value. This is a recognition composition
+    theorem; Haskell actions, AST equality and formatting are separate obligations. -/
 theorem I1_I2_generated_continuation (ind fuel : Nat) (input : List Char) :
     recognizeEnv Generated.pegGrammar [("ind", ind)] (fuel + 3) (.ref "LineContinuation" ["ind"]) input =
       next (recognizeEnv Generated.pegGrammar [("ind", ind)] (fuel + 1) (.ref "Nl" []) input) (fun rest0 =>
         next (recognizeEnv Generated.pegGrammar [("ind", ind)] (fuel + 1) (.notPred (.ref "BlankLine" [])) rest0) (fun rest1 =>
         next (recognizeEnv Generated.pegGrammar [("ind", ind)] (fuel + 1) (.ref "Ind" ["ind"]) rest1) (fun rest2 =>
-        recognizeEnv Generated.pegGrammar [("ind", ind)] (fuel + 1) (.notPred (.ref "BlockStart" [])) rest2))) := by
-  change recognizeEnv _ [("ind", ind)] (fuel + 2) (.choice [[.ref "Nl" [], .notPred (.ref "BlankLine" []), .ref "Ind" ["ind"], .notPred (.ref "BlockStart" [])]]) input = _
+        next (recognizeEnv Generated.pegGrammar [("ind", ind)] (fuel + 1) (.notPred (.ref "BlockStart" [])) rest2) (fun rest3 =>
+        recognizeEnv Generated.pegGrammar [("ind", ind)] (fuel + 1) fenceGuard rest3)))) := by
+  change recognizeEnv _ [("ind", ind)] (fuel + 2) (.choice [[.ref "Nl" [], .notPred (.ref "BlankLine" []), .ref "Ind" ["ind"], .notPred (.ref "BlockStart" []), fenceGuard]]) input = _
   change runChoices (fun xs => runSequence (fun sc item rest => recognizeEnv Generated.pegGrammar sc
-    (fuel + 1) item rest) _ [("ind", ind)] xs input) [[.ref "Nl" [], .notPred (.ref "BlankLine" []), .ref "Ind" ["ind"], .notPred (.ref "BlockStart" [])]] = _
+    (fuel + 1) item rest) _ [("ind", ind)] xs input) [[.ref "Nl" [], .notPred (.ref "BlankLine" []), .ref "Ind" ["ind"], .notPred (.ref "BlockStart" []), fenceGuard]] = _
   cases read0 : recognizeEnv Generated.pegGrammar [("ind", ind)] (fuel + 1) (.ref "Nl" []) input with
   | error reason => simp [runChoices, foldChoice, runSequence, next, read0]; rfl
   | ok value => cases value with
@@ -106,6 +112,11 @@ theorem I1_I2_generated_continuation (ind fuel : Nat) (input : List Char) :
             | some rest2 =>
               cases read3 : recognizeEnv Generated.pegGrammar [("ind", ind)] (fuel + 1) (.notPred (.ref "BlockStart" [])) rest2 with
               | error reason => simp [runChoices, foldChoice, runSequence, next, read0, read1, read2, read3]; rfl
-              | ok value => cases value <;> simp [runChoices, foldChoice, runSequence, next, read0, read1, read2, read3] <;> rfl
+              | ok value => cases value with
+                | none => simp [runChoices, foldChoice, runSequence, next, read0, read1, read2, read3]; rfl
+                | some rest3 =>
+                  cases read4 : recognizeEnv Generated.pegGrammar [("ind", ind)] (fuel + 1) fenceGuard rest3 with
+                  | error reason => simp [runChoices, foldChoice, runSequence, next, read0, read1, read2, read3, read4]; rfl
+                  | ok value => cases value <;> simp [runChoices, foldChoice, runSequence, next, read0, read1, read2, read3, read4] <;> rfl
 
 end SyntaxComposition

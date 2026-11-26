@@ -54,8 +54,19 @@ def isLabelFailure (reason : String) : Bool :=
 
 abbrev Params := List (String × Nat)
 
-def atom (env : Params) (source : String) : Option Nat :=
+-- The helpers of the grammar's Haskell block (root ADR 0459): an indentation
+-- parameter is the number of spaces, plus fenceBit between ::: lines.
+-- generate.mjs refuses a grammar whose helper block differs from these.
+def fenceBit : Nat := 1048576
+
+def plainAtom (env : Params) (source : String) : Option Nat :=
   source.toNat?.orElse (fun _ => (env.find? (fun pair => pair.1 == source)).map Prod.snd)
+
+def atom (env : Params) (source : String) : Option Nat :=
+  match source.splitOn " " with
+  | ["col", name] => (plainAtom env name).map (· % fenceBit)
+  | ["fenced", name] => (plainAtom env name).map (fun n => n % fenceBit + fenceBit)
+  | _ => plainAtom env source
 
 def integer (env : Params) (source : String) : Option Nat :=
   match source.splitOn " + " with
@@ -76,6 +87,9 @@ def predicate (env : Params) (source : String) : Option Bool :=
   | "True" => some true
   | "False" => some false
   | condition =>
+      match condition.splitOn " " with
+      | ["inFence", name] => (plainAtom env name).map (fun n => decide (fenceBit ≤ n))
+      | _ =>
       match condition.splitOn " == " with
       | [left, right] => do
           let a ← integer env left

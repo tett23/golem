@@ -55,11 +55,11 @@ theorem I1_I2_generated_term (ind fuel : Nat) (input : List Char) :
     next (recognizeEnv Generated.pegGrammar [("ind", ind)] (fuel + 1) (.ref "Ind" ["ind"]) input) (fun rest0 =>
     next (recognizeEnv Generated.pegGrammar [("ind", ind)] (fuel + 1) (.ref "TermMark" []) rest0) (fun rest1 =>
     next (recognizeEnv Generated.pegGrammar [("ind", ind)] (fuel + 1) (.ref "Ws" []) rest1) (fun rest2 =>
-    next (PlusComposition.scanPlus (fun n => recognizeEnv Generated.pegGrammar [("ind", ind)] n ((.ref "HeadInline" ["ind + 2"]))) fuel rest2) (fun rest3 =>
+    next (PlusComposition.scanPlus (fun n => recognizeEnv Generated.pegGrammar [("ind", ind)] n ((.ref "HeadInline" ["col ind + 2"]))) fuel rest2) (fun rest3 =>
     recognizeEnv Generated.pegGrammar [("ind", ind)] (fuel + 1) (.choice [[.ref "Nl" []], [.notPred .any]]) rest3)))) := by
-  change recognizeEnv _ [("ind", ind)] (fuel + 2) (.choice [[.ref "Ind" ["ind"], .ref "TermMark" [], .ref "Ws" [], .plus (.ref "HeadInline" ["ind + 2"]), .choice [[.ref "Nl" []], [.notPred .any]]]]) input = _
-  change runChoices (fun xs => runSequence (fun sc item rest => recognizeEnv Generated.pegGrammar sc (fuel + 1) item rest) _ [("ind", ind)] xs input) [[.ref "Ind" ["ind"], .ref "TermMark" [], .ref "Ws" [], .plus (.ref "HeadInline" ["ind + 2"]), .choice [[.ref "Nl" []], [.notPred .any]]]] = _
-  have rep3 := PlusComposition.plus Generated.pegGrammar [("ind", ind)] ((.ref "HeadInline" ["ind + 2"])) fuel
+  change recognizeEnv _ [("ind", ind)] (fuel + 2) (.choice [[.ref "Ind" ["ind"], .ref "TermMark" [], .ref "Ws" [], .plus (.ref "HeadInline" ["col ind + 2"]), .choice [[.ref "Nl" []], [.notPred .any]]]]) input = _
+  change runChoices (fun xs => runSequence (fun sc item rest => recognizeEnv Generated.pegGrammar sc (fuel + 1) item rest) _ [("ind", ind)] xs input) [[.ref "Ind" ["ind"], .ref "TermMark" [], .ref "Ws" [], .plus (.ref "HeadInline" ["col ind + 2"]), .choice [[.ref "Nl" []], [.notPred .any]]]] = _
+  have rep3 := PlusComposition.plus Generated.pegGrammar [("ind", ind)] ((.ref "HeadInline" ["col ind + 2"])) fuel
   cases read0 : recognizeEnv Generated.pegGrammar [("ind", ind)] (fuel + 1) (.ref "Ind" ["ind"]) input with
   | error reason => simp [runChoices, foldChoice, runSequence, next, rep3, read0]; rfl
   | ok value => cases value with
@@ -75,7 +75,7 @@ theorem I1_I2_generated_term (ind fuel : Nat) (input : List Char) :
           | ok value => cases value with
             | none => simp [runChoices, foldChoice, runSequence, next, rep3, read0, read1, read2]; rfl
             | some rest2 =>
-              cases read3 : PlusComposition.scanPlus (fun n => recognizeEnv Generated.pegGrammar [("ind", ind)] n ((.ref "HeadInline" ["ind + 2"]))) fuel rest2 with
+              cases read3 : PlusComposition.scanPlus (fun n => recognizeEnv Generated.pegGrammar [("ind", ind)] n ((.ref "HeadInline" ["col ind + 2"]))) fuel rest2 with
               | error reason => simp [runChoices, foldChoice, runSequence, next, rep3, read0, read1, read2, read3]; rfl
               | ok value => cases value with
                 | none => simp [runChoices, foldChoice, runSequence, next, rep3, read0, read1, read2, read3]; rfl

@@ -385,10 +385,21 @@ const paraEndProved = blankLineProved && paraRule?.params.length === 0 && paraRu
 const spUsesWs = optionalRefNames.has('Sp') && rule('Sp') === 'Ws?';
 const listMarkersProved = literalNames.has('BulletMark') && rule('BulletMark') === "'-'" &&
   literalNames.has('OrderedMark') && rule('OrderedMark') === "'+'";
+// PegModel.atom and PegModel.predicate give col, fenced and inFence the
+// meaning of these Haskell definitions (root ADR 0459). Any other helper
+// block leaves the rules that use them unsupported.
+const helperBlocks = [...grammar.matchAll(/^%\{\n([\s\S]*?)^\}%$/gm)].map(match => match[1]
+  .split('\n').map(line => line.trim()).filter(line => line !== '' && !line.startsWith('--')).join('\n'));
+const helpersProved = helperBlocks.length === 1 && helperBlocks[0] === [
+  'fenceBit :: Int', 'fenceBit = 1048576',
+  'col :: Int -> Int', 'col n = mod n fenceBit',
+  'fenced :: Int -> Int', 'fenced n = col n + fenceBit',
+  'inFence :: Int -> Bool', 'inFence n = n >= fenceBit',
+].join('\n');
 const indentRule = ast?.rules.find(rule => rule.name === 'Ind');
-const indentFullyProved = indentRule?.params.length === 1 && indentRule.params[0] === 'n' &&
+const indentFullyProved = helpersProved && indentRule?.params.length === 1 && indentRule.params[0] === 'n' &&
   indentRule.templateParams.length === 0 && indentRule.alts.length === 2 &&
-  describeItems(indentRule.alts[0].items) === '&{ n == 0 }' &&
+  describeItems(indentRule.alts[0].items) === '&{ col n == 0 }' &&
   describeItems(indentRule.alts[1].items) === "' ' Ind(n - 1)" &&
   indentRule.alts.every(alt => alt.action?.trim() === '()' && alt.constructor === null);
 const textRuns = new Map([
@@ -460,8 +471,13 @@ const blockStartsProved = numberOpenFullyProved && blockStartRule?.params.length
   blockStartRule.templateParams.length === 0 && blockStartRule.alts.length === expectedBlockStarts.length &&
   blockStartRule.alts.every((alt, index) => alt.action?.trim() === '()' && alt.constructor === null &&
     describeItems(alt.items) === expectedBlockStarts[index]);
+// IndentedMarkerLine.div_line_total proves the ::: line (root ADR 0459) for
+// every input, and fence_guard_outside/inside the guard of a continuation.
+const divLineProved = lineLeavesProved && spUsesWs &&
+  singleUnitRuleMatches(ast?.rules.find(r => r.name === 'DivLine'), "':::' Sp (Nl / !.)");
 const continuationProved = lineLeavesProved && blankLineProved && indentFullyProved && blockStartsProved &&
-  indentedUnitRuleMatches(ast?.rules.find(r => r.name === 'LineContinuation'), 'Nl !BlankLine Ind(ind) !BlockStart');
+  divLineProved && indentedUnitRuleMatches(ast?.rules.find(r => r.name === 'LineContinuation'),
+    'Nl !BlankLine Ind(ind) !BlockStart !(&{ inFence ind } DivLine)');
 // ExpressionComposition retains every alternative, its priority, and both
 // range_end labels. ReservedRange recovery itself remains unsupported.
 function unitAlternativesMatch(r, expected) {
@@ -523,7 +539,7 @@ const definitionTermProved = indentFullyProved && lineLeavesProved && inlineComm
   singleUnitRuleMatches(ast?.rules.find(r => r.name === 'TermMark'), "'='") &&
   indentedAlternativesMatch(ast?.rules.find(r => r.name === 'HeadInline'), headInlineBranches) &&
   indentedUnitRuleMatches(ast?.rules.find(r => r.name === 'DefTerm'),
-    'Ind(ind) TermMark Ws HeadInline(ind + 2)+ (Nl / !.)');
+    'Ind(ind) TermMark Ws HeadInline(col ind + 2)+ (Nl / !.)');
 const codeBlockProved = indentFullyProved && lineLeavesProved && argumentListProved && codeLineFullyProved &&
   singleUnitRuleMatches(ast?.rules.find(r => r.name === 'Fence'), "'```'") &&
   singleUnitRuleMatches(ast?.rules.find(r => r.name === 'Lang'), String.raw`[a-zA-Z0-9_+\-]+`) &&
@@ -543,6 +559,7 @@ if (!fragment && ast) {
     if (variableProved && rule.name === 'VarExpr') continue;
     if (proseSlotsProved && rule.name === 'ProseSlots') continue;
     if (continuationProved && rule.name === 'LineContinuation') continue;
+    if (divLineProved && rule.name === 'DivLine') continue;
     if (lexicalRules.has(rule.name) && singleUnitRuleMatches(rule, lexicalRules.get(rule.name)) &&
         (rule.name !== 'ES' || (lineLeavesProved && expressionCommentsProved))) continue;
     if (delimiterProved && rule.name === 'Delim') continue;

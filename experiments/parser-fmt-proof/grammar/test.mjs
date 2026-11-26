@@ -33,7 +33,9 @@ try {
     'root ADR 0351 I1/I2: ordered arguments and inline commands require recognition proofs');
   assert.doesNotMatch(strict.stderr, /^unsupported (Paragraph|DefTerm|CodeBlock) choice /m,
     'root ADR 0351 I1/I2: paragraph, definition term and code fences require recognition proofs');
-  assert.ok(baselineUnsupported <= 23, 'the full grammar model must not regress in unsupported choices');
+  // root ADR 0459 added four choices of the ::: body (GroupBody, Div, DivBlocks),
+  // which recurse through Block like the other block structures.
+  assert.ok(baselineUnsupported <= 27, 'the full grammar model must not regress in unsupported choices');
   assert.equal(strict.status === 0, baselineUnsupported === 0,
     'strict generation succeeds exactly when every choice is supported');
   for (const line of strict.stderr.split('\n').filter(line => line.startsWith('unsupported '))) {
@@ -235,6 +237,10 @@ try {
     ['- a\n  b\n', 'BulletList', 0, 'Ind@4..6 "  "'],
     ['- a\n- b\n', 'BulletList', 0, 'ListItem@4..8\n'],
     ['a\n@foo\n', 'BlockGroup', 0, 'BlockCommand@2..7\n'],
+    // root ADR 0459: a line of ::: ends the paragraph between ::: lines
+    ['@foo\n:::\na\n:::\n', 'Div', 0, 'Paragraph@9..11\n', undefined, { DivMark: 2 }],
+    ['@foo\n:::\na\nb\n:::\n', 'Div', 0, 'LineContinuation@10..11\n', undefined, { DivMark: 2 }],
+    ['a\n:::\n', 'Paragraph', 0, 'LineContinuation@1..2\n', undefined, { DivMark: 0 }],
     ['a\n \t\nb\n', 'Paragraph', 0, 'Paragraph@5..7\n'],
     ...['foo()', 'foo(1)', 'foo(1,2)', 'foo(1,2,3)', 'foo.bar(1)',
       'foo(%%a%%1,%%=b%%2)', 'foo(bar(1),2)', 'foo([1, 2], {a: 3})',
@@ -256,7 +262,7 @@ try {
     assert.equal(parsed.status, 0, parsed.stderr);
     assert.match(parsed.stdout, new RegExp(`^File@0\\.\\.${Buffer.byteLength(sample)}$`, 'm'),
       'the implementation parser must consume the same complete source');
-    if (node) assert.match(parsed.stdout, new RegExp(`^ +${node}@`, 'm'));
+    if (node) assert.match(parsed.stdout, new RegExp(`^ +(?:[a-z]+: )?${node}@`, 'm'));
     if (chosen) assert.ok(parsed.stdout.includes(chosen), `${chosen} was not chosen by the generated parser`);
     assert.equal([...parsed.stdout.matchAll(/cs: TableCellAndPipe@/g)].length, cells);
     if (slots !== undefined) assert.equal([...parsed.stdout.matchAll(/^ +ProseSlot@/gm)].length, slots,
@@ -351,8 +357,8 @@ try {
     ['ParaBlockGuard', 'Paragraph <- Ind(ind) ![ \\t] !BlockStart', 'Paragraph <- Ind(ind) ![ \\t]', 'Paragraph'],
     ['ParaInlinePlus', 'Paragraph <- Ind(ind) ![ \\t] !BlockStart Inline(ind)+', 'Paragraph <- Ind(ind) ![ \\t] !BlockStart Inline(ind)*', 'Paragraph'],
     ['ParaIndentGuard', 'Paragraph <- Ind(ind) ![ \\t]', 'Paragraph <- Ind(ind)', 'Paragraph'],
-    ['TermPlus', 'DefTerm <- Ind(ind) TermMark Ws HeadInline(ind + 2)+', 'DefTerm <- Ind(ind) TermMark Ws HeadInline(ind + 2)*', 'DefTerm'],
-    ['TermIndent', 'DefTerm <- Ind(ind) TermMark Ws HeadInline(ind + 2)+', 'DefTerm <- Ind(ind) TermMark Ws HeadInline(ind)+', 'DefTerm'],
+    ['TermPlus', 'DefTerm <- Ind(ind) TermMark Ws HeadInline(col ind + 2)+', 'DefTerm <- Ind(ind) TermMark Ws HeadInline(col ind + 2)*', 'DefTerm'],
+    ['TermIndent', 'DefTerm <- Ind(ind) TermMark Ws HeadInline(col ind + 2)+', 'DefTerm <- Ind(ind) TermMark Ws HeadInline(ind)+', 'DefTerm'],
     ['TermWs', 'DefTerm <- Ind(ind) TermMark Ws', 'DefTerm <- Ind(ind) TermMark Ws?', 'DefTerm'],
     ['CodeClosingGuard', '(!CodeClose(ind) CodeLine)*', '(CodeLine)*', 'CodeBlock'],
     ['CodeNeedLine', '(!CodeClose(ind) CodeLine)*', '(!CodeClose(ind) CodeLine)+', 'CodeBlock'],
@@ -494,7 +500,7 @@ try {
     assert.equal(parsed.status === 0, accepted,
       `root ADR 0351 I1/I2: ${name} must change the native boundary: ${parsed.stderr}`);
     for (const [node, count] of Object.entries(counts ?? {})) {
-      assert.equal([...parsed.stdout.matchAll(new RegExp(`^ +${node}@`, 'gm'))].length, count,
+      assert.equal([...parsed.stdout.matchAll(new RegExp(`^ +(?:[a-z]+: )?${node}@`, 'gm'))].length, count,
         `root ADR 0351 I1/I2: ${name} must change the committed call/range CST`);
     }
   }
@@ -512,6 +518,15 @@ try {
     ['ContinuationMarkerDependency', "/ '@!' { () }", "/ '@?' { () }", 'LineContinuation'],
     ['ContinuationSeparatorDependency', "BlockStart <- '---' Sp (Nl / !.)", "BlockStart <- '---' (Nl / !.)", 'LineContinuation'],
     ['SeparatorLineEnd', "SeparatorLine <- Ind(ind) '---' EOL", "SeparatorLine <- Ind(ind) '---' Sp", 'SeparatorLine'],
+    // root ADR 0459: the ::: guard of a continuation, the ::: line and the
+    // helpers that give the indentation parameter its fence bit
+    ['ContinuationFence', '!BlockStart !(&{ inFence ind } DivLine)', '!BlockStart', 'LineContinuation'],
+    ['ContinuationFenceAlways', '!(&{ inFence ind } DivLine)', '!(DivLine)', 'LineContinuation'],
+    ['DivLineEnd', "DivLine <- ':::' Sp (Nl / !.)", "DivLine <- ':::' (Nl / !.)", 'DivLine'],
+    ['ContinuationDivLineDependency', "DivLine <- ':::' Sp (Nl / !.)", "DivLine <- '::' Sp (Nl / !.)", 'LineContinuation'],
+    ['HelperFenceBit', 'fenceBit = 1048576', 'fenceBit = 1024', 'Ind'],
+    ['HelperColumn', 'col n = mod n fenceBit', 'col n = n', 'Ind'],
+    ['HelperInFence', 'inFence n = n >= fenceBit', 'inFence n = n > fenceBit', 'LineContinuation'],
   ];
   for (const [name, before, after, rule] of compositionMutations) {
     const changed = original.replace(before, after);
@@ -530,6 +545,7 @@ try {
     ['ContinuationBlank', 'a\n\nb\n', true, { Paragraph: 1 }],
     ['ContinuationBlock', 'a\\\n# h\n', true, { Paragraph: 1, Heading: 0 }],
     ['ContinuationSeparatorDependency', 'a\n--- \n', true, { Paragraph: 1, SeparatorLine: 0 }],
+    ['ContinuationFence', '@foo\n:::\na\n:::\n', true, { Paragraph: 1, DivMark: 1 }],
   ];
   for (const [name, sample, accepted, counts] of nativeCompositionMutations) {
     const [, before, after] = compositionMutations.find(([mutationName]) => mutationName === name);
@@ -543,7 +559,7 @@ try {
     assert.equal(parsed.status === 0, accepted,
       `root ADR 0351 I1/I2: ${name} must change the native boundary: ${parsed.stderr}`);
     for (const [node, count] of Object.entries(counts ?? {})) {
-      assert.equal([...parsed.stdout.matchAll(new RegExp(`^ +${node}@`, 'gm'))].length, count,
+      assert.equal([...parsed.stdout.matchAll(new RegExp(`^ +(?:[a-z]+: )?${node}@`, 'gm'))].length, count,
         `root ADR 0351 I1/I2: ${name} must expose changed block boundaries in the committed CST`);
     }
   }

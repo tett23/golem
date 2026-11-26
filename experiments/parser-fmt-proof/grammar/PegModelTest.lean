@@ -21,7 +21,7 @@ theorem literal_roundtrip (grammar : PegModel.Grammar) (value written : String)
   simp [PegModel.recognize, PegModel.recognizeEnv, prefix_self_append, drop_self_append, Id.run]
   rfl
 
-theorem literal_production_count : Generated.literalProductions.length = 23 := by rfl
+theorem literal_production_count : Generated.literalProductions.length = 24 := by rfl
 
 theorem class_plus_production_count : Generated.classPlusProductions.length = 2 := by rfl
 
@@ -888,7 +888,7 @@ example : PegModel.recognize Generated.pegGrammar 8 (.ref "CmpOp" []) ">=!".toLi
 example : PegModel.recognize Generated.pegGrammar 8 (.ref "AddOp" []) "+!".toList =
     .ok (some "!".toList) := by rfl
 
-example : PegModel.recognizeStart Generated.pegGrammar 300 "@set x = 1+2\n".toList =
+example : PegModel.recognize Generated.pegGrammar 300 (.ref "BlockCommand" ["0"]) "@set x = 1+2\n".toList =
     .ok (some []) := by rfl
 
 example : PegModel.recognizeStart Generated.pegGrammar 300 "[= 1>=0]\n".toList =
@@ -940,8 +940,13 @@ example : PegModel.recognize Generated.pegGrammar 200 (.ref "AddExpr" [])
 example : PegModel.recognize Generated.pegGrammar 200 (.ref "AddExpr" [])
     "1+!".toList = .ok (some "+!".toList) := by rfl
 
-example : PegModel.recognizeStart Generated.pegGrammar 300 "@set x = 1\n".toList =
+example : PegModel.recognize Generated.pegGrammar 300 (.ref "BlockCommand" ["0"]) "@set x = 1\n".toList =
     .ok (some []) := by rfl
+
+-- BlockGroup reads the Bool values of its commands (root ADR 0459), which
+-- the recognizer does not compute: a block group is an error, never accepted.
+example : PegModel.recognizeStart Generated.pegGrammar 300 "@set x = 1\n".toList =
+    .error "opaque semantic predicate" := by rfl
 
 -- TableRow returns length cs, which the table passes as h to body rows.
 example : PegModel.recognizeStart Generated.pegGrammar 300
@@ -974,6 +979,27 @@ example : PegModel.recognize Generated.pegGrammar 30 (.ref "Ind" ["2"])
 
 example : PegModel.recognize Generated.pegGrammar 30 (.ref "Ind" [])
     "x".toList = .error "argument count for Ind" := by rfl
+
+-- Between ::: lines the parameter carries fenceBit, which reads no space
+-- (root ADR 0459): col drops it, fenced sets it, inFence tests it.
+example : PegModel.integer [("ind", 1048578)] "col ind + 2" = some 4 := by rfl
+
+example : PegModel.integer [("ind", 2)] "fenced ind" = some 1048578 := by rfl
+
+example : PegModel.integer [("ind", 1048578)] "fenced ind" = some 1048578 := by rfl
+
+example : PegModel.predicate [("ind", 1048576)] " inFence ind " = some true := by rfl
+
+example : PegModel.predicate [("ind", 1048575)] " inFence ind " = some false := by rfl
+
+example : PegModel.recognize Generated.pegGrammar 30 (.ref "Ind" ["1048576"])
+    " x".toList = .ok (some " x".toList) := by rfl
+
+example : PegModel.recognize Generated.pegGrammar 30 (.ref "Ind" ["1048578"])
+    "  x".toList = .ok (some "x".toList) := by rfl
+
+example : PegModel.recognize Generated.pegGrammar 30 (.ref "Ind" ["1048578"])
+    " x".toList = .ok none := by rfl
 
 example : PegModel.recognize Generated.pegGrammar 30 (.ref "Ind" ["unknown"])
     "x".toList = .error "opaque argument for Ind" := by rfl
