@@ -24,7 +24,7 @@ where
 
 import Golem.Doc.IR (Wrap (..))
 import Golem.Geometry (FillRule (..))
-import Golem.Geometry.Polygon (RPoint, flattenPathWith, reachInBox)
+import Golem.Geometry.Polygon (RPoint, flattenPathWith, indexPolygons, reachInIndex)
 import Golem.Layout.KnuthPlass (Sp (..))
 import Golem.Project.PathData (Path)
 
@@ -80,23 +80,25 @@ data PlacedOutline = PlacedOutline
   }
   deriving stock (Eq, Show)
 
-{- | An outline in the coordinates of its image (the origin at the top
-left, y down, each coordinate 'outlineScale' times its value) placed on
-the image of the size @(w, h)@ in those coordinates, set at the length
-@along@ along the lines and @across@ across them, on its side, in
-horizontal or vertical writing. The image is scaled in each direction to
-the size it is placed at.
+{- | An outline placed on its figure, in horizontal or vertical writing,
+on its side: each point of the path as stored is taken by @toImage@ to the
+coordinates of the image (the origin at the top left, y down), whose size
+is @(w, h)@, and the image is scaled in each direction to the length
+@along@ along the lines and @across@ across them it is placed at.
+@toImage@ divides by 'Golem.Project.PathData.outlineScale', and for an
+SVG maps the viewBox into the viewport too.
 -}
-placeOutline :: Bool -> Wrap -> Integer -> (Rational, Rational) -> (Sp, Sp) -> Path -> [[RPoint]]
-placeOutline vertical side scale (w, h) (Sp along, Sp across) = flattenPathWith toArea
+placeOutline :: Bool -> Wrap -> ((Rational, Rational) -> (Rational, Rational)) -> (Rational, Rational) -> (Sp, Sp) -> Path -> [[RPoint]]
+placeOutline vertical side toImage (w, h) (Sp along, Sp across) = flattenPathWith toArea
   where
     alongR = fromInteger along
     acrossR = fromInteger across
     -- the image across x and y as it is placed: in vertical writing x goes across the lines
     (placedX, placedY) = if vertical then (acrossR, alongR) else (alongR, acrossR)
     toArea (Sp x, Sp y) =
-      let px = fromInteger x / fromInteger scale * placedX / w
-          py = fromInteger y / fromInteger scale * placedY / h
+      let (ix, iy) = toImage (fromInteger x, fromInteger y)
+          px = ix * placedX / w
+          py = iy * placedY / h
           fromSide a = if side == WrapStart then a else alongR - a
        in if vertical then (fromSide py, acrossR - px) else (fromSide px, py)
 
@@ -110,8 +112,10 @@ outlinedExclusion side pitch gap figWidth figDepth placed =
   (exclusion side pitch gap figWidth figDepth) {exEdge = edge}
   where
     (imageAlong, imageAcross) = poImage placed
+    -- the edges indexed once for every band
+    edges = indexPolygons (poPolygons placed)
     edge b0 b1 =
-      let image = reachInBox NonZero (poPolygons placed) (0, imageAlong) (max 0 b0, min imageAcross b1)
+      let image = reachInIndex NonZero edges (0, imageAlong) (max 0 b0, min imageAcross b1)
           caption = [imageAlong | Just (c0, c1) <- [poCaption placed], max b0 c0 <= min b1 c1]
        in case maybe caption (: caption) image of
             [] -> Nothing

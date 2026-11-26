@@ -33,7 +33,7 @@ face = 80
 outline :: Bool -> Wrap -> (Rational, Rational) -> (Sp, Sp) -> String -> IO [[RPoint]]
 outline vertical side size placed src = case readOutlinePath (T.pack src) of
   Left e -> assertFailure (show e) >> pure []
-  Right p -> pure (placeOutline vertical side outlineScale size placed p)
+  Right p -> pure (placeOutline vertical side (\(x, y) -> (x / fromInteger outlineScale, y / fromInteger outlineScale)) size placed p)
 
 placing :: [TestTree]
 placing =

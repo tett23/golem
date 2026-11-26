@@ -834,6 +834,14 @@ XML として読めない SVG も、中身を確かめられないので同じ�
 段組みの版面では、回り込みは使えません。
 図[ref-number fig-new-project]は、この書き方で置いています。
 
+回り込みは、ふつうは画像とキャプションを囲む四角に沿います。
+丸い写真や、切り抜いた形の図版では、[code: outline=名前] を加えると、本文が図版の輪郭に沿って回り込みます。
+輪郭は、[code: style.toml] の [code: \[outlines.名前\]] に、閉じたパスとして書きます（「[ref-title style-figures]」、[ref-page style-figures] ページ）。
+本文は、輪郭から [code: \[figures\]] の [code: wrap-gap] だけ離れます。
+輪郭のくぼみや穴の中には、本文を置きません。
+[code: outline] は [code: wrap] と一緒に書きます。
+[code: wrap] の無い図版に書くと、警告（G02286）が出て、[code: outline] は使いません。
+
 回り込ませない図版は、PDF では行長いっぱいに置きます。
 [code: width] を書くと、その長さで置きます。
 [code: width] は、図版の行の方向の長さ（横組みでは幅、縦組みでは高さ）です。

@@ -206,6 +206,7 @@ test-suite golem-driver-page-test
     ParagraphSpec
     ParagraphStyleControlsSpec
     ParagraphWrapPitchSpec
+    WrapOutlineSpec
     ReuseSpec
     SeparatorSpec
     SinglePageSpec

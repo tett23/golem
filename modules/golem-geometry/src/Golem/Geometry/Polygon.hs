@@ -20,10 +20,14 @@ module Golem.Geometry.Polygon
     insidePolygons,
     stripInside,
     reachInBox,
+    EdgeIndex,
+    indexPolygons,
+    reachInIndex,
   )
 where
 
 import Data.List (sort, sortOn)
+import Data.Map.Strict qualified as Map
 import Golem.Geometry (FillRule (..), Path (..), Point, Segment (..), SubPath (..))
 import Golem.Length (Sp (..))
 
@@ -256,14 +260,48 @@ the box inside the region at an edge or at a corner, so these points are
 all that need looking at.
 -}
 reachInBox :: FillRule -> [[RPoint]] -> (Rational, Rational) -> (Rational, Rational) -> Maybe Rational
-reachInBox rule polys (x0, x1) (y0, y1)
+reachInBox rule = reachInIndex rule . indexPolygons
+
+{- | The edges and vertices of polygons by where they are across the
+lines (y), so that 'reachInIndex' looks only at those near a box: a curve
+flattened within 1/4 sp has many short edges.
+-}
+data EdgeIndex = EdgeIndex
+  { -- | the edges by their lowest y
+    eiEdges :: !(Map.Map Rational [(RPoint, RPoint)]),
+    -- | the most an edge spans in y
+    eiSpan :: !Rational,
+    -- | the vertices by their y
+    eiVertices :: !(Map.Map Rational [Rational])
+  }
+
+-- | The index of the edges and the vertices of polygons.
+indexPolygons :: [[RPoint]] -> EdgeIndex
+indexPolygons polys =
+  let es = edgesOf polys
+      lowY ((_, ay), (_, by)) = min ay by
+      highY ((_, ay), (_, by)) = max ay by
+   in EdgeIndex
+        (Map.fromListWith (flip (<>)) [(lowY e, [e]) | e <- es])
+        (maximum (0 : [highY e - lowY e | e <- es]))
+        (Map.fromListWith (flip (<>)) [(y, [x]) | poly <- polys, length poly > 1, (x, y) <- poly])
+
+-- | 'reachInBox' of the polygons of an index.
+reachInIndex :: FillRule -> EdgeIndex -> (Rational, Rational) -> (Rational, Rational) -> Maybe Rational
+reachInIndex rule ix (x0, x1) (y0, y1)
   | x0 > x1 || y0 > y1 = Nothing
   | null candidates = Nothing
   | otherwise = Just (maximum candidates)
   where
-    es = edgesOf polys
-    inBox (x, y) = x0 <= x && x <= x1 && y0 <= y && y <= y1
-    vertices = [x | poly <- polys, length poly > 1, p@(x, _) <- poly, inBox p]
+    -- the edges that reach the box across the lines: those from y0 less the longest span to y1 that end at y0 or after
+    es =
+      [ e
+      | bucket <- Map.elems (fst (Map.split y1 (snd (Map.split (y0 - eiSpan ix - 1) (eiEdges ix))))) <> Map.findWithDefault [] y1 (Map.map pure (eiEdges ix)),
+        e@((_, ay), (_, by)) <- bucket,
+        max ay by >= y0
+      ]
+    verticesIn = concat (Map.elems (fst (Map.split y1 (snd (Map.split y0 (eiVertices ix)))))) <> Map.findWithDefault [] y0 (eiVertices ix) <> (if y1 /= y0 then Map.findWithDefault [] y1 (eiVertices ix) else [])
+    vertices = [x | x <- verticesIn, x0 <= x, x <= x1]
     -- the part of each edge on a side of the box across the lines: its furthest x within the box
     onSideY y =
       [ x
@@ -284,5 +322,8 @@ reachInBox rule polys (x0, x1) (y0, y1)
         lo <= y1,
         hi >= y0
       ]
-    corners = [x | x <- [x0, x1], y <- [y0, y1], insidePolygons rule polys (x, y)]
+    -- a corner inside the region: on an edge, at a vertex, or covered; the edges that matter reach its y, so are in es
+    inside p@(px, py) =
+      elem px (Map.findWithDefault [] py (eiVertices ix)) || any (onEdge p) es || covered rule (winding es p)
+    corners = [x | x <- [x0, x1], y <- [y0, y1], inside (x, y)]
     candidates = vertices <> onSideY y0 <> onSideY y1 <> onSideX x0 <> onSideX x1 <> corners

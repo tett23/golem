@@ -763,12 +763,12 @@ tests =
               book = (bookOf [Block (at 0) (Just "intro") Nothing (Heading 1 noHeadingAttrs [txt "Introduction"])]) {bookHeadings = Map.fromList [(at 0, info)]}
            in bodyA cfg0 {hcLanguage = "en"} book @?= "<h1 id=\"intro\"><span class=\"number\">Chapter 1: </span>Introduction</h1>\n",
         testCase "an ideographic space after the number of a caption, outside the span" $
-          let fig = Figure "images/a.png" Nothing "代替" Nothing Nothing [para 3 [txt "キャプション"]] Nothing False False
+          let fig = Figure "images/a.png" Nothing "代替" Nothing Nothing [para 3 [txt "キャプション"]] Nothing False False Nothing
               book = (bookOf [Block (at 0) Nothing Nothing (FigureBlock fig)]) {bookFigures = Map.fromList [(at 0, "図1-1")]}
            in bodyA cfg0 book @?= "<figure>\n<img src=\"images/a.png\" alt=\"代替\"/>\n<figcaption><span class=\"number\">図1-1</span>\x3000キャプション</figcaption>\n</figure>\n",
         -- docs/adr/0200
         testCase "a figure without a number: no number span; without a caption either: no figcaption" $ do
-          let fig cap = Figure "images/a.png" Nothing "代替" Nothing Nothing cap Nothing False True
+          let fig cap = Figure "images/a.png" Nothing "代替" Nothing Nothing cap Nothing False True Nothing
           bodyA cfg0 (bookOf [Block (at 0) Nothing Nothing (FigureBlock (fig [para 3 [txt "キャプション"]]))])
             @?= "<figure>\n<img src=\"images/a.png\" alt=\"代替\"/>\n<figcaption>キャプション</figcaption>\n</figure>\n"
           bodyA cfg0 (bookOf [Block (at 0) Nothing Nothing (FigureBlock (fig []))])
@@ -776,7 +776,7 @@ tests =
         -- docs/adr/0190
         testCase "the width of a figure: width and max-width in a horizontal book, height and max-height in a vertical one, in pt, em and %" $ do
           let imgOf cfg w wr =
-                let fig = Figure "images/a.png" Nothing "代替" wr w [] Nothing False False
+                let fig = Figure "images/a.png" Nothing "代替" wr w [] Nothing False False Nothing
                  in T.takeWhile (/= '\n') (T.drop 1 (T.dropWhile (/= '\n') (bodyA cfg (bookOf [Block (at 0) Nothing Nothing (FigureBlock fig)]))))
           imgOf cfg0 (Just "10zw") Nothing @?= "<img src=\"images/a.png\" alt=\"代替\" style=\"width: 10em; max-width: 100%\"/>"
           imgOf cfg0 (Just "50%") Nothing @?= "<img src=\"images/a.png\" alt=\"代替\" style=\"width: 50%; max-width: 100%\"/>"
@@ -878,7 +878,7 @@ tests =
        in bodyA cfg book
             @?= "<p><span class=\"cite\">[<a href=\"#cite-a\">1</a>]</span><span class=\"cite\">[<a href=\"#cite-b\">2</a>]</span></p>\n<ol class=\"bibliography\">\n<li id=\"cite-a\">A. <a class=\"cs-url\" href=\"HTTPS://example.com/?a=1&amp;b=2\">HTTPS://example.com/?a=1&amp;b=2</a></li>\n<li id=\"cite-b\">B. <span class=\"cs-url\">javascript:alert(1)</span></li>\n</ol>\n",
     testCase "a figure uses its web image and copies it as an asset" $
-      let fig = Figure "images/a.pdf" (Just "images/a.png") "代替" Nothing Nothing [para 3 [txt "キャプション"]] Nothing False False
+      let fig = Figure "images/a.pdf" (Just "images/a.png") "代替" Nothing Nothing [para 3 [txt "キャプション"]] Nothing False False Nothing
           site = renderXhtml cfg0 ft (bookOf [Block (at 0) Nothing Nothing (FigureBlock fig)])
        in (maybe "" bodyOf (lookup "a.xhtml" (sitePages site)), siteAssets site)
             @?= ("<figure>\n<img src=\"images/a.png\" alt=\"代替\"/>\n<figcaption>キャプション</figcaption>\n</figure>\n", [("images/a.png", "images/a.png")]),

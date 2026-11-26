@@ -70,7 +70,7 @@ import Golem.Parser.Read (checkTableText)
 import Golem.Parser.SourceSettings
 import Golem.Project.Imports (ImportForm (..), ImportSite (..), ListedName (..), importNames, importSite, importsOf)
 import Golem.Project.Paths (PathError (..), normalizeRelative, pathErrorMessage)
-import Golem.Project.Style (Dim (..), LineBreaks (..), LocalStyles (..), ParaStyleDef (..), Sp (..), Style (stPrintingsFormat), kentenShapeNames, noLocalStyles, paraLineBreaks, paraStyle, parseAki, parseDim, renderPrintingTemplate, withLocalStyles)
+import Golem.Project.Style (Dim (..), LineBreaks (..), LocalStyles (..), ParaStyleDef (..), Sp (..), Style (stOutlines, stPrintingsFormat), kentenShapeNames, noLocalStyles, paraLineBreaks, paraStyle, parseAki, parseDim, renderPrintingTemplate, withLocalStyles)
 import Golem.Syntax
 import Golem.Syntax.LanguageTag (isLanguageTag)
 import Golem.Syntax.Sha256 (sha256)
@@ -2436,10 +2436,21 @@ figure ctx sp args body = do
                 (_, Left r) -> err "G02087" sp ("rotate は true か false です: " <> r) >> pure []
                 (Right wr, Right rot) -> case figureLayoutError sp (maybe sp (\(A.Located wsp _) -> wsp) (keywordAt "width" args)) wr rot (look "width") of
                   Just d -> report d >> pure []
-                  Nothing -> pure [block sp (FigureBlock (Figure path web alt wr (look "width") caption (fromRight Nothing page) rot False))]
+                  Nothing -> do
+                    outline <- figureOutline wr
+                    pure [block sp (FigureBlock (Figure path web alt wr (look "width") caption (fromRight Nothing page) rot False outline))]
     _ -> err "G02032" sp "@figure には画像のパスを一つ書きます" >> pure []
   where
     check p = isJust <$> asset ctx sp p
+    {- the outline of a wrapped figure, at the argument (root ADR 0464): on a
+    figure without wrap it is not used, G02286; a name style.toml does not
+    have is G02285, and the figure is set by its rectangle -}
+    figureOutline wr = case keywordAt "outline" args of
+      Nothing -> pure Nothing
+      Just (A.Located osp o)
+        | isNothing wr -> Nothing <$ report (diagnostic "G02286" Warning osp "outline は wrap のある図版にだけ使います")
+        | Map.notMember (argText o) (stOutlines (ctxStyle ctx)) -> Nothing <$ err "G02285" osp ("輪郭 " <> argText o <> " がありません")
+        | otherwise -> pure (Just (argText o))
     {- the paragraphs of a caption by the line-breaks of caption (docs/adr/0367):
     with keep, each line of the source is a line, as in a paragraph of a style
     that keeps its lines; the paragraphs have no style of their own -}

@@ -72,7 +72,7 @@ tests =
       testCase "R1 R2: [ref-number] and [ref-title] become Resolved around the text they resolve to, in any place (docs/adr/0215)" $ do
         let title = [Text (sp 1 1) "組版の", Ruby (sp 1 2) () [RubySegment [Text (sp 1 2) "設計"] (Just "せっけい")]]
             h = Block (sp 1 1) (Just "h") Nothing (Heading 1 noHeadingAttrs title)
-            fig = Block (sp 1 3) (Just "f") Nothing (FigureBlock (Figure "a.png" Nothing "代替" Nothing Nothing [para 1 3 [Text (sp 1 3) "図の題"]] Nothing False False))
+            fig = Block (sp 1 3) (Just "f") Nothing (FigureBlock (Figure "a.png" Nothing "代替" Nothing Nothing [para 1 3 [Text (sp 1 3) "図の題"]] Nothing False False Nothing))
             refs n = [Ref (sp 1 n) RefNumber "h", Ref (sp 1 (n + 1)) RefTitle "h", Ref (sp 1 (n + 2)) RefNumber "f"]
             cell = Block (sp 1 10) Nothing Nothing (TableBlock (plainTable [AlignDefault] [[Text (sp 1 10) "見出し"]] [[refs 11]]))
             noted = para 1 20 [Note (sp 1 20) 1 Nothing (noteBody (sp 1 20) (refs 21))]
@@ -120,7 +120,7 @@ tests =
           [Document _ [_, _, Block _ _ _ (Paragraph Nothing is)]] -> is @?= [Text (sp 1 9) "count=2"]
           other -> assertFailure (show other),
       testCase "figure numbers restart per chapter" $ do
-        let fig f s = Block (sp f s) Nothing Nothing (FigureBlock (Figure "a.png" Nothing "alt" Nothing Nothing [] Nothing False False))
+        let fig f s = Block (sp f s) Nothing Nothing (FigureBlock (Figure "a.png" Nothing "alt" Nothing Nothing [] Nothing False False Nothing))
             docs = [Document (FileId 1) [heading 1 0 1 noHeadingAttrs Nothing "一", fig 1 2, fig 1 4, heading 1 6 1 noHeadingAttrs Nothing "二", fig 1 8]]
             (book, ds) = assemble cfg noEval docs
         ds @?= []
@@ -398,7 +398,7 @@ diagnosticCodes =
           [Document _ (Block _ _ _ (Paragraph Nothing is) : _)] -> is @?= []
           other -> assertFailure (show other),
       testCase "G04004: figures outside a chapter, before the first and after a @nonumber chapter" $ do
-        let fig s = Block (sp 1 s) Nothing Nothing (FigureBlock (Figure "a.png" Nothing "alt" Nothing Nothing [] Nothing False False))
+        let fig s = Block (sp 1 s) Nothing Nothing (FigureBlock (Figure "a.png" Nothing "alt" Nothing Nothing [] Nothing False False Nothing))
             docs = [Document (FileId 1) [fig 0, heading 1 2 1 noHeadingAttrs Nothing "一", fig 4, heading 1 6 1 noHeadingAttrs {haNoNumber = True} Nothing "あとがき", fig 8]]
             msg = "章の外にある図版、表、コードには、章番号を使う番号を振れません。章は番号を持つ階層 1 の見出しから始まります。番号を振らないなら @nonumber を付けます"
         map summary (snd (assemble cfg noEval docs))
@@ -406,21 +406,21 @@ diagnosticCodes =
         snd (assemble cfg {acFigureFormat = "{n}"} noEval docs) @?= [],
       -- docs/adr/0200
       testCase "@nonumber figures and code blocks outside a chapter: no G04004, not in bookFigures nor bookListings" $ do
-        let fig s nn = Block (sp 1 s) Nothing Nothing (FigureBlock (Figure "a.png" Nothing "alt" Nothing Nothing [] Nothing False nn))
+        let fig s nn = Block (sp 1 s) Nothing Nothing (FigureBlock (Figure "a.png" Nothing "alt" Nothing Nothing [] Nothing False nn Nothing))
             code s nn = Block (sp 1 s) Nothing Nothing (CodeBlock (Code Nothing Nothing Nothing (Just [Text (sp 1 s) "a"]) False [] nn))
             (book, ds) = assemble cfg noEval [Document (FileId 1) [fig 0 True, code 1 True, heading 1 2 1 noHeadingAttrs {haNoNumber = True} Nothing "あとがき", fig 3 True, code 4 True]]
         ds @?= []
         bookFigures book @?= Map.empty
         bookListings book @?= Map.empty,
       testCase "@nonumber figures and code blocks in a chapter take no number" $ do
-        let fig s nn = Block (sp 1 s) Nothing Nothing (FigureBlock (Figure "a.png" Nothing "alt" Nothing Nothing [] Nothing False nn))
+        let fig s nn = Block (sp 1 s) Nothing Nothing (FigureBlock (Figure "a.png" Nothing "alt" Nothing Nothing [] Nothing False nn Nothing))
             code s nn = Block (sp 1 s) Nothing Nothing (CodeBlock (Code Nothing Nothing Nothing (Just [Text (sp 1 s) "a"]) False [] nn))
             (book, ds) = assemble cfg noEval [Document (FileId 1) [heading 1 0 1 noHeadingAttrs Nothing "一", fig 1 False, fig 2 True, fig 3 False, code 4 False, code 5 True, code 6 False]]
         ds @?= []
         Map.toAscList (bookFigures book) @?= [(sp 1 1, "図1-1"), (sp 1 3, "図1-2")]
         Map.toAscList (bookListings book) @?= [(sp 1 4, "リスト1-1"), (sp 1 6, "リスト1-2")],
       testCase "ref-number to a @nonumber figure or code block is G04005; ref-title gives the alt text and the caption" $ do
-        let fig = Block (sp 1 1) (Just "f") Nothing (FigureBlock (Figure "a.png" Nothing "代替" Nothing Nothing [] Nothing False True))
+        let fig = Block (sp 1 1) (Just "f") Nothing (FigureBlock (Figure "a.png" Nothing "代替" Nothing Nothing [] Nothing False True Nothing))
             code = Block (sp 1 2) (Just "c") Nothing (CodeBlock (Code Nothing Nothing Nothing (Just [Text (sp 1 2) "設定"]) False [] True))
             docs refs = [Document (FileId 1) [heading 1 0 1 noHeadingAttrs Nothing "一", fig, code, para 1 3 refs]]
         map summary (snd (assemble cfg noEval (docs [Ref (sp 1 4) RefNumber "f", Ref (sp 1 5) RefNumber "c"])))
@@ -431,7 +431,7 @@ diagnosticCodes =
           [Document _ [_, _, _, Block _ _ _ (Paragraph Nothing is)]] -> is @?= [Resolved (sp 1 4) RefTitle "f" [Text (sp 1 4) "代替"], Resolved (sp 1 5) RefTitle "c" [Text (sp 1 5) "設定"]]
           other -> assertFailure (show other),
       testCase "listing numbers: per chapter, apart from figures, only with a caption (golem-driver ADR 0023)" $ do
-        let fig s = Block (sp 1 s) Nothing Nothing (FigureBlock (Figure "a.png" Nothing "alt" Nothing Nothing [] Nothing False False))
+        let fig s = Block (sp 1 s) Nothing Nothing (FigureBlock (Figure "a.png" Nothing "alt" Nothing Nothing [] Nothing False False Nothing))
             code s cap = Block (sp 1 s) Nothing Nothing (CodeBlock (Code Nothing Nothing Nothing cap False [CodeLine "x" (Just 1) Nothing False [] Nothing] False))
             capt t = Just [Text (sp 1 0) t]
             docs =
@@ -485,7 +485,7 @@ diagnosticCodes =
           other -> assertFailure (show other)
         snd (assemble cfg noEval [Document (FileId 1) [p, para 1 5 [Ref (sp 1 6) RefPage "p"]]]) @?= []
         let h = heading 1 0 1 noHeadingAttrs (Just "h") "一"
-            f = Block (sp 1 2) (Just "f") Nothing (FigureBlock (Figure "a.png" Nothing "alt" Nothing Nothing [] Nothing False False))
+            f = Block (sp 1 2) (Just "f") Nothing (FigureBlock (Figure "a.png" Nothing "alt" Nothing Nothing [] Nothing False False Nothing))
         snd (assemble cfg noEval [Document (FileId 1) [h, f, para 1 5 [Ref (sp 1 6) RefTitle "h", Ref (sp 1 7) RefTitle "f"]]]) @?= []
     ]
 
@@ -667,7 +667,7 @@ unwritableTests =
         map summary (snd (assemble c noEval [Document (FileId 1) [heading 1 0 2 noHeadingAttrs {haNumber = Just 51} Nothing "節"]]))
           @?= [("G04012", Error, sp 1 0, "[headings.2] の number {1:upper-roman}-{n:circled} の {1:upper-roman} では、0 を表せません", [])],
       testCase "N1: the 8th figure of {n:note-symbols} is G04013 at the figure" $ do
-        let fig s' = Block (sp 1 s') Nothing Nothing (FigureBlock (Figure "a.png" Nothing "alt" Nothing Nothing [] Nothing False False))
+        let fig s' = Block (sp 1 s') Nothing Nothing (FigureBlock (Figure "a.png" Nothing "alt" Nothing Nothing [] Nothing False False Nothing))
             (book, ds) = assemble cfg {acFigureFormat = "図{n:note-symbols}"} noEval [Document (FileId 1) (heading 1 0 1 noHeadingAttrs Nothing "一" : map fig [1 .. 8])]
         map summary ds @?= [("G04013", Error, sp 1 8, "[figures] の number 図{n:note-symbols} の {n:note-symbols} では、8 を表せません", [])]
         Map.lookup (sp 1 8) (bookFigures book) @?= Nothing
