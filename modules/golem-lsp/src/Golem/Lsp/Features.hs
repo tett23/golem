@@ -1396,6 +1396,7 @@ setSites (File _ bs) = concatMap go bs
       DefList gs -> concatMap (concatMap (concatMap go) . dgDefs) gs
       BlockCommand _ _ body -> concatMap go body
       Attributed cs t -> concatMap go cs <> maybe [] go t
+      Fenced fbs -> concatMap go fbs
       _ -> []
 
 setNamesOf :: Source -> [Text]
