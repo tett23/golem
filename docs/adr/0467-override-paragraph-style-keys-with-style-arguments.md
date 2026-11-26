@@ -1,6 +1,6 @@
 # ADR 0467: @style の名前付き引数で、段落ごとに段落スタイルのキーを上書きする
 
-Status: proposed
+Status: accepted-pending
 
 ## 文脈
 

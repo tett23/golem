@@ -1,6 +1,6 @@
 # ADR 0453: 組み込みのコマンドを、名前を並べた取り込みとプラグインで上書きできるようにする
 
-Status: accepted
+Status: superseded [{"part":"名前を探す順","by":["docs/adr/0461-report-the-diagnostics-that-follow-from-another-error.md"],"kind":"supplement"}]
 
 ## 文脈
 

@@ -1,6 +1,6 @@
 # ADR 0463: 番号のある見出しとキャプションの題を、変数を差し込める書式で組む
 
-Status: proposed
+Status: accepted-pending
 
 ## 文脈
 

@@ -1,6 +1,6 @@
 # ADR 0046: `@blank-line` で段落のあいだに行アキを入れる
 
-Status: superseded [{"by":["docs/adr/0104-info-severity.md"],"part":"G07047 の重大度"}]
+Status: superseded [{"by":["docs/adr/0104-info-severity.md"],"part":"G07047 の重大度"},{"part":"記法","by":["docs/adr/0462-breaks-in-command-bodies-and-repeated-commands.md"],"kind":"replace"}]
 
 ## 文脈
 

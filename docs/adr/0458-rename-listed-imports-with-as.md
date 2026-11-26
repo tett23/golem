@@ -1,6 +1,6 @@
 # ADR 0458: 名前を並べた取り込みで、`as` で別名を付けられるようにする
 
-Status: accepted
+Status: superseded [{"part":"不変条件の I9","by":["docs/adr/0461-report-the-diagnostics-that-follow-from-another-error.md"],"kind":"replace"},{"part":"別名の意味","by":["docs/adr/0461-report-the-diagnostics-that-follow-from-another-error.md"],"kind":"supplement"}]
 
 ## 文脈
 
