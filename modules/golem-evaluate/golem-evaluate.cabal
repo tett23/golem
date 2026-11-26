@@ -37,6 +37,7 @@ library
                     Golem.Evaluate.Functions
                     Golem.Evaluate.Lint
                     Golem.Evaluate.Plugins
+                    Golem.Evaluate.TitleFormats
                     Golem.Evaluate.Verse
   other-modules:    Golem.Evaluate.ProjectVars
   build-depends:

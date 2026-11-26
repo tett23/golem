@@ -12,8 +12,9 @@ import Data.Map.Strict qualified as Map
 import Data.Set qualified as Set
 import Golem.Assemble (Book (..), LabelTarget (..))
 import Golem.Emet.Lint (lintProgram)
-import Golem.Eval.File (EvalResult (..))
+import Golem.Eval.File (EvalResult (..), Usage (..))
 import Golem.Evaluate
+import Golem.Evaluate.TitleFormats (titleFormatVariables)
 import Golem.Lint
 import Golem.Parser (commentBoundaryInfos)
 import Golem.Project
@@ -56,10 +57,19 @@ lintGm e =
       -- how each file was read, @manifest included (docs/adr ADR 0013, 0014)
       sourceOf fid = maybe (sourceSettingsOf project fid) erSource (Map.lookup fid (evResults e))
       files =
-        [ FileLint fid (sfPath sf) (sfCst sf) (erSource r) (erUsage r)
+        [ FileLint fid (sfPath sf) (sfCst sf) (erSource r) (withTitleFormats r (erUsage r))
         | (fid, sf) <- sources,
           Just r <- [Map.lookup fid (evResults e)]
         ]
+      -- the variables the title formats refer to are used (root ADR 0463)
+      withTitleFormats r u =
+        let refs = titleFormatVariables (evStyle e) (erStyles r)
+            own = Set.fromList [v | [v] <- refs]
+         in u
+              { usageReferenced = usageReferenced u <> own,
+                usageListedRefs = usageListedRefs u <> own,
+                usageNamespaceRefs = Map.unionWith (<>) (usageNamespaceRefs u) (Map.fromListWith (<>) [(ns, Set.singleton v) | [ns, v] <- refs])
+              }
       -- G05001 again for the files with styles of their own
       perFile ds =
         [d | d <- ds, not (diagCode d == DiagnosticCode "G05001" && Map.member (spanFile (diagSpan d)) locals)]

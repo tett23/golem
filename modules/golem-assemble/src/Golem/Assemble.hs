@@ -52,6 +52,7 @@ import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
 import Golem.Assemble.Collation
+import Golem.Assemble.Numbering (TitlePiece)
 import Golem.Doc.IR
 import Golem.Numerals.Format (Unwritable (..), formatNumber, formatUsesChapter)
 import Golem.Syntax
@@ -227,6 +228,10 @@ data Book = Book
     bookChannelDecls :: !(Map Text ChannelDecl),
     -- | Per-file overrides for heading levels and captions (Golem ADR 0372).
     bookTitleSeparators :: !(Map (FileId, Maybe Int) Text),
+    {- | the title formats of the numbered headings by their file and level,
+    and of the numbered captions by their file (root ADR 0463), the values
+    of their variables in place
+    -} bookTitleFormats :: !(Map (FileId, Maybe Int) [TitlePiece]),
     {- | the images plugins made for figures, by the source of the figure
     (docs/adr/0123); the outputs read them instead of a file of the project
     -} bookImages :: !(Map Text ByteString)
@@ -512,6 +517,7 @@ assemble cfg evalDeferred docs0 =
             bookChannels = channelLists (acChannels cfg) docs',
             bookChannelDecls = acChannels cfg,
             bookTitleSeparators = Map.empty,
+            bookTitleFormats = Map.empty,
             bookImages = Map.empty
           },
         sortDiagnostics (nsDiags ns <> figureErrors <> unwritableErrors <> labelDiags <> resolveDiags <> tocDiags <> listNumberNotices cfg docs <> trailingBreaks docs <> blankDiags <> indexDiags)
