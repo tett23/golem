@@ -52,9 +52,9 @@ import System.IO.Temp (withSystemTempDirectory)
 import System.Timeout (timeout)
 import Test.Tasty
 import Test.Tasty.HUnit
+import TitleFormatSpec qualified
 import TomlMessageSpec qualified
 import UnderlineSpec qualified
-import TitleFormatSpec qualified
 import VarsSpec qualified
 
 main :: IO ()

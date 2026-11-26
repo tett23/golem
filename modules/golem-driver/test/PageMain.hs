@@ -23,7 +23,6 @@ import NoteBodyStylesSpec (noteBodyStylesTests)
 import NoteRefsSpec (noteRefTests)
 import NotesSpec (notesTests)
 import NumberTitleSeparatorSpec (numberTitleSeparatorTests)
-import TitleFormatSpec (titleFormatTests)
 import OverflowSpec (overflowTests)
 import PageElementsSpec
 import PageLabelsSpec (pageLabelsTests)
@@ -41,6 +40,7 @@ import SinglePageSpec qualified
 import SoftHyphenSpec (softHyphenTests)
 import StylesSpec
 import Test.Tasty
+import TitleFormatSpec (titleFormatTests)
 import VerseLineNumbersSpec (verseLineNumberTests)
 
 main :: IO ()
