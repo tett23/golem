@@ -18,7 +18,7 @@ import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
-import Golem.Eval.File (Usage (..))
+import Golem.Eval.File (Overrides, Space (..), Usage (..), callsBuiltin)
 import Golem.Parser.CST
 import Golem.Parser.SourceSettings
 import Golem.Syntax
@@ -43,7 +43,7 @@ data LintInput = LintInput
 lint :: LintInput -> [Diagnostic]
 lint input =
   sortDiagnostics $
-    concatMap (\f -> latinJoinedByNewline (flSource f) (liKeepStyles input) (flFile f) (flCst f)) (liFiles input)
+    concatMap (\f -> latinJoinedByNewline (flSource f) (liKeepStyles input) (usageOverrides (flUsage f)) (flFile f) (flCst f)) (liFiles input)
       <> unusedVariables input
       <> unusedImports input
       <> unreferencedLabels input
@@ -65,21 +65,22 @@ of an attribute group with @style) break lines, and those of a paragraph
 or a list item in the line style separate paragraphs; only the prose
 slots inside them are checked (docs/adr ADR 0003, 0005, 0013).
 -}
-latinJoinedByNewline :: SourceSettings -> Set Text -> FileId -> Node -> [Diagnostic]
-latinJoinedByNewline source keep fid = go 0
+latinJoinedByNewline :: SourceSettings -> Set Text -> Overrides -> FileId -> Node -> [Diagnostic]
+latinJoinedByNewline source keep overrides fid = go 0
   where
     lineStyle = ssParagraphSeparator source == LineSeparated
     go start n
-      | isKeepStyle n = verseBody start (nodeChildren n)
-      | nodeKind n == NAttributed && or [isKeepStyle m | ElemNode m <- nodeChildren n] = keepTarget start (nodeChildren n)
+      | isKeepStyle start n = verseBody start (nodeChildren n)
+      | nodeKind n == NAttributed && or [isKeepStyle start m | ElemNode m <- nodeChildren n] = keepTarget start (nodeChildren n)
       -- in the line style a newline of a paragraph separates paragraphs (docs/adr ADR 0013)
       | lineStyle && nodeKind n `elem` [NParagraph, NListItem] = proseSlots start (nodeChildren n)
       | nodeKind n `elem` [NParagraph, NProseSlot, NListItem, NDefTerm] = scan start (nodeChildren n)
       | otherwise = descend start (nodeChildren n)
-    -- @style with the name of a style that keeps its lines
-    isKeepStyle n =
+    -- the built-in @style with the name of a style that keeps its lines (root ADR 0471)
+    isKeepStyle start n =
       nodeKind n == NBlockCommand
         && listToMaybe [tokText t | ElemToken t <- nodeChildren n, tokKind t == KIdent] == Just "style"
+        && callsBuiltin overrides BlockSpace "style" start
         && maybe False (`Set.member` keep) (listToMaybe [tokText t | ElemNode a <- nodeChildren n, nodeKind a == NArgument, ElemToken t <- nodeChildren a, tokKind t == KWord])
     -- the paragraph of an attribute group: only its prose slots
     keepTarget _ [] = []

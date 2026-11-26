@@ -187,7 +187,9 @@ data Usage = Usage
     -- | each item an @import lists: its alias, its original name, its path and the span of its alias (root ADR 0451, root ADR 0458)
     usageListed :: ![(Text, Text, FilePath, SrcSpan)],
     -- | the listed names the file uses without a namespace (root ADR 0451)
-    usageListedRefs :: !(Set Text)
+    usageListedRefs :: !(Set Text),
+    -- | where the file overrides the built-in commands, for the tools (root ADR 0471)
+    usageOverrides :: !Overrides
   }
   deriving stock (Eq, Show)
 
@@ -203,9 +205,7 @@ data EvalResult = EvalResult
     -- | the line of each @number by the span of the block it numbers (G04007, golem-syntax ADR 0002)
     erNumberSites :: !(Map SrcSpan SrcSpan),
     -- | the images plugins made for the figures of the file, by their source (docs/adr/0123)
-    erImages :: !(Map Text ByteString),
-    -- | where the file overrides the built-in commands, for the tools (root ADR 0471)
-    erOverrides :: !Overrides
+    erImages :: !(Map Text ByteString)
   }
 
 {- | Where a file overrides the built-in commands (root ADR 0471), for the
@@ -393,13 +393,12 @@ evalFile ctx0 (A.File fid blocks0) =
    in EvalResult
         { erDocument = styled,
           erExports = stVars st,
-          erUsage = Usage (stDefined st) (stRefs st) (stNsRefs st) (stImports st) (stListedSites st) (stListedRefs st),
+          erUsage = Usage (stDefined st) (stRefs st) (stNsRefs st) (stImports st) (stListedSites st) (stListedRefs st) (fileOverrides (ctxFunctions ctx) (ctxPlugins ctx) (A.File fid blocks0)),
           erDiagnostics = stDiags st <> noteDiags <> breakDiags <> filterDiags <> unwritableText styled,
           erSource = ctxSource ctx,
           erStyles = local,
           erNumberSites = stNumberSites st,
-          erImages = stImages st,
-          erOverrides = fileOverrides (ctxFunctions ctx) (ctxPlugins ctx) (A.File fid blocks0)
+          erImages = stImages st
         }
 
 {- | The blocks at the top of a file evaluated in order (docs/adr/0374):

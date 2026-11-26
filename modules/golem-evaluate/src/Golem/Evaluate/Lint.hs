@@ -12,7 +12,7 @@ import Data.Map.Strict qualified as Map
 import Data.Set qualified as Set
 import Golem.Assemble (Book (..), LabelTarget (..))
 import Golem.Emet.Lint (lintProgram)
-import Golem.Eval.File (EvalResult (..), Usage (..))
+import Golem.Eval.File (EvalResult (..), Usage (..), noOverrides)
 import Golem.Evaluate
 import Golem.Evaluate.TitleFormats (titleFormatVariables)
 import Golem.Lint
@@ -56,6 +56,8 @@ lintGm e =
       locals = localStylesOf e
       -- how each file was read, @manifest included (docs/adr ADR 0013, 0014)
       sourceOf fid = maybe (sourceSettingsOf project fid) erSource (Map.lookup fid (evResults e))
+      -- where each file overrides the built-in commands (root ADR 0471)
+      overridesOf fid = maybe noOverrides (usageOverrides . erUsage) (Map.lookup fid (evResults e))
       files =
         [ FileLint fid (sfPath sf) (sfCst sf) (erSource r) (withTitleFormats r (erUsage r))
         | (fid, sf) <- sources,
@@ -73,10 +75,10 @@ lintGm e =
       -- G05001 again for the files with styles of their own
       perFile ds =
         [d | d <- ds, not (diagCode d == DiagnosticCode "G05001" && Map.member (spanFile (diagSpan d)) locals)]
-          <> concat [latinJoinedByNewline (sourceOf fid) (keepStyles (docStyles e fid)) fid (sfCst sf) | (fid, sf) <- sources, Map.member fid locals]
+          <> concat [latinJoinedByNewline (sourceOf fid) (keepStyles (docStyles e fid)) (overridesOf fid) fid (sfCst sf) | (fid, sf) <- sources, Map.member fid locals]
    in case evBook e of
         Just b -> perFile (lint (LintInput files (Map.map ltSpan (bookLabels b)) (bookReferenced b) keep))
         -- evaluation stopped: only the rules that need no evaluation
         Nothing
-          | null files -> concat [latinJoinedByNewline (sourceOf fid) keep fid (sfCst sf) | (fid, sf) <- sources]
+          | null files -> concat [latinJoinedByNewline (sourceOf fid) keep (overridesOf fid) fid (sfCst sf) | (fid, sf) <- sources]
           | otherwise -> perFile (lint (LintInput files Map.empty Set.empty keep))

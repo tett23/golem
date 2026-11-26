@@ -80,6 +80,7 @@ withFunctionsOf chapterText act = withSystemTempDirectory "golem-lsp-functions" 
           ("fn/book.emet", TE.encodeUtf8 bookEmet),
           ("fn/lib.emet", TE.encodeUtf8 libEmet),
           ("fn/over.emet", TE.encodeUtf8 overEmet),
+          ("fn/all.emet", TE.encodeUtf8 allEmet),
           ("w.tsv", "w\n")
         ]
   forM_ files $ \(p, bytes) -> createDirectoryIfMissing True (takeDirectory (tmp </> p)) >> BS.writeFile (tmp </> p) bytes
@@ -209,6 +210,18 @@ renameTests =
 overEmet :: Text
 overEmet = "pub block toc :: Blocks\ntoc = Block.paragraph (Inline.text \"T\")\n\npub inline strong :: Inlines -> Inlines\nstrong xs = xs\n"
 
+{- | fn/all.emet: a block note, an inline ref-number, a block style and an
+inline style, names of built-in commands overridable since root ADR 0471.
+-}
+allEmet :: Text
+allEmet =
+  "pub block note :: Blocks -> Blocks\nnote bs = bs\n\npub inline \"ref-number\" refNumber :: String -> Inlines\nrefNumber _ = Inline.text \"R\"\n\npub block style :: String -> Blocks -> Blocks\nstyle _ bs = bs\n\npub inline \"style\" charStyle :: String -> Inlines -> Inlines\ncharStyle _ xs = xs\n"
+
+-- | The kind of a completion.
+kindOf :: Completion -> CompletionKind
+kindOf (Completion _ k) = k
+kindOf (Described _ k _) = k
+
 -- | The chapter that overrides @toc and [strong] by the names it lists.
 overChapter :: Text
 overChapter = "@import fn/over.emet { toc, strong }\n\n@toc\n\n[strong: a]\n"
@@ -233,7 +246,28 @@ overrideTests =
           block <- at (overChapter <> "\n@")
           length (filter (== "toc") block) @?= 1
           inline <- at (overChapter <> "\n[")
-          length (filter (== "strong") inline) @?= 1
+          length (filter (== "strong") inline) @?= 1,
+      testCase "root ADR 0471 I2: renaming a label leaves the argument of [ref-number] after { ref-number }" $ do
+        let text = "@label sec\n# 見出し\n\n[ref-number sec]\n\n@import fn/all.emet { ref-number }\n\n[ref-number sec]\n"
+        withFunctionsOf text $ \_ ws -> do
+          edits <- either (assertFailure . show) pure (renameLabel ws "a.gm" (offsetIn text "sec" 0) "part")
+          lookup "a.gm" (applyAll edits [("a.gm", text)]) @?= Just "@label part\n# 見出し\n\n[ref-number part]\n\n@import fn/all.emet { ref-number }\n\n[ref-number sec]\n",
+      testCase "root ADR 0471 I2, I3: definition from @note goes to the function after { note }, and to nothing before it" $ do
+        let text = "@note\n本文\n\n@import fn/all.emet { note }\n\n@note\n本文\n"
+        withFunctionsOf text $ \_ ws -> do
+          map (\l -> (locPath l, locStart l)) (definition ws "a.gm" (offsetIn text "@import" 0 + offsetIn (snd (T.breakOn "@import" text)) "@note" 2)) @?= [("fn/all.emet", offsetIn allEmet "note ::" 0)]
+          definition ws "a.gm" 2 @?= [],
+      testCase "root ADR 0471: style names are completed after the built-in @style and [style] alone" $ do
+        let chapterAfter = "@import fn/all.emet { style }\n\n本文\n"
+            at base text = withFunctionsOf base $ \_ ws -> do
+              ws' <- updateFile ws "a.gm" text
+              pure (map kindOf (completions ws' "a.gm" (BS.length (TE.encodeUtf8 text))))
+        builtinPara <- at "本文\n" "本文\n\n@style "
+        overriddenPara <- at chapterAfter (chapterAfter <> "\n@style ")
+        assertBool "paragraph styles after the built-in @style" (CkParaStyle `elem` builtinPara)
+        filter (== CkParaStyle) overriddenPara @?= []
+        overriddenChar <- at chapterAfter (chapterAfter <> "\n[style ")
+        filter (== CkCharStyle) overriddenChar @?= []
     ]
 
 -- | The names listed by @import (root ADR 0451): completion, definition, references and renaming.

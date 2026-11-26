@@ -3,7 +3,7 @@ module Main (main) where
 import Data.Map.Strict qualified as Map
 import Data.Set qualified as Set
 import Data.Text (Text)
-import Golem.Eval.File (Usage (..))
+import Golem.Eval.File (Overrides (..), Space (..), Usage (..), noOverrides)
 import Golem.Lint
 import Golem.Parser (parse)
 import Golem.Parser.SourceSettings
@@ -26,10 +26,10 @@ newlineCodesWith :: Set.Set Text -> Text -> [Text]
 newlineCodesWith = newlineCodesIn blankLine
 
 newlineCodesIn :: SourceSettings -> Set.Set Text -> Text -> [Text]
-newlineCodesIn source keep src = [c | d <- latinJoinedByNewline source keep (FileId 0) (fst (parse (FileId 0) src)), let DiagnosticCode c = diagCode d]
+newlineCodesIn source keep src = [c | d <- latinJoinedByNewline source keep noOverrides (FileId 0) (fst (parse (FileId 0) src)), let DiagnosticCode c = diagCode d]
 
 usage :: Usage
-usage = Usage [] Set.empty Map.empty [] [] Set.empty
+usage = Usage [] Set.empty Map.empty [] [] Set.empty noOverrides
 
 codes :: [Diagnostic] -> [Text]
 codes = map (\d -> let DiagnosticCode c = diagCode d in c)
@@ -41,7 +41,7 @@ sp = mkSpan (FileId 0) 0 1
 newlineSpans :: SourceSettings -> Text -> [(Text, Int, Int)]
 newlineSpans source src =
   [ (c, spanStart (diagSpan d), spanEnd (diagSpan d))
-  | d <- latinJoinedByNewline source (Set.fromList ["verse"]) (FileId 0) (fst (parse (FileId 0) src)),
+  | d <- latinJoinedByNewline source (Set.fromList ["verse"]) noOverrides (FileId 0) (fst (parse (FileId 0) src)),
     let DiagnosticCode c = diagCode d
   ]
 
@@ -74,6 +74,16 @@ tests =
         -- a style a file defines (docs/adr ADR 0014)
         newlineCodesWith (Set.fromList ["verse", "letter"]) "@style letter\n  Full fathom five\n  Of his bones\n" @?= []
         newlineCodes "@figure a.png alt=x\n  Full fathom\n  five\n" @?= ["G05001"],
+      testCase "root ADR 0471: a @style the file overrides keeps no lines; before the @import line, and in another file, it does" $ do
+        let codesWith o s = [c | d <- latinJoinedByNewline blankLine (Set.fromList ["verse"]) o (FileId 0) (fst (parse (FileId 0) s)), let DiagnosticCode c = diagCode d]
+            src = "@style verse\n  Full fathom five\n  Of his bones\n"
+        -- listed by an @import line before it, or by a plugin
+        codesWith (Overrides Set.empty [(BlockSpace, "style", 0)]) src @?= ["G05001"]
+        codesWith (Overrides (Set.fromList [(BlockSpace, "style")]) []) src @?= ["G05001"]
+        codesWith (Overrides (Set.fromList [(BlockSpace, "style")]) []) ("@label song\n" <> src) @?= ["G05001"]
+        -- listed by an @import line after it, or as an inline command alone
+        codesWith (Overrides Set.empty [(BlockSpace, "style", 1000)]) src @?= []
+        codesWith (Overrides (Set.fromList [(InlineSpace, "style")]) []) src @?= [],
       testCase "G05001 does not apply to hard line breaks (docs/adr ADR 0016)" $ do
         newlineCodes "Full fathom\\\nfive\n" @?= []
         newlineCodes "Full fathom\nfive\n" @?= ["G05001"],
@@ -129,7 +139,7 @@ tests =
         "exact diagnostics"
         [ testCase "G05001 is the one character of the newline, with its message" $ do
             newlineSpans blankLine "This is\nEnglish\n" @?= [("G05001", 7, 8)]
-            map diagMessage (latinJoinedByNewline blankLine Set.empty (FileId 0) (fst (parse (FileId 0) "a\nb\n")))
+            map diagMessage (latinJoinedByNewline blankLine Set.empty noOverrides (FileId 0) (fst (parse (FileId 0) "a\nb\n")))
               @?= ["改行の前後が欧文なので、単語が空白なしにつながります。一行で書いてください"],
           testCase "G05001 counts the offsets of the blocks and slots before it" $ do
             newlineSpans blankLine "日本語。\n\none\ntwo\nthree\n" @?= [("G05001", 17, 18), ("G05001", 21, 22)]
