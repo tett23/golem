@@ -1143,12 +1143,8 @@ outline ws path = case sourceOf ws path of
       let (kids, others) = span ((> olLevel o) . olLevel) rest
        in o {olChildren = nest kids} : nest others
 
--- ------------------------------------------------------------------ semantic tokens
+-- ------------------------------------------------------------------ folding ranges
 
-{- | The semantic tokens of a .gm text (golem-lsp ADR 0006): its CST
-classified by the kind of each token and of its parent, in document order,
-in the negotiated unit, and split at newlines.
--}
 {- | The folding ranges of a source (root ADR 0459): for each body between
 ::: lines, the line that opens and the line that closes, or the last line
 of the body when it is not closed; zero-based, in the order of the lines
@@ -1170,6 +1166,12 @@ foldingRanges text = sortOn fst (walk 0 (fst (parse (FileId 0) text)))
             _ -> []
        in here <> concat [walk off m | (off, C.ElemNode m) <- placed]
 
+-- ------------------------------------------------------------------ semantic tokens
+
+{- | The semantic tokens of a .gm text (golem-lsp ADR 0006): its CST
+classified by the kind of each token and of its parent, in document order,
+in the negotiated unit, and split at newlines.
+-}
 semanticTokens :: Encoding -> Text -> [SemanticTokenAbsolute]
 semanticTokens enc text = semanticTokensOf enc text (fst (parse (FileId 0) text))
 

@@ -1479,6 +1479,7 @@ hasParagraphOrTable = any $ \b -> case blockBody b of
   OrderedList items -> any (hasParagraphOrTable . itemBlocks) items
   DefList gs -> any (any hasParagraphOrTable . dgDefs) gs
   _ -> False
+
 {- | @channel, the list of a channel a plugin declares (golem-doc ADR
 0007): one name, G02090 otherwise; style= the paragraph style of its
 entries, body by default, G02047 when it is not defined.
@@ -2110,10 +2111,8 @@ styleBody ctx sp headerEnd args body
   | otherwise = do
       name <- styleName ctx sp args
       let keeps = maybe False (\n -> Map.lookup n (ctxParaStyles ctx) == Just KeepLines) name
-      bs0 <- concat <$> mapM (evalStyled ctx (Passed sp name keeps)) body
-      -- the body is not the top of the document, as that of @lang (G02059, G02071, G02093)
-      let (ds, bs) = concat <$> traverse belowTop bs0
-      mapM_ report ds
+      -- the blocks without paragraphs or tables, breaks and separators among them, are put out as they are
+      bs <- concat <$> mapM (evalStyled ctx (Passed sp name keeps)) body
       unless (hasParagraphOrTable bs) $ err "G02046" sp "@style の本体に段落がありません"
       pure bs
 

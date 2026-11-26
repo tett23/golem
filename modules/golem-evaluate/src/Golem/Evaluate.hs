@@ -228,7 +228,9 @@ evaluateProjectWith files overlay profile root = do
               (bibDiags, citeKeys, _) <- loadBibliography files manifest
               let results = Map.map quiet (evalAll profile project style assets citeKeys hook table)
                   s0Diags = concatMap erDiagnostics (Map.elems results)
-                  projectDiags = defaultStyleNotice <> defaultSeparatorNotice <> styleNoticeDiags <> masterDiags <> runningVarDiags <> pluginDiags <> laDiagnostics loaded <> bibDiags
+                  -- the syntax diagnostics short of errors: the info G01031 (root ADR 0459)
+                  syntaxInfos = concatMap sfSyntaxDiagnostics (Map.elems (projectSources project))
+                  projectDiags = defaultStyleNotice <> defaultSeparatorNotice <> styleNoticeDiags <> syntaxInfos <> masterDiags <> runningVarDiags <> pluginDiags <> laDiagnostics loaded <> bibDiags
                   reassemble = assembleResults (phChannels hook) handlers (lfProgram functions) style styleFid (fromMaybe "" styleText) manifest project projectDiags
                   (book, s1Diags) = reassemble results
                   again f sf = quiet (reeval profile project style assets citeKeys hook table results f sf)

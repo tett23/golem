@@ -1584,7 +1584,7 @@ breakTests =
             "= t\n  @page-break\n",
             "@figure images/a.png alt=a\n  @page-break\n"
           ]
-        errs "@style quote\n  @page-break\n" @?= ["G02059", "G02046"]
+        errs "@style quote\n  @page-break\n" @?= ["G02046"]
     ]
   where
     shape :: BlockBody -> Text
@@ -1725,8 +1725,8 @@ blankLineTests =
             "= t\n  @blank-line\n"
           ]
         msgs "- あ\n\n  @blank-line\n  い\n" @?= [("G02093", "@blank-line は文書の最上位にだけ置けます")],
-      testCase "@blank-line in the body of @style is G02093 (root ADR 0460)" $
-        errs "@style verse\n  あ\n\n  @blank-line\n" @?= ["G02093"],
+      testCase "@blank-line in the body of @style is put out as it is (root ADR 0460)" $
+        errs "@style verse\n  あ\n\n  @blank-line\n" @?= [],
       testCase "in an attribute group, the blank lines go before the target and the attributes skip them" $ do
         labelled "@blank-line\n@label x\n# 見出し\n" @?= ([(Nothing, "blank 1"), (Just "x", "heading")], [])
         labelled "@label x\n@blank-line\n# 見出し\n" @?= ([(Nothing, "blank 1"), (Just "x", "heading")], [])

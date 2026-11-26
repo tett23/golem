@@ -134,8 +134,8 @@ the second builds the other three.
 everyNoticeProjects :: [BS.ByteString -> [(FilePath, BS.ByteString)]]
 everyNoticeProjects =
   [ \extra -> [("manifest.toml", noticeManifest extra), ("style.toml", withBodyFont style), ("a.gm", TE.encodeUtf8 source), ("code.hs", "main = pure ()\n"), ("images/tall.svg", tall), ("t.csv", "a\n1\n")] <> fakeFontFiles,
-    -- G03120 too: no [source] (docs/adr/0193)
-    \extra -> [("manifest.toml", replaceIn "\n[source]\nparagraph-separator = \"blank-line\"\n" "" (replaceIn "[targets.pdf]\n" "" (noticeManifest extra))), ("a.gm", "x\n")],
+    -- G03120 too: no [source] (docs/adr/0193); the info G01031 of one block between ::: lines (root ADR 0459)
+    \extra -> [("manifest.toml", replaceIn "\n[source]\nparagraph-separator = \"blank-line\"\n" "" (replaceIn "[targets.pdf]\n" "" (noticeManifest extra))), ("a.gm", "@style verse\n:::\nx\n:::\n")],
     -- the notice E02109 and the info E05108 of a .emet that a .gm calls (docs/adr/0162)
     \extra ->
       [ ("manifest.toml", replaceIn "[targets.pdf]\n" "" (noticeManifest extra) <> "\n[functions.requires]\nfile = [\"w.tsv\"]\n"),

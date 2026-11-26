@@ -2,9 +2,9 @@ module Main (main) where
 
 import AstShapeSpec qualified
 import CSTSpec qualified
+import DivSpec qualified
 import Golem.TestSupport.PackageDirectory (enterPackageDirectory)
 import LabelSafetySpec qualified
-import DivSpec qualified
 import LowerSpec qualified
 import ParserSpec qualified
 import SourceSettingsSpec qualified
