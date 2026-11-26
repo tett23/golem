@@ -10,8 +10,9 @@ separator takes.
 module PaginateSpec (paginateTests) where
 
 import AdjacentRules (Adjacent (..), adjacentCases, adjacentGrid, gridShared, rulesOverlap)
+import Control.Applicative ((<|>))
 import Control.Exception (evaluate)
-import Control.Monad (forM_, replicateM, when)
+import Control.Monad (forM_, guard, replicateM, when)
 import Data.List (sortOn)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (fromMaybe, isJust)
@@ -73,6 +74,7 @@ paginateTests =
       testGroup "a heading kept with what follows" keepWithNextTests,
       testGroup "a heading with footnotes (golem-driver ADR 0003)" headingNoteTests,
       testGroup "keeping with what follows counts its footnotes (golem-layout ADR 0019)" keepNoteTests,
+      testGroup "the boundary inputs of Golem ADR 0352" boundaryTableTests,
       testGroup "widows, orphans and the page end" widowOrphanTests,
       testGroup "stanzas of verse (docs/adr/0180)" stanzaTests,
       testGroup "the look-ahead counts the first part that can be split (golem-layout ADR 0021)" splitPartTests,
@@ -414,6 +416,28 @@ keepNoteTests =
       [(poNumber p, [i | (i, _, _) <- poFootnotes p]) | p <- ps, not (null (poSlots p))]
         @?= [(2, [nid 900])]
       unmets ps @?= [],
+    testCase "Golem ADR 0352 I3: relaxedAfterHeadings model fixture places one body line" $ do
+      let ps = paginate 1 3 [heading 20, FParagraph defaultKeep (lines' 30 3)]
+      contents ps @?= [[SHeading 20 1, SLine 30, SLine 31], [SLine 32]],
+    testCase "Golem ADR 0352 I3: capacity one relaxes the heading-after-line conflict" $ do
+      let ps = paginate 1 1 [heading 20, FParagraph defaultKeep (lines' 30 1)]
+      contents ps @?= [[SHeading 20 1], [SLine 30]],
+    testCase "Golem ADR 0352 I3: headingFigureFits model fixture keeps the figure" $ do
+      let ps = paginate 1 3 [heading 20, FFigure 99 2 [] [], FParagraph defaultKeep (lines' 30 1)]
+      contents ps @?= [[SHeading 20 1, SFigure 99], [SLine 30]],
+    testCase "Golem ADR 0352 I3: headingFigureWaits model fixture sends the figure" $ do
+      let ps = paginate 1 3 [heading 20, FFigure 99 3 [] [], FParagraph defaultKeep (lines' 30 1)]
+      contents ps @?= [[SHeading 20 1, SLine 30], [SFigure 99]],
+    testCase "Golem ADR 0352 I3: heading paragraph, blank, figure fixture preserves order" $ do
+      let flows = [heading 20, FParagraph defaultKeep (lines' 30 2), FBlank mk 1, FFigure 99 1 [] []]
+          ps = paginate 1 3 flows
+      contents ps @?= [[SHeading 20 1, SLine 30, SLine 31], [SFigure 99]]
+      brokenOf [I3, I4, I5, P3, P4, P5] flows ps @?= [],
+    testCase "Golem ADR 0352 I3: twoFigureAfterParagraph preserves order" $ do
+      let flows = [heading 20, FParagraph defaultKeep (lines' 30 2), FBlank mk 1, FFigure 99 1 [] [], FFigure 100 1 [] []]
+          ps = paginate 1 3 flows
+      contents ps @?= [[SHeading 20 1, SLine 30, SLine 31], [SFigure 99, SFigure 100]]
+      brokenOf [I3, I4, I5, P3, P4, P5] flows ps @?= [],
     testCase "a heading goes on with a line whose note does not fit after it" $ do
       -- 4 free: heading 1 + two lines + note 3 + separator > 4
       let ps = paginate 1 8 [FParagraph defaultKeep (lines' 0 4), heading 20, FParagraph defaultKeep (noted 30 3 : lines' 31 1)]
@@ -572,6 +596,16 @@ pageFigureTests =
     testCase "a recto break after a turned figure on page 1 makes page 2 blank (golem-driver ADR 0039)" $ do
       let ps = paginate 1 5 [FPageFigure 50 [] [], FBreak BreakRecto, FParagraph defaultKeep (lines' 10 1)]
       [(poNumber p, poBlank p, map snd (poSlots p)) | p <- ps] @?= [(1, False, [SPageFigure 50]), (2, True, []), (3, False, [SLine 10])],
+    -- The footnote reserved above the set (3 lines) is more than the 2
+    -- lines the box leaves in the next column, so the continued note gets
+    -- an empty part there and goes on from line 0 after the turned figure.
+    testCase "I5: a reserved footnote cannot rewind a continued note before a turned figure" $ do
+      let withNote i noteId count = FParagraph defaultKeep [LineBox i [NoteBody (nid noteId) count] [] [] 0]
+          flows = [withNote 0 10 2, FSwitchColumns (ColumnSet 2 0 0 0), FBoxed 1 0 2 [withNote 1 20 6, FParagraph defaultKeep (lines' 2 1)], FPageFigure 99 [] []]
+          pages = paginate 1 5 flows
+          parts = [(poNumber p, poColumn p, start, count) | p <- pages, (i, start, count) <- poFootnotes p, i == nid 20]
+      parts @?= [(1, 1, 0, 0), (2, 0, 0, 1), (2, 1, 1, 3), (4, 0, 4, 2)]
+      [(poNumber p, slot) | p <- pages, (_, slot) <- poSlots p] @?= [(1, SLine 0), (1, SLine 1), (2, SLine 2), (3, SPageFigure 99)],
     testCase "a verso break after a turned figure on page 2 makes page 3 blank (golem-driver ADR 0039)" $ do
       let ps = paginate 1 5 [FParagraph defaultKeep (lines' 0 1), FPageFigure 50 [] [], FBreak BreakVerso, FParagraph defaultKeep (lines' 10 1)]
       [(poNumber p, poBlank p, map snd (poSlots p)) | p <- ps]
@@ -860,7 +894,21 @@ blankLineTests =
 
 figureOrderTests :: [TestTree]
 figureOrderTests =
-  [ testCase "a figure after a figure sent on is sent on after it" $ do
+  [ testCase "Golem ADR 0352 I3: two figures and one blank use the modeled source order" $ do
+      let line = FParagraph defaultKeep (lines' 0 1)
+          first = FFigure 1000 2 [] []
+          second = FFigure 1001 1 [] []
+          cases =
+            [ ([line, FBlank mk 1, first, second], [0, 2, 4], []),
+              ([line, first, FBlank mk 1, second], [0, 1, 4], []),
+              ([line, first, second, FBlank mk 1], [0, 1, 3], [])
+            ]
+      forM_ cases $ \(flows, positions, dropped) -> do
+        let ps = paginate 1 5 flows
+        contents ps @?= [[SLine 0, SFigure 1000, SFigure 1001]]
+        gridLines ps @?= [positions]
+        unmets ps @?= dropped,
+    testCase "a figure after a figure sent on is sent on after it" $ do
       let ps = paginate 1 5 [FParagraph defaultKeep (lines' 0 3), FFigure 98 3 [] [], FParagraph defaultKeep (lines' 10 1), FFigure 99 1 [] []]
       contents ps @?= [[SLine 0, SLine 1, SLine 2, SLine 10], [SFigure 98, SFigure 99]],
     testCase "in two columns, a figure after a figure sent on goes to the next column after it" $ do
@@ -1350,6 +1398,9 @@ undecidedPointTests =
       needGrid (lookAhead 3 flows) @?= 1
       needNotes (lookAhead 3 flows) @?= 0
       needGrid (lookAhead 3 [FHeading 1 True 1 (lines' 21 1), FParagraph defaultKeep (lines' 30 1)]) @?= 0,
+    testCase "Golem ADR 0352 I3: rectoRunDifference model fixture ends the heading run" $ do
+      let ps = paginate 1 3 [heading 20, heading 21, FHeading 1 True 1 (lines' 22 1)]
+      contents ps @?= [[SHeading 20 1, SHeading 21 1], [], [SHeading 22 1]],
     testCase "D1: a heading before a heading at a recto stays at the end of its page, and page 2 is blank" $ do
       let input = Input 3 1 [EPara 2, EHeading, ERecto, EPara 1]
       placedIn input
@@ -1597,6 +1648,48 @@ waitingFigureTests =
       gridLines ps @?= [[0], [0], [0]]
       unmets ps @?= [DroppedBlank (controlSpan 0)]
       brokenIn [P3, P4, P5] input @?= [],
+    testCase "Golem ADR 0352 I5: every Flow constructor between deferred figures preserves admission order" $ do
+      let ls = lines' 10 1
+          variants =
+            [ FParagraph defaultKeep ls,
+              FStanza defaultKeep [ls],
+              FHeading 1 False 1 ls,
+              FDefTerm ls,
+              FFigure 41 1 [] [],
+              FWrapped 46 1 [] [] ls,
+              FPageFigure 41 [] [],
+              FContinued defaultKeep ls,
+              FTable 46 0 [] [ls] [] False,
+              FSpace 1,
+              FBreak BreakColumn,
+              FSection (OfParagraph mk) BreakPage,
+              FKeepNext mk 2,
+              FCode paddedCode 0 1 False ls,
+              ruled Nothing Nothing ls,
+              FBoxed 1 0 0 [FFigure 41 1 [] []],
+              FSwitchColumns (ColumnSet 2 0 0 0),
+              FRestoreColumns,
+              FNoBreak mk,
+              FNeedLines mk 2,
+              FAdjustLines mk 1,
+              FBlank mk 1
+            ]
+          sourceIds = concatMap $ \case
+            FFigure i _ _ _ -> [i]
+            FPageFigure i _ _ -> [i]
+            FBoxed {fbBody = xs} -> sourceIds xs
+            _ -> []
+      forM_ [1, 2] $ \cols -> forM_ variants $ \f -> do
+        let source = [FParagraph defaultKeep (lines' 0 3), FFigure 40 4 [] [], f, FPageFigure 42 [] [], FFigure 43 1 [] []]
+            slots = concatMap (map snd . poSlots) (paginate cols 4 source)
+            figures = [i | slot <- slots, i <- case slot of SFigure n -> [n]; SPageFigure n -> [n]; _ -> []]
+        assertEqual (show (cols, f)) (sourceIds source) figures,
+    testCase "I5: crossings before a figure and within a box keep regular and turned figures in source order" $ do
+      let body = [FParagraph defaultKeep (lines' 0 11), FFigure 40 4 [] [], FParagraph defaultKeep (lines' 11 6), FPageFigure 41 [] []]
+          pages = paginate 2 4 [FBoxed 1 0 0 body, FFigure 42 1 [] []]
+          slots = concatMap (map snd . poSlots) pages
+      [i | slot <- slots, i <- case slot of { SFigure n -> [n]; SPageFigure n -> [n]; _ -> [] }] @?= [40, 41, 42]
+      [i | SLine i <- slots] @?= [0 .. 16],
     testCase "P4': blank lines before a figure that waits go with the paragraph after it, in its column" $ do
       let input = Input 4 1 [EPara 2, EFigure 3, EBlank 1, EFigure 2, EPara 1]
           ps = paginateInput input
@@ -1686,7 +1779,26 @@ are not counted either.
 -}
 largerNeedTests :: [TestTree]
 largerNeedTests =
-  [ testCase "N1: need-lines 4 after need-lines 2 judged, one grid line left after the space, sends the paragraph to the next column" $ do
+  [ testCase "Golem ADR 0352 I3: needMoreSome model fixture keeps the paragraph" $ do
+      let flows = [FParagraph defaultKeep (lines' 0 1), FNeedLines mk 1, FSpace 1, FNeedLines mk2 3, FParagraph defaultKeep (lines' 1 1)]
+          ps = paginate 1 4 flows
+      placed ps @?= [(1, 0, [SLine 0, SLine 1])]
+      brokenOf [P1, P2] flows ps @?= [],
+    testCase "Golem ADR 0352 I3: shared needs keep the block exactly through the available height" $ do
+      forM_ [[1, 2, 3], [3, 1, 2], [2, 3, 3], [1, 4, 2], [4, 1, 4]] $ \needs -> do
+        let flows = [FParagraph defaultKeep (lines' 0 1), FSpace 1] <> map (FNeedLines mk) needs <> [FParagraph defaultKeep (lines' 1 1)]
+            ps = paginate 1 4 flows
+            expected = if maximum needs <= 3 then [(1, 0, [SLine 0, SLine 1])] else [(1, 0, [SLine 0]), (2, 0, [SLine 1])]
+        placed ps @?= expected
+        unmets ps @?= [],
+    testCase "Golem ADR 0352 I3: shared needs account for every line of a short paragraph" $ do
+      forM_ [2, 3] $ \height -> do
+        let flows = [FParagraph defaultKeep (lines' 0 1), FSpace 1, FNeedLines mk 2, FNeedLines mk2 3, FParagraph defaultKeep (lines' 1 height)]
+            ps = paginate 1 4 flows
+            expected = if height == 2 then [(1, 0, map SLine [0 .. 2])] else [(1, 0, [SLine 0]), (2, 0, map SLine [1 .. 3])]
+        placed ps @?= expected
+        unmets ps @?= [],
+    testCase "N1: need-lines 4 after need-lines 2 judged, one grid line left after the space, sends the paragraph to the next column" $ do
       let flows = [FParagraph defaultKeep (lines' 0 3), FNeedLines mk 2, FSpace 1, FNeedLines mk2 4, FSpace 1, FParagraph defaultKeep (lines' 3 1)]
           ps = paginate 1 6 flows
       placed ps @?= [(1, 0, map SLine [0 .. 2]), (2, 0, [SLine 3])]
@@ -1755,7 +1867,21 @@ column the block goes on to when its first part does not fit after them.
 -}
 spaceAfterNeedTests :: [TestTree]
 spaceAfterNeedTests =
-  [ testCase "P1: the paragraph after need-lines and two spaces goes past the figure sent on, to page 3" $ do
+  [ testCase "Golem ADR 0352 I3: needSpaceSome model fixture keeps the paragraph" $ do
+      let flows = [FParagraph defaultKeep (lines' 0 1), FNeedLines mk 2, FSpace 1, FParagraph defaultKeep (lines' 1 1)]
+          ps = paginate 1 3 flows
+      placed ps @?= [(1, 0, [SLine 0, SLine 1])]
+      brokenOf [P1, P2] flows ps @?= [],
+    testCase "Golem ADR 0352 I3: needSpaceAllButGreedy stops the heading run before each recto" $ do
+      let input = Input 4 1 [EPara 2, ENeedLines, EHeading, ERecto, ERecto]
+      placedIn input
+        @?= [ (1, 0, [SLine 0, SLine 1, SHeading 2 1]),
+              (2, 0, []),
+              (3, 0, [SHeading 3 1]),
+              (4, 0, []),
+              (5, 0, [SHeading 4 1])
+            ],
+    testCase "P1: the paragraph after need-lines and two spaces goes past the figure sent on, to page 3" $ do
       let input = Input 4 1 [EPara 2, EFigure 3, ENeedLines, ESpace, ESpace, EPara 1]
           ps = paginateInput input
       placedIn input @?= [(1, 0, [SLine 0, SLine 1]), (2, 0, [SFigure 1000]), (3, 0, [SLine 2])]
@@ -1971,6 +2097,206 @@ spaceBeforeWaitingTests =
         <> (show k <> " column" <> (if k > 1 then "s, " else ", "))
         <> (show w <> " figures of " <> show h <> " lines waiting between " <> show s <> " spaces and need-lines 2, ")
         <> (show r <> " grid lines left before the spaces")
+
+{- | The rows of the boundary table of Golem ADR 0352 that the paginator
+decides alone. The caption rows are judged in golem-driver, where the
+caption is broken and the figure is shrunk (FigureSpec). Each input must
+end within a second, every line must be placed once in the order
+written, and every figure once in the order written (I4, I5).
+-}
+boundaryTableTests :: [TestTree]
+boundaryTableTests =
+  [ testCase "Golem ADR 0352 I4, I5: an empty manuscript and a one-line manuscript end with nothing added" $
+      forM_ [1 .. 3] $ \capacity -> do
+        assertEnds capacity []
+        assertEnds capacity [FParagraph defaultKeep (lines' 0 1)]
+        contents (paginate 1 capacity []) @?= [[]]
+        contents (paginate 1 capacity [FParagraph defaultKeep (lines' 0 1)]) @?= [[SLine 0]],
+    testCase "Golem ADR 0352 I3, I4: paragraphs broken in columns of 1, 2 and 3 lines fill every column they leave" $
+      forM_ [1 .. 3] $
+        \capacity -> forM_ [[a] | a <- [1 .. 5]] (paragraphsIn capacity) >> forM_ [[a, b] | a <- [1 .. 4], b <- [1 .. 4]] (paragraphsIn capacity),
+    testCase "Golem ADR 0352 I2, I3: a figure of the column's height fits an empty column, one a line taller is not shrunk here" $ do
+      contents (paginate 1 3 [FFigure 1 3 [] []]) @?= [[SFigure 1]]
+      contents (paginate 1 3 [FParagraph defaultKeep (lines' 0 1), FFigure 1 3 [] []]) @?= [[SLine 0], [SFigure 1]]
+      contents (paginate 1 3 [FFigure 1 4 [] []]) @?= [[SFigure 1]]
+      assertEnds 3 [FParagraph defaultKeep (lines' 0 1), FFigure 1 4 [] [], FParagraph defaultKeep (lines' 10 1)],
+    testCase "Golem ADR 0352 I3, I4, I5: one, two and three figures among paragraphs are placed once in the order written" $
+      forM_ [3, 4] $ \capacity -> forM_ (figureInputs capacity) $ \flows -> do
+        assertEnds capacity flows
+        let output = concat (contents (paginate 1 capacity flows))
+        assertEqual (show (capacity, flows)) (sourceLines flows) [i | SLine i <- output]
+        assertEqual (show (capacity, flows)) (sourceFigures flows) [i | SFigure i <- output],
+    testCase "Golem ADR 0352 I4, I5: headings, need-lines, no-breaks and keep-with-nexts among paragraphs place every line once in the order written" $
+      forM_ [2 .. 4] $ \capacity -> forM_ controlInputs $ \flows -> do
+        assertEnds capacity flows
+        let output = concat (contents (paginate 1 capacity flows))
+        assertEqual (show (capacity, flows)) (sourceLines flows) [i | s <- output, i <- placedLine s],
+    testCase "Golem ADR 0352 I4, I5: boxes, tables, code blocks, ruled blocks, stanzas, wrapped figures and footnotes among paragraphs and controls place every line and note once in the order written" $
+      forM_ kindInputs $ \(capacity, flows) -> do
+        assertEnds capacity flows
+        let ps = paginate 1 capacity flows
+            output = concat (contents ps)
+            headers = [lbId l | FTable _ _ h _ _ _ <- flows, l <- h]
+            -- a header line repeated in a column gone on to is not a line of the text again
+            textIds = dropRepeated headers [] [i | s <- output, i <- kindLine s]
+        assertEqual (show (capacity, flows)) (concatMap kindLines flows) textIds
+        forM_ [(n, nbLines b) | f <- flows, l <- kindLines' f, b@(NoteBody n _) <- lbNotes l] $ \(n, m) -> do
+          let parts = [(first, k) | p <- ps, (n', first, k) <- poFootnotes p, n' == n]
+              unplaceable = or [True | p <- ps, UnplaceableFootnote n' _ <- poUnmet p, n' == n]
+          assertBool (show (capacity, flows, n, parts)) (and (zipWith (\(f, k) (f', _) -> f + k == f') parts (drop 1 parts)))
+          assertBool (show (capacity, flows, n, parts)) (sum (map snd parts) == m || unplaceable)
+  ]
+  where
+    assertEnds capacity flows = do
+      done <- timeout 1000000 (evaluate (length (show (contents (paginate 1 capacity flows)))))
+      assertBool ("does not end: " <> show (capacity, flows)) (isJust done)
+    paragraphsIn capacity sizes = do
+      let flows = zipWith (\k n -> FParagraph defaultKeep (lines' (10 * k) n)) [0 ..] sizes
+          ps = paginate 1 capacity flows
+          output = contents ps
+      assertEnds capacity flows
+      assertEqual (show (capacity, sizes)) (sourceLines flows) [i | SLine i <- concat output]
+      -- a column left with nothing in it would be a column only sent on from
+      assertBool (show (capacity, sizes, output)) (not (any null output))
+      assertBool (show (capacity, sizes, output)) (length output <= sum sizes)
+    sourceLines flows = [i | f <- flows, LineBox i _ _ _ _ <- linesOf f]
+      where
+        linesOf = \case
+          FParagraph _ ls -> ls
+          FHeading _ _ _ ls -> take 1 ls
+          _ -> []
+    placedLine = \case
+      SLine i -> [i]
+      SHeading i _ -> [i]
+      _ -> []
+    -- one to three flows, each a paragraph of one to five lines, a heading,
+    -- a need-lines of two or three lines, a no-break, a no-break of three
+    -- lines or a keep-with-next of one or two lines, before a last
+    -- paragraph of one to three lines (Boundary.hs lists the same inputs)
+    controlInputs =
+      [ zipWith id shape [0 ..] <> [FParagraph defaultKeep (lines' (10 * length shape) n)]
+      | shape <- concatMap (`replicateM` controlChoices) [1 .. 3],
+        n <- [1 .. 3]
+      ]
+      where
+        controlChoices =
+          [\k -> FParagraph defaultKeep (lines' (10 * k) n) | n <- [1 .. 5]]
+            <> [ \k -> FHeading 2 False 1 (lines' (10 * k) 1),
+                 const (FNeedLines (controlSpan 0) 2),
+                 const (FNeedLines (controlSpan 0) 3),
+                 const (FNoBreak (controlSpan 0)),
+                 const (FNoBreakLines (controlSpan 0) 3),
+                 const (FKeepNext (controlSpan 0) 1),
+                 const (FKeepNext (controlSpan 0) 2)
+               ]
+    sourceFigures flows = [i | FFigure i _ _ _ <- flows]
+    kindLine = \case
+      SLine i -> [i]
+      SHeading i _ -> [i]
+      SCode i k _ -> [i .. i + k - 1]
+      _ -> []
+    dropRepeated headers seen = \case
+      [] -> []
+      i : is
+        | i `elem` headers && i `elem` seen -> dropRepeated headers seen is
+        | otherwise -> i : dropRepeated headers (i : seen) is
+    kindLines = map lbId . kindLines'
+    kindLines' = \case
+      FParagraph _ ls -> ls
+      FHeading _ _ _ ls -> take 1 ls
+      FBoxed _ _ _ body -> concatMap kindLines' body
+      FTable _ _ h rows capt below -> if below then h <> concat rows <> capt else capt <> h <> concat rows
+      FCode _ _ _ _ ls -> ls
+      FRuled {frBody = RuledLines _ ls} -> ls
+      FRuled {frBody = RuledHeading _ _ ls} -> take 1 ls
+      FStanza _ vs -> concat vs
+      FWrapped _ _ _ _ ls -> ls
+      _ -> []
+    -- the inputs of the other kinds of flows (Boundary.hs, kindInputs, lists the same)
+    kindInputs =
+      [ (c, [FParagraph defaultKeep (lines' 0 p) | p > 0] <> [kind 1, FParagraph defaultKeep (lines' 20 n)])
+      | c <- [2 .. 5],
+        p <- [0 .. 2],
+        kind <- kindChoices,
+        n <- [1 .. 3]
+      ]
+        <> [ (c, [a 0, b 1, FParagraph defaultKeep (lines' 20 n)])
+           | c <- [2 .. 4],
+             a <- pairChoices,
+             b <- pairChoices,
+             n <- [1, 2]
+           ]
+        <> [ (c, [FParagraph defaultKeep (lines' 0 p)] <> (if kindFirst then [kind 1, control 2] else [control 1, kind 2]) <> [FParagraph defaultKeep (lines' 30 n)])
+           | c <- [3 .. 5],
+             p <- [1, 2],
+             control <- [\k -> heading (10 * k), const (FKeepNext (controlSpan 0) 1), const (FNoBreak (controlSpan 0)), const (FNeedLines (controlSpan 0) 3)],
+             kind <- kindChoices,
+             kindFirst <- [True, False],
+             n <- [1, 3]
+           ]
+    para k n = FParagraph defaultKeep (lines' (10 * k) n)
+    boxed k = FBoxed (100 + k)
+    table k sp h rows c below =
+      let base = 10 * k
+       in FTable base sp (lines' base h) (zipWith lines' (scanl (+) (base + h) rows) rows) (lines' (base + h + sum rows) c) below
+    code g c f cont k n = FCode (CodeGeometry 10 10 10 10 (if g == (0 :: Int) then 0 else 5)) c f cont (lines' (10 * k) n)
+    ruledK k b a j body =
+      let rule = RuleSide 0 0 12 False Nothing
+       in FRuled (100 + k) (rule <$ guard b) (rule <$ guard a) j (RuleGrid 10 8) 0 $ case body of
+            Left n -> RuledLines defaultKeep (lines' (10 * k) n)
+            Right n -> RuledHeading False n (lines' (10 * k) 1)
+    stanzaK kAll k vs = FStanza (Keep 2 2 kAll) (zipWith lines' (scanl (+) (10 * k) vs) vs)
+    wrapped k n b = FWrapped (100 + k) n [] [] (lines' (10 * k) b)
+    notedK k n at m =
+      FParagraph defaultKeep [if j == at then l {lbNotes = [NoteBody (noteOf (500 + 10 * k)) m]} else l | (j, l) <- zip [0 :: Int ..] (lines' (10 * k) n)]
+    kindChoices =
+      [\k -> boxed k b a [para k n] | (b, a) <- [(0, 0), (1, 1), (1, 0)], n <- [1 .. 4]]
+        <> [\k -> boxed k 1 1 [para k 1, FSpace 1, FParagraph defaultKeep (lines' (10 * k + 5) 2)]]
+        <> [ \k -> table k sp h rows c below
+           | sp <- [0, 1],
+             h <- [0, 1],
+             rows <- [[1], [1, 1], [1, 1, 1], [2, 1]],
+             (c, below) <- [(0, False), (1, False), (1, True)]
+           ]
+        <> [\k -> code g c f cont k n | g <- [0, 1], c <- [0, 1], f <- [1, 2], cont <- [False, True], n <- [1 .. 4]]
+        <> [\k -> ruledK k b a False body | b <- [False, True], a <- [False, True], body <- [Left 1, Left 2, Left 3, Right 1, Right 2]]
+        <> [\k -> stanzaK kAll k vs | kAll <- [False, True], vs <- [[1], [1, 1], [1, 1, 1], [2, 1], [1, 2, 1], [1, 1, 1, 1]]]
+        <> [\k -> wrapped k n b | n <- [1 .. 3], b <- [0 .. 3]]
+        <> [\k -> notedK k n at m | n <- [1 .. 3], at <- [0 .. n - 1], m <- [1 .. 3]]
+    pairChoices =
+      [ \k -> boxed k 1 1 [para k 2],
+        \k -> boxed k 1 0 [para k 3],
+        \k -> table k 1 1 [1, 1] 1 True,
+        \k -> table k 0 0 [2, 1] 1 False,
+        \k -> code 1 1 2 True k 3,
+        \k -> code 0 0 1 False k 2,
+        \k -> ruledK k True True False (Left 2),
+        \k -> ruledK k True True True (Left 1),
+        \k -> ruledK k True False True (Right 1),
+        \k -> ruledK k False True False (Left 2),
+        \k -> stanzaK False k [1, 1, 1],
+        \k -> stanzaK True k [2, 1],
+        \k -> wrapped k 2 3,
+        \k -> wrapped k 3 1,
+        \k -> notedK k 2 1 2,
+        \k -> notedK k 1 0 3,
+        const (FKeepNext (controlSpan 0) 1),
+        const (FKeepNext (controlSpan 0) 2),
+        const (FNoBreak (controlSpan 0)),
+        const (FNoBreakLines (controlSpan 0) 3),
+        const (FNeedLines (controlSpan 0) 2),
+        (`para` 2)
+      ]
+    figureInputs capacity =
+      [ concat (zipWith element [0 ..] shape)
+      | count <- [1 .. 4],
+        shape <- replicateM count (Left <$> [1 .. 3] <|> Right <$> [1 .. capacity]),
+        length (filter isFigure shape) `elem` [1 .. 3]
+      ]
+      where
+        isFigure = either (const False) (const True)
+        element k (Left n) = [FParagraph defaultKeep (lines' (10 * k) n)]
+        element k (Right size) = [FFigure (100 + k) size [] []]
 
 {- | The index columns on the page of the switch end before the footnotes
 of the column before it, @page-lines or not: at
