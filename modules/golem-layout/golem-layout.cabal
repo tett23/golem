@@ -89,6 +89,7 @@ test-suite golem-layout-test
   if !arch(wasm32)
     ghc-options:    -threaded "-with-rtsopts=-N -qg -A64m"
   other-modules:    AdjacentRules
+                    AvoidSpec
                     BookPartsEnum
                     BoxModelSpec
                     BookPartsSpec
