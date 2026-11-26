@@ -4,7 +4,7 @@ module BuiltinSpec (tests) where
 import Data.List (sort)
 import Data.Maybe (isJust)
 import Golem.Eval.Builtin
-import Golem.Eval.File (builtinInlineCommands, overridableCommands)
+import Golem.Eval.File (builtinInlineCommands)
 import Test.Tasty
 import Test.Tasty.HUnit
 
@@ -17,17 +17,15 @@ tests =
       testCase "parseBuiltin is the inverse of builtinName" $
         [(b, parseBuiltin (builtinName b)) | b <- allBuiltins] @?= [(b, Just b) | b <- allBuiltins],
       testCase "allBuiltins holds every constructor once" $ do
-        sort allBuiltins @?= sort (map Overridable [minBound .. maxBound] <> map Fixed [minBound .. maxBound])
-        length allBuiltins @?= length (map Overridable [minBound .. maxBound :: OverridableBuiltin]) + length [minBound .. maxBound :: FixedBuiltin],
+        sort allBuiltins @?= [minBound .. maxBound]
+        length allBuiltins @?= length [minBound .. maxBound :: BuiltinInline],
       testCase "parseBuiltin rejects names that are not built in" $
         map parseBuiltin ["nope", "", "Strong", "greet", "strong "] @?= replicate 5 Nothing,
       testCase "builtinInlineCommands keeps its names and order" $
         builtinInlineCommands @?= ["strong", "bold", "italic", "code", "ruby", "kenten", "color", "style", "warichu", "upright", "tcy", "number-text", "ref-number", "ref-title", "ref-page", "note", "sidenote", "endnote", "index", "cite", "aki", "link", "lang", "shy"],
-      testCase "overridableCommands keeps its names and order" $
-        overridableCommands @?= ["strong", "bold", "italic", "code", "ruby", "kenten", "color", "style", "warichu", "upright", "tcy", "number-text"],
-      -- docs/adr ADR 0031
-      testCase "the commands a plugin may not override" $
-        [builtinName (Fixed f) | f <- [minBound .. maxBound]] @?= ["ref-number", "ref-title", "ref-page", "note", "sidenote", "endnote", "index", "cite", "aki", "link", "lang", "shy"],
+      -- docs/adr ADR 0031, root ADR 0471: a plugin may override every built-in inline command
+      testCase "root ADR 0471 I2: every built-in inline command is one a plugin may override" $
+        map builtinName allBuiltins @?= builtinInlineCommands,
       testCase "takesNoSlot marks the commands without a prose slot" $
         [builtinName b | b <- allBuiltins, takesNoSlot b] @?= ["number-text", "ref-number", "ref-title", "ref-page", "cite", "shy"],
       testCase "pluginCommandName refuses every built-in name" $ do

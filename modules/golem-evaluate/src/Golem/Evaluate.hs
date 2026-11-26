@@ -204,7 +204,7 @@ evaluateProjectWith files overlay profile root = do
               contextFiles = Set.fromList ["style.toml" | not (null (phContextNames hook))]
           if hasErrors synDiags
             then do
-              loaded <- loadAssets files overlay project
+              loaded <- loadAssets files overlay table hook project
               let assets = laAssets loaded
               (bibDiags, citeKeys, _) <- loadBibliography files manifest0
               let projectDiags = pluginDiags <> laDiagnostics loaded <> bibDiags <> runningVarDiags
@@ -217,7 +217,7 @@ evaluateProjectWith files overlay profile root = do
                     | m <- nub [m | (_, Just m) <- projectChapters project],
                       not (Map.member m (stMasters style))
                     ]
-              loaded <- loadAssets files overlay project
+              loaded <- loadAssets files overlay table hook project
               let assets = laAssets loaded
               -- G03026 and G03003 of the bibliography, for every target (golem-doc ADR 0004)
               (bibDiags, citeKeys, _) <- loadBibliography files manifest
@@ -542,7 +542,11 @@ data LoadedAssets = LoadedAssets
 
 -- | The paths the sources refer to as assets, with their uses.
 assetUses :: Project -> Map FilePath (Set.Set AssetUse)
-assetUses project = Map.fromListWith Set.union [(p, Set.singleton u) | sf <- Map.elems (projectSources project), (p, u) <- assetRefs (sfAst sf)]
+assetUses = assetUsesWith (const noOverrides)
+
+-- | 'assetUses' of the commands that call the built-in ones alone, by the overrides of each file (root ADR 0471).
+assetUsesWith :: (A.File -> Overrides) -> Project -> Map FilePath (Set.Set AssetUse)
+assetUsesWith overridesOf project = Map.fromListWith Set.union [(p, Set.singleton u) | sf <- Map.elems (projectSources project), (p, u) <- assetRefsWith (overridesOf (sfAst sf)) (sfAst sf)]
 
 -- | The paths of the assets read as text, which have a FileId each ('loadAssets').
 assetTextPaths :: Project -> [FilePath]
@@ -656,10 +660,13 @@ has a FileId, from the one after plugins.lock's, in the order of the paths
 (golem-eval ADR 0004). A table file passes the reading stage of table
 files ('readTableSource'); a listing is read as before. A table file
 over 'tableMaxBytes' is not read for the table (docs/adr ADR 0043).
+A file a command reads whose name a file overrides is not read (root ADR
+0471); the FileId of each text file is that of every reference, so that
+the overrides change no other FileId.
 -}
-loadAssets :: Files -> Map FilePath Text -> Project -> IO LoadedAssets
-loadAssets files overlay project = do
-  let refs = assetUses project
+loadAssets :: Files -> Map FilePath Text -> FunctionTable -> PluginHook -> Project -> IO LoadedAssets
+loadAssets files overlay table hook project = do
+  let refs = assetUsesWith (fileOverrides table hook) project
       FileId lock = lockFileId project
       fids = Map.fromList (zip (assetTextPaths project) (map FileId [lock + 1 ..]))
   loaded <- Map.traverseWithKey (load fids) refs
@@ -699,10 +706,16 @@ loadAssets files overlay project = do
 
 -- | The paths a file refers to by @figure, @table and @listing, as written.
 assetRefs :: A.File -> [(FilePath, AssetUse)]
-assetRefs (A.File _ bs) = concatMap blk bs
+assetRefs = assetRefsWith noOverrides
+
+{- | 'assetRefs' of the commands that call the built-in @figure, @table
+and @listing where they are written (root ADR 0471).
+-}
+assetRefsWith :: Overrides -> A.File -> [(FilePath, AssetUse)]
+assetRefsWith overrides (A.File _ bs) = concatMap blk bs
   where
-    blk (A.Located _ b) = case b of
-      A.BlockCommand (A.Located _ name) args body -> cmd name args <> concatMap blk body
+    blk (A.Located sp b) = case b of
+      A.BlockCommand (A.Located _ name) args body -> [r | callsBuiltin overrides BlockSpace name (spanStart sp), r <- cmd name args] <> concatMap blk body
       A.Attributed cs t -> concatMap blk cs <> maybe [] blk t
       A.Fenced inner -> concatMap blk inner
       A.BulletList items -> concatMap (concatMap blk) items

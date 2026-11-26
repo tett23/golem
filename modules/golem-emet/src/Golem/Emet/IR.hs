@@ -483,7 +483,7 @@ blockD cx = \case
       [st, xs] -> Paragraph <$> maybeD (fmap styleNamed . strD) st <*> inls xs
       _ -> arity
     "KeyedParagraph" -> one 3 $ \case
-      [n, ks, xs] -> (Paragraph . Just) <$> keyedD n ks <*> inls xs
+      [n, ks, xs] -> Paragraph . Just <$> keyedD n ks <*> inls xs
       _ -> arity
     "KeyedTableBlock" -> one 2 $ \case
       [t, ks] -> do

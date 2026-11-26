@@ -334,7 +334,7 @@ diagnosticsFor ws =
     -- the styles a loose file defines count for its G05001 (docs/adr ADR 0014)
     looseKeep s = maybe builtinKeepStyles (keepStyles . withLocalStyles defaultStyle . erStyles) (srcResult s)
     -- and its @manifest (docs/adr ADR 0013, 0014)
-    looseDiags = Map.map (\s -> sortDiagnostics (maybe [] erDiagnostics (srcResult s) <> latinJoinedByNewline (maybe defaultSourceSettings erSource (srcResult s)) (looseKeep s) (srcFile s) (srcCst s))) (wsLoose ws)
+    looseDiags = Map.map (\s -> sortDiagnostics (maybe [] erDiagnostics (srcResult s) <> latinJoinedByNewline (maybe defaultSourceSettings erSource (srcResult s)) (looseKeep s) (maybe noOverrides (usageOverrides . erUsage) (srcResult s)) (srcFile s) (srcCst s))) (wsLoose ws)
     projectDiags = case wsEvaluated ws of
       -- on the file each error points at; manifest.toml when it points at none (golem-project ADR 0006)
       Nothing ->

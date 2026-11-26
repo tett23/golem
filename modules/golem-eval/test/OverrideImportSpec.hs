@@ -11,7 +11,7 @@ import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
 import Golem.Doc.IR
-import Golem.Eval.Builtin (BuiltinInline (..), OverridableBlock (..), OverridableBuiltin (..), allBuiltins, builtinBlockCommands, builtinName, fixedBlockCommands, overridableBlockCommands)
+import Golem.Eval.Builtin (BuiltinInline (..), OverridableBlock (..), allBuiltins, builtinBlockCommands, builtinName, fixedBlockCommands, overridableBlockCommands)
 import Golem.Eval.File
 import Golem.Eval.Functions
 import Golem.Eval.Value
@@ -20,10 +20,9 @@ import Support
 import Test.Tasty
 import Test.Tasty.HUnit
 
--- | The overridable inline commands, then the fixed ones.
-overridableInline, fixedInline :: [Text]
-overridableInline = [builtinName b | b@(Overridable _) <- allBuiltins]
-fixedInline = [builtinName b | b@(Fixed _) <- allBuiltins]
+-- | The inline commands, every one of them overridable (root ADR 0471).
+overridableInline :: [Text]
+overridableInline = map builtinName allBuiltins
 
 {- | functions/over.emet: an inline command of each built-in inline name,
 and a block command of each built-in block name. Each puts out a text
@@ -32,7 +31,7 @@ F:<name>, its numbers and its slot.
 over :: FunctionNamespace
 over =
   FunctionNamespace
-    { fnInline = Map.fromList [(n, inline n) | n <- overridableInline <> fixedInline],
+    { fnInline = Map.fromList [(n, inline n) | n <- overridableInline],
       fnBlock = Map.fromList [(n, block n) | n <- builtinBlockCommands],
       fnExpr = Map.empty,
       fnOthers = Map.empty
@@ -109,15 +108,9 @@ tests =
               texts blockOnly (listed n ("@" <> n <> "\n")) @?= ["F:" <> n]
           )
           overridableBlockCommands,
-      testCase "root ADR 0453 I1: there are seventeen overridable commands" $
-        length overridableInline + length overridableBlockCommands @?= 17,
-      testCase "root ADR 0453 I2: a listed fixed inline command is G02270 once, and the built-in one is called" $
-        mapM_
-          ( \n -> do
-              sites ctx (listed n "") @?= [g02270 n]
-              assertBool (T.unpack n) (not (called ctx (listed n ("[" <> n <> ": a]\n"))))
-          )
-          [n | n <- fixedInline, n `notElem` overridableBlockCommands],
+      -- the overridable commands of root ADR 0471, which replaced those of 0453
+      testCase "root ADR 0471 I2: there are forty-two overridable commands" $
+        length overridableInline + length overridableBlockCommands @?= 42,
       testCase "root ADR 0453 I2: a listed fixed block command is G02270 once, and the built-in one is called" $
         mapM_
           ( \n -> do
@@ -125,14 +118,14 @@ tests =
               assertBool (T.unpack n) (not (called ctx (listed n ("@" <> n <> "\n"))))
           )
           [n | n <- fixedBlockCommands, n `notElem` overridableInline],
-      testCase "root ADR 0453 I1, I2: { index } overrides @index and keeps [index]" $ do
-        sites ctx (listed "index" "") @?= [g02270 "index"]
+      testCase "root ADR 0471 I2: { index } overrides both @index and [index], with no G02270" $ do
+        sites ctx (listed "index" "") @?= []
         texts ctx (listed "index" "@index\n") @?= ["F:index"]
-        [e | Paragraph _ is <- resultBodies (evalResult ctx (listed "index" "[index reading=くみはん: 組版]\n")), IndexMark _ e <- is] @?= [IndexEntry ["組版"] ["くみはん"] IndexPoint],
-      testCase "root ADR 0453 I1, I2: { style } overrides [style] and keeps @style" $ do
-        sites ctx (listed "style" "") @?= [g02270 "style"]
+        texts ctx (listed "index" "[index: 組版]\n") @?= ["F:index組版"],
+      testCase "root ADR 0471 I2: { style } overrides both [style] and @style, with no G02270" $ do
+        sites ctx (listed "style" "") @?= []
         texts ctx (listed "style" "[style: a]\n") @?= ["F:stylea"]
-        assertBool "@style" (not (called ctx (listed "style" "@style\n  本文\n"))),
+        assertBool "@style" (called ctx (listed "style" "@style\n  本文\n")),
       testCase "root ADR 0453 I3: before the @import line, the built-in command" $ do
         case resultBodies (evalResult ctx ("@toc\n\n" <> listed "toc" "@toc\n")) of
           [ChannelOutput (TocOutput 2), Paragraph Nothing [Text _ "F:toc"]] -> pure ()
@@ -156,10 +149,11 @@ tests =
         -- set is the name of @set name = 式, which the parser reads apart; @set alone is G02009 as before (FileSpec)
         mapM_ (\n -> assertBool (T.unpack n) ("G02009" `notElem` codes baseCtx ("@" <> n <> "\n"))) (filter (/= "set") builtinBlockCommands)
         codes baseCtx "@nonexistent\n" @?= ["G02009"],
-      testCase "root ADR 0453 I6: the list is the overridable five and the names of G02270, apart" $ do
+      -- I6 of 0453, as root ADR 0471 replaced it
+      testCase "root ADR 0471: the list is the overridable names and the names of G02270, apart" $ do
         sort builtinBlockCommands @?= sort (overridableBlockCommands <> fixedBlockCommands)
         overridableBlockCommands `intersect` fixedBlockCommands @?= []
-        sort overridableBlockCommands @?= sort ["toc", "index", "bibliography", "printings", "separator"]
+        length overridableBlockCommands @?= 18
         -- the block names G02270 counts: each of a .emet of block commands alone
         [n | n <- builtinBlockCommands, (c, _, _) <- sites blockOnly (listed n ""), c == "G02270"] @?= fixedBlockCommands,
       testCase "root ADR 0453 I8, root ADR 0461 I1: a name of a .emet that could not be loaded puts out nothing, with G02279" $ do

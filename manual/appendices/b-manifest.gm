@@ -150,8 +150,8 @@ chapters = [
 | [code: overrides] | このプラグインで置き換える組み込みのインラインのコマンドの名前です（文字列の配列）。 |
 | [code: block-overrides] | このプラグインで置き換える組み込みのブロックコマンドの名前です（文字列の配列）。 |
 
-[code: overrides] に書けるのは、[code: strong]、[code: bold]、[code: italic]、[code: code]、[code: ruby]、[code: kenten]、[code: color]、[code: style]、[code: warichu]、[code: upright]、[code: tcy]、[code: number-text] の十二です。
-[code: block-overrides] に書けるのは、[code: toc]、[code: index]、[code: bibliography]、[code: printings]、[code: separator] の五つです。
+[code: overrides] には、角括弧で呼ぶ組み込みのコマンドのどれでも書けます。
+[code: block-overrides] には、組み込みのブロックコマンドのうち、Golem の仕組みを決めるもの（[code: import]、[code: set]、[code: channel]、[code: manifest]、[code: style-def]、[code: hyphenation-exceptions] と、[code: label] などの属性）と [code: frame] のほかを書けます。
 二つのキーに分かれているのは、[code: style] や [code: index] のように、インラインのコマンドとブロックコマンドの両方にある名前があるからです。
 
 @nonumber

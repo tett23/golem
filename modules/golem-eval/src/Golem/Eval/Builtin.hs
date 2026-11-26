@@ -1,11 +1,10 @@
-{- | The built-in inline commands as a sum type (docs/adr ADR 0027): whether
-a plugin may override a command is the type its constructor is in, and the
-names of the commands a plugin provides apart from them.
+{- | The built-in inline commands as a sum type (docs/adr ADR 0027), and
+the built-in block commands a plugin or a name listed by @import may
+override (root ADR 0453, root ADR 0471): every inline command, and every
+block command but those that decide the mechanisms of Golem and @frame.
 -}
 module Golem.Eval.Builtin
   ( BuiltinInline (..),
-    OverridableBuiltin (..),
-    FixedBuiltin (..),
     allBuiltins,
     builtinName,
     parseBuiltin,
@@ -26,14 +25,10 @@ import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Text (Text)
 
--- | A built-in inline command. The order is the order of builtinInlineCommands.
+{- | A built-in inline command. A plugin (overrides) or a name listed by
+@import may override each of them (root ADR 0471).
+-}
 data BuiltinInline
-  = Overridable !OverridableBuiltin
-  | Fixed !FixedBuiltin
-  deriving stock (Eq, Ord, Show)
-
--- | The commands a plugin may override.
-data OverridableBuiltin
   = BStrong
   | BBold
   | BItalic
@@ -46,11 +41,7 @@ data OverridableBuiltin
   | BUpright
   | BTcy
   | BNumberText
-  deriving stock (Eq, Ord, Show, Enum, Bounded)
-
--- | The commands a plugin may not override.
-data FixedBuiltin
-  = BRefNumber
+  | BRefNumber
   | BRefTitle
   | BRefPage
   | BNote
@@ -68,38 +59,36 @@ data FixedBuiltin
     BShy
   deriving stock (Eq, Ord, Show, Enum, Bounded)
 
--- | The overridable commands, then the others.
+-- | The built-in inline commands, in the order of builtinInlineCommands.
 allBuiltins :: [BuiltinInline]
-allBuiltins = map Overridable [minBound .. maxBound] <> map Fixed [minBound .. maxBound]
+allBuiltins = [minBound .. maxBound]
 
 builtinName :: BuiltinInline -> Text
 builtinName = \case
-  Overridable o -> case o of
-    BStrong -> "strong"
-    BBold -> "bold"
-    BItalic -> "italic"
-    BCode -> "code"
-    BRuby -> "ruby"
-    BKenten -> "kenten"
-    BColor -> "color"
-    BStyle -> "style"
-    BWarichu -> "warichu"
-    BUpright -> "upright"
-    BTcy -> "tcy"
-    BNumberText -> "number-text"
-  Fixed f -> case f of
-    BRefNumber -> "ref-number"
-    BRefTitle -> "ref-title"
-    BRefPage -> "ref-page"
-    BNote -> "note"
-    BSidenote -> "sidenote"
-    BEndnote -> "endnote"
-    BIndex -> "index"
-    BCite -> "cite"
-    BAki -> "aki"
-    BLink -> "link"
-    BLang -> "lang"
-    BShy -> "shy"
+  BStrong -> "strong"
+  BBold -> "bold"
+  BItalic -> "italic"
+  BCode -> "code"
+  BRuby -> "ruby"
+  BKenten -> "kenten"
+  BColor -> "color"
+  BStyle -> "style"
+  BWarichu -> "warichu"
+  BUpright -> "upright"
+  BTcy -> "tcy"
+  BNumberText -> "number-text"
+  BRefNumber -> "ref-number"
+  BRefTitle -> "ref-title"
+  BRefPage -> "ref-page"
+  BNote -> "note"
+  BSidenote -> "sidenote"
+  BEndnote -> "endnote"
+  BIndex -> "index"
+  BCite -> "cite"
+  BAki -> "aki"
+  BLink -> "link"
+  BLang -> "lang"
+  BShy -> "shy"
 
 -- | The command of a name, the inverse of 'builtinName'.
 parseBuiltin :: Text -> Maybe BuiltinInline
@@ -111,36 +100,34 @@ byName = Map.fromList [(builtinName b, b) | b <- allBuiltins]
 -- | Commands that take no prose slot (golem-eval ADR 0003).
 takesNoSlot :: BuiltinInline -> Bool
 takesNoSlot = \case
-  Overridable o -> case o of
-    BStrong -> False
-    BBold -> False
-    BItalic -> False
-    BCode -> False
-    BRuby -> False
-    BKenten -> False
-    BColor -> False
-    BStyle -> False
-    BWarichu -> False
-    BUpright -> False
-    BTcy -> False
-    BNumberText -> True
-  Fixed f -> case f of
-    BRefNumber -> True
-    BRefTitle -> True
-    BRefPage -> True
-    BNote -> False
-    BSidenote -> False
-    BEndnote -> False
-    BIndex -> False
-    BCite -> True
-    -- [aki] reports a slot as G02055 itself (docs/adr ADR 0019)
-    BAki -> False
-    -- the prose slot of [link] may be left out (docs/adr ADR 0182)
-    BLink -> False
-    -- [lang] reports a slot that is not one as G02038 itself (docs/adr ADR 0187)
-    BLang -> False
-    -- docs/adr ADR 0272
-    BShy -> True
+  BStrong -> False
+  BBold -> False
+  BItalic -> False
+  BCode -> False
+  BRuby -> False
+  BKenten -> False
+  BColor -> False
+  BStyle -> False
+  BWarichu -> False
+  BUpright -> False
+  BTcy -> False
+  BNumberText -> True
+  BRefNumber -> True
+  BRefTitle -> True
+  BRefPage -> True
+  BNote -> False
+  BSidenote -> False
+  BEndnote -> False
+  BIndex -> False
+  BCite -> True
+  -- [aki] reports a slot as G02055 itself (docs/adr ADR 0019)
+  BAki -> False
+  -- the prose slot of [link] may be left out (docs/adr ADR 0182)
+  BLink -> False
+  -- [lang] reports a slot that is not one as G02038 itself (docs/adr ADR 0187)
+  BLang -> False
+  -- docs/adr ADR 0272
+  BShy -> True
 
 -- | The name of a plugin command that is not a built-in one.
 newtype PluginCommandName = PluginCommandName Text
@@ -156,8 +143,8 @@ unPluginCommandName :: PluginCommandName -> Text
 unPluginCommandName (PluginCommandName n) = n
 
 {- | The built-in block commands a plugin (block-overrides) or a name
-listed by @import may override (root ADR 0453): the ones that make the
-content of the output alone, which no other mechanism reads.
+listed by @import may override (root ADR 0471): all but those of
+'fixedBlockCommands'.
 -}
 data OverridableBlock
   = BlockToc
@@ -165,6 +152,22 @@ data OverridableBlock
   | BlockBibliography
   | BlockPrintings
   | BlockSeparator
+  | BlockPageBreak
+  | BlockColumnBreak
+  | BlockNoPageBreak
+  | BlockNeedLines
+  | BlockPageLines
+  | BlockBlankLine
+  | BlockFigure
+  | BlockTable
+  | BlockListing
+  | BlockStyle
+  | -- | docs/adr ADR 0187
+    BlockLang
+  | -- | docs/adr/0263
+    BlockNote
+  | -- | root ADR 0412
+    BlockEndnote
   deriving stock (Eq, Ord, Show, Enum, Bounded)
 
 overridableBlockName :: OverridableBlock -> Text
@@ -174,61 +177,60 @@ overridableBlockName = \case
   BlockBibliography -> "bibliography"
   BlockPrintings -> "printings"
   BlockSeparator -> "separator"
+  BlockPageBreak -> "page-break"
+  BlockColumnBreak -> "column-break"
+  BlockNoPageBreak -> "no-page-break"
+  BlockNeedLines -> "need-lines"
+  BlockPageLines -> "page-lines"
+  BlockBlankLine -> "blank-line"
+  BlockFigure -> "figure"
+  BlockTable -> "table"
+  BlockListing -> "listing"
+  BlockStyle -> "style"
+  BlockLang -> "lang"
+  BlockNote -> "note"
+  BlockEndnote -> "endnote"
 
 -- | The overridable block command of a name, the inverse of 'overridableBlockName'.
 parseOverridableBlock :: Text -> Maybe OverridableBlock
 parseOverridableBlock n = lookup n [(overridableBlockName b, b) | b <- [minBound .. maxBound]]
 
--- | The names of the overridable block commands (root ADR 0453).
+-- | The names of the overridable block commands (root ADR 0471).
 overridableBlockCommands :: [Text]
 overridableBlockCommands = map overridableBlockName [minBound .. maxBound]
 
 {- | The names of the built-in block commands, the file settings and the
 attributes among them (docs/adr/0122): the overridable ones, then the
-fixed ones (root ADR 0453). A plugin provides a block command of one of
+fixed ones (root ADR 0471). A plugin provides a block command of one of
 these names only to override an overridable one by block-overrides.
 -}
 builtinBlockCommands :: [Text]
 builtinBlockCommands = overridableBlockCommands <> fixedBlockCommands
 
 {- | The names of the built-in block commands that neither a plugin nor a
-listed name may override (root ADR 0453), the names G02270 counts in the
-blocks: the evaluation, the pagination, the references and the channels
-take what they mean as given.
+listed name may override (root ADR 0471), the names G02270 counts: those
+that decide the mechanisms of Golem, which the evaluation reads before
+every other command (the imports, the variables, the channels, the file
+settings, the definitions of styles and the attributes of a group), and
+@frame, without which nothing is set.
 -}
 fixedBlockCommands :: [Text]
 fixedBlockCommands =
   [ "import",
     "set",
     "channel",
-    "page-break",
-    "column-break",
-    "no-page-break",
-    "need-lines",
-    "page-lines",
-    "blank-line",
-    "figure",
-    "table",
-    "listing",
-    "style",
     "manifest",
     "style-def",
+    -- docs/adr ADR 0272
+    "hyphenation-exceptions",
     "label",
     "toc-title",
     "number",
     "nonumber",
     "notoc",
     "caption",
-    -- docs/adr ADR 0187
-    "lang",
     -- docs/adr/0262
     "column-widths",
-    -- docs/adr ADR 0272
-    "hyphenation-exceptions",
-    -- docs/adr/0263
-    "note",
-    -- root ADR 0412
-    "endnote",
     -- root ADR 0438
     "frame"
   ]
