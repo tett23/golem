@@ -287,6 +287,7 @@ PDF の柱とノンブルに当てる文字スタイルは、マスターペー�
 台本専用の固定値は設けない。
 
 `next-style` は次の段落の段落スタイルを、`initial-style` は段落の先頭の一字の文字スタイルを決め、`opening-indent = "half"` は始め括弧類で始まる段落の字下げを PDF、HTML、EPUB で半角減らす（[ADR 0374](./docs/adr/0374-paragraph-style-controls.md)、[root ADR 0469](./docs/adr/0469-opening-indent-in-html-and-epub.md)）。
+`fit-characters` は一行の段落を指定の字数分の幅に組み、字のあいだに同じ空きを配る（字取り、[root ADR 0466](./docs/adr/0466-fit-characters.md)）。
 
 文字の詰めと送りも、スタイルで指定する。
 文字スタイルと段落スタイルの `kerning`（`metrics`、`japanese-equal-width`、`none`）、`tracking`、`proportional-metrics`、`baseline-shift` で、カーニングの方式、トラッキング、プロポーショナルメトリクス、ベースラインシフトを指定する。
