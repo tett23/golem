@@ -67,7 +67,7 @@ notesTests =
         other -> assertFailure (show other),
     testCase "HTML: a p for each paragraph, the link back at the start of the first; style.css takes their margins off" $ do
       (html, css) <- htmlMini horizontalStyle three
-      assertBool (T.unpack html) ("<aside epub:type=\"footnote\" id=\"note-1\"><p><a href=\"#noteref-1\">1</a> 一の段。</p><p>二の段。</p><p>三の段。</p></aside>" `T.isInfixOf` html)
+      assertBool (T.unpack html) ("<aside role=\"doc-footnote\" id=\"note-1\"><p><a href=\"#noteref-1\">1</a> 一の段。</p><p>二の段。</p><p>三の段。</p></aside>" `T.isInfixOf` html)
       assertBool (T.unpack css) ("section.notes aside p { margin-block: 0; padding-inline-start: 0; text-indent: 0; }" `T.isInfixOf` css),
     testCase "I1: a note of one paragraph is one p in HTML" $ do
       (html, _) <- htmlMini horizontalStyle "本文[note: 注。]。\n"
@@ -91,7 +91,7 @@ notesTests =
       dc <- drawn c
       da @?= db
       da @?= dc,
-    testCase "tagged PDF: a Note holds the Lbl of its mark and a P for each paragraph" $ do
+    testCase "tagged PDF: a Note holds the lbl Lbl of its mark and a P for each paragraph" $ do
       t <- withSystemTempDirectory "golem-structure" $ \tmp -> do
         writeProject tmp miniManifest horizontalStyle three []
         r <- pdfStructure (defaultOptions tmp) {optFonts = fakeProvider}

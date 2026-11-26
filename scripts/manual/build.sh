@@ -15,10 +15,11 @@
 # a manual does not hide its notices.
 #
 # After a clean build it copies the LICENSE of the project (CC0 1.0) to
-# build/html/LICENSE and, when the HTML has build/html/fonts/, the license
-# documents fonts/LICENSE-* (SIL OFL 1.1) next to the fonts
-# (docs/adr/0082-manuals-under-cc0.md). A project without LICENSE fails
-# before golem runs.
+# build/html/LICENSE (docs/adr/0082-manuals-under-cc0.md). The license
+# documents of the fonts (SIL OFL 1.1) are copied by golem itself, from
+# ja-license and latin-license of style.toml
+# (docs/adr/0433-bundle-font-licenses-with-embedded-fonts.md). A project
+# without LICENSE fails before golem runs.
 #
 # For the tests: GOLEM_MANUAL_ROOT is the folder that holds the projects
 # (the root of the repository by default), and GOLEM_MANUAL_SKIP_FONTS=1
@@ -58,15 +59,9 @@ for project in "$@"; do
     echo "build: golem build of $project/ exited with $CODE and wrote the diagnostics above; a manual must build without any" >&2
     exit 1
   fi
-  # the HTML hands the fonts over as files, so it carries their licenses
-  # and the license of the manual (docs/adr/0082)
+  # the HTML carries the license of the manual (docs/adr/0082); golem
+  # copies those of the fonts beside them (docs/adr/0433)
   if [ -d "$DIR/build/html" ]; then
     cp "$DIR/LICENSE" "$DIR/build/html/LICENSE"
-    if [ -d "$DIR/build/html/fonts" ]; then
-      for license in "$DIR"/fonts/LICENSE-*; do
-        [ -f "$license" ] || continue
-        cp "$license" "$DIR/build/html/fonts/"
-      done
-    fi
   fi
 done

@@ -1,6 +1,6 @@
 # ADR 0370: 縦中横とルビの外側の字間にトラッキングを適用する
 
-Status: accepted
+Status: superseded [{"by":["docs/adr/0414-record-what-the-implementations-of-adr-0370-and-0395-decided.md"],"part":"箱とふつうの字のあいだ、HTML と EPUB","kind":"supplement"}]
 
 ## 文脈
 

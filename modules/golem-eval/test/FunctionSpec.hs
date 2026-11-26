@@ -61,7 +61,7 @@ functionCtx :: EvalContext
 functionCtx = baseCtx {ctxFunctions = FunctionTable (Map.singleton "functions/book.emet" book) False Set.empty, ctxCharStyles = Set.singleton "strong"}
 
 withImport :: Text -> Text
-withImport body = "@import functions/book.emet as book\n\n" <> body
+withImport body = "@import functions/book.emet * as book\n\n" <> body
 
 codesOf :: Text -> [Text]
 codesOf src = map diagCodeText (fst (evalSource functionCtx (withImport src)))
@@ -93,7 +93,7 @@ tests =
         codesOf "[book.price 1000 rate=1]\n" @?= ["G02119"],
       testCase "a keyword argument written twice is G02077, as for a built-in command" $
         codesOf "[book.price 1000 tax=false tax=true]\n" @?= ["G02077"],
-      testCase "Golem ADR 0351 I7-I8: every unknown occurrence and later duplicate keeps its own site" $ do
+      testCase "Golem ADR 0351 I7, I8: every unknown occurrence and later duplicate keeps its own site" $ do
         let src = withImport "[book.price 1 x=1 x=2 x=3]\n"
             (ds, _) = evalSource functionCtx src
             index needle = Data.Text.length (fst (Data.Text.breakOn needle src))
@@ -105,7 +105,7 @@ tests =
                 ("G02119", index "x=3", index "x=3" + 1),
                 ("G02077", index "x=3", index "x=3" + 3)
               ],
-      testCase "Golem ADR 0351 I6-I7: independent unknown, duplicate and type errors survive" $ do
+      testCase "Golem ADR 0351 I6, I7: independent unknown, duplicate and type errors survive" $ do
         let src = withImport "[book.price 1 x=1 x=2 tax=abc]\n"
             (ds, _) = evalSource functionCtx src
             index needle = Data.Text.length (fst (Data.Text.breakOn needle src))
@@ -146,7 +146,7 @@ tests =
       testCase "the prose slots go to the function, and the number of them is G02122" $ do
         let r = evalResult functionCtx (withImport "[book.emph-twice: 本文[note: 注]]\n")
         [length xs | Block _ _ _ (Paragraph _ [CharStyle _ _ xs]) <- resultBlocks r] @?= [2]
-        [n | Block _ _ _ (Paragraph _ [CharStyle _ _ [_, Note _ n _]]) <- resultBlocks r] @?= [1]
+        [n | Block _ _ _ (Paragraph _ [CharStyle _ _ [_, Note _ n _ _]]) <- resultBlocks r] @?= [1]
         codesOf "[book.emph-twice]\n" @?= ["G02122"],
       testCase "the body goes to a block command; a body to one that takes none is G02123" $ do
         let r = evalResult functionCtx (withImport "@book.word-table data/words.tsv\n  本体\n")

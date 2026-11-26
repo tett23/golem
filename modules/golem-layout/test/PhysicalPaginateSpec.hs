@@ -1,14 +1,18 @@
 module PhysicalPaginateSpec (physicalPaginateTests) where
 
-import Control.Monad (forM_)
+import AdjacentRules (Adjacent (..), adjacentCases, adjacentFree, adjacentFreeSettings, adjacentGrid, freeShared, gridShared, rulesOverlap)
+import Control.Monad (forM_, when)
 import Data.List (sort)
 import Data.Map.Strict qualified as Map
+import Data.Maybe (isJust)
+import Data.Set qualified as Set
 import Golem.Doc.IR (BreakKind (..))
 import Golem.Layout.Code (codeGeometry)
 import Golem.Layout.Paginate
 import Golem.Layout.Paginate.Physical
 import Golem.Layout.RuleArea (RuleGrid (..), RuleSide (..))
-import Golem.Length (Sp)
+import Golem.Length (Sp (..))
+import Golem.Project.Style (KeepParts (..))
 import Golem.Syntax (FileId (..), SrcSpan, mkSpan)
 import Test.Tasty hiding (after)
 import Test.Tasty.HUnit
@@ -23,19 +27,104 @@ longNoteLine :: Int -> LineBox
 longNoteLine i = LineBox i [NoteBody (NoteId span0 0) 3] [] [] 0
 
 settings :: PhysicalSettings
-settings = PhysicalSettings 16 10 42 42 0 (ColumnSet 1 0 0 0) Map.empty Map.empty Map.empty Map.empty Map.empty
+settings = PhysicalSettings 16 10 42 42 0 (ColumnSet 1 0 0 0) Map.empty Map.empty Map.empty Map.empty Map.empty Nothing Set.empty noAvoid
 
 span0 :: SrcSpan
 span0 = mkSpan (FileId 0) 0 0
+
+columnsOf :: [PageOutAt Sp] -> [(Int, Int, [Int])]
+columnsOf pages = [(poNumber p, poColumn p, ids) | p <- pages, let ids = [n | (_, SLine n) <- poSlots p], not (null ids)]
 
 slots :: Either PhysicalFailure [PageOutAt Sp] -> Either PhysicalFailure [[(Sp, Slotted)]]
 slots = fmap (map poSlots)
 
 physicalPaginateTests :: TestTree
 physicalPaginateTests =
-  testGroup
-    "physical pagination"
-    [ testCase "root ADR 0397 I9 I10: cursor trials discard failed labels, marks and notes when a paragraph moves" $ do
+  testGroup "physical pagination" $
+    [ testCase "root ADR 0401 I2: discarded source callbacks preserve only accepted ids notes labels and marks" $ do
+        let cfg = settings {physicalCapacity = 64, physicalMaxCapacity = 64, physicalColumns = ColumnSet 2 0 0 0}
+        cursor <- either (assertFailure . show) pure (stepPhysicalCursor cfg (startPhysicalCursor cfg) [FParagraph defaultKeep (map line [0 .. 6])])
+        (acceptedPage, chosen) <-
+          either
+            (assertFailure . show)
+            pure
+            ( retainPhysicalPart
+                cfg
+                KeepPage
+                span0
+                "item"
+                cursor
+                ( \at -> do
+                    let (page, _, _) = physicalCursorPosition at
+                        ident = page * 10
+                        first = (noteLine ident) {lbLabels = [if page == 1 then "discarded" else "accepted"], lbMarks = [span0]}
+                    placed <- stepPhysicalCursor cfg at [FParagraph defaultKeep (first : map line [ident + 1, ident + 2])]
+                    pure (page, [ident .. ident + 2], placed)
+                )
+            )
+        acceptedPage @?= 2
+        let pages = finishPhysicalCursor cfg chosen
+        concatMap poLabels pages @?= ["accepted"]
+        concatMap poMarks pages @?= [span0]
+        concatMap poFootnotes pages @?= [(NoteId span0 0, 0, 1)]
+        [n | p <- pages, (_, SLine n) <- poSlots p, n >= 10] @?= [20, 21, 22],
+      testCase "root ADR 0401 I2: a retained callback re-composes source at the accepted cursor" $ do
+        let cfg = settings {physicalColumns = ColumnSet 2 0 0 0}
+        cursor <- either (assertFailure . show) pure (stepPhysicalCursor cfg (startPhysicalCursor cfg) [FParagraph defaultKeep (map line [0 .. 2])])
+        (sourcePage, chosen) <-
+          either
+            (assertFailure . show)
+            pure
+            ( retainPhysicalPart
+                cfg
+                KeepPage
+                span0
+                "item"
+                cursor
+                ( \at -> do
+                    let (page, _, _) = physicalCursorPosition at
+                    placed <- stepPhysicalCursor cfg at [FParagraph defaultKeep (map line [10 .. 12])]
+                    pure (page, [10 .. 12], placed)
+                )
+            )
+        sourcePage @?= 2
+        [poNumber p | p <- finishPhysicalCursor cfg chosen, (_, SLine n) <- poSlots p, n >= 10] @?= [2, 2, 2],
+      testCase "root ADR 0401 I2: free page keeps a list item across columns in one page" $ do
+        let cfg = settings {physicalColumns = ColumnSet 2 0 0 0}
+            part = FBookPart KeepPage span0 "list item" [10, 11, 12] [FParagraph defaultKeep (map line [10 .. 12])]
+        pages <- either (assertFailure . show) pure (paginatePhysical cfg [FParagraph defaultKeep (map line [0 .. 2]), part])
+        [(poNumber p, poColumn p) | p <- pages, (_, SLine n) <- poSlots p, n >= 10] @?= [(2, 0), (2, 0), (2, 1)],
+      testCase "root ADR 0401 I2: free page lets a table header and first row cross columns within a page" $ do
+        let cfg = settings {physicalColumns = ColumnSet 2 0 0 0}
+            part = FBookPart KeepPage span0 "table" [10, 11, 20, 21] [FTable 10 0 [line 10, line 11] [[line 20, line 21]] [] False]
+        pages <- either (assertFailure . show) pure (paginatePhysical cfg [part])
+        columnsOf pages @?= [(1, 0, [10, 11]), (1, 1, [20, 21])],
+      testCase "root ADR 0401 I2: free spread repeats a table header on the next physical page only" $ do
+        let cfg = settings {physicalColumns = ColumnSet 2 0 0 0}
+            part = FBookPart KeepSpread span0 "table" [10, 20] [FTable 10 0 [line 10] [[line 20], [line 30], [line 40], [line 50]] [] False]
+        pages <- either (assertFailure . show) pure (paginatePhysical cfg [FBreak BreakPage, part])
+        columnsOf pages @?= [(2, 0, [10, 20]), (2, 1, [30, 40]), (3, 0, [10, 50])],
+      testCase "root ADR 0401 I2: free page keeps a lower caption in its last row's page across columns" $ do
+        let cfg = settings {physicalColumns = ColumnSet 2 0 0 0}
+            part = FBookPart KeepPage span0 "table" [10, 11] [FTable 10 0 [] [[line 10, line 11], [line 20]] [line 30, line 31] True]
+        pages <- either (assertFailure . show) pure (paginatePhysical cfg [part])
+        columnsOf pages @?= [(1, 0, [10, 11]), (2, 0, [20]), (2, 1, [30, 31])],
+      testCase "root ADR 0401 I2: free page lets a definition term and its first description cross columns" $ do
+        let cfg = settings {physicalColumns = ColumnSet 2 0 0 0}
+            part = FBookPart KeepPage span0 "definition" [10, 11, 20] [FDefTerm [line 10, line 11], FParagraph (Keep 1 1 False) [line 20, line 21]]
+        pages <- either (assertFailure . show) pure (paginatePhysical cfg [FParagraph defaultKeep [line 0], part])
+        columnsOf pages @?= [(1, 0, [0, 10]), (1, 1, [11, 20]), (2, 0, [21])],
+      testCase "root ADR 0401 I1: free column keeps a table header with its first row in one column" $ do
+        let cfg = settings {physicalColumns = ColumnSet 2 0 0 0}
+            part = FBookPart KeepColumn span0 "table" [10, 20] [FTable 10 0 [line 10] [[line 20], [line 30], [line 40]] [] False]
+        pages <- either (assertFailure . show) pure (paginatePhysical cfg [part])
+        columnsOf pages @?= [(1, 0, [10, 20]), (1, 1, [10, 30]), (2, 0, [10, 40])],
+      testCase "root ADR 0401 I3: free oversized item produces one notice without losing rows" $ do
+        let part = FBookPart KeepPage span0 "list item" [10 .. 14] [FParagraph defaultKeep (map line [10 .. 14])]
+        pages <- either (assertFailure . show) pure (paginatePhysical settings [FParagraph defaultKeep [line 0], part])
+        [n | p <- pages, (_, SLine n) <- poSlots p, n >= 10] @?= [10 .. 14]
+        [u | p <- pages, u@SplitBookPart {} <- poUnmet p] @?= [SplitBookPart span0 "list item" KeepPage],
+      testCase "root ADR 0397 I9 I10: cursor trials discard failed labels, marks and notes when a paragraph moves" $ do
         let cfg = settings {physicalSeparator = 10}
             row = (noteLine 0) {lbLabels = ["body"], lbMarks = [span0]}
         (wrapped, region) <- either (assertFailure . show) pure (beginPhysicalWrap cfg (startPhysicalCursor cfg) 9 30 ["figure"] [])
@@ -652,3 +741,710 @@ physicalPaginateTests =
           )
           @?= Right [[(1, SLine 0)], [(1, SLine 1), (17, SLine 2), (33, SLine 3)]]
     ]
+      <> turnedFigureTests
+      <> continuedNoteOrderTests
+      <> continuedTableNoteTests
+      <> continuedLineLessBoxTests
+      <> indexColumnNotesTests
+      <> indexOnAdjustedPageTests
+      <> joinedRuleTests
+      <> outsideRuleTests
+
+turnedSettings :: PhysicalSettings
+turnedSettings = settings {physicalPagePitch = 10, physicalCapacity = 50, physicalMaxCapacity = 50}
+
+pageTrace :: Either PhysicalFailure [PageOutAt Sp] -> Either PhysicalFailure [(Int, Int, [(Sp, Slotted)])]
+pageTrace = fmap (map (\page -> (poNumber page, poColumn page, poSlots page)))
+
+lines10 :: Int -> Int -> [LineBox]
+lines10 from count = map line [from .. from + count - 1]
+
+-- The turned figures of the specification (golem-driver ADR 0034 and 0039) in the free placement of root ADR 0397.
+turnedFigureTests :: [TestTree]
+turnedFigureTests =
+  [ testCase "golem-driver ADR 0034, root ADR 0397: a turned figure after waiting figures takes a page after them in manuscript order" $
+      pageTrace (paginatePhysical turnedSettings [FParagraph defaultKeep (lines10 0 4), FFigure 100 30 [] [], FFigure 101 30 [] [], FPageFigure 200 [] []])
+        @?= Right
+          [ (1, 0, [(0, SLine 0), (10, SLine 1), (20, SLine 2), (30, SLine 3)]),
+            (2, 0, [(0, SFigure 100)]),
+            (3, 0, [(0, SFigure 101)]),
+            (4, 0, [(0, SPageFigure 200)])
+          ],
+    testCase "golem-driver ADR 0034, root ADR 0397: the text after a waiting turned figure fills the current page first" $
+      pageTrace (paginatePhysical turnedSettings [FParagraph defaultKeep (lines10 0 4), FPageFigure 200 ["f"] [], FParagraph defaultKeep [line 10]])
+        @?= Right
+          [ (1, 0, [(0, SLine 0), (10, SLine 1), (20, SLine 2), (30, SLine 3), (40, SLine 10)]),
+            (2, 0, [(0, SPageFigure 200)])
+          ],
+    testCase "golem-driver ADR 0034, root ADR 0397: a turned figure met on an empty page takes that page" $
+      pageTrace (paginatePhysical turnedSettings [FPageFigure 200 [] [], FParagraph defaultKeep [line 10]])
+        @?= Right [(1, 0, [(0, SPageFigure 200)]), (2, 0, [(0, SLine 10)])],
+    testCase "golem-driver ADR 0034, root ADR 0397: a figure after a waiting turned figure waits even when it fits" $
+      pageTrace (paginatePhysical turnedSettings [FParagraph defaultKeep (lines10 0 2), FPageFigure 200 [] [], FFigure 60 10 [] [], FParagraph defaultKeep [line 10]])
+        @?= Right
+          [ (1, 0, [(0, SLine 0), (10, SLine 1), (20, SLine 10)]),
+            (2, 0, [(0, SPageFigure 200)]),
+            (3, 0, [(0, SFigure 60)])
+          ],
+    testCase "golem-driver ADR 0034, root ADR 0397: a waiting turned figure is placed before a page break" $
+      pageTrace (paginatePhysical turnedSettings [FParagraph defaultKeep (lines10 0 2), FPageFigure 200 [] [], FBreak BreakPage, FParagraph defaultKeep [line 10]])
+        @?= Right [(1, 0, [(0, SLine 0), (10, SLine 1)]), (2, 0, [(0, SPageFigure 200)]), (3, 0, [(0, SLine 10)])],
+    testCase "golem-driver ADR 0039, root ADR 0397: two or three page breaks after a waiting turned figure add no blank page" $
+      forM_ [2, 3] $ \k ->
+        pageTrace (paginatePhysical turnedSettings ([FParagraph defaultKeep (lines10 0 2), FPageFigure 200 [] []] <> replicate k (FBreak BreakPage) <> [FParagraph defaultKeep [line 10]]))
+          @?= Right [(1, 0, [(0, SLine 0), (10, SLine 1)]), (2, 0, [(0, SPageFigure 200)]), (3, 0, [(0, SLine 10)])],
+    testCase "golem-driver ADR 0039, root ADR 0397: a page break right after a turned figure met on an empty page adds no blank page" $
+      pageTrace (paginatePhysical turnedSettings [FPageFigure 200 [] [], FBreak BreakPage, FParagraph defaultKeep [line 10]])
+        @?= Right [(1, 0, [(0, SPageFigure 200)]), (2, 0, [(0, SLine 10)])],
+    testCase "golem-driver ADR 0039, root ADR 0397: a column break while a turned figure waits is a page break" $
+      pageTrace (paginatePhysical turnedSettings {physicalColumns = ColumnSet 2 0 0 0} [FParagraph defaultKeep (lines10 0 2), FPageFigure 200 [] [], FBreak BreakColumn, FParagraph defaultKeep [line 10]])
+        @?= Right [(1, 0, [(0, SLine 0), (10, SLine 1)]), (2, 0, [(0, SPageFigure 200)]), (3, 0, [(0, SLine 10)])],
+    testCase "golem-driver ADR 0039, root ADR 0397: a column break with only an unturned figure waiting goes to the next column" $
+      pageTrace (paginatePhysical turnedSettings {physicalColumns = ColumnSet 2 0 0 0} [FParagraph defaultKeep (lines10 0 4), FFigure 60 30 [] [], FBreak BreakColumn, FParagraph defaultKeep [line 10]])
+        @?= Right [(1, 0, [(0, SLine 0), (10, SLine 1), (20, SLine 2), (30, SLine 3)]), (1, 1, [(0, SFigure 60), (30, SLine 10)])],
+    testCase "golem-driver ADR 0034, root ADR 0397: a turned figure met in an empty second column waits for the next page" $
+      pageTrace (paginatePhysical turnedSettings {physicalColumns = ColumnSet 2 0 0 0} [FParagraph defaultKeep (lines10 0 2), FBreak BreakColumn, FPageFigure 200 [] [], FParagraph defaultKeep [line 10]])
+        @?= Right [(1, 0, [(0, SLine 0), (10, SLine 1)]), (1, 1, [(0, SLine 10)]), (2, 0, [(0, SPageFigure 200)])],
+    testCase "golem-driver ADR 0034, root ADR 0397: a waiting turned figure is placed before a column switch" $
+      pageTrace (paginatePhysical turnedSettings [FParagraph defaultKeep (lines10 0 2), FPageFigure 200 [] [], FSwitchColumns (ColumnSet 2 0 0 0), FParagraph defaultKeep [line 10]])
+        @?= Right [(1, 0, [(0, SLine 0), (10, SLine 1)]), (2, 0, [(0, SPageFigure 200)]), (3, 0, [(0, SLine 10)])],
+    testCase "golem-driver ADR 0034, root ADR 0397: a waiting turned figure is placed before a recto heading" $
+      fmap
+        (map (\page -> (poNumber page, poBlank page, poSlots page)))
+        (paginatePhysical turnedSettings [FParagraph defaultKeep (lines10 0 2), FPageFigure 200 [] [], FParagraph defaultKeep [line 10], FHeading 1 True 10 [line 20]])
+        @?= Right
+          [ (1, False, [(0, SLine 0), (10, SLine 1), (20, SLine 10)]),
+            (2, False, [(0, SPageFigure 200)]),
+            (3, False, [(0, SHeading 20 1)])
+          ],
+    testCase "golem-driver ADR 0034, root ADR 0397: a footnote continued from the page before skips the page of a turned figure" $
+      fmap
+        (map (\page -> (poNumber page, poSlots page, poFootnotes page)))
+        (paginatePhysical turnedSettings [FParagraph defaultKeep [LineBox 0 [NoteBody (NoteId span0 0) 6] [] [] 0], FPageFigure 200 [] [], FParagraph defaultKeep [line 10, line 11]])
+        @?= Right
+          [ (1, [(0, SLine 0)], [(NoteId span0 0, 0, 4)]),
+            (2, [(0, SPageFigure 200)], []),
+            (3, [(0, SLine 10), (10, SLine 11)], [(NoteId span0 0, 4, 2)])
+          ]
+  ]
+
+-- | Laid out freely, the footnotes keep the order written while one continues (root ADR 0444).
+continuedNoteOrderTests :: [TestTree]
+continuedNoteOrderTests =
+  [ testCase "root ADR 0444 I1: freely, page-lines +2 puts the rest of note 500 on page 1, and line 10 with note 510 on page 2" $ do
+      ps <- either (assertFailure . show) pure (continued 2 5 (Just 1) 0)
+      [i | (_, i, _, _) <- noteParts ps] @?= [note500, note510]
+      [(n, from, len) | (n, i, from, len) <- noteParts ps, i == note500] @?= [(1, 0, 5)]
+      pageOfLine 10 ps @?= [2],
+    testCase "root ADR 0444 I1, I2: freely, page-lines +1 puts one more line of note 500 on page 1, and the rest before note 510 on page 2" $ do
+      ps <- either (assertFailure . show) pure (continued 1 5 (Just 1) 0)
+      [(n, i) | (n, i, _, _) <- noteParts ps] @?= [(1, note500), (2, note500), (2, note510)]
+      pageOfLine 10 ps @?= [2],
+    testCase "root ADR 0444 I1, I2, I4: freely, whatever the page-lines and the notes, the notes keep the order written and every line is placed once in order" $
+      forM_ [(k, len, second, more) | k <- [0 .. 5], len <- [1 .. 8], second <- [Nothing, Just 1, Just 2], more <- [0 .. 2]] $ \(k, len, second, more) ->
+        case continued k len second more of
+          Left failure -> assertFailure (show (k, len, second, more, failure))
+          Right ps -> do
+            let order = [i | (_, i, _, _) <- noteParts ps]
+                what = show (k, len, second, more, noteParts ps, map poSlots ps)
+            assertBool ("I1 " <> what) (note500 `notElem` dropWhile (/= note510) order)
+            [i | p <- ps, (_, SLine i) <- poSlots p] @?= [0, 10] <> take more [20 ..]
+  ]
+  where
+    note500 = NoteId (mkSpan (FileId 0) 500 501) 0
+    note510 = NoteId (mkSpan (FileId 0) 510 511) 0
+    -- a column of 50 sp that may grow to 90, a pitch of 10 and a separator of 10, as the grid tests of root ADR 0444
+    cfg = settings {physicalPagePitch = 10, physicalFontSize = 10, physicalCapacity = 50, physicalMaxCapacity = 90, physicalSeparator = 10}
+    continued :: Int -> Int -> Maybe Int -> Int -> Either PhysicalFailure [PageOutAt Sp]
+    continued k len second more =
+      paginatePhysical cfg $
+        [FParagraph defaultKeep [LineBox 0 [NoteBody note500 len] [] [] 0]]
+          <> [FAdjustLines span0 k | k /= 0]
+          <> [FParagraph defaultKeep [LineBox 10 [NoteBody note510 n | Just n <- [second]] [] [] 0]]
+          <> [FParagraph defaultKeep (map line [20 .. 20 + more - 1]) | more > 0]
+    noteParts ps = [(poNumber p, i, from, n) | p <- ps, (i, from, n) <- poFootnotes p]
+    pageOfLine j ps = [poNumber p | p <- ps, (_, SLine i) <- poSlots p, i == j]
+
+{- | root ADR 0444 I1 and I4, laid out freely, for the rows of a table,
+which place their marks even when no line of their notes fits and add
+those notes after the continued note.
+-}
+continuedTableNoteTests :: [TestTree]
+continuedTableNoteTests =
+  [ testCase "root ADR 0444 I1, I4: freely, a table row after a continued note, whatever the page-lines and the notes, puts its note after the continued one, and every line is placed once in order" $
+      forM_ [(k, len, second, third) | k <- [0 .. 4], len <- [1 .. 8], second <- [Nothing, Just 1, Just 2], third <- [Nothing, Just 1]] $ \(k, len, second, third) ->
+        case paginatePhysical cfg (flows k len second third) of
+          Left failure -> assertFailure (show (k, len, second, third, failure))
+          Right ps -> do
+            let order = [i | p <- ps, (i, _, _) <- poFootnotes p]
+                what = show (k, len, second, third, [(poNumber p, poSlots p, poFootnotes p) | p <- ps])
+                later = dropWhile (/= note510) order
+            assertBool ("I1 " <> what) (note500 `notElem` later && note500 `notElem` dropWhile (/= note520) order)
+            assertBool ("I1 " <> what) (note510 `notElem` dropWhile (/= note520) order)
+            assertEqual ("I4 " <> what) [0, 10, 11] [i | p <- ps, (_, SLine i) <- poSlots p]
+  ]
+  where
+    note500 = NoteId (mkSpan (FileId 0) 500 501) 0
+    note510 = NoteId (mkSpan (FileId 0) 510 511) 0
+    note520 = NoteId (mkSpan (FileId 0) 520 521) 0
+    cfg = settings {physicalPagePitch = 10, physicalFontSize = 10, physicalCapacity = 50, physicalMaxCapacity = 90, physicalSeparator = 10}
+    notesOf ident = maybe [] (\n -> [NoteBody ident n])
+    flows k len second third =
+      [FParagraph defaultKeep [LineBox 0 [NoteBody note500 len] [] [] 0]]
+        <> [FAdjustLines span0 k | k /= 0]
+        <> [FTable 1 0 [] [[LineBox 10 (notesOf note510 second) [] [] 0], [LineBox 11 (notesOf note520 third) [] [] 0]] [] False]
+
+{- | Laid out freely, every index column on the page of the switch divides
+the lines left after the footnotes of the page (root ADR 0025).
+-}
+
+{- | root ADR 0444 I1 and I4, laid out freely, for a box whose last part
+has no text line: a code row or a wrapped figure without side lines.
+-}
+continuedLineLessBoxTests :: [TestTree]
+continuedLineLessBoxTests =
+  [ testCase "root ADR 0444 I1, I4: freely, a box whose last part has no text line, whatever the column, its space after, its last flow and the notes, keeps the notes in the order written, and every line is placed once in order" $
+      forM_ [(c, after', len, end, second, more) | c <- [50, 60, 70, 80], after' <- [10, 20], len <- [1 .. 6], end <- [0 .. 3 :: Int], second <- [Nothing, Just 1, Just 2], more <- [0, 2]] $ \input@(c, after', len, end, second, more) ->
+        case paginatePhysical (cfg c) (flows after' len end second more) of
+          Left failure -> assertFailure (show (input, failure))
+          Right ps -> do
+            let order = [i | p <- ps, (i, _, _) <- poFootnotes p]
+                what = show (input, [(poNumber p, poSlots p, poFootnotes p) | p <- ps])
+            assertBool ("I1 " <> what) (note500 `notElem` dropWhile (/= note520) order)
+            assertEqual ("I4 " <> what) ([0] <> [10 | end == 3] <> [20] <> take more [30 ..]) [i | p <- ps, (_, SLine i) <- poSlots p]
+  ]
+  where
+    note500 = NoteId (mkSpan (FileId 0) 500 501) 0
+    note520 = NoteId (mkSpan (FileId 0) 520 521) 0
+    cfg c = settings {physicalPagePitch = 10, physicalFontSize = 10, physicalCapacity = c, physicalMaxCapacity = c, physicalSeparator = 10}
+    geometry = codeGeometry 10 10 10 0
+    flows after' len end second more =
+      [ FBoxed 1 0 after' [FParagraph defaultKeep [LineBox 0 [NoteBody note500 len] [] [] 0], lastOf end],
+        FParagraph defaultKeep [LineBox 20 [NoteBody note520 n | Just n <- [second]] [] [] 0]
+      ]
+        <> [FParagraph defaultKeep (map line [30 .. 30 + more - 1]) | more > 0]
+    -- a code row, two code rows, a wrapped figure without side lines, or a text line
+    lastOf = \case
+      0 -> FCode geometry 0 1 False [line 10]
+      1 -> FCode geometry 0 1 False [line 10, line 11]
+      2 -> FWrapped 1 10 [] [] []
+      _ -> FParagraph defaultKeep [line 10]
+
+indexColumnNotesTests :: [TestTree]
+indexColumnNotesTests =
+  [ testCase "root ADR 0025: freely, two lines and a note of two, both index columns end before the note" $
+      fmap (entriesOn 1) (switchPage 2 2) @?= Right (tens 2 6 <> tens 2 6),
+    testCase "root ADR 0025: freely, without a note, both index columns take the rest of the type area" $
+      fmap (entriesOn 1) (switchPage 2 0) @?= Right (tens 2 9 <> tens 2 5),
+    testCase "root ADR 0025: freely, whatever the lines and the note, no index line on the page of the switch reaches its footnotes" $
+      forM_ [(n, m) | n <- [1 .. 8], m <- [0 .. 3]] $ \(n, m) -> case switchPage n m of
+        Left failure -> assertFailure (show failure)
+        Right pages -> forM_ [p | p <- pages, poNumber p == 1, csColumns (poColumnSet p) == 1] $ \body -> do
+          let notes = sum [c | (_, _, c) <- poFootnotes body]
+              noteStart = poLines body - (if notes == 0 then 0 else 10 + fromIntegral notes * 10)
+          assertBool (show (n, m, noteStart, entriesOn 1 pages)) (all (\at -> at + 10 <= noteStart) (entriesOn 1 pages))
+  ]
+  where
+    cfg = settings {physicalPagePitch = 10, physicalFontSize = 10, physicalCapacity = 100, physicalMaxCapacity = 200, physicalSeparator = 10}
+    switchPage :: Int -> Int -> Either PhysicalFailure [PageOutAt Sp]
+    switchPage n m =
+      let first = if m > 0 then LineBox 0 [NoteBody (NoteId span0 0) m] [] [] 0 else line 0
+       in paginatePhysical cfg ([FParagraph defaultKeep (first : map line [1 .. n - 1]), FSwitchColumns (ColumnSet 2 0 0 0)] <> [FParagraph defaultKeep [line (100 + i)] | i <- [0 .. 11]] <> [FRestoreColumns])
+    -- the starts of the entries on a page, column by column
+    entriesOn page pages = [at | p <- pages, poNumber p == page, (at, SLine i) <- poSlots p, i >= 100]
+    -- the lines a to b of pitch 10
+    tens :: Int -> Int -> [Sp]
+    tens a b = [fromIntegral (10 * i) | i <- [a .. b]]
+
+-- | The index columns on the page of the switch, laid out freely, end before the footnotes of the column before it (root ADR 0441).
+indexOnAdjustedPageTests :: [TestTree]
+indexOnAdjustedPageTests =
+  [ testCase "root ADR 0441 I1, I2: freely, page-lines -3, two lines and a note of two, the index takes lines 2 and 3 only" $
+      fmap (indexAt 1) (switchPage (-3) 2 2) @?= Right [20, 30, 20, 30],
+    testCase "root ADR 0441 I2: freely, page-lines -3, two lines and no note, the index takes lines 2 to 6" $
+      fmap (indexAt 1) (switchPage (-3) 2 0) @?= Right (tens 2 6 <> tens 2 6),
+    testCase "root ADR 0441 I3: freely, page-lines -3, four lines and a note of two leave no line, the index starts on the next page" $
+      fmap (indexAt 1) (switchPage (-3) 4 2) @?= Right [],
+    testCase "root ADR 0441 I1, I2: freely, page-lines +3, two lines and a note of two, the index takes lines 2 to 9" $
+      fmap (indexAt 1) (switchPage 3 2 2) @?= Right (tens 2 9 <> tens 2 5),
+    testCase "root ADR 0441 I1, I4: freely, no page-lines, two lines and a note of two, the index takes lines 2 to 6" $
+      fmap (indexAt 1) (switchPage 0 2 2) @?= Right (tens 2 6 <> tens 2 6),
+    testCase "root ADR 0441 I1, I2, I3: freely, whatever the page-lines, the lines and the note, the index on the page of the switch ends before the note and the type area" $
+      forM_ [(k, n, m) | k <- [-4 .. 4], n <- [1 .. 7], m <- [0 .. 3]] $ \(k, n, m) -> case switchPage k n m of
+        Left failure -> assertFailure (show failure)
+        Right pages -> case [p | p <- pages, poNumber p == 1, csColumns (poColumnSet p) == 1] of
+          body : _ -> do
+            let notes = sum [c | (_, _, c) <- poFootnotes body]
+                noteLength = if notes == 0 then 0 else 10 + fromIntegral notes * 10
+                end = min 100 (poLines body - noteLength)
+                used = maximum (0 : [at + 10 | (at, SLine _) <- poSlots body])
+                rows = indexAt 1 pages
+                label = show (k, n, m, end, rows)
+            assertBool ("I1, I2 " <> label) (all (\at -> at + 10 <= end) rows)
+            when (used >= end) $ assertBool ("I3 " <> label) (null rows)
+          [] -> assertFailure "no column of the body on page 1"
+  ]
+  where
+    cfg = settings {physicalPagePitch = 10, physicalFontSize = 10, physicalCapacity = 100, physicalMaxCapacity = 200, physicalSeparator = 10}
+    index2 = ColumnSet 2 0 0 0
+    switchPage :: Int -> Int -> Int -> Either PhysicalFailure [PageOutAt Sp]
+    switchPage k n m =
+      let first = if m > 0 then LineBox 0 [NoteBody (NoteId span0 0) m] [] [] 0 else line 0
+          adjust = [FAdjustLines span0 k | k /= 0]
+       in paginatePhysical cfg (adjust <> [FParagraph defaultKeep (first : map line [1 .. n - 1]), FSwitchColumns index2] <> [FParagraph defaultKeep [line (100 + i)] | i <- [0 .. 11]] <> [FRestoreColumns])
+    -- the lines a to b of pitch 10
+    tens :: Int -> Int -> [Sp]
+    tens a b = [fromIntegral (10 * i) | i <- [a .. b]]
+    -- the starts of the entries on a page, column by column
+    indexAt page pages = [at | p <- pages, poNumber p == page, (at, SLine i) <- poSlots p, i >= 100]
+
+{- | The rules of a column of the free placement that are not in it: a rule
+of keep-in-column = true starts at or after the start of the column and its
+weight ends at or before the start of the notes of the column. A rule of
+keep-in-column = false (the blocks of id 200 or more) may go 20 sp further
+out, but not into the notes.
+-}
+freeRulesOutOfColumn :: PhysicalSettings -> Sp -> PageOutAt Sp -> [PlacedRule]
+freeRulesOutOfColumn cfg w p =
+  let noteLines = sum [n | (_, _, n) <- poFootnotes p]
+      notes = if noteLines > 0 then physicalSeparator cfg + fromIntegral noteLines * physicalPagePitch cfg else 0
+      end = poLines p - notes
+      above r = if prId r >= 200 then 20 else 0
+      below r = if prId r >= 200 && noteLines == 0 then 20 else 0
+   in [r | r <- poRules p, prAt r < negate (above r) || prAt r + w > end + below r]
+
+{- | The ruled paragraphs whose rules are not placed once each: a block
+keeps all its rules, or, broken because an empty column cannot hold it
+(golem-driver ADR 0035), none of them.
+-}
+lostRules :: [FlowAt Sp] -> [PageOutAt Sp] -> [Int]
+lostRules flows pages =
+  [ frId f
+  | f@FRuled {frBody = RuledLines {}} <- flows,
+    let placed b = length [() | p <- pages, r <- poRules p, prId r == frId f, prBefore r == b]
+        counts = [placed True | isJust (frBefore f)] <> [placed False | isJust (frAfter f)],
+    counts /= map (const 1) counts && counts /= map (const 0) counts
+  ]
+
+{- | The lines of a column that lie outside it: above the start of the
+column, which a column switch moves down the page, or below its end above
+the notes (root ADR 0397 I8).
+-}
+freeLinesOutOfColumn :: PhysicalSettings -> PageOutAt Sp -> [Int]
+freeLinesOutOfColumn cfg p =
+  [n | (at, SLine n) <- poSlots p, at < csFirstLine (poColumnSet p) || at + physicalPagePitch cfg > columnEnd cfg p]
+
+-- | The rules of a column, kept in it, that lie outside it (root ADR 0397 I8, golem-driver ADR 0040).
+freeRulesOutOfSwitched :: PhysicalSettings -> Sp -> PageOutAt Sp -> [PlacedRule]
+freeRulesOutOfSwitched cfg w p = [r | r <- poRules p, prAt r < csFirstLine (poColumnSet p) || prAt r + w > columnEnd cfg p]
+
+{- | The rules of a column of the free placement that lie over the face of
+a line or a heading (golem-driver ADR 0027, root ADR 0397 I11): the face
+of a line box starts floor(p / 2) - floor(h / 2) into it, and a heading
+of n lines takes n line pitches. The weight of each rule is given.
+-}
+freeRulesOverFaces :: PhysicalSettings -> (PlacedRule -> Sp) -> PageOutAt Sp -> [PlacedRule]
+freeRulesOverFaces cfg weightOf p =
+  let pitch = physicalPagePitch cfg
+      face = physicalFontSize cfg
+      lead = Sp (unSp pitch `div` 2 - unSp face `div` 2)
+      faces = [(at + lead, at + n * pitch - (pitch - lead - face)) | (at, slot) <- poSlots p, Just n <- [linesOf slot]]
+      linesOf = \case
+        SLine _ -> Just 1
+        SHeading _ n -> Just (fromIntegral (max 1 n))
+        _ -> Nothing
+   in [r | r <- poRules p, any (\(start, end) -> prAt r < end && start < prAt r + weightOf r) faces]
+
+{- | The rules of a column of the free placement that leave it other than
+at its edge (golem-driver ADR 0027, 0040, root ADR 0397 I8): a rule of
+keep-in-column = true (the blocks of id below 200) stays in the column;
+one of keep-in-column = false may go 20 sp out, a rule before over the
+start of the column and a rule after past its end, and nowhere else.
+-}
+freeRulesOutOfEdge :: PhysicalSettings -> (PlacedRule -> Sp) -> PageOutAt Sp -> [PlacedRule]
+freeRulesOutOfEdge cfg weightOf p =
+  let outside r = prId r >= 200
+      lo r = if outside r && prBefore r then -20 else 0
+      hi r = columnEnd cfg p + (if outside r && not (prBefore r) && null (poFootnotes p) then 20 else 0)
+   in [r | r <- poRules p, prAt r < lo r || prAt r + weightOf r > hi r]
+
+-- | The end of a column above its notes.
+columnEnd :: PhysicalSettings -> PageOutAt Sp -> Sp
+columnEnd cfg p =
+  let noteLines = sum [n | (_, _, n) <- poFootnotes p]
+   in poLines p - (if noteLines > 0 then physicalSeparator cfg + fromIntegral noteLines * physicalPagePitch cfg else 0)
+
+{- | Golem-driver ADR 0027 in the free placement of root ADR 0397: two
+rules share an area only when the block after goes on in the same column
+(「隣り合う罫線」); otherwise the rule after is the first block's own, its
+block is not split and keeps the rule inside the column (keep-in-column =
+true), going whole to the next column, or broken without rules when an
+empty column cannot hold it (golem-driver ADR 0035). Root ADR 0397 I8:
+the rules lie in the column, above the notes. An empty column is one with
+nothing placed in it, also when a column switch has started it down the
+page (root ADR 0397, 「罫線付き段落が空段の長さを超える」), as in the grid
+placement.
+-}
+joinedRuleTests :: [TestTree]
+joinedRuleTests =
+  [ testCase "root ADR 0397 I8, golem-driver ADR 0035: a ruled paragraph longer than the empty column a column switch started down the page is broken there without rules, as in the grid placement" $ do
+      -- 40 sp: column 2 of the set starts at 20 sp; three lines of 10 sp and the rule after do not fit its 20 sp
+      let cfg = settings {physicalPagePitch = 10, physicalCapacity = 40, physicalMaxCapacity = 40}
+          ruled = FRuled 100 Nothing (Just (RuleSide 2 2 1 False Nothing)) False (RuleGrid 10 8) 0 (RuledLines defaultKeep (map line [20 .. 22]))
+      ps <- either (assertFailure . show) pure (paginatePhysical cfg [FParagraph defaultKeep [line 0, line 1], FSwitchColumns (ColumnSet 2 0 0 0), FParagraph defaultKeep [line 10, line 11], ruled, FParagraph defaultKeep [line 30]])
+      map (\p -> (poNumber p, poColumn p, poSlots p, poRules p)) ps
+        @?= [ (1, 0, [(0, SLine 0), (10, SLine 1)], []),
+              (1, 0, [(20, SLine 10), (30, SLine 11)], []),
+              (1, 1, [(20, SLine 20), (30, SLine 21)], []),
+              (2, 0, [(0, SLine 22), (10, SLine 30)], [])
+            ],
+    testCase "root ADR 0397 I8, golem-driver ADR 0027, 0035: after a column switch the lines and rules of ruled paragraphs lie in their columns, with all their rules or none" $
+      sequence_
+        [ case paginatePhysical cfg flows of
+            Left failure -> assertFailure (show (c, cols, map showFlow flows, failure))
+            Right ps -> do
+              let shown = (c, cols, map showFlow flows, [(poNumber p, poColumn p, csFirstLine (poColumnSet p), poSlots p, poRules p) | p <- ps])
+              assertBool ("lines out of the column: " <> show shown) (all (null . freeLinesOutOfColumn cfg) ps)
+              assertBool ("rules out of the column: " <> show shown) (all (null . freeRulesOutOfSwitched cfg (rsdWeight side)) ps)
+              assertBool ("lost: " <> show shown) (null (lostRules flows ps))
+              sort [k | p <- ps, (_, SLine k) <- poSlots p] @?= sort [lbId l | f <- flows, l <- flowLinesOf f]
+        | c <- [30, 40, 50, 60],
+          cols <- [2, 3],
+          lead <- [0 .. 3],
+          inColumn <- [0 .. 2],
+          n <- [1 .. 5],
+          side <- [RuleSide 0 0 1 False Nothing, RuleSide 2 2 1 False Nothing, RuleSide 3 1 2 True Nothing],
+          (b, a) <- [(Nothing, Just side), (Just side, Nothing), (Just side, Just side)],
+          next <- [[], [FRuled 101 (Just side) Nothing True (RuleGrid 10 8) 0 (RuledLines defaultKeep [line 40])]],
+          let cfg = settings {physicalPagePitch = 10, physicalCapacity = c, physicalMaxCapacity = c}
+              flows =
+                [FParagraph defaultKeep (map line [0 .. lead - 1]) | lead > 0]
+                  <> [FSwitchColumns (ColumnSet cols 0 0 0)]
+                  <> [FParagraph defaultKeep (map line [10 .. 9 + inColumn]) | inColumn > 0]
+                  <> [FRuled 100 b a False (RuleGrid 10 8) 0 (RuledLines defaultKeep (map line [20 .. 19 + n]))]
+                  <> next
+                  <> [FParagraph defaultKeep [line 30], FRestoreColumns]
+        ],
+    testCase "root ADR 0397 I8, golem-driver ADR 0027: the rule after of a block the next ruled block cannot join stays in the column" $ do
+      -- 60 sp: three lines of 16 sp and the rule after 15 sp below the em box of the last line
+      let cfg = settings {physicalCapacity = 60, physicalMaxCapacity = 60}
+          after = RuleSide 15 0 1 True Nothing
+          first = FRuled 5 Nothing (Just after) False (RuleGrid 16 10) 0 (RuledLines defaultKeep [line 0, line 1, line 2])
+          second = FRuled 6 (Just (RuleSide 0 0 1 False Nothing)) Nothing True (RuleGrid 16 10) 0 (RuledLines defaultKeep [line 3, line 4])
+      ps <- either (assertFailure . show) pure (paginatePhysical cfg [first, second])
+      concatMap (freeRulesOutOfColumn cfg 1) ps @?= []
+      -- the block of three lines and its own rule after at the end take 48 + 13 sp, more than an empty column: broken without rules
+      map (\p -> (poSlots p, poRules p)) ps @?= [([(0, SLine 0), (16, SLine 1), (32, SLine 2)], []), ([(0, SLine 3), (16, SLine 4)], [PlacedRule 6 True 1])],
+    testCase "root ADR 0397 I8, golem-driver ADR 0027: the first block whose own rule after does not fit the room goes whole to the next column" $ do
+      -- 58 sp, 32 used: the block of one line and its own rule after at the end take 16 + 13 sp
+      let cfg = settings {physicalCapacity = 58, physicalMaxCapacity = 58}
+          after = RuleSide 15 0 1 True Nothing
+          first = FRuled 5 Nothing (Just after) False (RuleGrid 16 10) 0 (RuledLines defaultKeep [line 1])
+          second = FRuled 6 (Just (RuleSide 0 0 1 False Nothing)) Nothing True (RuleGrid 16 10) 0 (RuledLines defaultKeep [line 2, line 3, line 4])
+      ps <- either (assertFailure . show) pure (paginatePhysical cfg [FParagraph defaultKeep [line 0, line 10], first, second])
+      concatMap (freeRulesOutOfColumn cfg 1) ps @?= []
+      take 2 (map (\p -> (poSlots p, poRules p)) ps) @?= [([(0, SLine 0), (16, SLine 10)], []), ([(0, SLine 1)], [PlacedRule 5 False 28])],
+    testCase "root ADR 0397 I8, I11, golem-driver ADR 0027: the rules of two ruled blocks in a row lie in their columns and above the notes, joined or not" $
+      sequence_
+        [ case paginatePhysical cfg flows of
+            -- a column too short for a line and its note fails before any rule (root ADR 0397 I13)
+            Left (PhysicalFootnoteTooTall _) -> pure ()
+            Left failure -> assertFailure (show (c, sep, w, map showFlow flows, failure))
+            Right ps -> do
+              let shown = (c, sep, w, map showFlow flows, [(poNumber p, poSlots p, poRules p, poFootnotes p) | p <- ps])
+              assertBool ("out of the column: " <> show shown) (all (null . freeRulesOutOfColumn cfg w) ps)
+              assertBool ("lost: " <> show shown) (null (lostRules flows ps))
+        | c <- [26, 42, 58, 60, 64, 74, 90, 106],
+          sep <- [0, 10],
+          lead <- [[], [FParagraph defaultKeep [line 0]], [FParagraph defaultKeep [line 0, line 1]], [FParagraph defaultKeep [noteLine 0]], [FParagraph defaultKeep [longNoteLine 0, line 1]]],
+          b1 <- [False, True],
+          n <- [1 .. 3],
+          a2 <- [False, True],
+          second <- [RuledLines defaultKeep (map line [20 .. 20]), RuledLines defaultKeep (map line [20 .. 21]), RuledLines defaultKeep (map line [20 .. 22]), RuledHeading False 16 [line 20]],
+          i <- [100, 200],
+          -- unspaced and thin, spaced 15 sp after the em box, and thick
+          (w, side) <- [(1, RuleSide 0 0 1 False), (1, RuleSide 15 0 1 True), (12, RuleSide 2 4 12 True)],
+          let ruled ident b a j = FRuled ident (side (outside ident) <$ guardB b) (side (outside ident) <$ guardB a) j (RuleGrid 16 10) 0
+              outside ident = if ident >= 200 then Just 20 else Nothing
+              guardB x = if x then Just () else Nothing,
+          third <- [[], [ruled (i + 2) True True True (RuledLines defaultKeep [line 30])]],
+          k <- [1, 2],
+          let cfg = settings {physicalCapacity = c, physicalMaxCapacity = c, physicalSeparator = sep}
+              flows = lead <> [ruled i b1 True False (RuledLines defaultKeep (map line [10 .. 9 + n])), ruled (i + 1) True a2 True second] <> third <> [FParagraph defaultKeep (map line [40 .. 39 + k])]
+        ],
+    testCase "root ADR 0397 I11, golem-driver ADR 0027: two blocks that fit one column still share one area" $ do
+      let side = RuleSide 0 0 1 False Nothing
+          first = FRuled 5 Nothing (Just side) False (RuleGrid 16 10) 0 (RuledLines defaultKeep [line 0])
+          second = FRuled 6 (Just side) Nothing True (RuleGrid 16 10) 0 (RuledLines defaultKeep [line 1])
+      fmap (map (\p -> (poSlots p, poRules p))) (paginatePhysical settings [first, second])
+        @?= Right [([(0, SLine 0), (16, SLine 1)], [PlacedRule 5 False 14, PlacedRule 6 True 17])],
+    testCase "root ADR 0397 I8, I9, golem-driver ADR 0027: the notes of a ruled paragraph leave room for its later lines and its rule after" $ do
+      -- 40 sp: two lines of 10 sp and the rule after take 25 sp, so one note line of the three and the separator fit below them
+      let cfg = settings {physicalPagePitch = 10, physicalCapacity = 40, physicalMaxCapacity = 40, physicalSeparator = 2}
+          ruled = FRuled 5 Nothing (Just (RuleSide 2 2 1 False Nothing)) False (RuleGrid 10 10) 0 (RuledLines defaultKeep [longNoteLine 0, line 1])
+      ps <- either (assertFailure . show) pure (paginatePhysical cfg [ruled, FParagraph defaultKeep [line 2]])
+      concatMap (freeRulesOutOfColumn cfg 1) ps @?= []
+      take 1 (map (\p -> (poSlots p, poFootnotes p)) ps) @?= [([(0, SLine 0), (10, SLine 1)], [(NoteId span0 0, 0, 1)])],
+    testCase "root ADR 0397 I8, I9, golem-driver ADR 0027: the rules of ruled paragraphs whose lines have notes lie in their columns and above the notes" $
+      sequence_
+        [ case paginatePhysical cfg flows of
+            Left (PhysicalFootnoteTooTall _) -> pure ()
+            Left failure -> assertFailure (show (c, sep, w, map showFlow flows, failure))
+            Right ps -> do
+              let shown = (c, sep, w, map showFlow flows, [(poNumber p, poSlots p, poRules p, poFootnotes p) | p <- ps])
+              assertBool ("out of the column: " <> show shown) (all (null . freeRulesOutOfColumn cfg w) ps)
+              assertBool ("lost: " <> show shown) (null (lostRules flows ps))
+              -- every note line is placed once: the notes that do not fit go on
+              sum [m | p <- ps, (_, _, m) <- poFootnotes p] @?= sum [m | f <- flows, l <- flowLinesOf f, NoteBody _ m <- lbNotes l]
+        | c <- [26, 40, 42, 58, 64, 90],
+          sep <- [0, 2, 10],
+          lead <- [[], [FParagraph defaultKeep [line 0]], [FParagraph defaultKeep [noteLine 0]]],
+          n <- [1 .. 3],
+          -- the line of the first block with a note, and the note's length
+          noted <- [Nothing] <> [Just (j, m) | j <- [0 .. n - 1], m <- [1, 3]],
+          a2 <- [False, True],
+          i <- [100, 200],
+          (w, side) <- [(1, RuleSide 0 0 1 False), (1, RuleSide 2 2 1 False), (1, RuleSide 15 0 1 True), (12, RuleSide 2 4 12 True)],
+          let ruled ident b a j = FRuled ident (side (outside ident) <$ guardB b) (side (outside ident) <$ guardB a) j (RuleGrid 10 10) 0
+              outside ident = if ident >= 200 then Just 20 else Nothing
+              guardB x = if x then Just () else Nothing
+              noteOn k l = case noted of
+                Just (j, m) | j == k -> l {lbNotes = [NoteBody (NoteId span0 0) m]}
+                _ -> l,
+          next <- [[], [ruled (i + 1) True a2 True (RuledLines defaultKeep [noteLine 20, line 21])], [ruled (i + 1) True a2 False (RuledLines defaultKeep [line 20])]],
+          let cfg = settings {physicalPagePitch = 10, physicalCapacity = c, physicalMaxCapacity = c, physicalSeparator = sep}
+              flows = lead <> [ruled i False True False (RuledLines defaultKeep (zipWith noteOn [0 ..] (map line [10 .. 9 + n])))] <> next <> [FParagraph defaultKeep [line 40]]
+        ],
+    testCase "golem-driver ADR 0027, root ADR 0397 I8, I11: the rule before of a ruled heading in the middle of a column keeps its area in the column" $ do
+      -- pitch 20 sp, face 10 sp: the face of the heading starts 5 sp into its box, the rule is 12 sp thick and may go 20 sp out
+      let cfg = settings {physicalPagePitch = 20, physicalCapacity = 200, physicalMaxCapacity = 200}
+          heading = FRuled 200 (Just (RuleSide 0 0 12 False (Just 20))) Nothing False (RuleGrid 20 10) 0 (RuledHeading False 20 [line 1])
+      ps <- either (assertFailure . show) pure (paginatePhysical cfg [FParagraph defaultKeep [line 0], heading])
+      [r | p <- ps, r <- freeRulesOverFaces cfg (const 12) p] @?= []
+      [r | p <- ps, r <- freeRulesOutOfEdge cfg (const 12) p] @?= [],
+    testCase "golem-driver ADR 0027, root ADR 0397 I8, I11: the rules of ruled headings and paragraphs lie off every face and go out of the column only at its edge" $
+      sequence_
+        [ case paginatePhysical cfg flows of
+            Left failure -> assertFailure (show (c, map showFlow flows, failure))
+            Right ps -> do
+              let shown = (c, inner, outer, w, spaced, map showFlow flows, [(poNumber p, poSlots p, poRules p) | p <- ps])
+              assertBool ("over a face: " <> show shown) (all (null . freeRulesOverFaces cfg (const w)) ps)
+              assertBool ("out of the column: " <> show shown) (all (null . freeRulesOutOfEdge cfg (const w)) ps)
+        | c <- [60, 100, 200],
+          -- nothing, one or two lines, a heading, or a ruled paragraph whose rule after the block joins
+          leadKind <- [0 .. 4 :: Int],
+          inner <- [0, 2],
+          outer <- [0, 4],
+          w <- [1, 12],
+          spaced <- [False, True],
+          i <- [100, 200],
+          (b, a) <- [(True, False), (False, True), (True, True)],
+          body <- [RuledLines defaultKeep [line 10], RuledLines defaultKeep [line 10, line 11], RuledHeading False 20 [line 10], RuledHeading False 40 [line 10, line 11]],
+          let side = RuleSide inner outer w spaced (if i >= 200 then Just 20 else Nothing)
+              guardB x = if x then Just side else Nothing
+              cfg = settings {physicalPagePitch = 20, physicalCapacity = c, physicalMaxCapacity = c}
+              lead = case leadKind of
+                0 -> []
+                1 -> [FParagraph defaultKeep [line 0]]
+                2 -> [FParagraph defaultKeep [line 0, line 1]]
+                3 -> [FHeading 2 False 20 [line 2]]
+                _ -> [FRuled 50 Nothing (Just side {rsdOutside = Nothing}) False (RuleGrid 20 10) 0 (RuledLines defaultKeep [line 0])]
+              flows = lead <> [FRuled i (guardB b) (guardB a) (leadKind == 4) (RuleGrid 20 10) 0 body, FParagraph defaultKeep [line 40]]
+        ],
+    testCase "root ADR 0397 I11, golem-driver ADR 0027: the rule after of a ruled heading in the middle of a column takes the interior extra with its outer space and the next line's overhang" $ do
+      -- pitch 20 sp, face 10 sp: the heading's face ends at 15 sp, the next face starts 5 sp into its box, g = 10 sp
+      let cfg = settings {physicalPagePitch = 20, physicalCapacity = 200, physicalMaxCapacity = 200}
+          heading side r = FRuled 5 Nothing (Just side) False (RuleGrid 20 10) r (RuledHeading False 20 [line 0])
+          placed side r = fmap (map (\p -> (poSlots p, poRules p))) (paginatePhysical cfg [heading side r, FParagraph defaultKeep [line 1]])
+      -- spaced: i 4 + w 2 + o 6 + r 3 - g 10 = 5 sp; the rule 4 sp off the face
+      placed (RuleSide 4 6 2 True Nothing) 3 @?= Right [([(0, SHeading 0 1), (25, SLine 1)], [PlacedRule 5 False 19])]
+      -- unspaced: w 12 + r 3 - g 10 = 5 sp; the rule in the middle of the 15 sp less the overhang and the weight
+      placed (RuleSide 0 0 12 False Nothing) 3 @?= Right [([(0, SHeading 0 1), (25, SLine 1)], [PlacedRule 5 False 15])]
+      -- no extra when the gap holds the rule, its spaces and the overhang
+      placed (RuleSide 2 2 1 True Nothing) 0 @?= Right [([(0, SHeading 0 1), (20, SLine 1)], [PlacedRule 5 False 17])],
+    testCase "root ADR 0397 I8, I11, golem-driver ADR 0027: the rule after of a ruled heading at the end of the column drops its outer space" $ do
+      -- the interior extra 5 sp would end the area 2 sp past the column end of 23 sp; the end-of-column extra max 0 (4 + 2 - 5) = 1 sp fits
+      let cfg = settings {physicalPagePitch = 20, physicalCapacity = 23, physicalMaxCapacity = 23}
+          heading = FRuled 5 Nothing (Just (RuleSide 4 6 2 True Nothing)) False (RuleGrid 20 10) 3 (RuledHeading False 20 [line 0])
+      fmap (map (\p -> (poSlots p, poRules p))) (paginatePhysical cfg [heading, FParagraph defaultKeep [line 1]])
+        @?= Right [([(0, SHeading 0 1)], [PlacedRule 5 False 19]), ([(0, SLine 1)], [])],
+    testCase "root ADR 0397 I8, I11, golem-driver ADR 0027: the rules after of ruled headings and paragraphs lie in the column, off every face, and take the interior extra in the middle of a column" $
+      sequence_
+        [ case paginatePhysical cfg flows of
+            Left failure -> assertFailure (show (c, map showFlow flows, failure))
+            Right ps -> do
+              let shown = (c, inner, outer, w, spaced, r, map showFlow flows, [(poNumber p, poSlots p, poRules p) | p <- ps])
+                  rules = [(p, rule) | p <- ps, rule <- poRules p, prId rule == 100, not (prBefore rule)]
+              assertBool ("over a face: " <> show shown) (all (null . freeRulesOverFaces cfg (const w)) ps)
+              assertBool ("out of the column: " <> show shown) (all (null . freeRulesOutOfColumn cfg w) ps)
+              -- an empty column that cannot hold the heading with its rule at the column end drops the rule (golem-driver ADR 0035)
+              assertEqual ("rules after: " <> show shown) (if extentOf body + max 0 (i' + w - 5) > c then 0 else 1) (length rules)
+              -- in the middle of a column the next line starts where the interior extra puts it
+              sequence_
+                [ assertEqual ("interior extra: " <> show shown) (headingEnd + interior) nextAt
+                | (p, rule) <- rules,
+                  (headingAt, SHeading 0 _) <- poSlots p,
+                  let headingEnd = headingAt + extentOf body
+                      interior = max 0 (i' + w + o' + r - 10),
+                  headingEnd + interior <= c,
+                  prAt rule + w <= c,
+                  (nextAt, SLine 40) <- poSlots p
+                ]
+        | c <- [40, 43, 45, 50, 60, 100],
+          leadKind <- [0 .. 2 :: Int],
+          inner <- [0, 4],
+          outer <- [0, 6],
+          w <- [1, 12],
+          spaced <- [False, True],
+          r <- [0, 3],
+          body <- [RuledHeading False 20 [line 0], RuledHeading False 40 [line 0, line 1]],
+          let side = RuleSide (if spaced then inner else 0) (if spaced then outer else 0) w spaced Nothing
+              cfg = settings {physicalPagePitch = 20, physicalCapacity = c, physicalMaxCapacity = c}
+              lead = case leadKind of
+                0 -> []
+                1 -> [FParagraph defaultKeep [line 30]]
+                _ -> [FParagraph defaultKeep [line 30, line 31]]
+              i' = rsdInner side
+              o' = rsdOuter side
+              flows = lead <> [FRuled 100 Nothing (Just side) False (RuleGrid 20 10) r body, FParagraph defaultKeep [line 40]]
+        ],
+    testCase "root ADR 0449 I1: in the free placement, a ruled paragraph or heading and the ruled paragraph or heading right after it in the same column share one area at the places of the shared formula" $
+      sequence_
+        [ case paginatePhysical (adjacentFreeSettings ad) (adjacentFree ad) of
+            Left failure -> assertFailure (show (ad, failure))
+            Right ps -> assertBool (show (ad, [(poNumber p, poSlots p, poRules p) | p <- ps])) (freeShared ad ps /= Just False)
+        | ad <- adjacentCases,
+          not (adSpace ad)
+        ],
+    testCase "root ADR 0449 I2: in the free placement, the rules of two adjacent ruled blocks do not overlap" $
+      sequence_
+        [ case paginatePhysical (adjacentFreeSettings ad) (adjacentFree ad) of
+            Left failure -> assertFailure (show (ad, failure))
+            Right ps -> assertBool (show (ad, [(poNumber p, poSlots p, poRules p) | p <- ps])) (all (null . rulesOverlap ad) ps)
+        | ad <- adjacentCases
+        ],
+    testCase "root ADR 0449 I3: when the second block goes on in the column of the first in both placements, both share the area of the two rules or neither does" $
+      sequence_
+        [ case (gridShared ad (paginate 1 (adCapacity ad) (adjacentGrid ad)), paginatePhysical (adjacentFreeSettings ad) (adjacentFree ad)) of
+            (_, Left failure) -> assertFailure (show (ad, failure))
+            (grid, Right ps) -> case (grid, freeShared ad ps) of
+              (Just inGrid, Just inFree) -> assertEqual (show (ad, [(poNumber p, poSlots p, poRules p) | p <- ps])) inGrid inFree
+              _ -> pure ()
+        | ad <- adjacentCases
+        ]
+  ]
+  where
+    flowLinesOf = \case
+      FRuled {frBody = RuledLines _ ls} -> ls
+      FParagraph _ ls -> ls
+      _ -> []
+    showFlow = \case
+      FRuled {frId = i, frBefore = b, frAfter = a, frJoined = j, frBody = body} -> "R" <> show i <> ":" <> concatMap (\x -> if x then "1" else "0") [isJust b, isJust a, j] <> ":" <> either' body
+      FParagraph _ ls -> "P" <> show (map lbId ls) <> show (sum [m | l <- ls, NoteBody _ m <- lbNotes l])
+      _ -> "?"
+    extentOf = \case
+      RuledHeading _ m _ -> m
+      RuledLines _ ls -> 20 * fromIntegral (length ls)
+    either' = \case
+      RuledLines _ ls -> "L" <> show (length ls)
+      RuledHeading _ m _ -> "H" <> show m
+
+{- | Root ADR 0450: in the free placement, the rule after at the end of a
+column of keep-in-column = false goes out of the column, with no extra,
+when its place right after the last line (i from the end of the face when
+spaced, else the later of the end of the line box and of the face) is at
+or past the end of the column, the column has no notes and the rule
+reaches past the end no further than the room outside (20 sp for the
+blocks of id 200 or more); then the column closes. The pitch is 20 sp and
+the face 10 sp, which starts 5 sp into its line box.
+-}
+outsideRuleTests :: [TestTree]
+outsideRuleTests =
+  [ testCase "root ADR 0450 I1, I2, I4: an unspaced rule after whose line box ends at the column end goes out of the column there, and the column closes" $
+      placed 40 [FParagraph defaultKeep [line 0], ruledOf 200 thin, FParagraph defaultKeep [line 2]]
+        @?= Right [([(0, SLine 0), (20, SLine 10)], [PlacedRule 200 False 40]), ([(0, SLine 2)], [])],
+    testCase "root ADR 0450 I3: an unspaced rule after whose line box ends 1 sp before the column end stays in the column" $
+      placed 41 [FParagraph defaultKeep [line 0], ruledOf 200 thin, FParagraph defaultKeep [line 2]]
+        @?= Right [([(0, SLine 0), (20, SLine 10)], [PlacedRule 200 False 39]), ([(0, SLine 2)], [])],
+    testCase "root ADR 0450 I1, I2, I4: a spaced rule after whose face end and inner space reach the column end exactly goes out of the column, and the column closes before a line that fits the rest" $
+      -- the face of line 10 ends at 35 sp, the rule 8 sp after it at 43 sp; line 2 of 3 sp would fit the 3 sp left
+      placedWith (Map.singleton 2 3) 43 [FParagraph defaultKeep [line 0], ruledOf 200 (spacedOut 8), FParagraph defaultKeep [line 2]]
+        @?= Right [([(0, SLine 0), (20, SLine 10)], [PlacedRule 200 False 43]), ([(0, SLine 2)], [])],
+    testCase "root ADR 0450 I3: a spaced rule after whose place is 1 sp before the column end stays in the column with its extra" $
+      -- the extra 8 + 1 - 5 = 4 sp ends the block at 44 sp
+      placed 44 [FParagraph defaultKeep [line 0], ruledOf 200 (spacedOut 8), FParagraph defaultKeep [line 2]]
+        @?= Right [([(0, SLine 0), (20, SLine 10)], [PlacedRule 200 False 43]), ([(0, SLine 2)], [])],
+    testCase "root ADR 0450 I3: a rule after of keep-in-column = true stays in the column" $
+      placed 40 [FParagraph defaultKeep [line 0], ruledOf 100 thin, FParagraph defaultKeep [line 2]]
+        @?= Right [([(0, SLine 0), (20, SLine 10)], [PlacedRule 100 False 39]), ([(0, SLine 2)], [])],
+    testCase "root ADR 0450 I3: a rule after in a column with notes stays in the column, above the notes" $
+      -- 60 sp: the note of line 0 takes 20 sp, the column ends at 40 sp
+      placed 60 [FParagraph defaultKeep [noteLine 0], ruledOf 200 thin, FParagraph defaultKeep [line 2]]
+        @?= Right [([(0, SLine 0), (20, SLine 10)], [PlacedRule 200 False 39]), ([(0, SLine 2)], [])],
+    testCase "root ADR 0450 I1, I4: the rule after of a ruled heading that ends the column at its end goes out of the column" $
+      placed 40 [FParagraph defaultKeep [line 0], FRuled 200 Nothing (Just thin) False (RuleGrid 20 10) 0 (RuledHeading False 20 [line 10])]
+        @?= Right [([(0, SLine 0), (20, SHeading 10 1)], [PlacedRule 200 False 40])],
+    testCase "root ADR 0450 I1, I4: a rule after that the next block cannot share goes out of the column at its end" $
+      placed 40 [FParagraph defaultKeep [line 0], ruledOf 200 thin, FRuled 201 (Just thin) Nothing True (RuleGrid 20 10) 0 (RuledLines defaultKeep [line 20, line 21])]
+        @?= Right [([(0, SLine 0), (20, SLine 10)], [PlacedRule 200 False 40]), ([(0, SLine 20), (20, SLine 21)], [PlacedRule 201 True (-1)])],
+    testCase "root ADR 0450 I1, I2, I3, I4: the rules after of ruled paragraphs and headings at the end of a column go out of it exactly when the three conditions hold, and close the column" $
+      sequence_
+        [ case paginatePhysical cfg flows of
+            Left failure -> assertFailure (show (c, kind, side, out, leadKind, nextKind, failure))
+            Right ps -> sequence_ [check (c, kind, side, out, leadKind, nextKind, [(poNumber q, poSlots q, poRules q, poFootnotes q) | q <- ps]) cfg ident kind side p | p <- ps]
+        | c <- [40, 41, 43, 44, 48, 60, 61, 63, 64, 68, 80, 83],
+          kind <- [0 .. 3 :: Int],
+          side <- [thin {rsdOutside = Nothing}, RuleSide 0 0 12 False Nothing, RuleSide 0 0 1 True Nothing, RuleSide 5 0 1 True Nothing, RuleSide 8 3 2 True Nothing, RuleSide 8 0 12 True Nothing, RuleSide 25 0 1 True Nothing],
+          out <- [False, True],
+          leadKind <- [0 .. 3 :: Int],
+          nextKind <- [0 .. 2 :: Int],
+          let ident = if out then 200 else 100
+              sideOut = side {rsdOutside = if out then Just 20 else Nothing}
+              cfg = settings {physicalPagePitch = 20, physicalCapacity = c, physicalMaxCapacity = c, physicalSeparator = 0}
+              lead = case leadKind of
+                0 -> []
+                1 -> [FParagraph defaultKeep [line 0]]
+                2 -> [FParagraph defaultKeep [line 0, line 1]]
+                _ -> [FParagraph defaultKeep [noteLine 0]]
+              body = case kind of
+                0 -> RuledLines defaultKeep [line 10]
+                1 -> RuledLines defaultKeep [line 10, line 11]
+                2 -> RuledHeading False 20 [line 10]
+                _ -> RuledHeading False 40 [line 10, line 11]
+              next = case nextKind of
+                0 -> []
+                1 -> [FParagraph defaultKeep [line 40]]
+                _ -> [FRuled (ident + 1) (Just sideOut) Nothing True (RuleGrid 20 10) 0 (RuledLines defaultKeep [line 20, line 21]), FParagraph defaultKeep [line 40]]
+              flows = lead <> [FRuled ident Nothing (Just sideOut) False (RuleGrid 20 10) 0 body] <> next
+        ]
+  ]
+  where
+    thin = RuleSide 0 0 1 False (Just 20)
+    spacedOut i = RuleSide i 0 1 True (Just 20)
+    ruledOf ident side = FRuled ident Nothing (Just side {rsdOutside = if ident >= 200 then rsdOutside side else Nothing}) False (RuleGrid 20 10) 0 (RuledLines defaultKeep [line 10])
+    placed = placedWith Map.empty
+    placedWith pitches c flows = fmap (map (\p -> (poSlots p, poRules p))) (paginatePhysical settings {physicalPagePitch = 20, physicalCapacity = c, physicalMaxCapacity = c, physicalPitches = pitches, physicalSeparator = 0} flows)
+    check shown cfg ident kind side p =
+      let end = columnEnd cfg p
+          w = rsdWeight side
+          extentOf = \case
+            SLine n -> Map.findWithDefault 20 n (physicalPitches cfg)
+            SHeading 10 _ -> if kind == 2 then 20 else 40
+            _ -> 0
+          -- the start of the last line box of the block
+          lastBox = case kind of
+            0 -> [s | (s, SLine 10) <- poSlots p]
+            1 -> [s | (s, SLine 11) <- poSlots p]
+            2 -> [s | (s, SHeading 10 _) <- poSlots p]
+            _ -> [s + 20 | (s, SHeading 10 _) <- poSlots p]
+          rules = [prAt r | r <- poRules p, prId r == ident, not (prBefore r)]
+       in case lastBox of
+            [s] -> do
+              let place = if rsdSpaced side then s + 15 + rsdInner side else s + 20
+                  eligible = ident >= 200 && null (poFootnotes p) && place >= end && place + w - end <= 20
+              if eligible
+                then do
+                  assertEqual ("I1, out of the column: " <> show shown) [place] rules
+                  assertBool ("I2, I4, nothing after the rule: " <> show shown) (and [at + extentOf slot <= place && at <= s | (at, slot) <- poSlots p])
+                else assertBool ("I3, in the column: " <> show shown) (and [at >= 0 && at + w <= end | at <- rules])
+            _ -> pure ()

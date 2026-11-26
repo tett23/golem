@@ -18,11 +18,15 @@ import Data.Text.Encoding qualified as TE
 import Data.Text.IO qualified as TIO
 import FeaturesSpec qualified
 import FilesSpec qualified
+import FontLicensesSpec qualified
+import FramesSpec qualified
 import FunctionsSpec qualified
+import GenericFontsSpec qualified
 import Golem.Assemble (NoteNumbering (..))
 import Golem.Assemble.Formats (MarkFormat (..), arabic, asterisksNotation, circledNotation, kanjiNotation, lowerAlphaNotation, notationName, noteSymbolsNotation)
 import Golem.Assemble.ListMarkers (ListNumberStyle (..), NumberFormat (..))
 import Golem.Length qualified as L
+import Golem.Parser (parseAst)
 import Golem.Parser.SourceSettings
 import Golem.Project hiding (loadProject)
 import Golem.Project qualified as P
@@ -31,12 +35,15 @@ import Golem.Project.Style
 import Golem.Syntax
 import Golem.TestSupport.PackageDirectory (enterPackageDirectory)
 import HyphenationExceptionsSpec qualified
+import KeepPartsSpec qualified
 import NaturalKeySpec qualified
 import OutputCharsSpec qualified
 import ParagraphPitchSpec qualified
+import PathDataSpec qualified
 import PositionSpec qualified
 import SharedValuesSpec qualified
 import SinglePageSpec qualified
+import StyleCauseCodesSpec qualified
 import StylePositionSpec qualified
 import StyleSchemaSpec qualified
 import System.Directory (createDirectoryIfMissing, createFileLink)
@@ -156,8 +163,8 @@ sourceTests =
       testCase "a chapter entry overrides [source]; imported files take [source]"
         $ withProject
           [ ("manifest.toml", manifestWith ["\"a.gm\"", "{ file = \"b.gm\", paragraph-separator = \"blank-line\" }"] "[source]\nparagraph-separator = \"line\"\n"),
-            ("a.gm", "@import c.gm as c\n"),
-            ("b.gm", "@import c.gm as c\n"),
+            ("a.gm", "@import c.gm * as c\n"),
+            ("b.gm", "@import c.gm * as c\n"),
             ("c.gm", "@set x = 1\n")
           ]
         $ \root -> do
@@ -181,6 +188,8 @@ silenceTests =
     "[diagnostics] silence-notices (golem-syntax ADR 0002)"
     [ testCase "the codes of notices are read" $
         fmap manifestSilencedNotices (parse "[diagnostics]\nsilence-notices = [\"G02062\"]\n") @?= Right (Set.fromList [DiagnosticCode "G02062"]),
+      testCase "root ADR 0401: the retention notice G07133 can be silenced" $
+        fmap manifestSilencedNotices (parse "[diagnostics]\nsilence-notices = [\"G07133\"]\n") @?= Right (Set.fromList [DiagnosticCode "G07133"]),
       testCase "the notice of .emet E02109 is read (docs/adr/0160)" $
         fmap manifestSilencedNotices (parse "[diagnostics]\nsilence-notices = [\"E02109\"]\n") @?= Right (Set.fromList [DiagnosticCode "E02109"]),
       testCase "ADR 0344 I4: retired notice codes are not accepted in silence-notices" $
@@ -432,6 +441,27 @@ pdfConformanceTests =
   where
     parse extra = parseManifest (FileId 0) (manifestWith ["\"a.gm\""] ("[targets.pdf]\n" <> extra))
     conformance t = (tgPdfA t, tgPdfUa t)
+
+-- | [targets.pdf-screen] (root ADR 0431).
+pdfScreenTableTests :: TestTree
+pdfScreenTableTests =
+  testGroup
+    "[targets.pdf-screen] (root ADR 0431)"
+    [ testCase "root ADR 0431 I8: a manifest with [targets.pdf-screen] alone is not G03001" $
+        fmap (tgPdfScreen . manifestTargets) (alone "") @?= Right (Just Nothing),
+      testCase "root ADR 0431 I8: pdfua = \"1\" is read" $
+        fmap (tgPdfScreen . manifestTargets) (alone "pdfua = \"1\"\n") @?= Right (Just (Just PdfUa1)),
+      testCase "root ADR 0431 I8: a key other than pdfua, and a pdfua other than \"1\", are G03001" $
+        mapM_
+          (\v -> (v, codes (alone v)) @?= (v, ["G03001"]))
+          ["pdfa = \"2a\"\n", "pdfua = \"2\"\n", "pdfua = 1\n", "isbn = \"978-4-00-000000-0\"\n", "intent = \"x.icc\"\n"],
+      testCase "root ADR 0431 I8: without [targets.pdf-screen] the PDF for the screen is not configured" $
+        fmap (tgPdfScreen . manifestTargets) (parseManifest (FileId 0) (manifest ["\"a.gm\""])) @?= Right Nothing,
+      testCase "root ADR 0431 I8: pdfua of [targets.pdf-screen] is completed with \"1\"" $
+        manifestChoiceValues ["targets", "pdf-screen", "pdfua"] False @?= ["1"]
+    ]
+  where
+    alone extra = parseManifest (FileId 0) (T.replace "[targets.html]" ("[targets.pdf-screen]\n" <> extra) (manifest ["\"a.gm\""]))
 
 -- | A plugin in the project, declared with path (docs/adr/0109).
 pluginPathTests :: TestTree
@@ -687,25 +717,25 @@ diagnosticCodeTests =
           codes r @?= ["G03016"]
           msgs r @?= ["manifest.toml がありません"],
       testCase "a missing import is G03002 at the @import" $
-        withProject [("manifest.toml", manifest ["\"a.gm\""]), ("a.gm", "@import c.gm as c\n@import nope.gm as x\n"), ("c.gm", "")] $ \root -> do
+        withProject [("manifest.toml", manifest ["\"a.gm\""]), ("a.gm", "@import c.gm * as c\n@import nope.gm * as x\n"), ("c.gm", "")] $ \root -> do
           r <- loadProject root
           codes r @?= ["G03002"]
           msgs r @?= ["ファイルがありません: nope.gm"]
-          either (map (\d -> (spanFile (diagSpan d), spanStart (diagSpan d)))) (const []) r @?= [(FileId 1, 18)],
+          either (map (\d -> (spanFile (diagSpan d), spanStart (diagSpan d)))) (const []) r @?= [(FileId 1, 20)],
       testCase "absolute paths and links out of the root are G03003" $ do
-        withProject [("manifest.toml", manifest ["\"a.gm\""]), ("a.gm", "@import /abs.gm as x\n")] $ \root -> do
+        withProject [("manifest.toml", manifest ["\"a.gm\""]), ("a.gm", "@import /abs.gm * as x\n")] $ \root -> do
           r <- loadProject root
           codes r @?= ["G03003"]
           msgs r @?= ["絶対パスは使えません: /abs.gm"]
         withSystemTempDirectory "golem-outside" $ \outside -> do
           TIO.writeFile (outside </> "x.gm") ""
-          withProject [("manifest.toml", manifest ["\"a.gm\""]), ("a.gm", "@import x.gm as x\n")] $ \root -> do
+          withProject [("manifest.toml", manifest ["\"a.gm\""]), ("a.gm", "@import x.gm * as x\n")] $ \root -> do
             createFileLink (outside </> "x.gm") (root </> "x.gm")
             r <- loadProject root
             codes r @?= ["G03003"]
             msgs r @?= ["プロジェクトルートの外を指しています: x.gm"],
       testCase "a cycle of three files" $
-        withProject [("manifest.toml", manifest ["\"a.gm\""]), ("a.gm", "@import b.gm as b\n"), ("b.gm", "@import c.gm as c\n"), ("c.gm", "@import a.gm as a\n")] $ \root -> do
+        withProject [("manifest.toml", manifest ["\"a.gm\""]), ("a.gm", "@import b.gm * as b\n"), ("b.gm", "@import c.gm * as c\n"), ("c.gm", "@import a.gm * as a\n")] $ \root -> do
           r <- loadProject root
           codes r @?= ["G03005"]
           msgs r @?= ["import が循環しています: a.gm → b.gm → c.gm → a.gm"]
@@ -731,19 +761,76 @@ diagnosticCodeTests =
           r <- loadProject root
           codes r @?= ["G03001"]
           msgs r @?= ["章は、ファイルのパス、表、配列のどれかで書きます (chapters[0])"],
-      testCase "a malformed @import is G03009" $
+      testCase "root ADR 0451 I6: a malformed @import is G03009" $
         mapM_
           ( \src -> withProject [("manifest.toml", manifest ["\"a.gm\""]), ("a.gm", src), ("x.gm", "")] $ \root -> do
               r <- loadProject root
               assertEqual (T.unpack src) ["G03009"] (codes r)
-              assertEqual (T.unpack src) ["@import は「@import パス as 名前空間」の形で書きます"] (msgs r)
+              assertEqual (T.unpack src) ["@import は「@import パス * as 名前空間」か「@import パス { 名前, 名前 as 別名, … }」の形で書きます"] (msgs r)
           )
           [ "@import x.gm\n",
             "@import x.gm as\n",
-            "@import [= 1] as x\n",
+            "@import [= 1] * as x\n",
             "@import x.gm as x extra\n",
-            "@import x.gm\n@label a\n# 見出し\n"
+            "@import x.gm * as x extra\n",
+            "@import x.gm\n@label a\n# 見出し\n",
+            "@import x.gm { }\n",
+            "@import x.gm {}\n",
+            "@import x.gm { a, }\n",
+            "@import x.gm { , a }\n",
+            "@import x.gm { a,, b }\n",
+            "@import x.gm * { a }\n",
+            "@import x.gm { a } as ns\n",
+            "@import x.gm *\n",
+            "@import x.gm { a b }\n",
+            "@import x.gm { a\n",
+            "@import x.gm a }\n",
+            "@import x.gm { a } }\n",
+            "@import x.gm { \"a\" }\n"
           ],
+      testCase "root ADR 0451 I5: the form without * is G03295, with the form to write" $
+        mapM_
+          ( \(src, shown) -> withProject [("manifest.toml", manifest ["\"a.gm\""]), ("a.gm", src), ("x.gm", "")] $ \root -> do
+              r <- loadProject root
+              assertEqual (T.unpack src) ["G03295"] (codes r)
+              assertEqual (T.unpack src) ["「@import パス as 名前空間」の形は使えません。「@import " <> shown <> " * as x」と書きます"] (msgs r)
+          )
+          [("@import x.gm as x\n", "x.gm"), ("@import \"x.gm\" as x\n", "\"x.gm\"")],
+      testCase "root ADR 0451 I6: the two forms are read, with the places of the names" $ do
+        let sitesOf src = let (f, _, _) = parseAst (FileId 1) src in [fmap (\s -> (isPath s, isForm s)) e | e <- importsOf f]
+            at = mkSpan (FileId 1)
+        sitesOf "@import x.gm * as v\n" @?= [Right ("x.gm", ImportAll "v" (at 18 19))]
+        sitesOf "@import x.gm { a }\n" @?= [Right ("x.gm", ImportNames [listedName "a" (at 15 16)])]
+        sitesOf "@import x.gm { a, bc }\n" @?= [Right ("x.gm", ImportNames [listedName "a" (at 15 16), listedName "bc" (at 18 20)])]
+        sitesOf "@import x.gm {a,bc}\n" @?= [Right ("x.gm", ImportNames [listedName "a" (at 14 15), listedName "bc" (at 16 18)])]
+        sitesOf "@import x.gm {a ,bc }\n" @?= [Right ("x.gm", ImportNames [listedName "a" (at 14 15), listedName "bc" (at 17 19)])]
+        sitesOf "@import \"x.gm\" { 値 }\n" @?= [Right ("x.gm", ImportNames [listedName "値" (at 17 20)])],
+      testCase "root ADR 0458 I4: an item is an original name and an alias, read by place" $ do
+        let itemsOf src = let (f, _, _) = parseAst (FileId 1) src in [fmap (map (\l -> (lnName l, lnAlias l)) . namesOf) e | e <- importsOf f]
+            namesOf s = case isForm s of
+              ImportNames ns -> ns
+              ImportAll _ _ -> []
+            at = mkSpan (FileId 1)
+        itemsOf "@import x.gm { as }\n" @?= [Right [("as", "as")]]
+        itemsOf "@import x.gm { as as b }\n" @?= [Right [("as", "b")]]
+        itemsOf "@import x.gm { a as as }\n" @?= [Right [("a", "as")]]
+        itemsOf "@import x.gm { a, as }\n" @?= [Right [("a", "a"), ("as", "as")]]
+        itemsOf "@import x.gm { a as b, c }\n" @?= [Right [("a", "b"), ("c", "c")]]
+        itemsOf "@import x.gm {a as b,c as d}\n" @?= [Right [("a", "b"), ("c", "d")]]
+        itemsOf "@import x.gm { fooasbar }\n" @?= [Right [("fooasbar", "fooasbar")]]
+        itemsOf "@import x.gm { total as total }\n" @?= [Right [("total", "total")]]
+        let (f, _, _) = parseAst (FileId 1) "@import x.gm { ab as cd, e }\n"
+        [isForm s | Right s <- importsOf f] @?= [ImportNames [ListedName "ab" (at 15 17) "cd" (at 21 23), listedName "e" (at 25 26)]],
+      testCase "root ADR 0458 I4: a list that breaks the reading by place is G03009" $
+        mapM_
+          ( \src -> withProject [("manifest.toml", manifest ["\"a.gm\""]), ("a.gm", src), ("x.gm", "")] $ \root -> do
+              r <- loadProject root
+              assertEqual (T.unpack src) ["G03009"] (codes r)
+          )
+          ["@import x.gm { a as }\n", "@import x.gm { a as b as c }\n", "@import x.gm { a b }\n", "@import x.gm { as as }\n", "@import x.gm { a as b c }\n", "@import x.gm { as b }\n", "@import x.gm { a as, b }\n"],
+      testCase "root ADR 0451 I6: both forms load in a project" $
+        withProject [("manifest.toml", manifest ["\"a.gm\""]), ("a.gm", "@import x.gm * as x\n@import x.gm { y }\n"), ("x.gm", "@set y = 1\n")] $ \root ->
+          loadProject root >>= (@?= []) . codes,
       testCase "a TOML syntax error in style.toml is G03006" $ do
         let r = parseStyle (FileId 0) "[page\n"
         codes r @?= ["G03006"]
@@ -800,6 +887,12 @@ tests =
         normalizeRelative "../x.gm" @?= Left EscapesRoot
         normalizeRelative "/etc/passwd" @?= Left Absolute
         normalizeRelative "https://example.com/a.gm" @?= Left Url,
+      testCase "root ADR 0439 I7: a path of the scheme data: is a URL, in any case" $ do
+        normalizeRelative "data:image/svg+xml,<svg></svg>" @?= Left Url
+        normalizeRelative "DATA:image/png,x" @?= Left Url
+        normalizeRelative "data" @?= Right "data"
+        normalizeRelative "data/a.svg" @?= Right "data/a.svg"
+        normalizeRelative "images/data:a.svg" @?= Right "images/data:a.svg",
       testCase "F4: normalizeRelative makes the empty path the empty path (docs/adr/0225)" $ do
         normalizeRelative "" @?= Right ""
         normalizeRelative "." @?= Right ""
@@ -807,10 +900,10 @@ tests =
       testCase "loads chapters and imports in a deterministic order"
         $ withProject
           [ ("manifest.toml", manifest ["\"ch/01.gm\"", "[\"ch/02.gm\", { file = \"ch/03.gm\", master = \"body\" }]"]),
-            ("ch/01.gm", "@import common/v.gm as v\n\n本文。\n"),
-            ("ch/02.gm", "@import common/v.gm as v\n@import common/w.gm as w\n"),
+            ("ch/01.gm", "@import common/v.gm * as v\n\n本文。\n"),
+            ("ch/02.gm", "@import common/v.gm * as v\n@import common/w.gm * as w\n"),
             ("ch/03.gm", "三。\n"),
-            ("common/v.gm", "@import common/w.gm as w\n@set x = 1\n"),
+            ("common/v.gm", "@import common/w.gm * as w\n@set x = 1\n"),
             ("common/w.gm", "@set y = 2\n")
           ]
         $ \root -> do
@@ -828,8 +921,8 @@ tests =
       testCase "import cycles are reported with their path"
         $ withProject
           [ ("manifest.toml", manifest ["\"a.gm\""]),
-            ("a.gm", "@import b.gm as b\n"),
-            ("b.gm", "@import a.gm as a\n")
+            ("a.gm", "@import b.gm * as b\n"),
+            ("b.gm", "@import a.gm * as a\n")
           ]
         $ \root -> do
           r <- loadProject root
@@ -838,17 +931,17 @@ tests =
             Left [d] -> length (diagRelated d) @?= 2
             _ -> pure (),
       testCase "self import is a cycle" $
-        withProject [("manifest.toml", manifest ["\"a.gm\""]), ("a.gm", "@import a.gm as a\n")] $ \root ->
+        withProject [("manifest.toml", manifest ["\"a.gm\""]), ("a.gm", "@import a.gm * as a\n")] $ \root ->
           loadProject root >>= (@?= ["G03005"]) . codes,
       testCase "missing files, escaping paths, URLs" $ do
         withProject [("manifest.toml", manifest ["\"nope.gm\""])] $ \root -> loadProject root >>= (@?= ["G03002"]) . codes
-        withProject [("manifest.toml", manifest ["\"a.gm\""]), ("a.gm", "@import ../x.gm as x\n")] $ \root -> loadProject root >>= (@?= ["G03003"]) . codes
-        withProject [("manifest.toml", manifest ["\"a.gm\""]), ("a.gm", "@import \"https://e.com/x.gm\" as x\n")] $ \root -> loadProject root >>= (@?= ["G03003"]) . codes,
+        withProject [("manifest.toml", manifest ["\"a.gm\""]), ("a.gm", "@import ../x.gm * as x\n")] $ \root -> loadProject root >>= (@?= ["G03003"]) . codes
+        withProject [("manifest.toml", manifest ["\"a.gm\""]), ("a.gm", "@import \"https://e.com/x.gm\" * as x\n")] $ \root -> loadProject root >>= (@?= ["G03003"]) . codes,
       testCase "case-only differences are errors"
         $ withProject
           [ ("manifest.toml", manifest ["\"a.gm\"", "\"b.gm\""]),
-            ("a.gm", "@import Common.gm as c\n"),
-            ("b.gm", "@import common.gm as c\n"),
+            ("a.gm", "@import Common.gm * as c\n"),
+            ("b.gm", "@import common.gm * as c\n"),
             ("Common.gm", "@set x = 1\n"),
             ("common.gm", "@set x = 1\n")
           ]
@@ -860,8 +953,8 @@ tests =
       testCase "symbolic links are resolved to the same file"
         $ withProject
           [ ("manifest.toml", manifest ["\"a.gm\"", "\"b.gm\""]),
-            ("a.gm", "@import real.gm as r\n"),
-            ("b.gm", "@import link.gm as r\n"),
+            ("a.gm", "@import real.gm * as r\n"),
+            ("b.gm", "@import link.gm * as r\n"),
             ("real.gm", "@set x = 1\n")
           ]
         $ \root -> do
@@ -879,13 +972,19 @@ tests =
       tomlMessageTests,
       TomlMessageSpec.tests,
       ColophonSpec.tests,
+      PathDataSpec.pathDataTests,
+      FramesSpec.tests,
       FeaturesSpec.tests,
+      GenericFontsSpec.tests,
+      FontLicensesSpec.tests,
+      KeepPartsSpec.tests,
       PositionSpec.tests,
       UnderlineSpec.tests,
       OutputCharsSpec.tests,
       SharedValuesSpec.tests,
       SinglePageSpec.tests,
       StylePositionSpec.tests,
+      StyleCauseCodesSpec.tests,
       StyleSchemaSpec.tests,
       HyphenationExceptionsSpec.tests,
       NaturalKeySpec.tests,
@@ -899,7 +998,7 @@ tests =
         parseDim "1H" @?= parseDim "0.25mm"
         parseDim "2zw" @?= Just (Zw 2)
         parseDim "3em" @?= Nothing,
-      testCase "ADR 0319 I1 I2: unitless zero is a typed zero" $ do
+      testCase "root ADR 0345 I1, I2: unitless zero is a typed zero" $ do
         map parseDim ["0", "-0", "0pt"] @?= replicate 3 (Just (Abs 0))
         map parseDim ["", "1", "0.0", "+0", "00"] @?= replicate 5 Nothing
         map parseAki ["0", "-0", "0pt"] @?= [Just 0, Just 0, Nothing]
@@ -907,7 +1006,7 @@ tests =
           Left ds -> assertFailure (show ds)
           Right _ -> pure ()
         codes (parseStyle (FileId 0) "[page]\nsize = \"A5\"\nbleed = \"0\"\n") @?= [],
-      testCase "ADR 0319 I1: zero reaches style length fields" $ do
+      testCase "root ADR 0345 I1: zero reaches style length fields" $ do
         mapM_
           (\src -> codes (parseStyle (FileId 0) src) @?= [])
           [ "[paragraph-styles.quote]\nindent = 0\nfirst-line-indent = \"-0\"\n",
@@ -920,7 +1019,7 @@ tests =
           ]
         let notices = styleNotices (FileId 0) "[paragraph-styles.table]\nindent = 0\n"
         map diagCode notices @?= [DiagnosticCode "G03100"],
-      testCase "ADR 0346 I1 I3: named length resolves after declarations" $ do
+      testCase "ADR 0346 I1, I3: named length resolves after declarations" $ do
         let src = "[paragraph-styles.quote]\nindent = \"indent\"\n[values.length]\nindent = \"1zw\"\n"
         case parseStyle (FileId 0) src of
           Left ds -> assertFailure (show ds)
@@ -942,11 +1041,26 @@ tests =
             source = declarations <> "[paragraph-styles.quote]\nkeep-with-next = \"v30\"\n"
         result <- timeout 5000000 (evaluate (either (const False) (\s -> (paraStyle s (Just "quote") >>= psKeepWithNext) == Just 0) (parseStyle (FileId 0) source)))
         result @?= Just True,
+      testCase "root ADR 0424 I2: undefined and mistyped names on the right of a declaration are G03257 and G03258 at the name" $ do
+        let located src = either (map (\d -> (diagCode d, spanStart (diagSpan d)))) (const []) (parseStyle (FileId 0) src)
+            at src needle = BS.length (TE.encodeUtf8 (fst (T.breakOn needle src)))
+            undefinedLength = "[values.length]\na = \"missing\"\n"
+            mistyped = "[values.aki]\nh = \"二分\"\n[values.length]\na = \"h\"\n"
+            undefinedCount = "[values.count]\nn = \"a+m\"\na = 1\n"
+            nested = "[values.length]\na = \"b\"\nb = \"missing\"\n"
+        located undefinedLength @?= [(DiagnosticCode "G03257", at undefinedLength "\"missing\"")]
+        located mistyped @?= [(DiagnosticCode "G03258", at mistyped "\"h\"")]
+        located undefinedCount @?= [(DiagnosticCode "G03257", at undefinedCount "\"a+m\"")]
+        located nested @?= [(DiagnosticCode "G03257", at nested "\"missing\"")],
+      testCase "root ADR 0424 I2: uses, cycles and wrong declared values keep their codes" $ do
+        codes (parseStyle (FileId 0) "[values.length]\na = \"3mm\"\n[paragraph-styles.quote]\nindent = \"x\"\n") @?= ["G03257"]
+        codes (parseStyle (FileId 0) "[values.length]\na = \"b\"\nb = \"a\"\n") @?= ["G03256"]
+        codes (parseStyle (FileId 0) "[values.length]\na = \"b\"\nb = \"3mx\"\n") @?= ["G03256"],
       testCase "ADR 0346 I3: invalid names and typed references have located errors" $ do
         codes (parseStyle (FileId 0) "[values.length]\nBad = \"1zw\"\n") @?= ["G03255"]
         codes (parseStyle (FileId 0) "[paragraph-styles.quote]\nindent = \"missing\"\n") @?= ["G03257"]
         codes (parseStyle (FileId 0) "[values.aki]\nhalf = \"二分\"\n[paragraph-styles.quote]\nindent = \"half\"\n") @?= ["G03258"],
-      testCase "ADR 0346 I3 I5: unused reserved names and count limits fail at declarations" $ do
+      testCase "ADR 0346 I3, I5: unused reserved names and count limits fail at declarations" $ do
         mapM_
           (\name -> codes (parseStyle (FileId 0) ("[values.length]\n" <> name <> " = \"1pt\"\n")) @?= ["G03255"])
           ["zw", "pt", "mm", "in", "Q", "H", "\"二分\""]
@@ -1010,12 +1124,13 @@ tests =
         fmap stNotesPlacement (parseStyle (FileId 0) "") @?= Right PlaceFoot
         fmap stNotesPlacement (parseStyle (FileId 0) "[notes]\nplacement = \"chapter-end\"\n") @?= Right PlaceChapterEnd
         codes (parseStyle (FileId 0) "[notes]\nchapter-end-title = \"注\"\n") @?= ["G03006"],
-      testCase "note mark size is set by its character style (ADR 0344 I1)" $
+      testCase "ADR 0344 I1: note mark size is set by its character style" $
         case parseStyle (FileId 0) "[character-styles.note-mark]\nsize = \"0.65zw\"\n" of
           Left ds -> assertFailure (show ds)
           Right s -> (csSize =<< Map.lookup "note-mark" (stCharStyles s)) @?= Just (Zw (65 % 100)),
       noteMarkTests,
       noteBodyStyleTests,
+      endnoteStyleTests,
       indentTests,
       listTests,
       characterFeatureTests,
@@ -1253,9 +1368,9 @@ tests =
         role "" @?= Right (Just (Nothing, []))
         role "instance = \"Bold\"\naxes = { wght = 650, wdth = 87.5, opsz = -1 }\n" @?= Right (Just (Just "Bold", [("opsz", -1), ("wdth", 87.5), ("wght", 650)]))
         role "axes = {}\n" @?= Right (Just (Nothing, [])),
-      testCase "ADR 0358: an instance that is not a string, axes that are not a table of finite numbers: G03006" $
-        forM_ ["instance = 3", "instance = [\"Bold\"]", "axes = 3", "axes = [650]", "axes = { wght = \"650\" }", "axes = { wght = true }", "axes = { wght = nan }", "axes = { wght = inf }", "axes = { wght = { v = 1 } }"] $ \kv ->
-          codes (parseStyle (FileId 0) ("[fonts.body]\nja = \"b.otf\"\n" <> kv <> "\n")) @?= ["G03006"],
+      testCase "ADR 0358: an instance that is not a string, axes that are not a table of finite numbers (root ADR 0413: G03260 to G03263)" $
+        forM_ [("instance = 3", "G03260"), ("instance = [\"Bold\"]", "G03260"), ("axes = 3", "G03261"), ("axes = [650]", "G03261"), ("axes = { wght = \"650\" }", "G03262"), ("axes = { wght = true }", "G03262"), ("axes = { wght = nan }", "G03263"), ("axes = { wght = inf }", "G03263"), ("axes = { wght = { v = 1 } }", "G03262")] $ \(kv, code) ->
+          codes (parseStyle (FileId 0) ("[fonts.body]\nja = \"b.otf\"\n" <> kv <> "\n")) @?= [code],
       testCase "character style fonts name font roles (golem-driver ADR 0004)" $
         codes (parseStyle (FileId 0) "[character-styles.term]\nfont = \"nope\"\n") @?= ["G03008"],
       styleTests,
@@ -1284,6 +1399,7 @@ tests =
       pluginDataTests,
       pluginPathTests,
       pdfConformanceTests,
+      pdfScreenTableTests,
       pageNumberingTests,
       indexStyleTests,
       hiddenFolioTests,
@@ -1319,7 +1435,7 @@ findCycleTests =
         order [(1, [2]), (2, [1]), (3, [])] @?= [3, 1, 2]
     ]
   where
-    site t = ImportSite (T.pack (show t)) "x" (mkSpan (FileId 0) 0 0)
+    site t = ImportSite (T.pack (show t)) (ImportAll "x" (mkSpan (FileId 0) 0 0)) (mkSpan (FileId 0) 0 0)
     graph es = ImportGraph (Map.fromList [(FileId f, [(FileId t, site t) | t <- ts]) | (f, ts) <- es])
     order :: [(Int, [Int])] -> [Int]
     order = map (\(FileId f) -> f) . topoOrder . graph
@@ -1511,6 +1627,44 @@ styleTests =
     messages = either (map (\d -> let DiagnosticCode c = diagCode d in c <> " " <> diagMessage d)) (const [])
     hasAll ms needles = assertBool (show ms) (not (null ms) && all (\n -> any (n `T.isInfixOf`) ms) needles)
 
+-- | The table [endnotes] of the endnotes, a channel apart from the notes (root ADR 0412).
+endnoteStyleTests :: TestTree
+endnoteStyleTests =
+  testGroup
+    "[endnotes] (root ADR 0412)"
+    [ testCase "root ADR 0412 I1: without [endnotes], the endnotes are numbered per chapter, marked {n} with note-mark, and take no other style" $ do
+        s <- parsed ""
+        let e = endnoteStyle s
+        (stNotesNumbering e, stNotesMarkFormat e, stNotesMarkStyle e) @?= (NumberPerChapter, MarkFormat "" arabic "", "note-mark")
+        (stNotesBodyMarkStyle e, stNotesMarkFlat e, stNotesBodyStyle e, stNotesHeadingStyle e) @?= (Nothing, False, Nothing, Nothing),
+      testCase "root ADR 0412 I1: the keys of [notes] are not inherited by the endnotes" $ do
+        s <- parsed "[paragraph-styles.small]\nsize = \"0.8zw\"\n[notes]\nnumbering = \"book\"\nmark-format = \"†{n}\"\nmark-style = \"strong\"\nbody-mark-style = \"strong\"\nmark-shape = \"flat\"\nbody-style = \"small\"\nheading-style = \"small\"\n[notes.chapter-end]\nbody-style = \"small\"\nheading-style = \"small\"\n"
+        let e = noteStyleFor PlaceChapterEnd (endnoteStyle s)
+        (stNotesNumbering e, stNotesMarkFormat e, stNotesMarkStyle e) @?= (NumberPerChapter, MarkFormat "" arabic "", "note-mark")
+        (stNotesBodyMarkStyle e, stNotesMarkFlat e, stNotesBodyStyle e, stNotesHeadingStyle e) @?= (Nothing, False, Nothing, Nothing),
+      testCase "root ADR 0412 I1: each key of [endnotes] is read as the key of [notes] of the same name" $ do
+        s <- parsed "[paragraph-styles.small]\nsize = \"0.8zw\"\n[endnotes]\nnumbering = \"file\"\nmark-format = \"［{n:kanji}］\"\nmark-style = \"strong\"\nbody-mark-style = \"bold\"\nmark-shape = \"flat\"\nbody-style = \"small\"\nheading-style = \"caption\"\n"
+        let e = endnoteStyle s
+        (stNotesNumbering e, stNotesMarkFormat e, stNotesMarkStyle e) @?= (NumberPerFile, MarkFormat "［" kanjiNotation "］", "strong")
+        (stNotesBodyMarkStyle e, stNotesMarkFlat e, stNotesBodyStyle e, stNotesHeadingStyle e) @?= (Just "bold", True, Just "small", Just "caption")
+        -- the notes keep their own values
+        (stNotesNumbering s, stNotesMarkFormat s) @?= (NumberPerChapter, MarkFormat "*" arabic ""),
+      testCase "root ADR 0412 I5: [endnotes] numbering = \"page\" is one G03278 at the value" $ do
+        let src = "[endnotes]\nnumbering = \"page\"\n"
+        [(diagCode d, diagSeverity d, spanStart (diagSpan d)) | d <- fromLeft [] (parseStyle (FileId 0) src)] @?= [(DiagnosticCode "G03278", Error, 23)]
+        -- [notes] numbering = "page" stays a value of the notes
+        codes (parseStyle (FileId 0) "[notes]\nnumbering = \"page\"\n[endnotes]\nnumbering = \"chapter\"\n") @?= [],
+      testCase "root ADR 0412: the values of [endnotes] are checked as those of [notes]" $ do
+        codes (parseStyle (FileId 0) "[endnotes]\nnumbering = \"section\"\n") @?= ["G03006"]
+        codes (parseStyle (FileId 0) "[endnotes]\nmark-format = \"{n}{n}\"\n") @?= ["G03006"]
+        codes (parseStyle (FileId 0) "[endnotes]\nmark-shape = \"tall\"\n") @?= ["G03006"]
+        codes (parseStyle (FileId 0) "[endnotes]\nplacement = \"page-foot\"\n") @?= ["G03006"]
+        codes (parseStyle (FileId 0) "[endnotes]\nmark-style = \"nothing\"\n") @?= ["G03013"]
+        codes (parseStyle (FileId 0) "[endnotes]\nbody-style = \"nothing\"\n") @?= ["G03013"]
+    ]
+  where
+    parsed src = either (\ds -> assertFailure (show ds) >> error "unreachable") pure (parseStyle (FileId 0) src)
+
 -- | The paragraph styles of the bodies of notes and of the title of their list (docs/adr/0366).
 noteBodyStyleTests :: TestTree
 noteBodyStyleTests =
@@ -1624,7 +1778,7 @@ noteMarkTests =
         codes (parseStyle (FileId 0) "[composition.ruby]\nreading-style = \"nothing\"\n") @?= ["G03013"]
         [diagMessage d | Left ds <- [parseStyle (FileId 0) "[composition.ruby]\nreading-style = \"nothing\"\n"], d <- ds]
           @?= ["style.toml のスタイルの参照が不正です: [composition.ruby] の reading-style の文字スタイルがありません: nothing"],
-      testCase "ADR 0344 I2 I5: mark-size is G03253 before a size conflict" $ do
+      testCase "ADR 0344 I2, I5: mark-size is G03253 before a size conflict" $ do
         let src = "[notes]\nmark-size = \"0.6zw\"\n"
         [(diagCode d, diagSeverity d, spanStart (diagSpan d)) | d <- fromLeft [] (parseStyle (FileId 0) src)] @?= [(DiagnosticCode "G03253", Error, 20)]
         let both = "[character-styles.base]\nsize = \"0.6zw\"\n[character-styles.mark]\nbased-on = \"base\"\ncolor = \"red\"\n[color.swatches.red]\ncmyk = [0, 100, 100, 0]\n[notes]\nmark-size = \"0.5zw\"\nmark-style = \"mark\"\n"
@@ -1701,7 +1855,7 @@ listTests =
         case parseStyle (FileId 0) "[lists]\nnumbers = ['\\{{n:kanji}\\}']\n" of
           Left ds -> assertFailure (show ds)
           Right s -> lsNumbers (stLists s) @?= Just (NumberFormat "{" (NsNotation kanjiNotation) "}" :| []),
-      testCase "ADR 0344 I1 I2: each row of the table gives its codes, once per cause, at the value" $ do
+      testCase "ADR 0344 I1, I2: each row of the table gives its codes, once per cause, at the value" $ do
         let sites src = [(c, s) | d <- fromLeft [] (parseStyle (FileId 0) src), let DiagnosticCode c = diagCode d, let s = spanStart (diagSpan d)]
             at src needle = fromIntegral (T.length (fst (T.breakOn needle src)))
             row src needle cs = sites src @?= [(c, at src needle) | c <- cs]

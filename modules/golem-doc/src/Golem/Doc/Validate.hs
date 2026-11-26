@@ -4,6 +4,7 @@ the invariants that the Haskell types guarantee internally.
 module Golem.Doc.Validate
   ( validateInlines,
     validateDocument,
+    inlineSpan,
     validateBlocks,
     validateCommandBlocks,
     captionErrors,
@@ -13,6 +14,7 @@ module Golem.Doc.Validate
   )
 where
 
+import Data.Char (isAsciiLower, isDigit)
 import Data.List (nub)
 import Data.Maybe (isJust, isNothing)
 import Data.Ratio (denominator, numerator)
@@ -105,6 +107,17 @@ blocksAt fileSize allowed top0 = concatMap (blockAt top0)
       PageControl _ -> []
       BlankLines _ -> []
       Separator _ -> []
+      -- a frame holds paragraphs only, and is named as a style is (root ADR 0438)
+      FrameBlock name bs ->
+        ["フレームの名前は英小文字で始まり、英小文字、数字、- だけからなります: " <> name | not (frameName name)]
+          <> ["フレームの中身は段落だけです" | not (all isParagraph bs)]
+          <> concatMap blockErrors bs
+    frameName name = case T.uncons name of
+      Just (c, rest) -> isAsciiLower c && T.all (\x -> isAsciiLower x || isDigit x || x == '-') rest
+      Nothing -> False
+    isParagraph = \case
+      Block _ _ _ (Paragraph _ _) -> True
+      _ -> False
 
 {- | The invariants of a table (docs/adr/0262): as many cells in each row
 as in the header row, no widths or one for each column, every width but
@@ -158,8 +171,9 @@ breakErrors top is =
       Kenten _ _ xs -> deep xs
       Color _ _ xs -> deep xs
       CharStyle _ _ xs -> deep xs
-      Note _ _ bs -> deep (concat (noteParagraphs bs))
-      Sidenote _ _ bs -> deep (concat (noteParagraphs bs))
+      Note _ _ _ bs -> deep (concat (noteParagraphs bs))
+      Sidenote _ _ _ bs -> deep (concat (noteParagraphs bs))
+      Endnote _ _ _ bs -> deep (concat (noteParagraphs bs))
       Cite _ items -> deep (citeInlines items)
       Link _ _ xs -> deep xs
       Lang _ _ xs -> deep xs
@@ -195,8 +209,10 @@ inlineErrors fileSize allowed i =
     Color _ _ xs -> sub xs
     CharStyle _ _ xs -> sub xs
     Deferred _ e -> ["プラグインが新しい遅延式を作っています" | e `notElem` allowed]
-    Note _ _ bs -> noteErrors True bs
-    Sidenote _ _ bs -> noteErrors False bs
+    Note _ _ _ bs -> noteErrors ["脚注の本文は一つ以上の段落です" | null bs] bs
+    Sidenote _ _ _ bs -> noteErrors ["傍注の本文は段落をちょうど一つ持ちます" | length bs /= 1] bs
+    -- an endnote, as a footnote (root ADR 0412)
+    Endnote _ _ _ bs -> noteErrors ["章末の注の本文は一つ以上の段落です" | null bs] bs
     Cite _ is -> citeErrors is <> sub (citeInlines is)
     IndexMark _ (IndexEntry ts rs k) ->
       ["索引の項目の段の数が不正です" | null ts || length ts > 2 || length ts /= length rs]
@@ -224,8 +240,8 @@ inlineErrors fileSize allowed i =
     {- the body of a footnote: one paragraph or more, of a sidenote: one
     paragraph; paragraphs without a paragraph style, their inlines checked
     as those of a note were (docs/adr/0263) -}
-    noteErrors footnote bs =
-      (if footnote then ["脚注の本文は一つ以上の段落です" | null bs] else ["傍注の本文は段落をちょうど一つ持ちます" | length bs /= 1])
+    noteErrors counted bs =
+      counted
         <> ["注の本文には段落スタイルのない段落だけを置けます" | not (all plain bs)]
         <> concat [spanErrors fileSize bsp <> langTagErrors blang | Block bsp _ blang _ <- bs]
         <> concatMap sub (noteParagraphs bs)
@@ -250,6 +266,7 @@ inlineErrors fileSize allowed i =
     sends = \case
       Note {} -> True
       Sidenote {} -> True
+      Endnote {} -> True
       IndexMark {} -> True
       Cite {} -> True
       ChannelItem {} -> True
@@ -281,8 +298,9 @@ linkErrors = concatMap $ \case
   Kenten _ _ xs -> linkErrors xs
   Color _ _ xs -> linkErrors xs
   CharStyle _ _ xs -> linkErrors xs
-  Note _ _ bs -> concatMap linkErrors (noteParagraphs bs)
-  Sidenote _ _ bs -> concatMap linkErrors (noteParagraphs bs)
+  Note _ _ _ bs -> concatMap linkErrors (noteParagraphs bs)
+  Sidenote _ _ _ bs -> concatMap linkErrors (noteParagraphs bs)
+  Endnote _ _ _ bs -> concatMap linkErrors (noteParagraphs bs)
   Cite _ is -> linkErrors (citeInlines is)
   ChannelItem _ c -> linkErrors (ciBody c)
   Lang _ _ xs -> linkErrors xs
@@ -310,8 +328,9 @@ langErrors = concatMap $ \case
   Kenten _ _ xs -> langErrors xs
   Color _ _ xs -> langErrors xs
   CharStyle _ _ xs -> langErrors xs
-  Note _ _ bs -> concat [langTagErrors l | Block _ _ l _ <- bs] <> concatMap langErrors (noteParagraphs bs)
-  Sidenote _ _ bs -> concat [langTagErrors l | Block _ _ l _ <- bs] <> concatMap langErrors (noteParagraphs bs)
+  Note _ _ _ bs -> concat [langTagErrors l | Block _ _ l _ <- bs] <> concatMap langErrors (noteParagraphs bs)
+  Sidenote _ _ _ bs -> concat [langTagErrors l | Block _ _ l _ <- bs] <> concatMap langErrors (noteParagraphs bs)
+  Endnote _ _ _ bs -> concat [langTagErrors l | Block _ _ l _ <- bs] <> concatMap langErrors (noteParagraphs bs)
   Cite _ is -> langErrors (citeInlines is)
   ChannelItem _ c -> langErrors (ciBody c)
   Resolved _ _ _ xs -> langErrors xs
@@ -325,11 +344,14 @@ inlineSpan = \case
   Color s _ _ -> s
   CharStyle s _ _ -> s
   Tcy s _ -> s
+  Warichu s _ -> s
+  Upright s _ -> s
   Number s _ _ -> s
   Ref s _ _ -> s
   Deferred s _ -> s
-  Note s _ _ -> s
-  Sidenote s _ _ -> s
+  Note s _ _ _ -> s
+  Sidenote s _ _ _ -> s
+  Endnote s _ _ _ -> s
   IndexMark s _ -> s
   Cite s _ -> s
   ProofComment s _ -> s

@@ -3,7 +3,7 @@ the built-in modules @Inline@ and @Block@ ('Golem.Emet.Builtins'), whose
 constructors are those of the serialisation of the ABI with the plugins.
 
 What the data types do not show is carried beside the values: the span
-of each node, the label of each block, the number of each note and the
+of each node, the label of each block and of each note (root ADR 0422), the number of each note and the
 expression of each 'Deferred', and the language of each block (docs/adr ADR 0187). A node that comes in has one more field
 after its own, the index of what it carries; a function reads it as any
 other value only through the patterns, which do not see it. A node a
@@ -38,7 +38,7 @@ import Golem.Eval.Value (Value (..), numberOf)
 import Golem.Syntax
 import Numeric.Natural (Natural)
 
--- | What a node carries that its fields do not show: its span, the label and the language of a block, the number of a note.
+-- | What a node carries that its fields do not show: its span, the label of a block or a note (root ADR 0422), the language of a block, the number of a note.
 data Hidden = Hidden !SrcSpan !(Maybe Text) !(Maybe Text) !Int
 
 -- | What the nodes that came in carry, by their indexes.
@@ -104,11 +104,14 @@ withRuby = \case
   Color s c xs -> Color s c (map withRuby xs)
   CharStyle s c xs -> CharStyle s c (map withRuby xs)
   Tcy s t -> Tcy s t
+  Warichu s t -> Warichu s t
+  Upright s t -> Upright s t
   Number s n st -> Number s n st
   Ref s k l -> Ref s k l
   Deferred s e -> Deferred s e
-  Note s n bs -> Note s n bs
-  Sidenote s n bs -> Sidenote s n bs
+  Note s n lbl bs -> Note s n lbl bs
+  Sidenote s n lbl bs -> Sidenote s n lbl bs
+  Endnote s n lbl bs -> Endnote s n lbl bs
   IndexMark s e -> IndexMark s e
   Cite s is -> Cite s [CiteItem k l (map withRuby p) (map withRuby q) | CiteItem k l p q <- is]
   ProofComment s t -> ProofComment s t
@@ -140,14 +143,18 @@ encodeInline = \case
   Color sp c xs -> encodeInlines xs >>= \b -> at sp "Color" [str c, b]
   CharStyle sp c xs -> encodeInlines xs >>= \b -> at sp "CharStyle" [str c, b]
   Tcy sp t -> at sp "Tcy" [str t]
+  Warichu sp t -> at sp "Warichu" [str t]
+  Upright sp t -> at sp "Upright" [str t]
   Number sp n st -> at sp "Number" [int n, maybeR numberStyle st]
   Ref sp k l -> at sp "Ref" [con (refKind k) [], str l]
   Deferred sp e -> do
     j <- gets (Seq.length . cDeferred)
     modify' (\s -> s {cDeferred = cDeferred s Seq.|> e})
     at sp "Deferred" [con "Opaque" [nat j]]
-  Note sp n bs -> encodeBlocks bs >>= \b -> node "Note" [b] (Hidden sp Nothing Nothing n)
-  Sidenote sp n bs -> encodeBlocks bs >>= \b -> node "Sidenote" [b] (Hidden sp Nothing Nothing n)
+  -- the label of a note is carried as that of a block (root ADR 0422)
+  Note sp n lbl bs -> encodeBlocks bs >>= \b -> node "Note" [b] (Hidden sp lbl Nothing n)
+  Sidenote sp n lbl bs -> encodeBlocks bs >>= \b -> node "Sidenote" [b] (Hidden sp lbl Nothing n)
+  Endnote sp n lbl bs -> encodeBlocks bs >>= \b -> node "Endnote" [b] (Hidden sp lbl Nothing n)
   -- the kind of a mark (docs/adr/0265)
   IndexMark sp (IndexEntry ts rs k) -> at sp "IndexMark" [RList (map str ts), RList (map str rs), indexKind k]
   -- the items of a citation (docs/adr/0266)
@@ -223,6 +230,7 @@ encodeBlock (Block sp lbl blang body) = do
     PageControl pc -> pure ("PageControl", [pageControl pc])
     BlankLines n -> pure ("BlankLines", [nat n])
     Separator name -> pure ("Separator", [str name])
+    FrameBlock name bs -> (\b -> ("FrameBlock", [str name, b])) <$> encodeBlocks bs
   node c fs (Hidden sp lbl blang 0)
   where
     item (ListItem n bs) = (\b -> con "ListItem" [maybeR nat n, b]) <$> encodeBlocks bs
@@ -351,11 +359,14 @@ inlineD cx = \case
     "Color" -> one2 $ \s n xs -> Color s <$> strD n <*> inlinesD cx xs
     "CharStyle" -> one2 $ \s n xs -> CharStyle s <$> strD n <*> inlinesD cx xs
     "Tcy" -> one1 $ \s t -> Tcy s <$> strD t
+    "Warichu" -> one1 $ \s t -> Warichu s <$> strD t
+    "Upright" -> one1 $ \s t -> Upright s <$> strD t
     "Number" -> one2 $ \s n st -> Number s <$> intD n <*> maybeD numberStyle st
     "Ref" -> one2 $ \s k l -> Ref s <$> refKind k <*> strD l
     "Deferred" -> one1 $ \s d -> Deferred s <$> deferred d
     "Note" -> withNumber Note
     "Sidenote" -> withNumber Sidenote
+    "Endnote" -> withNumber Endnote
     "IndexMark" -> one 3 $ \s -> \case
       [ts, rs, k] -> (\a b k' -> IndexMark s (IndexEntry a b k')) <$> listD strD ts <*> listD strD rs <*> indexKindD k
       _ -> arity
@@ -381,9 +392,9 @@ inlineD cx = \case
         [a, b] -> k s a b
         _ -> arity
       withNumber mk =
-        let (xs, Hidden s _ _ num) = fieldsOf cx 1 fs
+        let (xs, Hidden s lbl _ num) = fieldsOf cx 1 fs
          in case xs of
-              [body] -> mk s num <$> listD (blockD cx) body
+              [body] -> mk s num lbl <$> listD (blockD cx) body
               _ -> bad ("欄の数が合いません: " <> c)
   r -> bad ("インラインではない値です: " <> shown r)
   where
@@ -462,6 +473,9 @@ blockD cx = \case
     "PageControl" -> one1 (fmap PageControl . pageControl)
     "BlankLines" -> one1 $ \n -> BlankLines . fromInteger <$> (intD n >>= \m -> if m < 0 then bad "負の数です" else pure m)
     "Separator" -> one1 (fmap Separator . strD)
+    "FrameBlock" -> one 2 $ \case
+      [name, bs] -> FrameBlock <$> strD name <*> blocks bs
+      _ -> arity
     _ -> bad ("ブロックではない値です: " <> c)
     where
       arity = bad ("欄の数が合いません: " <> c)

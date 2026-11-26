@@ -26,6 +26,7 @@ golem-cli は実行ファイルを持つ唯一のモジュールであり、引�
 | [code: golem plugin lock] | [code: plugins.lock] を更新する |
 | [code: golem inspect FILE] | CST、AST、IR を表示し、IR の CBOR を書き出す |
 | [code: golem explain] | diagnostic のコードの説明を表示する |
+| [code: golem kinsoku \[PATH\]] | プロジェクトの禁則とぶら下げの設定を、一行の JSON で表示する |
 | [code: golem --version] | バージョンを表示する |
 
 オプションはコマンドごとに決まっている。
@@ -33,7 +34,7 @@ golem-cli は実行ファイルを持つ唯一のモジュールであり、引�
 
 | オプション | 受け付けるコマンド | 値 |
 | --- | --- | --- |
-| [code: --target] | [code: build] | [code: html]、[code: epub]、[code: text]、[code: pdf]。何度でも書ける |
+| [code: --target] | [code: build] | [code: html]、[code: epub]、[code: text]、[code: pdf]、[code: pdf-screen]。何度でも書ける |
 | [code: --profile] | [code: build]、[code: check]、[code: lint] | [code: dev]（既定）、[code: prod] |
 | [code: --marks] | [code: build]、[code: check]、[code: preflight] | [code: none]（既定）、[code: japanese]、[code: western] |
 | [code: --no-notices] | [code: build]、[code: check]、[code: lint] | なし |
@@ -49,6 +50,11 @@ golem-cli は実行ファイルを持つ唯一のモジュールであり、引�
 マニフェストの [code: \[targets.*\]] の有無は見ない。
 [code: \[targets.*\]] は、ISBN やプレーンテキストの [code: variants] のような、ターゲットごとの設定の置き場所である。
 CI で PDF だけが要るなら、[code: --target pdf] を明示する。[note: [style url: https://github.com/tett23/golem/blob/main/docs/golem-cli/adr/0002-build-all-targets-by-default.md]（golem-cli ADR 0002「--target を省いた golem build はすべてのターゲットを作る」）]
+
+画面で読むための PDF（[code: pdf-screen]）は、[code: --target pdf-screen] で選んだときだけ作り、[code: --target] を省いたビルドには入れない。
+入稿の PDF だけが要る本で、ビルドの時間を増やさないためである。
+マニフェストの [code: \[targets.pdf-screen\]] は設定の表で、書いても [code: --target] を省いたビルドのターゲットは変わらない。
+[code: --target pdf --target pdf-screen] は二つの PDF を一度の組版から作り、組版の diagnostic を一度だけ出す。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0431-plain-pdf-1-7-target.md]（root ADR 0431「PDF/X-4 を宣言しない、画面で読むための PDF 1.7 のターゲットを足す」）]
 
 [code: golem check] は出力を作らず、構文、評価、文書構造（S1）までを検査する。[index reading="golem check": golem check]
 マニフェストの [code: \[targets.*\]] によらず四つのターゲットを検査するので、四つのターゲットが使う [code: style.toml] のファイルの存在も確かめ、版面の誤り（G07001）、トンボと塗り足しの誤り（G07002）、段落スタイルの字下げの誤り（G07025）、本文のフォントの欠け（G08007）も報告する。
@@ -70,7 +76,7 @@ LSP、[code: golem check]、[code: golem build] は、プリフライトの検�
 
 | 対象 | 出力 |
 | --- | --- |
-| [code: html] | [code: build/html/]（[code: index.xhtml]、章ごとの XHTML、[code: style.css]、図版とフォント） |
+| [code: html] | [code: build/html/]（[code: index.html]、章ごとの HTML、[code: style.css]、図版とフォント） |
 | [code: epub] | [code: build/epub/book.epub] |
 | [code: text] | [code: build/text/vertical/] と [code: build/text/horizontal/] |
 | [code: pdf] | [code: build/pdf/<id>.pdf]（マニフェストの [code: id] の [code: :] を [code: -] にした名前） |
@@ -146,6 +152,28 @@ $ golem build --target pdf --format json 2> diagnostics.json
 
 [code: golem inspect] の表示、[code: golem explain] の説明、[code: golem fmt --check] のパスの一覧は標準出力に出る。
 
+[code: golem kinsoku] は、[code: --format] を持たず、いつも一行の JSON を標準出力に書く。[index reading="golem kinsoku": golem kinsoku][note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0417-print-resolved-kinsoku-settings.md]（root ADR 0417「解決した禁則とぶら下げの設定を JSON で出す」）]
+JSON は、エディタが Golem と同じ禁則とぶら下げで折り返すために読む。
+[code: PATH] のファイルかフォルダから親へたどり、最も近い [code: manifest.toml] のフォルダをプロジェクトとして、その [code: style.toml] だけを読む。
+[code: PATH] を省くと今のフォルダから探し、まだ無いファイルのパスを渡すと、存在する最も近い親のフォルダから探す。
+次の例は、一行の出力を [code: jq] で整形して示す。
+
+```sh
+$ golem kinsoku chapters/01.gm | jq .
+{
+  "schema": 1,
+  "project": "/home/me/book",
+  "composition": {
+    "kinsoku": "strict",
+    "hangingPunctuation": false
+  }
+}
+```
+
+[code: project] はプロジェクトの絶対パスで、見つからないときは [code: null] になり、[code: composition] は既定値になる。
+[code: style.toml] の誤りは、diagnostics を [code: style.toml] の絶対パスで標準エラー出力に書き、標準出力には何も書かず、終了コード 1 で終える。
+notice だけなら、標準エラー出力に書いたうえで JSON を書き、終了コード 0 で終える。
+
 [code: golem explain] にはコードをいくつでも渡せる。
 CI のログの JSON からコードを抜き出し、まとめて説明を引くこともできる。[note: [style url: https://github.com/tett23/golem/blob/main/docs/golem-cli/adr/0009-explain-several-codes.md]（golem-cli ADR 0009「golem explain に複数のコードを渡す」）]
 
@@ -163,7 +191,7 @@ $ jq -r '.[].code' diagnostics.json | xargs golem explain
 プロファイルが変えるのは、校正用のコメント（[code: \%%= ... \%%]）の扱いと、diagnostic の重大度の二つだけである。
 
 - 校正用のコメントは、[code: dev] では出力に現れ、[code: prod] では出力されず警告（G02005）になる。
-- 参照されていないラベル（G05004）、HTML と EPUB のフォントの欠け（G03010）、PDF のフォントにない字（G08100）は、[code: dev] では警告、[code: prod] ではエラーになる。
+- 参照されていないラベル（G05004）、HTML と EPUB のフォントの欠け（G03010）とそのライセンスの文書の欠け（G03282、G03283）、PDF のフォントにない字（G08100）は、[code: dev] では警告、[code: prod] ではエラーになる。
 
 重大度の変更は、golem-syntax の [code: adjustForProfile] の一箇所で行う。
 対象のコードは [code: Golem.Syntax.Diagnostic.profileDependentCodes] に並んでいる。

@@ -1,6 +1,6 @@
 # ADR 0005: 回り込みの図版を PDF のパイプラインにつなぐ
 
-Status: superseded [{"by":["docs/adr/0018-multi-column-layout.md"],"part":"段組みの版面での回り込みの扱い"},{"by":["docs/golem-driver/adr/0034-fit-figures-to-column.md"],"part":"回り込ませない図版の大きさ"},{"by":["docs/golem-driver/adr/0010-caption-style.md"],"part":"キャプションの書体、大きさ、行の送り"},{"by":["docs/golem-html/adr/0002-heading-number-spacing.md"],"part":"キャプションの図番号と内容のあいだの区切り"},{"part":"自由な配置での回り込みの実寸配置","by":["docs/adr/0397-paragraph-line-pitch-and-dimensional-spacing.md"]}]
+Status: superseded [{"by":["docs/adr/0018-multi-column-layout.md"],"part":"段組みの版面での回り込みの扱い"},{"by":["docs/golem-driver/adr/0034-fit-figures-to-column.md"],"part":"回り込ませない図版の大きさ"},{"by":["docs/golem-driver/adr/0010-caption-style.md"],"part":"キャプションの書体、大きさ、行の送り"},{"by":["docs/golem-html/adr/0002-heading-number-spacing.md"],"part":"キャプションの図番号と内容のあいだの区切り"},{"part":"自由な配置での回り込みの実寸配置","by":["docs/adr/0397-paragraph-line-pitch-and-dimensional-spacing.md"]},{"part":"格子の配置での、脇の行の脚注で行を送る扱い","by":["docs/adr/0443-count-side-line-notes-when-a-wrapped-figure-fits.md"],"kind":"replace"}]
 
 ## 文脈
 

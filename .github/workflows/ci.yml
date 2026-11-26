@@ -128,45 +128,62 @@ jobs:
     needs: changes
     if: needs.changes.outputs.build == 'true'
     timeout-minutes: 30
-    # On x86-64 five runners build the same commit: two run the tests (the
-    # suites of golem-driver, and the rest, by scripts/ci/test-suites.sh),
-    # outputs makes the artifacts that visual, verapdf, wasm and
-    # editors-lsp wait for (golem, the PDFs of the visual regression test,
-    # the native list of the comparison with golem.wasm and the PDFs of
-    # veraPDF), outputs-checks the other outputs (epubcheck, the
-    # determinism check, the two manuals), and env runs the environment
-    # check. On aarch64 two runners run the tests, split in the same way,
-    # and one makes the outputs. The work is bound by the four cores of a
-    # runner, and the runners end at about the same time; one runner of
-    # each architecture saves dist-newstyle (docs/adr/0045, docs/adr/0097,
-    # docs/adr/0140, docs/adr/0155, docs/adr/0395)
+    # On x86-64 seven runners build the same commit: four run the tests
+    # (the suites of golem-driver in two, tests-driver-a and
+    # tests-driver-b, and the rest in two, tests-rest-a and tests-rest-b,
+    # by scripts/ci/test-suites.sh), outputs makes the artifacts that
+    # visual, verapdf, wasm and editors-lsp wait for (golem, the PDFs of
+    # the visual regression test, the native list of the comparison with
+    # golem.wasm and the PDFs of veraPDF), outputs-checks the other outputs
+    # (epubcheck, the determinism check, the two manuals), and env runs the
+    # environment check. On aarch64 four runners run the tests, split in
+    # the same way, and one makes the outputs. The work is bound by the
+    # four cores of a runner, and the runners end at about the same time.
+    # None of them saves dist-newstyle: cache-dist does, outside the needs
+    # of ci (docs/adr/0045, docs/adr/0097, docs/adr/0140, docs/adr/0155,
+    # docs/adr/0395, root ADR 0416, root ADR 0457)
     #
-    # build is what the runner builds (scripts/ci/build-targets.sh): all
-    # where dist-newstyle is saved, so that the cache has everything, the
-    # suites it runs on tests-rest, and golem alone where only golem runs
-    # (docs/adr/0395)
+    # build is what the runner builds (scripts/ci/build-targets.sh): the
+    # suites it runs on the runners of the tests (and peg-hs on
+    # tests-rest-a, the executables but golem on tests-rest-b), and golem
+    # alone where only golem runs (docs/adr/0395, root ADR 0416, root ADR
+    # 0457)
     strategy:
       fail-fast: false
       matrix:
         include:
           - runner: ubuntu-24.04
-            part: tests-driver
+            part: tests-driver-a
             tests: true
             outputs: false
             artifacts: false
             env: false
-            suites: driver
-            build: all
-            save: true
+            suites: driver-a
+            build: driver-a
           - runner: ubuntu-24.04
-            part: tests-rest
+            part: tests-driver-b
             tests: true
             outputs: false
             artifacts: false
             env: false
-            suites: rest
-            build: rest
-            save: false
+            suites: driver-b
+            build: driver-b
+          - runner: ubuntu-24.04
+            part: tests-rest-a
+            tests: true
+            outputs: false
+            artifacts: false
+            env: false
+            suites: rest-a
+            build: rest-a
+          - runner: ubuntu-24.04
+            part: tests-rest-b
+            tests: true
+            outputs: false
+            artifacts: false
+            env: false
+            suites: rest-b
+            build: rest-b
           - runner: ubuntu-24.04
             part: outputs
             tests: false
@@ -175,7 +192,6 @@ jobs:
             env: false
             suites: none
             build: golem
-            save: false
           - runner: ubuntu-24.04
             part: outputs-checks
             tests: false
@@ -184,7 +200,6 @@ jobs:
             env: false
             suites: none
             build: golem
-            save: false
           - runner: ubuntu-24.04
             part: env
             tests: false
@@ -193,25 +208,38 @@ jobs:
             env: true
             suites: none
             build: golem
-            save: false
           - runner: ubuntu-24.04-arm
-            part: tests-driver
+            part: tests-driver-a
             tests: true
             outputs: false
             artifacts: false
             env: false
-            suites: driver
-            build: all
-            save: true
+            suites: driver-a
+            build: driver-a
           - runner: ubuntu-24.04-arm
-            part: tests-rest
+            part: tests-driver-b
             tests: true
             outputs: false
             artifacts: false
             env: false
-            suites: rest
-            build: rest
-            save: false
+            suites: driver-b
+            build: driver-b
+          - runner: ubuntu-24.04-arm
+            part: tests-rest-a
+            tests: true
+            outputs: false
+            artifacts: false
+            env: false
+            suites: rest-a
+            build: rest-a
+          - runner: ubuntu-24.04-arm
+            part: tests-rest-b
+            tests: true
+            outputs: false
+            artifacts: false
+            env: false
+            suites: rest-b
+            build: rest-b
           - runner: ubuntu-24.04-arm
             part: outputs
             tests: false
@@ -220,7 +248,6 @@ jobs:
             env: false
             suites: none
             build: golem
-            save: false
     name: build (${{ matrix.runner }}, ${{ matrix.part }})
     runs-on: ${{ matrix.runner }}
     steps:
@@ -368,13 +395,6 @@ jobs:
       - name: wasmtime C API (golem-plugin ADR 0001)
         timeout-minutes: 10
         run: scripts/fetch-wasmtime.sh
-      # a push to main saves the archives it fetched (docs/adr/0228, docs/adr/0243)
-      - name: Save the archives of the downloads (docs/adr/0243)
-        if: matrix.save && github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.downloads.outputs.cache-hit != 'true'
-        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: third_party/downloads
-          key: ${{ steps.downloads.outputs.cache-primary-key }}
       - id: cddl
         name: Cache the cddl CLI (docs/adr/0009)
         if: matrix.tests
@@ -386,20 +406,16 @@ jobs:
         if: matrix.tests && steps.cddl.outputs.cache-hit != 'true'
         run: cargo install cddl --version "$CDDL_VERSION" --locked
       # the targets of the runner (scripts/ci/build-targets.sh); peg-cli is
-      # built with them where the generated parser is checked. compiled is
-      # true when GHC compiled a module, that is, when dist-newstyle is no
-      # longer the one restored above (docs/adr/0045, docs/adr/0395)
+      # built with them where the generated parser is checked
+      # (docs/adr/0395, root ADR 0416)
       - id: build
         name: cabal build (docs/adr/0395)
-        shell: bash
         env:
           TARGETS: ${{ matrix.build }}
         run: |
           # each target is one word
           # shellcheck disable=SC2046
-          cabal build $(sh scripts/ci/build-targets.sh "$TARGETS") 2>&1 | tee "$RUNNER_TEMP/build.log"
-          if grep -qE '^\[ *[0-9]+ of [0-9]+\] Compiling ' "$RUNNER_TEMP/build.log"; then COMPILED=true; else COMPILED=false; fi
-          echo "compiled=$COMPILED" >> "$GITHUB_OUTPUT"
+          cabal build $(sh scripts/ci/build-targets.sh "$TARGETS")
       # the plan that the two checks below read is that of cabal build all,
       # whatever the runner built: cabal writes plan.json again only when it
       # plans again, which it does without the elaborated and the improved
@@ -435,6 +451,12 @@ jobs:
         with:
           name: golem-linux-x86_64
           path: golem-linux-x86_64
+      # cabal expands the wildcards of extra-source-files, extra-doc-files
+      # and data-files only when it makes the tarball of a package, as
+      # cabal install does; cabal build does not (root ADR 0452)
+      - name: Every package makes its source tarball (root ADR 0452)
+        if: matrix.artifacts
+        run: cabal sdist all --output-directory="$RUNNER_TEMP/sdist"
       - name: qpdf is installed
         if: matrix.tests || (matrix.runner == 'ubuntu-24.04' && matrix.outputs)
         timeout-minutes: 5
@@ -476,19 +498,20 @@ jobs:
           # each target is one word
           # shellcheck disable=SC2046
           cabal test $(sh scripts/ci/test-suites.sh "$SUITES")
-      # golem-parser-test is not a suite of tests-driver
+      # tests-rest-a builds peg-hs and runs golem-parser-test (root ADR 0457)
       - name: Generated parser matches the grammar
-        if: matrix.tests && matrix.suites != 'driver'
+        if: matrix.tests && matrix.suites == 'rest-a'
         run: |
           scripts/gen-parser.sh
           git diff --exit-code modules/golem-parser/src/Golem/Parser/Generated.hs modules/golem-parser/test/StrippedGrammar.hs modules/golem-emet/src/Golem/Emet/Generated.hs
-      # the modules that embed VERSION and docs/diagnostics.md in golem-driver
-      # in place of Template Haskell (docs/adr/0203)
+      # the modules that embed VERSION in golem-driver and docs/diagnostics.md in
+      # golem-evaluate in place of Template Haskell, on tests-rest-a (docs/adr/0203,
+      # root ADR 0434, root ADR 0457)
       - name: Generated modules match VERSION and docs/diagnostics.md
-        if: matrix.tests && matrix.suites != 'driver'
+        if: matrix.tests && matrix.suites == 'rest-a'
         run: |
           sh scripts/gen-embedded.sh
-          git diff --exit-code modules/golem-driver/src/Golem/Driver/Version/Embedded.hs modules/golem-driver/src/Golem/Driver/Explain/Embedded.hs
+          git diff --exit-code modules/golem-driver/src/Golem/Driver/Version/Embedded.hs modules/golem-evaluate/src/Golem/Evaluate/Explain/Embedded.hs
       - name: Cache the fonts of the manuals (docs/adr/0022, docs/adr/0024)
         if: matrix.outputs || matrix.artifacts || matrix.env
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -555,6 +578,21 @@ jobs:
         working-directory: modules/golem-driver/test/fixtures/languages
         run: |
           "$(cabal list-bin -v0 golem)" build --target epub
+          epubcheck build/epub/book.epub
+      # the license documents of the embedded fonts in OEBPS/fonts/, a .txt
+      # as text/plain and a .md as text/markdown in the manifest, which
+      # nothing refers to (docs/adr/0433); prod, so that a missing license
+      # stops the build
+      - name: The EPUB with the license documents of its fonts passes epubcheck (docs/adr/0433)
+        if: matrix.runner == 'ubuntu-24.04' && matrix.outputs
+        working-directory: modules/golem-driver/test/fixtures/font-licenses
+        run: |
+          mkdir -p fonts
+          cp ../kanikosen/fonts/NotoSerifJP-Regular.otf fonts/ja.otf
+          cp ../kanikosen/fonts/LICENSE-NotoSerifJP.txt fonts/LICENSE-ja.txt
+          cp ../../../../golem-font/test/fonts/SourceSansPro-Regular.otf fonts/latin.otf
+          cp ../../../../golem-font/test/fonts/OFL.txt fonts/LICENSE-latin.md
+          "$(cabal list-bin -v0 golem)" build --profile prod --target epub
           epubcheck build/epub/book.epub
       # a citation of @bibliography in another file, a navigation of depth
       # 1 and the channel of the sample plugin glossary, put in a cache by
@@ -665,15 +703,170 @@ jobs:
           path: |
             manual-dev/build/pdf
             manual-dev/build/html
+
+  # The build of everything, and the save of dist-newstyle that the runners
+  # of build restore, on one runner of each architecture. It is not in the
+  # needs of ci, so that the pull request does not wait for it: build
+  # builds only what each runner uses. It saves under the key and on the
+  # condition of the runner that saved before it, on pull requests and
+  # pushes to main alone, and does not run for release.yml, which saves
+  # nothing (docs/adr/0045, docs/adr/0228, docs/adr/0395, root ADR 0416)
+  cache-dist:
+    needs: changes
+    if: needs.changes.outputs.build == 'true' && (github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/main'))
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-24.04, ubuntu-24.04-arm]
+    name: cache-dist (${{ matrix.runner }})
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # Every cabal command below reads the test wrapper from
+      # cabal.project.local. Given on the command line of cabal test
+      # alone, it changed the configuration of the local packages between
+      # cabal build and cabal test, so that each of them configured every
+      # package again, and golem-font compiled HarfBuzz again (docs/adr/0037)
+      - name: The test wrapper for every cabal command (docs/adr/0037)
+        run: |
+          printf -- '-- written by ci.yml (docs/adr/0037)\ntest-wrapper: %s/scripts/ci/suite-timeout.sh\n' "$PWD" >> cabal.project.local
+      - name: Image and GHC directory for the cache keys (docs/adr/0009)
+        run: |
+          # ImageOS is set on the runner, not in the env context
+          test -n "$ImageOS"
+          echo "ImageOS=$ImageOS" >> "$GITHUB_ENV"
+          # ghcup installs into $GHCUP_INSTALL_BASE_PREFIX/.ghcup, which is
+          # /usr/local on x86-64 and unset (so $HOME) on aarch64
+          echo "GHC_DIR=${GHCUP_INSTALL_BASE_PREFIX:-$HOME}/.ghcup/ghc/$GHC_VERSION" >> "$GITHUB_ENV"
+      # without its documentation and its libraries for profiling, which
+      # CI does not read: the step after haskell-actions/setup removes them
+      # when the cache missed, and the cache is saved at the end of the job
+      # (docs/adr/0141)
+      - id: ghc
+        name: Cache GHC (docs/adr/0009, docs/adr/0141)
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.GHC_DIR }}
+          key: ghc-${{ env.GHC_VERSION }}-${{ runner.os }}-${{ runner.arch }}-${{ env.ImageOS }}-slim
+      # cabal reads and writes everything under ~/.cabal, whatever the
+      # image and haskell-actions/setup leave in ~/.config/cabal
+      # (docs/adr/0201)
+      - name: cabal's directory (docs/adr/0201)
+        run: echo "CABAL_DIR=$HOME/.cabal" >> "$GITHUB_ENV"
+      - id: setup
+        uses: haskell-actions/setup@0f8e8c99d88aeb3fbfd523f1ef2c6f762d10d64d # v2.12.1
+        with:
+          ghc-version: ${{ env.GHC_VERSION }}
+          cabal-version: ${{ env.CABAL_VERSION }}
+          cabal-update: false
+      - name: cabal uses ~/.cabal (docs/adr/0201)
+        run: |
+          test "$(cabal path -z --config-file)" = "$HOME/.cabal/config"
+          test "$(cabal path -z --remote-repo-cache)" = "$HOME/.cabal/packages"
+          test "$(cabal path -z --store-dir)" = "$HOME/.cabal/store"
+      - name: The files of GHC that CI does not read (docs/adr/0141)
+        if: steps.ghc.outputs.cache-hit != 'true'
+        run: |
+          rm -rf "$GHC_DIR/share/doc"
+          find "$GHC_DIR" -type f \( -name '*_p.a' -o -name '*.p_hi' \) -delete
+          du -sh "$GHC_DIR"
+      - name: GHC on the PATH (docs/adr/0009)
+        # On a cache hit of GHC, ghcup skips the install and does not link
+        # ghc-$GHC_VERSION into its bin directory, so cabal (with-compiler:
+        # ghc-9.10.3) finds it in the GHC directory itself
+        run: |
+          if [ ! -x "$GHC_DIR/bin/ghc-$GHC_VERSION" ]; then
+            test -x "$GHC_DIR/bin/ghc"
+            ln -s ghc "$GHC_DIR/bin/ghc-$GHC_VERSION"
+          fi
+          echo "$GHC_DIR/bin" >> "$GITHUB_PATH"
+      # without 01-index.tar.gz: cabal plans a build from 01-index.tar and
+      # its indices, and the compressed copy does not shrink in the cache.
+      # The step of cabal update removes it, and the cache is saved at the
+      # end of the job; a line with ! in the path took nothing out
+      # (docs/adr/0141, docs/adr/0152)
+      - id: index
+        name: Cache the Hackage index (docs/adr/0009, docs/adr/0141, docs/adr/0152)
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cabal/packages/hackage.haskell.org
+          key: hackage-index-no-gz-cabal-${{ env.CABAL_VERSION }}-${{ hashFiles('cabal.project.freeze') }}
+      # rm without -f: if cabal names the file otherwise, the step fails
+      - if: steps.index.outputs.cache-hit != 'true'
+        run: |
+          cabal update
+          ls -l ~/.cabal/packages/hackage.haskell.org/01-index.tar.gz
+          rm ~/.cabal/packages/hackage.haskell.org/01-index.tar.gz
+          du -sh ~/.cabal/packages/hackage.haskell.org
+      - name: Cache the cabal store
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ steps.setup.outputs.cabal-store }}
+          key: cabal-store-${{ runner.os }}-${{ runner.arch }}-ghc-${{ env.GHC_VERSION }}-${{ hashFiles('cabal.project', 'cabal.project.freeze') }}
+          restore-keys: cabal-store-${{ runner.os }}-${{ runner.arch }}-ghc-${{ env.GHC_VERSION }}-
+      # a pull request restores its own newest dist-newstyle, saved by its
+      # push before, and the newest of main when it has none; its key has
+      # pr-NUMBER- after the family of main, where the key of main has the
+      # commit hash (docs/adr/0045, docs/adr/0395)
+      - name: Restore dist-newstyle (docs/adr/0009, docs/adr/0395)
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: dist-newstyle
+          key: dist-${{ runner.os }}-${{ runner.arch }}-ghc-${{ env.GHC_VERSION }}-${{ hashFiles('cabal.project', 'cabal.project.freeze') }}-${{ hashFiles('scripts/fetch-wasmtime.sh') }}-${{ github.event_name == 'pull_request' && format('pr-{0}-', github.event.pull_request.number) || '' }}${{ github.sha }}
+          restore-keys: |
+            dist-${{ runner.os }}-${{ runner.arch }}-ghc-${{ env.GHC_VERSION }}-${{ hashFiles('cabal.project', 'cabal.project.freeze') }}-${{ hashFiles('scripts/fetch-wasmtime.sh') }}-${{ github.event_name == 'pull_request' && format('pr-{0}-', github.event.pull_request.number) || '' }}
+            dist-${{ runner.os }}-${{ runner.arch }}-ghc-${{ env.GHC_VERSION }}-${{ hashFiles('cabal.project', 'cabal.project.freeze') }}-${{ hashFiles('scripts/fetch-wasmtime.sh') }}-
+      # Setup configures a component again when its .cabal file is newer
+      # than its setup-config, by the times alone. The .cabal files of the
+      # checkout are always newer than the restored setup-config, so cabal
+      # test configured and linked every test suite again before running
+      # it. cabal-install still sees a changed .cabal file by its content
+      # (docs/adr/0147)
+      - name: The setup-config of dist-newstyle newer than the .cabal files (docs/adr/0147)
+        run: |
+          if [ -d dist-newstyle ]; then find dist-newstyle -name setup-config -exec touch {} +; fi
+      # the archives of the downloads, from the cache of main; each is checked
+      # by its SHA-256 before it is used (docs/adr/0243)
+      - id: downloads
+        name: Restore the archives of the downloads (docs/adr/0243)
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: third_party/downloads
+          key: downloads-build-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/fetch-wasmtime.sh') }}
+      # the retries of scripts/ci/fetch-url.sh take 7 minutes at the most
+      - name: wasmtime C API (golem-plugin ADR 0001)
+        timeout-minutes: 10
+        run: scripts/fetch-wasmtime.sh
+      # a push to main saves the archives it fetched (docs/adr/0228, docs/adr/0243)
+      - name: Save the archives of the downloads (docs/adr/0243)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.downloads.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: third_party/downloads
+          key: ${{ steps.downloads.outputs.cache-primary-key }}
+      # everything, and peg-hs, so that the cache has it all. compiled is
+      # true when GHC compiled a module, that is, when dist-newstyle is no
+      # longer the one restored above (docs/adr/0045, docs/adr/0395)
+      - id: build
+        name: cabal build all (root ADR 0416)
+        shell: bash
+        run: |
+          # each target is one word
+          # shellcheck disable=SC2046
+          cabal build $(sh scripts/ci/build-targets.sh all) 2>&1 | tee "$RUNNER_TEMP/build.log"
+          if grep -qE '^\[ *[0-9]+ of [0-9]+\] Compiling ' "$RUNNER_TEMP/build.log"; then COMPILED=true; else COMPILED=false; fi
+          echo "compiled=$COMPILED" >> "$GITHUB_OUTPUT"
       # pushes to main and pull requests, when GHC compiled a module: a run
       # that compiled nothing would save what it restored under a new key.
       # A pull request saves under a key of its own, which the next push of
       # it restores; pr-caches.yml deletes all but its newest, and all of it
-      # when it is closed. The runner of matrix.save saves it: tests-driver
-      # on each architecture (docs/adr/0045, docs/adr/0140, docs/adr/0155,
-      # docs/adr/0228, docs/adr/0395)
+      # when it is closed (docs/adr/0045, docs/adr/0140, docs/adr/0155,
+      # docs/adr/0228, docs/adr/0395, root ADR 0416)
       - name: Save dist-newstyle (docs/adr/0009, docs/adr/0395)
-        if: success() && matrix.save && steps.build.outputs.compiled == 'true' && (github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/main'))
+        if: success() && steps.build.outputs.compiled == 'true' && (github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/main'))
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: dist-newstyle
@@ -692,6 +885,10 @@ jobs:
     if: needs.changes.outputs.build == 'true'
     timeout-minutes: 75
     runs-on: ubuntu-24.04
+    # actions: read for the zip of wasm-native-list (docs/adr/0442)
+    permissions:
+      contents: read
+      actions: read
     env:
       HOSTTOOLS: ${{ github.workspace }}/third_party/hosttools
       # the templates of the native alex and happy, which they read from
@@ -861,15 +1058,20 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: timeout -k 10 3600 sh scripts/visual/wait-pdfs.sh "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" 'build (ubuntu-24.04, outputs)' wasm-native-list
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-        with:
-          name: wasm-native-list
+      # the newest wasm-native-list of the run, checked by its digest and
+      # tried again until it can be downloaded (docs/adr/0442, docs/adr/0446)
+      - name: Download wasm-native-list (docs/adr/0442)
+        timeout-minutes: 5
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: sh scripts/ci/download-artifact.sh "$GITHUB_RUN_ID" wasm-native-list .
       - name: The PDFs and the diagnostics of golem.wasm are those of golem (docs/adr/0199, docs/adr/0238 I2)
         run: sh scripts/wasm/compare.sh --check wasm-native-list.txt wasm-list.txt
       # why the toolchain cache missed: the toolchain or the project
       # differs from main (the base of a pull request, the commit before a
-      # push), or neither and the cache was evicted, a warning annotation
-      # that does not fail the job (docs/adr/0219)
+      # push), or neither and the cache was evicted, a notice annotation
+      # that fails neither the job nor ci (docs/adr/0219, docs/adr/0427)
       - name: Times
         if: always()
         env:
@@ -920,7 +1122,8 @@ jobs:
     timeout-minutes: 75
     runs-on: ubuntu-24.04
     # actions: read for the artifact visual-pdfs of an earlier run, in the
-    # report of a failure; this job only (docs/adr/0035, docs/adr/0096)
+    # report of a failure, and for the zip of visual-pdfs of this run
+    # (docs/adr/0035, docs/adr/0096, docs/adr/0442)
     permissions:
       contents: read
       actions: read
@@ -959,10 +1162,12 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: timeout -k 10 3600 sh scripts/visual/wait-pdfs.sh "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" 'build (ubuntu-24.04, outputs)'
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-        with:
-          name: visual-pdfs
-          path: visual-pdfs
+      - name: Download visual-pdfs (docs/adr/0442)
+        timeout-minutes: 5
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: sh scripts/ci/download-artifact.sh "$GITHUB_RUN_ID" visual-pdfs visual-pdfs
       # the limit only finds a shem that does not stop; the budget is 2
       # minutes, and a run over it does not fail (docs/adr/0095). --lists
       # keeps the references of these PDFs for the report (docs/adr/0096)
@@ -1053,7 +1258,7 @@ jobs:
             !modules/golem-parser/test/StrippedGrammar.hs
             !modules/golem-emet/src/Golem/Emet/Generated.hs
             !modules/golem-driver/src/Golem/Driver/Version/Embedded.hs
-            !modules/golem-driver/src/Golem/Driver/Explain/Embedded.hs
+            !modules/golem-evaluate/src/Golem/Evaluate/Explain/Embedded.hs
       # the archives of the downloads, from the cache of main; each is checked
       # by its SHA-256 before it is used (docs/adr/0243)
       - id: downloads
@@ -1075,7 +1280,7 @@ jobs:
           path: third_party/downloads
           key: ${{ steps.downloads.outputs.cache-primary-key }}
       # -j checks the files on every core of the runner (docs/adr/0037)
-      - run: '"$HOME/.local/bin/hlint" -j modules --ignore-glob="modules/golem-parser/src/Golem/Parser/Generated.hs" --ignore-glob="modules/golem-parser/test/StrippedGrammar.hs" --ignore-glob="modules/golem-emet/src/Golem/Emet/Generated.hs" --ignore-glob="modules/golem-driver/src/Golem/Driver/Version/Embedded.hs" --ignore-glob="modules/golem-driver/src/Golem/Driver/Explain/Embedded.hs"'
+      - run: '"$HOME/.local/bin/hlint" -j modules --ignore-glob="modules/golem-parser/src/Golem/Parser/Generated.hs" --ignore-glob="modules/golem-parser/test/StrippedGrammar.hs" --ignore-glob="modules/golem-emet/src/Golem/Emet/Generated.hs" --ignore-glob="modules/golem-driver/src/Golem/Driver/Version/Embedded.hs" --ignore-glob="modules/golem-evaluate/src/Golem/Evaluate/Explain/Embedded.hs"'
 
   # The sample plugins and their helper crate (docs/adr/0106): the tests of
   # the crates, and the committed plugins/wasm/*.wasm are the bytes the
@@ -1164,6 +1369,10 @@ jobs:
     if: needs.changes.outputs.build == 'true'
     timeout-minutes: 75
     runs-on: ubuntu-24.04
+    # actions: read for the zip of golem-linux-x86_64 (docs/adr/0442)
+    permissions:
+      contents: read
+      actions: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -1192,10 +1401,12 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: timeout -k 10 3600 sh scripts/visual/wait-pdfs.sh "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" 'build (ubuntu-24.04, outputs)' golem-linux-x86_64
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-        with:
-          name: golem-linux-x86_64
-          path: golem-linux-x86_64
+      - name: Download golem-linux-x86_64 (docs/adr/0442)
+        timeout-minutes: 5
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: sh scripts/ci/download-artifact.sh "$GITHUB_RUN_ID" golem-linux-x86_64 golem-linux-x86_64
       # an artifact keeps no mode of its files
       - run: chmod +x golem-linux-x86_64/golem
       - name: golem lsp in a headless Neovim (docs/adr/0231)
@@ -1218,6 +1429,10 @@ jobs:
     if: needs.changes.outputs.build == 'true'
     timeout-minutes: 75
     runs-on: ubuntu-24.04
+    # actions: read for the zip of conformance-pdfs (docs/adr/0442)
+    permissions:
+      contents: read
+      actions: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -1240,14 +1455,16 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: timeout -k 10 3600 sh scripts/visual/wait-pdfs.sh "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" 'build (ubuntu-24.04, outputs)' conformance-pdfs
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-        with:
-          name: conformance-pdfs
-          path: conformance-pdfs
+      - name: Download conformance-pdfs (docs/adr/0442)
+        timeout-minutes: 5
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: sh scripts/ci/download-artifact.sh "$GITHUB_RUN_ID" conformance-pdfs conformance-pdfs
       - name: The PDFs pass PDF/A-2a and PDF/UA-1
         run: sh scripts/ci/verapdf.sh "$VERAPDF_STORE_PATH/bin/verapdf" conformance-pdfs
 
-  # The stale dist- caches of main, after the saves of build and wasm, so
+  # The stale dist- caches of main, after the saves of cache-dist and wasm, so
   # that the caches of the repository stay under the limit of 10 GB: the
   # newest of each family of the current keys (the dist-newstyle of x86-64
   # and of aarch64, and dist-wasm) is kept, and the other dist- caches of
@@ -1256,7 +1473,7 @@ jobs:
   # main only, builds and tests nothing, and ci does not need it: a cache
   # it failed to delete goes at the next push (docs/adr/0228)
   caches:
-    needs: [changes, build, wasm]
+    needs: [changes, build, cache-dist, wasm]
     if: always() && github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.changes.outputs.build == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
@@ -1271,7 +1488,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-          # the keys of the saves of build and wasm without the commit hash
+          # the keys of the saves of cache-dist and wasm without the commit hash
           X64: dist-Linux-X64-ghc-${{ env.GHC_VERSION }}-${{ hashFiles('cabal.project', 'cabal.project.freeze') }}-${{ hashFiles('scripts/fetch-wasmtime.sh') }}-
           ARM64: dist-Linux-ARM64-ghc-${{ env.GHC_VERSION }}-${{ hashFiles('cabal.project', 'cabal.project.freeze') }}-${{ hashFiles('scripts/fetch-wasmtime.sh') }}-
           WASM: dist-wasm-${{ hashFiles('scripts/fetch-ghc-wasm.sh') }}-${{ hashFiles('cabal.project.wasm', 'cabal.project.wasm.freeze') }}-
@@ -1363,10 +1580,13 @@ jobs:
         env:
           NEEDS: ${{ toJSON(needs) }}
         run: printf '%s\n' "$NEEDS" | sh scripts/ci/gate.sh
-      # every job of the run that has ended, but those skipped; ci itself
-      # is still running. The list of jobs comes from gh api, and each log,
+      # every job of the run that has ended, but those skipped and those
+      # cancelled before any step ran, which have no log; ci itself is
+      # still running. The list of jobs comes from gh api, and each log,
       # which may hold terminal escape sequences that gh api refuses to
-      # write, from the same API with curl (docs/adr/0245 section 6)
+      # write, from the same API with curl in job-logs.sh, which reads the
+      # other logs when one cannot be fetched and fails at the end
+      # (docs/adr/0245 section 6, docs/adr/0427)
       - name: No warning in the logs of the jobs but the allowed ones (docs/adr/0245)
         if: always()
         env:
@@ -1376,11 +1596,5 @@ jobs:
         run: |
           mkdir -p "$RUNNER_TEMP/logs"
           GITHUB_API_READ_SECONDS=3600 timeout -k 10 3600 sh scripts/ci/github-api-read.sh --paginate "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID/attempts/$RUN_ATTEMPT/jobs?per_page=100" \
-            --jq '.jobs[] | select(.status == "completed" and .conclusion != "skipped") | [.id, .name] | @tsv' >"$RUNNER_TEMP/jobs.tsv"
-          cat "$RUNNER_TEMP/jobs.tsv"
-          while IFS="$(printf '\t')" read -r id name; do
-            curl -fsSL --retry 5 --retry-all-errors -H "Authorization: Bearer $GH_TOKEN" \
-              "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/actions/jobs/$id/logs" -o "$RUNNER_TEMP/logs/$id.log"
-          done <"$RUNNER_TEMP/jobs.tsv"
-          test -s "$RUNNER_TEMP/jobs.tsv"
-          sh scripts/ci/log-warnings.sh scripts/ci/warnings-allowed.tsv "$RUNNER_TEMP"/logs/*.log
+            --jq '.jobs[]' >"$RUNNER_TEMP/jobs.json"
+          sh scripts/ci/job-logs.sh scripts/ci/warnings-allowed.tsv "$RUNNER_TEMP/jobs.json" "$RUNNER_TEMP/logs"

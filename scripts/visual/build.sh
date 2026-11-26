@@ -28,7 +28,7 @@ FIX=$ROOT/modules/golem-driver/test/fixtures
 PD_BOOKS="elements-of-style frogs haru-to-shura ichiaku-no-suna koya-hijiri merry-wives nightmare-abbey snark taira-no-masakado ushiyama-hotel"
 list() {
   printf '%s\n' sample figures complex-vertical complex-horizontal kanikosen kanikosen-marks-japanese tempest languages
-  printf '%s\n' specimens-horizontal specimens-vertical specimens-vertical-marks-japanese
+  printf '%s\n' specimens-horizontal specimens-vertical specimens-vertical-marks-japanese specimens-frames
   for book in $PD_BOOKS; do printf 'pd-%s\n' "$book"; done
   printf '%s\n' manual manual-dev
 }
@@ -163,6 +163,9 @@ fonts "$WORK/specimens-vertical"
 copy specimens-vertical-marks-japanese "$FIX/specimens/vertical"
 fonts "$WORK/specimens-vertical-marks-japanese"
 awk '{ print } $0 == "[page]" { print "bleed = \"3mm\"" }' "$FIX/specimens/vertical/style.toml" >"$WORK/specimens-vertical-marks-japanese/style.toml"
+# the specimen of the text frames: a circle, a star, a master page, @frame and the blocks past the frames of wrap around (root ADR 0437 A1, root ADR 0438 A1, root ADR 0456 A1)
+copy specimens-frames "$FIX/specimens/frames"
+fonts "$WORK/specimens-frames"
 if ! grep -qx 'bleed = "3mm"' "$WORK/specimens-vertical-marks-japanese/style.toml"; then
   echo "build: the style.toml of specimens/vertical has no [page] for the bleed" >&2
   exit 1
@@ -206,6 +209,7 @@ job languages pdf languages "$WORK/languages"
 job specimens-horizontal pdf specimens-horizontal "$WORK/specimens-horizontal"
 job specimens-vertical pdf specimens-vertical "$WORK/specimens-vertical"
 job specimens-vertical-marks-japanese pdf specimens-vertical-marks-japanese "$WORK/specimens-vertical-marks-japanese" --marks japanese
+job specimens-frames pdf specimens-frames "$WORK/specimens-frames"
 for book in $PD_BOOKS; do
   job "pd-$book" pdf "pd-$book" "$WORK/pd-$book"
 done

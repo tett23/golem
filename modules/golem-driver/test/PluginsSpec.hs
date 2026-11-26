@@ -14,9 +14,10 @@ import Data.Text.IO qualified as TIO
 import Golem.Assemble (Book (..), inlineText)
 import Golem.Doc.IR (Block (..), BlockBody (..), Document (..), Inline, InlineF (..), ListItem (..), NumberStyle (..), RubySegment (..), Table (..))
 import Golem.Driver
-import Golem.Driver.Plugins (LoadedPlugins (..), loadPlugins)
 import Golem.Eval.Builtin (BuiltinInline (..), builtinName, unPluginCommandName)
 import Golem.Eval.File (EvalResult (..), PluginHook (..))
+import Golem.Evaluate.Lint (lintProject)
+import Golem.Evaluate.Plugins (LoadedPlugins (..), loadPlugins)
 import Golem.Plugin (HostContext (..), maxDataBytes, watToWasm)
 import Golem.Plugin.Lock (defaultCacheDir, lockPlugins, renderLock)
 import Golem.Project (Manifest (..), Project (..), ProjectFailure (..), SourceFile (..))
@@ -165,11 +166,11 @@ channelTests =
         let html = do
               r <- build (defaultOptions tmp) {optTargets = Just [TargetHtml]}
               assertEqual "no errors" [] (map diagCode (filter isError (brDiagnostics r)))
-              (,) <$> TIO.readFile (tmp </> "build/html/chapters/01.xhtml") <*> TIO.readFile (tmp </> "build/html/chapters/02.xhtml")
+              (,) <$> TIO.readFile (tmp </> "build/html/chapters/01.html") <*> TIO.readFile (tmp </> "build/html/chapters/02.html")
         (one, two) <- html
         assertBool (T.unpack one) ("<span id=\"c-people-" `T.isInfixOf` one)
         assertBool (T.unpack two) ("<section class=\"channel\" data-channel=\"people\">" `T.isInfixOf` two)
-        assertBool (T.unpack two) ("<li>甲 <a href=\"../chapters/01.xhtml#c-people-" `T.isInfixOf` two)
+        assertBool (T.unpack two) ("<li>甲 <a href=\"../chapters/01.html#c-people-" `T.isInfixOf` two)
         again <- html
         again @?= (one, two),
     testCase "plain text: the body of each entry on a line" $
@@ -280,6 +281,17 @@ blockCommandTests =
       withBlockProject [("gr", "grid.wat", "data = { table = \"none.tsv\" }\n")] "@grid\n\n[grid]\n\n@nope\n" $ \tmp -> do
         r <- build (defaultOptions tmp)
         map diagCode (brDiagnostics r) @?= [DiagnosticCode "G06101", DiagnosticCode "G06102"],
+    testCase "root ADR 0459 I1: a block command of a plugin takes the next paragraph as its body" $ do
+      let shape (bs, ds) = ([(blockLabel b, blockLang b, [t | Paragraph _ is <- [blockBody b], Text _ t <- is]) | b <- bs], ds)
+      next <- withBlockProject [("gr", "grid.wat", "")] "@grid\n本文\n" (fmap shape . blocksOf)
+      indented <- withBlockProject [("gr", "grid.wat", "")] "@grid\n  本文\n" (fmap shape . blocksOf)
+      -- grid.wat reads no body: both forms pass the paragraph to it, and both fail alike
+      next @?= indented
+      assertBool "no G02011" (DiagnosticCode "G02011" `notElem` map fst (snd next)),
+    testCase "root ADR 0459 I5: no G02011 for a block command left unknown after a plugin failed to load" $
+      withBlockProject [("gr", "grid.wat", "data = { table = \"none.tsv\" }\n")] "@grid\n\n@nope\n本文\n" $ \tmp -> do
+        r <- build (defaultOptions tmp)
+        map diagCode (brDiagnostics r) @?= [DiagnosticCode "G06101", DiagnosticCode "G06102"],
     testCase "G06006: two plugins with the same block command" $
       withBlockProject [("a", "grid.wat", ""), ("b", "grid.wat", "")] "本文\n" $ \tmp -> do
         r <- build (defaultOptions tmp)
@@ -291,6 +303,54 @@ blockCommandTests =
         case map blockBody bs of
           [BulletList [ListItem _ [_, Block _ (Just "t") Nothing (Paragraph _ [Text _ "表"])]]] -> pure ()
           other -> assertFailure (show other)
+  ]
+
+{- | Overriding the built-in block commands (root ADR 0453): block-overrides
+of the manifest, its errors, and a plugin's override with a listed import.
+-}
+blockOverrideTests :: [TestTree]
+blockOverrideTests =
+  [ testCase "root ADR 0453 I4: @separator calls the plugin of block-overrides" $
+      withBlockProject [("sp", "block-separator.wat", "block-overrides = [\"separator\"]\n")] "@separator\n" $ \tmp -> do
+        (bs, ds) <- blocksOf tmp
+        ds @?= []
+        [[t | Paragraph _ is <- [blockBody b], Text _ t <- is] | b <- bs] @?= [["表"]],
+    testCase "root ADR 0453 I7: a built-in block command not in block-overrides is G06007 once" $
+      withBlockProject [("sp", "block-separator.wat", "")] "本文\n" $ \tmp -> do
+        r <- build (defaultOptions tmp)
+        atManifestTop r >>= (@?= [(DiagnosticCode "G06007", "組み込みのブロックコマンドと衝突しています（block-overrides で宣言してください）: sp.@separator")]),
+    testCase "root ADR 0453 I7: a fixed built-in block command is G06007 once" $
+      withBlockProject [("bb", "block-builtins.wat", "block-overrides = [\"separator\"]\n")] "本文\n" $ \tmp -> do
+        r <- build (defaultOptions tmp)
+        atManifestTop r >>= (@?= [(DiagnosticCode "G06007", "上書きできない組み込みのブロックコマンドと衝突しています: bb.@frame")]),
+    testCase "root ADR 0453 I7: a fixed name in block-overrides is G06008 once" $
+      withBlockProject [("bb", "block-builtins.wat", "block-overrides = [\"separator\", \"frame\"]\n")] "本文\n" $ \tmp -> do
+        r <- build (defaultOptions tmp)
+        atManifestTop r >>= (@?= [(DiagnosticCode "G06008", "上書きできる組み込みのブロックコマンドではありません: bb.@frame")]),
+    testCase "root ADR 0453 I7: a name the plugin does not provide in block-overrides is G06008 once" $
+      withBlockProject [("gr", "grid.wat", "block-overrides = [\"toc\"]\n")] "本文\n" $ \tmp -> do
+        r <- build (defaultOptions tmp)
+        atManifestTop r >>= (@?= [(DiagnosticCode "G06008", "プラグインが提供していないブロックコマンドを block-overrides に書いています: gr.@toc")]),
+    testCase "root ADR 0453 I7: block-overrides is no key of overrides, nor overrides of block-overrides" $ do
+      withBlockProject [("sp", "block-separator.wat", "overrides = [\"separator\"]\n")] "本文\n" $ \tmp -> do
+        r <- build (defaultOptions tmp)
+        ds <- atManifestTop r
+        sort (map fst ds) @?= [DiagnosticCode "G06007", DiagnosticCode "G06008"]
+      withPlugins [("ov", "override-ruby.wat")] (pluginDeclOf "ov" "block-overrides = [\"ruby\"]\n") $ \tmp -> do
+        r <- build (defaultOptions tmp)
+        ds <- atManifestTop r
+        sort (map fst ds) @?= [DiagnosticCode "G06007", DiagnosticCode "G06008"],
+    testCase "root ADR 0453 I5: a plugin's override and a listed name are G02271 once, and @separator calls the plugin" $
+      withBlockProject [("sp", "block-separator.wat", "block-overrides = [\"separator\"]\n")] "@import f.emet { separator }\n\n@separator\n" $ \tmp -> do
+        BS.writeFile (tmp </> "f.emet") "pub block separator :: Blocks\nseparator = Block.paragraph (Inline.text \"EMET\")\n"
+        (bs, ds) <- blocksOf tmp
+        ds @?= [(DiagnosticCode "G02271", "プラグインのコマンドと同じ名前は取り込めません: separator")]
+        [[t | Paragraph _ is <- [blockBody b], Text _ t <- is] | b <- bs] @?= [["表"]],
+    testCase "root ADR 0453: golem lint counts a call of an overridden name as a use of the listed name (G05003)" $
+      withBlockProject [] "@import f.emet { toc, bibliography }\n\n@toc\n" $ \tmp -> do
+        BS.writeFile (tmp </> "f.emet") "pub block toc :: Blocks\ntoc = Block.paragraph (Inline.text \"T\")\n\npub block bibliography :: Blocks\nbibliography = Block.paragraph (Inline.text \"B\")\n"
+        (_, ds) <- lintProject Dev False True tmp
+        [(diagCode d, diagMessage d) | d <- ds, diagCode d `elem` [DiagnosticCode "G05003", DiagnosticCode "G02270"]] @?= [(DiagnosticCode "G05003", "使われていない import の名前です: bibliography")]
   ]
 
 {- | A one-chapter project, a.gm, for PDF, HTML and EPUB with the fake
@@ -321,7 +381,7 @@ pluginFigureTests =
         r <- build (defaultOptions tmp) {optFonts = fakeProvider}
         filter isError (brDiagnostics r) @?= []
         BS.readFile (tmp </> "build/html" </> chartPath) >>= (@?= chartSvg)
-        page <- TIO.readFile (tmp </> "build/html/a.xhtml")
+        page <- TIO.readFile (tmp </> "build/html/a.html")
         assertBool (T.unpack page) (T.pack chartPath `T.isInfixOf` page)
         epubs <- filter (".epub" `isSuffixOf`) <$> listDirectory (tmp </> "build/epub")
         case epubs of
@@ -350,14 +410,30 @@ pluginFigureTests =
       withBarChart "@bar-chart sales\n" $ \tmp -> do
         e <- evaluateProject Dev tmp >>= either (assertFailure . show . pfDiagnostics) pure
         map diagCode (evDiagnostics e) @?= [DiagnosticCode "bc/alt"],
-    testCase "G08102: a figure of the source where HTML and EPUB put the images of plugins" $
+    testCase "root ADR 0430 I1, I3: G08102: a figure of the source where HTML and EPUB put the images of plugins" $
       withBarChart "# 章\n\n@figure ./images/golem-plugin/x.svg alt=x\n" $ \tmp -> do
         writeFiles tmp [("images/golem-plugin/x.svg", chartSvg)]
         r <- build (defaultOptions tmp) {optFonts = fakeProvider}
         [(diagCode d, diagMessage d) | d <- brDiagnostics r, isError d]
-          @?= [(DiagnosticCode "G08102", "図版の画像の出力のパスが、プラグインの画像を置くフォルダー images/golem-plugin と重なります: ./images/golem-plugin/x.svg")]
+          @?= [(DiagnosticCode "G08102", "図版の画像の出力のパスが、プラグインの画像を置くフォルダ images/golem-plugin と重なります: ./images/golem-plugin/x.svg")]
         assertBool "no HTML" (not (any (("build/html/" `T.isInfixOf`) . T.pack) (brWritten r)))
-        assertBool "a PDF" (any (".pdf" `isSuffixOf`) (brWritten r))
+        assertBool "a PDF" (any (".pdf" `isSuffixOf`) (brWritten r)),
+    testCase "root ADR 0430 I1, I3: G08102 for a figure at images/golem-plugin/a.png" $
+      withBarChart "# 章\n\n@figure ./images/golem-plugin/a.png alt=x\n" $ \tmp -> do
+        writeFiles tmp [("images/golem-plugin/a.png", "\x89PNG\r\n\x1a\n")]
+        r <- build (defaultOptions tmp) {optFonts = fakeProvider}
+        [(diagCode d, diagMessage d) | d <- brDiagnostics r, diagCode d == DiagnosticCode "G08102"]
+          @?= [(DiagnosticCode "G08102", "図版の画像の出力のパスが、プラグインの画像を置くフォルダ images/golem-plugin と重なります: ./images/golem-plugin/a.png")],
+    testCase "root ADR 0430 I3: no G08102 for a figure under images/golem-plugin-x/" $
+      withBarChart "# 章\n\n@figure ./images/golem-plugin-x/x.svg alt=x\n" $ \tmp -> do
+        writeFiles tmp [("images/golem-plugin-x/x.svg", chartSvg)]
+        r <- build (defaultOptions tmp) {optFonts = fakeProvider}
+        [diagCode d | d <- brDiagnostics r, diagCode d == DiagnosticCode "G08102"] @?= [],
+    testCase "root ADR 0430 I3: no G08102 for a figure out of images/golem-plugin" $
+      withBarChart "# 章\n\n@figure ./images/x.svg alt=x\n" $ \tmp -> do
+        writeFiles tmp [("images/x.svg", chartSvg)]
+        r <- build (defaultOptions tmp) {optFonts = fakeProvider}
+        [diagCode d | d <- brDiagnostics r, diagCode d == DiagnosticCode "G08102"] @?= []
   ]
 
 -- | The context of the book a plugin asks for (docs/adr/0121).
@@ -405,6 +481,8 @@ shapes = map $ \case
   Number _ n (Just StyleTcy) -> "#" <> T.pack (show n)
   Number _ n _ -> "number " <> T.pack (show n)
   Tcy _ t -> "[tcy: " <> t <> "]"
+  Warichu _ t -> "[warichu: " <> t <> "]"
+  Upright _ t -> "[upright: " <> t <> "]"
   CharStyle _ s xs -> "[" <> s <> ": " <> T.concat (shapes xs) <> "]"
   _ -> "?"
 
@@ -855,8 +933,8 @@ glossaryTests =
         assertEqual "no errors" [] (map diagCode (filter isError (brDiagnostics r)))
         t <- TIO.readFile (tmp </> "build/text/horizontal/a.txt")
         t @?= "組んだ版と組む版。\n\n組む　版を作ること\n"
-        html <- TIO.readFile (tmp </> "build/html/a.xhtml")
-        (T.count "<li>" html, T.count "href=\"#c-glossary-" html + T.count "a.xhtml#c-glossary-" html) @?= (1, 2),
+        html <- TIO.readFile (tmp </> "build/html/a.html")
+        (T.count "<li>" html, T.count "href=\"#c-glossary-" html + T.count "a.html#c-glossary-" html) @?= (1, 2),
     testCase "G04003: the label of the fourth column is not in the book" $
       withGlossary horizontalStyle "[term: カーニング]。\n\n@channel glossary\n" $ \tmp -> do
         r <- build (defaultOptions tmp) {optTargets = Just [TargetText]}
@@ -897,19 +975,19 @@ glossaryTests =
       withGlossary horizontalStyle "@label h\n# [term: 組版]の章\n\n参照[ref-title h]。\n\n@channel glossary\n" $ \tmp -> do
         r <- build (defaultOptions tmp) {optTargets = Just [TargetHtml]}
         assertEqual "no errors" [] (map diagCode (filter isError (brDiagnostics r)))
-        html <- TIO.readFile (tmp </> "build/html/a.xhtml")
-        (T.count "id=\"c-glossary-" html, T.count "href=\"#c-glossary-" html + T.count "a.xhtml#c-glossary-" html) @?= (1, 1),
+        html <- TIO.readFile (tmp </> "build/html/a.html")
+        (T.count "id=\"c-glossary-" html, T.count "href=\"#c-glossary-" html + T.count "a.html#c-glossary-" html) @?= (1, 1),
     testCase "HTML: an index mark nested in a style of a heading has no id in @toc" $
       withGlossary horizontalStyle "@toc\n\n# [strong: [index reading=はんめん: 版面]と]\n\n@index\n" $ \tmp -> do
         r <- build (defaultOptions tmp) {optTargets = Just [TargetHtml]}
         assertEqual "no errors" [] (map diagCode (filter isError (brDiagnostics r)))
-        html <- TIO.readFile (tmp </> "build/html/a.xhtml")
+        html <- TIO.readFile (tmp </> "build/html/a.html")
         T.count "id=\"i-" html @?= 1,
     testCase "HTML: a word and an index mark in a heading have their ids once, not again in @toc of the same file" $
       withGlossary horizontalStyle "@toc\n\n# [term: 組版]と[index reading=はんめん: 版面]\n\n@channel glossary\n\n@index\n" $ \tmp -> do
         r <- build (defaultOptions tmp) {optTargets = Just [TargetHtml]}
         assertEqual "no errors" [] (map diagCode (filter isError (brDiagnostics r)))
-        html <- TIO.readFile (tmp </> "build/html/a.xhtml")
+        html <- TIO.readFile (tmp </> "build/html/a.html")
         map (`T.count` html) ["id=\"c-glossary-", "id=\"i-"] @?= [1, 1],
     testCase "HTML and EPUB: the list links to the words in another file; the same bytes twice" $
       withPlugins [("glossary", "glossary.wasm")] (pluginDeclOf "glossary" "data = { terms = \"terms.tsv\" }\n") $ \tmp -> do
@@ -919,12 +997,12 @@ glossaryTests =
         let out = do
               r <- build (defaultOptions tmp) {optTargets = Just [TargetHtml, TargetEpub]}
               assertEqual "no errors" [] (map diagCode (filter isError (brDiagnostics r)))
-              (,,) <$> TIO.readFile (tmp </> "build/html/chapters/01.xhtml") <*> TIO.readFile (tmp </> "build/html/chapters/02.xhtml") <*> BS.readFile (tmp </> "build/epub/book.epub")
+              (,,) <$> TIO.readFile (tmp </> "build/html/chapters/01.html") <*> TIO.readFile (tmp </> "build/html/chapters/02.html") <*> BS.readFile (tmp </> "build/epub/book.epub")
         (one, two, epub) <- out
         assertBool (T.unpack one) ("<span id=\"c-glossary-" `T.isInfixOf` one)
         assertBool (T.unpack two) ("<section class=\"channel\" data-channel=\"glossary\">" `T.isInfixOf` two)
-        assertBool (T.unpack two) ("<li>組版　版を組むこと（→<a href=\"../chapters/01.xhtml#" `T.isInfixOf` two)
-        assertBool (T.unpack two) ("） <a href=\"../chapters/01.xhtml#c-glossary-" `T.isInfixOf` two)
+        assertBool (T.unpack two) ("<li>組版　版を組むこと（→<a href=\"../chapters/01.html#" `T.isInfixOf` two)
+        assertBool (T.unpack two) ("） <a href=\"../chapters/01.html#c-glossary-" `T.isInfixOf` two)
         again <- out
         again @?= (one, two, epub)
   ]
@@ -1137,6 +1215,7 @@ pluginTests =
     <> autoTcyTests
     <> tsvTableTests
     <> blockCommandTests
+    <> blockOverrideTests
     <> pluginFigureTests
     <> [ testCase "a filter runs over the declared files and keeps the output" $ do
            plain <- buildAndRead Dev "build/text/horizontal/chapters/01.txt"

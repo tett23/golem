@@ -1,6 +1,6 @@
 # ADR 0401: 本の部品を保つ単位を本全体で指定する
 
-Status: accepted-pending
+Status: accepted
 
 ## 文脈
 

@@ -1,4 +1,4 @@
-# R4/R7: Run with ruby terminal.rb /absolute/path/to/golem on a POSIX terminal.
+# root ADR 0348 I4, I7: Run with ruby terminal.rb /absolute/path/to/golem on a POSIX terminal.
 require "pty"
 require "timeout"
 require "tmpdir"

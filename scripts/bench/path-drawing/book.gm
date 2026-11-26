@@ -1,0 +1,21 @@
+@import art.emet * as art
+
+@art.page [= vars.seed] 1 [= vars.shapes]
+
+@art.page [= vars.seed] 2 [= vars.shapes]
+
+@art.page [= vars.seed] 3 [= vars.shapes]
+
+@art.page [= vars.seed] 4 [= vars.shapes]
+
+@art.page [= vars.seed] 5 [= vars.shapes]
+
+@art.page [= vars.seed] 6 [= vars.shapes]
+
+@art.page [= vars.seed] 7 [= vars.shapes]
+
+@art.page [= vars.seed] 8 [= vars.shapes]
+
+@art.page [= vars.seed] 9 [= vars.shapes]
+
+@art.page [= vars.seed] 10 [= vars.shapes]

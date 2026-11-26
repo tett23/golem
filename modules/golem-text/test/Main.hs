@@ -72,7 +72,7 @@ noEval _ _ _ = Right ""
 -- | The plain text of one file in a book of the language, with the number format of headings.
 render :: Text -> Text -> [Block] -> [Text]
 render lang format bs =
-  let cfg = AssembleConfig (Map.fromList [(1, format)]) "図{chapter}-{n}" Map.empty NumberPerFile [] "リスト{chapter}-{n}" "表{chapter}-{n}" Map.empty 16
+  let cfg = AssembleConfig (Map.fromList [(1, format)]) "図{chapter}-{n}" Map.empty NumberPerFile [] "リスト{chapter}-{n}" "表{chapter}-{n}" Map.empty 16 NumberPerChapter
       (book, _) = assemble cfg noEval [Document (FileId 0) bs]
       (_, ft) = registerFile "a.gm" emptyFileTable
    in concatMap (T.lines . snd) (renderText lang "kanji" False (const (const (0, 0))) lists False Map.empty Horizontal ft book)
@@ -130,5 +130,12 @@ tests =
       testCase "a code block with none of them is its text (golem-driver ADR 0023)" $
         renderBlocks Map.empty [] Map.empty [CodeBlock (Code Nothing Nothing Nothing Nothing False [CodeLine "a <1>" (Just 1) Nothing False [] Nothing, CodeLine "b" (Just 2) Nothing False [] Nothing] False)]
           @?= [("a.txt", "a <1>\nb\n")],
+      testCase "root ADR 0438 I6: the paragraphs of @frame are paragraphs at the place of the command" $ do
+        let p s t = Block (sp s) Nothing Nothing (Paragraph Nothing [Text (sp s) t])
+        renderBlocks Map.empty [] Map.empty [Paragraph Nothing [Text (sp 0) "前"], FrameBlock "quote" [p 10 "枠の一", p 11 "枠の二"], Paragraph Nothing [Text (sp 2) "後"]]
+          @?= [("a.txt", "前\n\n枠の一\n\n枠の二\n\n後\n")],
+      testCase "root ADR 0438 I6: an empty @frame writes nothing" $
+        renderBlocks Map.empty [] Map.empty [Paragraph Nothing [Text (sp 0) "前"], FrameBlock "quote" [], Paragraph Nothing [Text (sp 2) "後"]]
+          @?= [("a.txt", "前\n\n後\n")],
       textOutputTests
     ]

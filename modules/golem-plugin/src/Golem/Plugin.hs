@@ -73,7 +73,6 @@ import Foreign.C.Types
 import Golem.Doc.Cbor
 import Golem.Doc.IR hiding (abiVersion)
 import Golem.Doc.Validate (captionErrors, langErrors, linkErrors, validateCommandBlocks, validateDocument)
-import Golem.Eval.Builtin (builtinBlockCommands)
 import Golem.Eval.Value (PluginArg (..), Value (..))
 import Golem.Syntax
 import Golem.Syntax.Sha256 (sha256)
@@ -84,7 +83,7 @@ import System.IO.Unsafe (unsafePerformIO)
 
 data CPlugin
 
-foreign import capi unsafe "golem_plugin.h golem_plugin_load" c_load :: Ptr Word8 -> CSize -> Ptr CString -> IO (Ptr CPlugin)
+foreign import capi safe "golem_plugin.h golem_plugin_load" c_load :: Ptr Word8 -> CSize -> Ptr CString -> IO (Ptr CPlugin)
 
 foreign import capi unsafe "golem_plugin.h &golem_plugin_free" c_free :: FunPtr (Ptr CPlugin -> IO ())
 
@@ -99,7 +98,7 @@ foreign import capi safe "golem_plugin.h golem_plugin_call"
 
 foreign import capi unsafe "golem_plugin.h golem_plugin_free_bytes" c_freeBytes :: Ptr a -> IO ()
 
-foreign import capi unsafe "golem_plugin.h golem_wat2wasm" c_wat2wasm :: CString -> CSize -> Ptr CSize -> Ptr CString -> IO (Ptr Word8)
+foreign import capi safe "golem_plugin.h golem_wat2wasm" c_wat2wasm :: CString -> CSize -> Ptr CSize -> Ptr CString -> IO (Ptr Word8)
 
 {- | The ABI version of this host, the one of the IR ('Golem.Doc.IR.abiVersion'):
 one more than the last release only when the ABI changed since
@@ -404,11 +403,10 @@ decodeDescription b = do
     fields = ["commands", "filters", "channels", "data", "context", "blocks"]
     blockNames ns = case [n | n <- ns, not (dataName n)] of
       (n : _) -> Left (BadOutput ("ブロックコマンドの名前が不正です: " <> n))
+      -- a name of a built-in block command is checked against block-overrides by golem-evaluate (G06007, root ADR 0453)
       [] -> case [n | (i, n) <- zip [0 :: Int ..] ns, n `elem` take i ns] of
         (n : _) -> Left (BadOutput ("ブロックコマンドの名前が重複しています: " <> n))
-        [] -> case [n | n <- ns, n `elem` builtinBlockCommands] of
-          (n : _) -> Left (BadOutput ("組み込みのブロックコマンドの名前です: " <> n))
-          [] -> Right ns
+        [] -> Right ns
     contextOf ns = case [n | (i, n) <- zip [0 :: Int ..] ns, n `elem` take i ns] of
       (n : _) -> Left (BadOutput ("文脈の名前が重複しています: " <> n))
       [] -> case filter (`notElem` contextNames) ns of
@@ -628,6 +626,7 @@ placeImages body images bs = do
       BulletList items -> concatMap itemBlocks items
       OrderedList items -> concatMap itemBlocks items
       DefList gs -> concat (concatMap dgDefs gs)
+      FrameBlock _ held -> held
       _ -> []
 
 {- | The kinds of blocks a block command makes, at any depth, and no label
@@ -651,6 +650,8 @@ blockKind (Block _ lbl _ body)
       PageControl _ -> refuse "改ページの制御"
       BlankLines _ -> refuse "行アキ"
       Separator _ -> Right ()
+      -- a frame takes no room in the flow, and holds paragraphs (root ADR 0438)
+      FrameBlock _ bs -> mapM_ blockKind bs
   where
     refuse k = Left (BadOutput ("ブロックコマンドが返せないブロックです: " <> k))
 
@@ -737,6 +738,7 @@ checkItems plugin given = mapM_ check
     sends = \case
       Note {} -> True
       Sidenote {} -> True
+      Endnote {} -> True
       IndexMark {} -> True
       Cite {} -> True
       ChannelItem {} -> True
@@ -760,8 +762,9 @@ inlineItems = \case
   Link _ _ xs -> concatMap inlineItems xs
   Lang _ _ xs -> concatMap inlineItems xs
   Resolved _ _ _ xs -> concatMap inlineItems xs
-  Note _ _ nb -> concatMap inlineItems (concat (noteParagraphs nb))
-  Sidenote _ _ nb -> concatMap inlineItems (concat (noteParagraphs nb))
+  Note _ _ _ nb -> concatMap inlineItems (concat (noteParagraphs nb))
+  Sidenote _ _ _ nb -> concatMap inlineItems (concat (noteParagraphs nb))
+  Endnote _ _ _ nb -> concatMap inlineItems (concat (noteParagraphs nb))
   Cite _ is -> concatMap inlineItems (citeInlines is)
   _ -> []
 
@@ -776,11 +779,14 @@ inlineSpans = \case
   Color s _ xs -> s : concatMap inlineSpans xs
   CharStyle s _ xs -> s : concatMap inlineSpans xs
   Tcy s _ -> [s]
+  Warichu s _ -> [s]
+  Upright s _ -> [s]
   Number s _ _ -> [s]
   Ref s _ _ -> [s]
   Deferred s _ -> [s]
-  Note s _ nb -> s : map blockSpan nb <> concatMap inlineSpans (concat (noteParagraphs nb))
-  Sidenote s _ nb -> s : map blockSpan nb <> concatMap inlineSpans (concat (noteParagraphs nb))
+  Note s _ _ nb -> s : map blockSpan nb <> concatMap inlineSpans (concat (noteParagraphs nb))
+  Sidenote s _ _ nb -> s : map blockSpan nb <> concatMap inlineSpans (concat (noteParagraphs nb))
+  Endnote s _ _ nb -> s : map blockSpan nb <> concatMap inlineSpans (concat (noteParagraphs nb))
   IndexMark s _ -> [s]
   Cite s is -> s : concatMap inlineSpans (citeInlines is)
   ProofComment s _ -> [s]
@@ -798,8 +804,9 @@ inlineDeferred = \case
   Kenten _ _ xs -> concatMap inlineDeferred xs
   Color _ _ xs -> concatMap inlineDeferred xs
   CharStyle _ _ xs -> concatMap inlineDeferred xs
-  Note _ _ nb -> concatMap inlineDeferred (concat (noteParagraphs nb))
-  Sidenote _ _ nb -> concatMap inlineDeferred (concat (noteParagraphs nb))
+  Note _ _ _ nb -> concatMap inlineDeferred (concat (noteParagraphs nb))
+  Sidenote _ _ _ nb -> concatMap inlineDeferred (concat (noteParagraphs nb))
+  Endnote _ _ _ nb -> concatMap inlineDeferred (concat (noteParagraphs nb))
   Cite _ is -> concatMap inlineDeferred (citeInlines is)
   ChannelItem _ c -> concatMap inlineDeferred (ciBody c)
   Link _ _ xs -> concatMap inlineDeferred xs
@@ -816,6 +823,7 @@ blocksOf (Document _ bs) = concatMap go bs
         OrderedList items -> concatMap (concatMap go . itemBlocks) items
         DefList gs -> concatMap (concatMap (concatMap go) . dgDefs) gs
         FigureBlock f -> concatMap go (figCaption f)
+        FrameBlock _ inner -> concatMap go inner
         _ -> []
 
 blockInlines :: Block -> [Inline]

@@ -94,7 +94,7 @@ tests =
             "[= round(1.25, 0 - 1)]\n",
             "```haskell numbers=[= 0 - 1]\nx\n```\n"
           ],
-      testCase "a word and an expression of the same negative value give the same diagnostic" $ do
+      testCase "root ADR 0345 I2: a word and an expression of the same negative value give the same diagnostic" $ do
         msgs "@blank-line -1\n" @?= [("G02103", "@blank-line の引数には 0 以上の整数を書きます（書かれた値は -1）")]
         msgs "@blank-line [= 0 - 1]\n" @?= msgs "@blank-line -1\n",
       testCase "a number that is not an integer is G02104, with its value" $ do
@@ -142,11 +142,11 @@ tests =
         codeLinesOf "@listing src/Main.hs lines=[= 4 / 2...3]\n" @?= [(["l2", "l3"], [])]
         codeLinesOf "@listing src/Main.hs lines=[= \"1...2\"]\n" @?= [(["l1", "l2"], [])]
         codeLinesOf "@listing src/Main.hs lines=2e0...3\n" @?= [(["l2", "l3"], [])],
-      testCase "ADR 0342 I1: written negative ends are syntax errors; evaluated ones are numeric errors" $ do
+      testCase "root ADR 0419 I2: written and evaluated negative ends are the same numeric error" $ do
         let neg = [("G02103", "@listing の lines には 0 以上の整数を書きます（書かれた値は -1）")]
-        map fst (listingMsgs "@listing src/Main.hs lines=-1\n") @?= ["G02110"]
-        map fst (listingMsgs "@listing src/Main.hs lines=3...-1\n") @?= ["G02110"]
-        map fst (listingMsgs "@listing src/Main.hs lines=-1...2\n") @?= ["G02110"]
+        listingMsgs "@listing src/Main.hs lines=-1\n" @?= neg
+        listingMsgs "@listing src/Main.hs lines=3...-1\n" @?= neg
+        listingMsgs "@listing src/Main.hs lines=-1...2\n" @?= neg
         listingMsgs "@listing src/Main.hs lines=[= 0 - 1]\n" @?= neg
         listingMsgs "@listing src/Main.hs lines=[= 1...0 - 1]\n" @?= neg
         listingMsgs "@listing src/Main.hs lines=1...1.5\n" @?= [("G02104", "@listing の lines には 0 以上の整数を書きます（書かれた値 1.5 は整数ではありません）")]
@@ -162,10 +162,10 @@ tests =
         codeLinesOf "``` highlight=[= 2]\na\nb\nc\n```\n" @?= [(["a", "b", "c"], ["b"])]
         codeLinesOf "``` highlight=[= 2...3]\na\nb\nc\n```\n" @?= [(["a", "b", "c"], ["b", "c"])]
         codeLinesOf "@set n = 1\n\n``` highlight=[= n...n + 1]\na\nb\nc\n```\n" @?= [(["a", "b", "c"], ["a", "b"])],
-      testCase "ADR 0342 I1: a written negative highlight is syntax; evaluated and numbers= are numeric" $ do
+      testCase "root ADR 0419 I2: written and evaluated negative highlight and numbers= are numeric" $ do
         let neg k = [("G02103", "コードブロックの " <> k <> " には 0 以上の整数を書きます（書かれた値は -1）")]
-        map fst (listingMsgs "``` highlight=-1\na\n```\n") @?= ["G02110"]
-        map fst (listingMsgs "``` highlight=1,2...-1\na\nb\n```\n") @?= ["G02110"]
+        listingMsgs "``` highlight=-1\na\n```\n" @?= neg "highlight"
+        listingMsgs "``` highlight=1,2...-1\na\nb\n```\n" @?= neg "highlight"
         listingMsgs "``` highlight=[= [1, 0 - 1]]\na\n```\n" @?= neg "highlight"
         listingMsgs "``` numbers=-1\na\n```\n" @?= neg "numbers"
         listingMsgs "``` numbers=[= 0 - 1]\na\n```\n" @?= neg "numbers",

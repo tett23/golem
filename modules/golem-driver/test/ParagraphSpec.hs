@@ -38,9 +38,9 @@ separatorTests =
         TIO.writeFile (tmp </> "b.gm") "前の行\n後の行\n"
         r <- build (defaultOptions tmp) {optTargets = Just [TargetHtml]}
         assertEqual "no errors" [] (map diagCode (filter isError (brDiagnostics r)))
-        l <- TIO.readFile (tmp </> "build/html/l.xhtml")
+        l <- TIO.readFile (tmp </> "build/html/l.html")
         assertBool (T.unpack l) ("<p>一行目。</p>\n<p>二行目。</p>\n<p>三行目。</p>" `T.isInfixOf` l)
-        b <- TIO.readFile (tmp </> "build/html/b.xhtml")
+        b <- TIO.readFile (tmp </> "build/html/b.html")
         assertBool (T.unpack b) ("<p>前の行後の行</p>" `T.isInfixOf` b)
   ]
 
@@ -66,7 +66,7 @@ akiTests =
       withVerseProject "" "a[aki 五分]b\n" $ \tmp -> do
         r <- build (defaultOptions tmp) {optTargets = Just [TargetHtml]}
         assertEqual "no errors" [] (map diagCode (filter isError (brDiagnostics r)))
-        page <- TIO.readFile (tmp </> "build/html/v.xhtml")
+        page <- TIO.readFile (tmp </> "build/html/v.html")
         assertBool (T.unpack page) ("<p>a&#x2060;<span class=\"aki\" style=\"margin-inline-start: 0.2em\"></span>&#x2060;b</p>" `T.isInfixOf` page),
     testCase "plain text: [aki] is as many ideographic spaces as its whole zw" $ do
       withVerseProject "" "a[aki 全角]b[aki 五分]c[aki 二分四分]d[aki 2zw]e[aki 3mm]f\n" $ \tmp -> do
@@ -98,13 +98,13 @@ hardBreakTests =
       withVerseProject "" "a\\\nb\n\n- c\\\n  d\n" $ \tmp -> do
         r <- build (defaultOptions tmp) {optTargets = Just [TargetHtml]}
         assertEqual "no errors" [] (map diagCode (filter isError (brDiagnostics r)))
-        page <- TIO.readFile (tmp </> "build/html/v.xhtml")
-        assertBool (T.unpack page) ("<p>a<br/>b</p>" `T.isInfixOf` page)
-        assertBool (T.unpack page) ("<li>c<br/>d</li>" `T.isInfixOf` page)
+        page <- TIO.readFile (tmp </> "build/html/v.html")
+        assertBool (T.unpack page) ("<p>a<br>b</p>" `T.isInfixOf` page)
+        assertBool (T.unpack page) ("<li>c<br>d</li>" `T.isInfixOf` page)
         assertBool (T.unpack page) (not ("<span class=\"line\">" `T.isInfixOf` page))
       withVerseProject "" "@style verse\n  a\\\n  b\n" $ \tmp -> do
         _ <- build (defaultOptions tmp) {optTargets = Just [TargetHtml]}
-        page <- TIO.readFile (tmp </> "build/html/v.xhtml")
+        page <- TIO.readFile (tmp </> "build/html/v.html")
         assertBool (T.unpack page) ("<span class=\"line\">a</span>" `T.isInfixOf` page),
     testCase "plain text: a hard break is a newline" $
       withVerseProject "" "a\\\nb\n" $ \tmp -> do
@@ -119,10 +119,10 @@ verseTests =
       withVerseProject "[paragraph-styles.verse]\nindent = \"3zw\"\nfirst-line-indent = \"-3zw\"\n" verseSource $ \tmp -> do
         r <- build (defaultOptions tmp) {optTargets = Just [TargetHtml]}
         assertEqual "no errors" [] (map diagCode (filter isError (brDiagnostics r)))
-        page <- TIO.readFile (tmp </> "build/html/v.xhtml")
+        page <- TIO.readFile (tmp </> "build/html/v.html")
         assertBool
           (T.unpack page)
-          ( "<p class=\"ps-verse\"><span class=\"line\">Full fathom five thy father lies;</span><br/>\n<span class=\"line\">Of his bones are coral made;</span></p>\n<p class=\"ps-verse\"><span class=\"line\">Nothing of him that doth fade,</span></p>\n"
+          ( "<p class=\"ps-verse\"><span class=\"line\">Full fathom five thy father lies;</span><br>\n<span class=\"line\">Of his bones are coral made;</span></p>\n<p class=\"ps-verse\"><span class=\"line\">Nothing of him that doth fade,</span></p>\n"
               `T.isInfixOf` page
           )
         css <- TIO.readFile (tmp </> "build/html/style.css")
@@ -426,7 +426,7 @@ listTests =
       withVerseProject (TE.encodeUtf8 "[lists]\nbullets = [\"■\", \"□\"]\nnumbers = [\"({n:arabic})\", \"{n:circled}\"]\n") "- 一\n  - 二\n\n+ 一\n  + 二\n" $ \tmp -> do
         _ <- build (defaultOptions tmp) {optTargets = Just [TargetHtml]}
         css <- TIO.readFile (tmp </> "build/html/style.css")
-        page <- TIO.readFile (tmp </> "build/html/v.xhtml")
+        page <- TIO.readFile (tmp </> "build/html/v.html")
         let has t = assertBool (T.unpack t <> "\n" <> T.unpack css) (t `T.isInfixOf` css)
         has "@counter-style golem-ul-1 { system: cyclic; symbols: \"■\"; suffix: \" \"; }"
         has "@counter-style golem-ul-2 { system: cyclic; symbols: \"□\"; suffix: \" \"; }"
@@ -439,7 +439,7 @@ listTests =
       withVerseProject "" "- 一\n\n+ 一\n" $ \tmp -> do
         _ <- build (defaultOptions tmp) {optTargets = Just [TargetHtml]}
         css <- TIO.readFile (tmp </> "build/html/style.css")
-        page <- TIO.readFile (tmp </> "build/html/v.xhtml")
+        page <- TIO.readFile (tmp </> "build/html/v.html")
         assertBool "css" (not ("@counter-style" `T.isInfixOf` css))
         assertBool "page" ("<ul>" `T.isInfixOf` page && "<ol>" `T.isInfixOf` page),
     testCase "plain text: [lists] markers by depth" $ do
@@ -525,7 +525,7 @@ blankLineTests =
       map (map fst . poSlots) (gridPages plain) @?= [[0, 2]],
     testCase "HTML: a div of a br for each blank line between the paragraphs" $ do
       (page, _) <- htmlMini horizontalStyle "あ\n@blank-line 2\nい\n"
-      assertBool (T.unpack page) ("<p>あ</p>\n<div class=\"blank-line\"><br/><br/></div>\n<p>い</p>\n" `T.isInfixOf` page),
+      assertBool (T.unpack page) ("<p style=\"margin-block-end:0\">あ</p>\n<div class=\"blank-line\"><br><br></div>\n<p style=\"margin-block-start:0\">い</p>\n" `T.isInfixOf` page),
     testCase "HTML: nothing before the first block, after a page break or after the last block" $ do
       (page, _) <- htmlMini horizontalStyle "@blank-line\n\nあ\n\n@page-break\n@blank-line\nい\n\n@blank-line 3\n"
       assertBool (T.unpack page) (not ("blank-line" `T.isInfixOf` page))
@@ -548,7 +548,7 @@ blankLineTests =
       codesOf "G04011" n @?= [(Notice, "@blank-line の行数 16 がページの行数 16 以上なので捨てます")]
       codesOf "G07047" n @?= []
       assertBool "the PDF" (any ((".pdf" `isSuffixOf`) . fst) (nOutputs n))
-      page <- maybe (assertFailure (show (map fst (nOutputs n)))) (pure . TE.decodeUtf8) (lookup "html/a.xhtml" (nOutputs n))
+      page <- maybe (assertFailure (show (map fst (nOutputs n)))) (pure . TE.decodeUtf8) (lookup "html/a.html" (nOutputs n))
       assertBool (T.unpack page) (not ("blank-line" `T.isInfixOf` page))
       fmap TE.decodeUtf8 (lookup "text/horizontal/a.txt" (nOutputs n)) @?= Just "あ\n\nい\n"
       quiet <- run "\n[diagnostics]\nsilence-notices = [\"G04011\"]\n"
@@ -566,7 +566,7 @@ breakTests =
         map diagCode (filter isError (brDiagnostics r)) @?= []
         let readText p = TE.decodeUtf8 <$> BS.readFile p
         txt <- mapM readText [p | p <- brWritten r, "a.txt" `isSuffixOf` p]
-        html <- mapM readText [p | p <- brWritten r, "a.xhtml" `isSuffixOf` p]
+        html <- mapM readText [p | p <- brWritten r, "a.html" `isSuffixOf` p]
         assertBool (show txt) (not (null txt) && all ("ああ " `T.isInfixOf`) txt)
         assertBool (show html) (not (null html) && all ("ああ " `T.isInfixOf`) html)
       pages <- pagesMini "" horizontalStyle source [] Map.empty >>= either (assertFailure . show) pure
@@ -581,7 +581,7 @@ breakTests =
         map diagCode (filter isError (brDiagnostics r)) @?= []
         let readText p = TE.decodeUtf8 <$> BS.readFile p
         txt <- mapM readText [p | p <- brWritten r, "a.txt" `isSuffixOf` p]
-        html <- mapM readText [p | p <- brWritten r, "a.xhtml" `isSuffixOf` p]
+        html <- mapM readText [p | p <- brWritten r, "a.html" `isSuffixOf` p]
         assertBool (show txt) (not (null txt) && all ("漢 " `T.isInfixOf`) txt)
         assertBool (show html) (not (null html) && all ("<code>漢 </code>" `T.isInfixOf`) html),
     testCase "A5: a paragraph with ’tis and ’90s breaks the same in a book of en and in one of ja (golem-layout ADR 0030)" $ do
@@ -613,7 +613,7 @@ breakTests =
       withVerseProject "" "@page-break recto\n# h\n" $ \tmp -> do
         r <- build (defaultOptions tmp) {optTargets = Just [TargetHtml]}
         assertEqual "no errors" [] (map diagCode (filter isError (brDiagnostics r)))
-        page <- TIO.readFile (tmp </> "build/html/v.xhtml")
+        page <- TIO.readFile (tmp </> "build/html/v.html")
         assertBool (T.unpack page) ("data-break-before=\"recto\">" `T.isInfixOf` page && "<h1 " `T.isInfixOf` page)
         css <- TIO.readFile (tmp </> "build/html/style.css")
         assertBool "recto rule" ("[data-break-before=\"recto\"] { page-break-before: always; break-before: recto; }" `T.isInfixOf` css)
@@ -622,17 +622,17 @@ breakTests =
     testCase "HTML: a body paragraph after a page break has the attribute and no class" $
       withVerseProject "" "a\n\n@page-break\n\nb\n" $ \tmp -> do
         _ <- build (defaultOptions tmp) {optTargets = Just [TargetHtml]}
-        page <- TIO.readFile (tmp </> "build/html/v.xhtml")
+        page <- TIO.readFile (tmp </> "build/html/v.html")
         assertBool (T.unpack page) ("<p>a</p>\n<p data-break-before=\"page\">b</p>\n" `T.isInfixOf` page),
     testCase "HTML: a break at the end of a file and a column break write nothing" $ do
       withVerseProject "" "a\n\n@page-break\n" $ \tmp -> do
         _ <- build (defaultOptions tmp) {optTargets = Just [TargetHtml]}
-        page <- TIO.readFile (tmp </> "build/html/v.xhtml")
+        page <- TIO.readFile (tmp </> "build/html/v.html")
         assertBool (T.unpack page) (not ("data-break-before" `T.isInfixOf` page))
         assertBool (T.unpack page) ("<p>a</p>\n</body>" `T.isInfixOf` page)
       withVerseProject "" "a\n\n@column-break\n\nb\n" $ \tmp -> do
         _ <- build (defaultOptions tmp) {optTargets = Just [TargetHtml]}
-        page <- TIO.readFile (tmp </> "build/html/v.xhtml")
+        page <- TIO.readFile (tmp </> "build/html/v.html")
         assertBool (T.unpack page) ("<p>a</p>\n<p>b</p>\n" `T.isInfixOf` page)
         css <- TIO.readFile (tmp </> "build/html/style.css")
         assertBool "no rule" (not ("data-break-before" `T.isInfixOf` css)),

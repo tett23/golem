@@ -37,7 +37,7 @@ headingLevelsTests =
         TIO.writeFile (tmp </> "a.gm") "@toc depth=1\n\n# 題\n"
         r <- build (defaultOptions tmp) {optTargets = Just [TargetHtml, TargetEpub]}
         assertEqual "no errors" [] (map diagCode (filter isError (brDiagnostics r)))
-        html <- TIO.readFile (tmp </> "build/html/a.xhtml")
+        html <- TIO.readFile (tmp </> "build/html/a.html")
         archive <- toArchive <$> BL.readFile (tmp </> "build/epub/book.epub")
         let entry path = maybe "" (TE.decodeUtf8 . BL.toStrict . fromEntry) (findEntryByPath path archive)
         mapM_ (\page -> T.count "&lt;&amp;&gt;題" page @?= 2) [html, entry "OEBPS/a.xhtml"]
@@ -74,7 +74,7 @@ headingLevelsTests =
         TIO.writeFile (tmp </> "a.gm") ("@toc depth=6\n\n" <> sixLevels)
         r <- build (defaultOptions tmp) {optTargets = Just [TargetHtml, TargetEpub]}
         assertEqual "no errors" [] (map diagCode (filter isError (brDiagnostics r)))
-        html <- TIO.readFile (tmp </> "build/html/a.xhtml")
+        html <- TIO.readFile (tmp </> "build/html/a.html")
         mapM_ (\h -> assertBool (T.unpack h) (h `T.isInfixOf` html)) ["<h4", "<h5", "<h6", "toc-4", "toc-5", "toc-6"]
         -- the rule of [headings.6] is a rule of h6 in the CSS
         css <- TIO.readFile (tmp </> "build/html/style.css")

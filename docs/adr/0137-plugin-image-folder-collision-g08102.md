@@ -1,6 +1,6 @@
 # ADR 0137: 原稿の図版の出力のパスがプラグインの画像のフォルダーと重なるときの G08102
 
-Status: accepted
+Status: superseded [{"part":"メッセージ","by":["docs/adr/0430-use-folda-in-user-facing-text.md"],"kind":"replace"}]
 
 ## 文脈
 

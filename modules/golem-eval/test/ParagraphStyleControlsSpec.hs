@@ -122,7 +122,7 @@ nextStyleTests =
       testCase "ADR 0374: in the line style, the line after a paragraph of the style is the next paragraph" $ do
         let s = styleOf "[paragraph-styles.lead]\nnext-style = \"after\"\n\n[paragraph-styles.after]\n"
             c = (ctxOf s) {ctxSource = SourceSettings LineSeparated}
-        [st | Paragraph st _ <- resultBodies (evalResult c "@style lead\n一\n二\n三\n")] @?= [Just "lead", Just "after", Nothing],
+        [st | Paragraph st _ <- resultBodies (evalResult c "@style lead\n一\n\n二\n三\n")] @?= [Just "lead", Just "after", Nothing],
       testCase "ADR 0374: next-style of @style-def is applied as one of style.toml" $ do
         let s = styleOf "[paragraph-styles.after]\n"
         map fst (paragraphs s "@style-def paragraph lead next-style=after\n\n@style lead\n一\n\n二\n") @?= [Just "lead", Just "after"]

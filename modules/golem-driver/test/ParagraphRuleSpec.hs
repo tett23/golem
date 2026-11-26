@@ -4,7 +4,7 @@ module ParagraphRuleSpec (paragraphRuleTests) where
 import Control.Monad (zipWithM_)
 import Data.ByteString qualified as BS
 import Data.ByteString.Char8 qualified as BC
-import Data.List (isSuffixOf)
+import Data.List (isSuffixOf, nub)
 import Data.Map.Strict qualified as Map
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
@@ -148,6 +148,98 @@ paragraphRuleTests =
       let style = fiveLines <> "\n[headings.2]\nlines = 3\nrule-before = { space-after = \"5pt\", space-before = \"10pt\" }\nrule-after = { space-before = \"20pt\" }\n"
       n <- notified miniManifest style "## 節\n\n本文。\n"
       map diagMessage (g07046 n) @?= ["罫線を持つ見出しが版面に入らないため、罫線を省きました（見出し 2）"],
+    testCase "golem-driver ADR 0027, root ADR 0397 I8, I11: free placement, keep-in-column = false: the rule before of a heading after a paragraph stays in the column, clear of both faces" $ do
+      let style = replaceIn "[page.grid]" "[page.grid]\nalignment = \"free\"" horizontalStyle <> "\n[headings.1]\nlines = 1\nsize = \"15pt\"\nrule-before = { weight = \"10pt\", keep-in-column = false }\n"
+      content <- miniPdf fakeProvider True style "前。\n\n# 章\n\n本文。\n" [] >>= fmap BS.concat . inflateAll
+      (_, yMae) <- glyphAt content '前'
+      (_, ySho) <- glyphAt content '章'
+      -- 前 is 10pt, its em box 8.8pt above and 1.2pt below its baseline; 章 is 15pt, its em box 13.2pt above; one line of 15pt leaves 7.5pt above the em box of 章 in its box, less than the weight
+      case rects content of
+        [(_, y, _, h)] -> do
+          assertBool ("below the face of 前: " <> show (fromRational (y + h) :: Double, fromRational yMae :: Double)) (y + h <= yMae - 1.2)
+          assertBool ("above the face of 章: " <> show (fromRational y :: Double, fromRational ySho :: Double)) (y >= ySho + 13.2)
+        other -> assertFailure (show other),
+    testCase "root ADR 0449 I1, I2: laid out freely, the rule after of a paragraph and the rule before of the ruled heading after it share one area between the faces" $ do
+      let style = replaceIn "[page.grid]" "[page.grid]\nalignment = \"free\"" horizontalStyle <> "\n[paragraph-styles.sec]\nrule-after = { weight = \"3pt\" }\n\n[headings.1]\nlines = 1\nsize = \"15pt\"\nrule-before = { weight = \"3pt\" }\n"
+      content <- miniPdf fakeProvider True style "@style sec\n  前。\n\n# 章\n\n本文。\n" [] >>= fmap BS.concat . inflateAll
+      (_, yMae) <- glyphAt content '前'
+      (_, ySho) <- glyphAt content '章'
+      -- 前 is 10pt, its em box 1.2pt below its baseline; 章 is 15pt, its em box 13.2pt above its baseline
+      case rects content of
+        [(_, y1, _, h1), (_, y2, _, h2)] -> do
+          let shown = show [(fromRational y1 :: Double, fromRational h1 :: Double), (fromRational y2, fromRational h2), (fromRational yMae, fromRational ySho)]
+              faceEnd = yMae - 1.2
+              faceStart = ySho + 13.2
+          assertBool ("a rule over a face: " <> shown) (and [y + h <= faceEnd && y >= faceStart | (y, h) <- [(y1, h1), (y2, h2)]])
+          assertBool ("overlapping rules: " <> shown) (y1 + h1 <= y2 || y2 + h2 <= y1)
+          -- without spaces, the shared area puts the rules at a third and two thirds of the distance less the weights: three equal gaps
+          let gaps = [faceEnd - (y1 + h1), y1 - (y2 + h2), y2 - faceStart]
+          assertBool ("not one shared area: " <> shown) (maximum gaps - minimum gaps < 1 / 100)
+        other -> assertFailure (show other),
+    testCase "root ADR 0450 I1, I4: laid out freely, keep-in-column = false: the rule after whose place is past the column end is in the bottom margin, and the column closes" $ do
+      -- 4 lines of 15pt laid out freely: the column is (4 - 1) x 15pt + 10pt long; the face of the third line ends at 42.5pt, the rule 13pt after it at 55.5pt
+      let style = replaceIn "[page.grid]\n" "[page.grid]\nalignment = \"free\"\n" (replaceIn "lines = 30" "lines = 4" horizontalStyle) <> "\n[paragraph-styles.sec]\nrule-after = { weight = \"0.5pt\", space-before = \"13pt\", keep-in-column = false }\n"
+          source = "@style sec\n  " <> T.replicate 29 "あ" <> "。\n\n次。\n"
+          top = 595.2756 - mmPt 18
+          bottom = top - (3 * 15 + 10)
+      pages <- miniPdf fakeProvider True style source [] >>= pageContents
+      let ruled = map rects pages
+          has c content = not (null [() | d <- drawnGlyphs content, dGlyph d == fromEnum c])
+      case ruled of
+        [(_, y, _, h)] : _ -> do
+          -- the rule lies below the column, its top 0.5pt below the column end, on the page
+          near (y + h) (bottom - 0.5)
+          assertBool (show ruled) (y >= 0)
+        _ -> assertFailure (show ruled)
+      -- the paragraph after goes on the next page
+      map (has '次') pages @?= [False, True],
+    testCase "golem-driver ADR 0027, root ADR 0352 I3: the rule after of a paragraph the next ruled paragraph cannot join in its column stays in the column" $ do
+      -- 4 lines of 15pt; a paragraph of 3 lines and one of 1 line, both with rules before and after
+      let style = withRule (replaceIn "lines = 30" "lines = 4" horizontalStyle) "weight = \"0.5pt\"" <> "rule-after = { weight = \"0.5pt\" }\n"
+          source = "@style sec\n  " <> T.replicate 29 "あ" <> "。\n\n@style sec\n  い。\n"
+          top = 595.2756 - mmPt 18
+          -- the end of the em box of the fourth grid line
+          bottom = top - (3 * 15 + 10)
+      pages <- miniPdf fakeProvider True style source [] >>= pageContents
+      let ruled = map rects pages
+      assertBool (show ruled) (and [y >= bottom && y + h <= top | rs <- ruled, (_, y, _, h) <- rs])
+      -- the first paragraph with its own rule after takes 1 + 3 + 1 lines: broken without rules
+      map length ruled @?= [0, 2]
+      n <- notified miniManifest style source
+      map diagMessage (g07046 n) @?= ["罫線を持つ段落が版面に入らないため、罫線を省いて分けて組みました（段落スタイル sec）"],
+    testCase "golem-driver ADR 0027, root ADR 0397 I8: laid out freely, the rule after of a paragraph the next ruled paragraph cannot join in its column stays in the column" $ do
+      -- 4 lines of 15pt laid out freely; the rule after 15pt below the em box of the last line
+      let style = withRule (replaceIn "[page.grid]\n" "[page.grid]\nalignment = \"free\"\n" (replaceIn "lines = 30" "lines = 4" horizontalStyle)) "weight = \"0.5pt\"" <> "rule-after = { weight = \"0.5pt\", space-before = \"15pt\" }\n"
+          source = "@style sec\n  " <> T.replicate 29 "あ" <> "。\n\n@style sec\n  い。\n"
+          top = 595.2756 - mmPt 18
+          -- the length of the column: (4 - 1) x 15pt + 10pt
+          bottom = top - (3 * 15 + 10)
+      pages <- miniPdf fakeProvider True style source [] >>= pageContents
+      let ruled = map rects pages
+      assertBool (show ruled) (and [y >= bottom && y + h <= top | rs <- ruled, (_, y, _, h) <- rs])
+      -- the first paragraph with its own rule after takes 45 + 13 pt: broken without rules
+      map length ruled @?= [0, 2]
+      n <- notified miniManifest style source
+      map diagMessage (g07046 n) @?= ["罫線を持つ段落が版面に入らないため、罫線を省いて分けて組みました（段落スタイル sec）"],
+    testCase "golem-driver ADR 0027, root ADR 0397 I8, I9: laid out freely, the rule after of a paragraph with a note stays above the notes" $ do
+      -- 5 lines of 15pt laid out freely; a paragraph of two lines whose first line has a note of three lines
+      let style = withRule (replaceIn "[page.grid]\n" "[page.grid]\nalignment = \"free\"\n" (replaceIn "lines = 30" "lines = 5" horizontalStyle)) "weight = \"0.5pt\"" <> "rule-after = { weight = \"0.5pt\", space-before = \"10pt\" }\n"
+          source = "@style sec\n  あ[note: " <> T.replicate 30 "注" <> "。]" <> T.replicate 18 "い" <> "。\n\n次。\n"
+      pages <- miniPdf fakeProvider True style source [] >>= pageContents
+      let top = 595.2756 - mmPt 18
+          -- the end of the column: (5 - 1) x 15pt + 10pt
+          bottom = top - (4 * 15 + 10)
+          noteLines c = length (nub [ptToRational (dY d) | d <- drawnGlyphs c, dGlyph d == fromEnum '注'])
+          shown = [(rects c, noteLines c) | c <- pages]
+      case pages of
+        first : _ -> do
+          -- the two lines take 30pt and the rule after 10pt below the em box takes 5.5pt more; 34.5pt is left for the separator and the notes
+          assertBool (show shown) (noteLines first == 1)
+          -- the rule lies in the column and above the line of the note
+          assertBool (show shown) (and [y >= bottom + 15 && y + h <= top | (_, y, _, h) <- rects first])
+        [] -> assertFailure "no page"
+      -- all three lines of the note are placed
+      sum (map noteLines pages) @?= 3,
     testCase "a book without a broken block has no G07046" $ do
       n <- notified miniManifest (withRule horizontalStyle "weight = \"0.5pt\"") section
       g07046 n @?= [],

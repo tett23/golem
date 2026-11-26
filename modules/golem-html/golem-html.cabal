@@ -15,7 +15,9 @@ common warnings
 library
   import:           warnings
   hs-source-dirs:   src
-  exposed-modules:  Golem.Html
+  exposed-modules:
+    Golem.Html
+    Golem.Html.Markup
   build-depends:
     , base          >=4.20 && <4.21
     , containers    >=0.6  && <0.8
@@ -26,6 +28,7 @@ library
     , golem-length
     , golem-numerals
     , golem-syntax
+    , golem-unicode
     , skylighting   >=0.14 && <0.16
     , text          >=2.0  && <2.2
   default-language: GHC2021
@@ -36,6 +39,7 @@ test-suite golem-html-test
   hs-source-dirs:   test
   main-is:          Main.hs
   other-modules:
+    HtmlSyntaxSpec
     XhtmlSpec
   build-depends:
     , base

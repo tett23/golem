@@ -1,6 +1,6 @@
 # ADR 0314: 実際の書体の送りで改行しない範囲の箱の幅を確かめる
 
-Status: accepted
+Status: superseded [{"part":"実装しないこと","by":["docs/adr/0436-check-no-break-s1-through-the-product-shaping.md"],"kind":"supplement"},{"part":"テスト設計","by":["docs/adr/0436-check-no-break-s1-through-the-product-shaping.md"],"kind":"supplement"}]
 
 ## 文脈
 

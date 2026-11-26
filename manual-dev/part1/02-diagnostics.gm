@@ -142,7 +142,7 @@ CI でコードごとに扱いを分ける仕組み（特定のコードを集�
 原因が違えば、メッセージを変えるだけでなく、コードを分ける。
 
 一部のコードは、プロファイルで重大度が変わる。
-今は G03010（HTML と EPUB に同梱するフォントの欠け）、G05004（参照されていないラベル）、G08100（PDF のフォントにない字）で、[code: dev] では警告、[code: prod] ではエラーになる。
+今は G03010（[code: fonts = "embed"] の HTML と EPUB に同梱するフォントの欠け）、G03282 と G03283（そのフォントのライセンスの文書の欠け）、G05004（参照されていないラベル）、G08100（PDF のフォントにない字）で、[code: dev] では警告、[code: prod] ではエラーになる。
 G02005（校正用のコメントの残り）は [code: prod] でだけ出る警告である。
 G09002 から G09021 の重大度は、プリフライトの設定で決まる（[code: Golem.Syntax.Diagnostic.preflightCodes]）。
 設定で選べるのは [code: error]、[code: warning]、[code: off] で、[code: notice] と [code: info] は選べない。
@@ -192,8 +192,8 @@ $ echo $?
 JSON の形式には加えない。
 LSP は、文書にあるコードの diagnostic の [code: codeDescription] に、[code: main] の [code: docs/diagnostics.md] の節の URL（[code: …/docs/diagnostics.md#g01017] の形）を付ける。
 
-説明の文書は golem-driver に埋め込まれている。
-埋め込みは、[code: scripts/gen-embedded.sh] が文書から生成してコミットしたモジュール [code: Golem.Driver.Explain.Embedded] で行う。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0203-generated-modules-instead-of-template-haskell-in-golem-driver.md]（docs/adr の ADR 0203「golem-driver の Template Haskell を、生成してコミットしたモジュールにする」）]
+説明の文書は golem-evaluate に埋め込まれている。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0434-split-evaluation-from-golem-driver.md]（docs/adr の ADR 0434「プロジェクトの評価を golem-driver から新しいパッケージ golem-evaluate に分ける」）]
+埋め込みは、[code: scripts/gen-embedded.sh] が文書から生成してコミットしたモジュール [code: Golem.Evaluate.Explain.Embedded] で行う。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0203-generated-modules-instead-of-template-haskell-in-golem-driver.md]（docs/adr の ADR 0203「golem-driver の Template Haskell を、生成してコミットしたモジュールにする」）]
 節の形（題、重大度、状態、意味、主な原因、直し方、昇順）が崩れていれば、golem-driver のテストが失敗する。
 ソースで使うコードと文書の節が一致することは golem-driver のテストが確かめる。
 この決まりは、Golem を開発する側から見ると、diagnostic を一つ足すたびに文書の節も足す義務になる（第[ref-number docs]章）。

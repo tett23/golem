@@ -1,0 +1,22 @@
+# A horizontal book of two fonts, each with its license document: a .txt,
+# text/plain in the EPUB, and a .md, text/markdown (docs/adr/0433). The
+# fonts are fonts/ja.otf and fonts/latin.otf, as the PDF tests copy them
+# into every fixture book.
+[page]
+size = "A5"
+binding = "left"
+writing-mode = "horizontal"
+
+[page.grid]
+font-size = "12Q"
+characters = 30
+lines = 16
+line-pitch = "20H"
+columns = 1
+position = { top = "24mm", gutter = "20mm" }
+
+[fonts.body]
+ja = "fonts/ja.otf"
+ja-license = "fonts/LICENSE-ja.txt"
+latin = "fonts/latin.otf"
+latin-license = "fonts/LICENSE-latin.md"

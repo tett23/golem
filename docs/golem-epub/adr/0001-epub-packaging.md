@@ -1,6 +1,6 @@
 # ADR 0001: EPUB のパッケージング
 
-Status: superseded [{"by":["docs/adr/0033-colophon-contributors-and-printings.md"],"part":"`dc:contributor` と役割の写し方"},{"by":["docs/golem-epub/adr/0002-nav-and-toc-depth.md"],"part":"`@toc` がある場合のナビゲーション文書の深さ"}]
+Status: superseded [{"by":["docs/adr/0033-colophon-contributors-and-printings.md"],"part":"`dc:contributor` と役割の写し方"},{"by":["docs/golem-epub/adr/0002-nav-and-toc-depth.md"],"part":"`@toc` がある場合のナビゲーション文書の深さ"},{"by":["docs/adr/0361-epub-byte-determinism.md"],"part":"EPUB の決定性を v2 で扱うことと、zip の全体を golden テストの対象にしないこと"}]
 
 ## 文脈
 

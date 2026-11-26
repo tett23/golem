@@ -1,5 +1,6 @@
-{- | XHTML and CSS output (golem-html ADR 0001). Pages are polyglot XHTML
-so that EPUB can use them unchanged.
+{- | HTML, XHTML and CSS output (golem-html ADR 0001): one tree of each page,
+written in the HTML syntax for the HTML target and in the XHTML syntax for
+EPUB (root ADR 0432).
 -}
 module Golem.Html
   ( HtmlConfig (..),
@@ -19,6 +20,11 @@ module Golem.Html
     codeTokens,
     XhtmlSite (..),
     renderXhtml,
+    renderXhtmlWithPageBreaks,
+    renderHtml,
+    pageTrees,
+    pagePathIn,
+    Syntax (..),
     allFigures,
     webSource,
     pagePath,
@@ -30,8 +36,9 @@ module Golem.Html
   )
 where
 
+import Control.Applicative ((<|>))
 import Data.Char (isAsciiUpper)
-import Data.List (find, mapAccumL, sortOn, zip4)
+import Data.List (find, intercalate, mapAccumL, sortOn, zip4)
 import Data.List.NonEmpty (NonEmpty)
 import Data.List.NonEmpty qualified as NE
 import Data.Map.Strict (Map)
@@ -48,15 +55,19 @@ import Golem.Bibliography (EntryPart (..))
 import Golem.Doc.Citation (CitePiece (..), citationPieces)
 import Golem.Doc.FigureWidth (FigureWidth (..), parseFigureWidth)
 import Golem.Doc.IR
+import Golem.Html.Markup (AttrValue (..), Node (..), Syntax (..), plainAttr)
+import Golem.Html.Markup qualified as M
 import Golem.Length qualified as L
 import Golem.Length.Decimal (showRationalDigits)
 import Golem.Numerals
 import Golem.Numerals.Notation (Notation, notationName, writeNumber)
 import Golem.Syntax.Span
 import Golem.Syntax.Text (escapeXml, tshow)
+import Golem.Unicode.CharClass (CharClass (..), charClass)
+import Golem.Unicode.Grapheme (graphemeClusters)
 import Numeric (showHex)
 import Skylighting qualified as S
-import System.FilePath (makeRelative, replaceExtension, splitDirectories, takeDirectory, takeFileName, (</>))
+import System.FilePath (dropExtension, makeRelative, splitDirectories, takeDirectory, takeFileName, (<.>), (</>))
 
 data HtmlConfig = HtmlConfig
   { hcTitle :: !Text,
@@ -102,7 +113,19 @@ data HtmlConfig = HtmlConfig
     -- | the rules before and after the headings of each level (golem-driver ADR 0027)
     hcHeadingRules :: !(Map Int (Maybe HtmlRule, Maybe HtmlRule)),
     -- | the notation of [notes] mark-format: the text of the links of notes (docs/adr/0177)
-    hcNoteNotation :: !Notation
+    hcNoteNotation :: !Notation,
+    -- | the notation of [endnotes] mark-format: the text of the links of endnotes (root ADR 0412)
+    hcEndnoteNotation :: !Notation,
+    {- | whether the site embeds the fonts of hcFonts with @font-face
+    (fonts = "embed") or names only generic families (docs/adr/0423)
+    -} hcEmbedFonts :: !Bool,
+    {- | the license documents of the fonts of hcFonts, which a site that
+    embeds the fonts copies to fonts/ beside them (root ADR 0433)
+    -} hcFontLicenses :: ![FilePath],
+    -- | the generic-family of each role that has one, as CSS writes it (docs/adr/0423)
+    hcGenericFamilies :: !(Map Text Text),
+    -- | full-width character cells in em, without changing glyph size (root ADR 0380)
+    hcCharacterAdvance :: !(Maybe Text)
   }
 
 {- | A rule before or after a paragraph or a heading as CSS (golem-driver
@@ -296,11 +319,23 @@ data HtmlLocalStyles = HtmlLocalStyles
 data XhtmlSite = XhtmlSite
   { sitePages :: ![(FilePath, Text)],
     siteCss :: !Text,
-    siteAssets :: ![(FilePath, FilePath)] -- output path, source path
+    siteAssets :: ![(FilePath, FilePath)], -- output path, source path
+
+    -- | the output paths of siteAssets that are license documents of fonts, in order (root ADR 0433)
+    siteLicenses :: ![FilePath]
   }
 
+-- | The path of the page of a file without its extension (root ADR 0432).
+pageBase :: FileTable -> FileId -> FilePath
+pageBase ft fid = dropExtension (fromMaybe "unknown" (lookupPath fid ft))
+
+-- | The path of the page of a file in EPUB, .xhtml.
 pagePath :: FileTable -> FileId -> FilePath
-pagePath ft fid = replaceExtension (fromMaybe "unknown" (lookupPath fid ft)) "xhtml"
+pagePath = pagePathIn XhtmlSyntax
+
+-- | The path of the page of a file in a syntax: .html or .xhtml (root ADR 0432).
+pagePathIn :: Syntax -> FileTable -> FileId -> FilePath
+pagePathIn syntax ft fid = pageBase ft fid <.> T.unpack (M.extensionOf syntax)
 
 {- | The inside of a CSS string in double quotes (docs/adr ADR 0035): a
 quote or a backslash after a backslash, a control character as a
@@ -323,6 +358,7 @@ data Ctx = Ctx
   { cCfg :: HtmlConfig,
     cFt :: FileTable,
     cBook :: Book,
+    -- | the path of the page without its extension (root ADR 0432)
     cHere :: FilePath,
     -- | the paragraph styles of the page: those of its file over those of style.toml (docs/adr ADR 0014)
     cParaStyles :: Map Text HtmlParaStyle,
@@ -330,13 +366,16 @@ data Ctx = Ctx
     cListDepth :: Int,
     -- | the notes of the chapter of the page (golem-driver ADR 0026)
     cNotes :: ChapterNotes,
+    -- | the endnotes of the chapter of the page, as its notes (root ADR 0412)
+    cEndnotes :: ChapterNotes,
     -- | the id of each entry of each @bibliography (golem-doc ADR 0008)
     cCiteIds :: Map (ListAt, Text) Text,
     -- | the character styles of the page: those of its file over those of style.toml (docs/adr/0269)
     cCharStyles :: Map Text HtmlCharStyle,
     {- | the text is inside a link: a resolved reference in it is its text
     alone (docs/adr/0267)
-    -} cInLink :: Bool
+    -} cInLink :: Bool,
+    cPageBreaks :: Map SrcSpan [(Int, Text, Text)]
   }
 
 {- | Where the notes of a page go (golem-driver ADR 0026): the file whose
@@ -350,34 +389,61 @@ data ChapterNotes = ChapterNotes
     cnList :: [(FileId, Int -> Text, Document)]
   }
 
-{- | The notes of each document of a chapter (golem-driver ADR 0026): the
+{- | The notes (or the endnotes, root ADR 0412) of each document of a chapter (golem-driver ADR 0026): the
 id of a note is its number, or the place of its file in the chapter and
 its number when the numbers of the chapter meet.
 -}
-chapterNotes :: [Document] -> [(Document, ChapterNotes)]
-chapterNotes docs =
+chapterNotes :: (Document -> [(SrcSpan, Int, [[Inline]])]) -> [Document] -> [(Document, ChapterNotes)]
+chapterNotes notesOf docs =
   let home = case reverse docs of
         (Document f _ : _) -> f
         [] -> FileId 0
-      numbers d = [n | (_, n, _) <- documentNotes d]
+      numbers d = [n | (_, n, _) <- notesOf d]
       allNumbers = concatMap numbers docs
       meet = length allNumbers /= Set.size (Set.fromList allNumbers)
       keyOf k n = if meet then tshow k <> "-" <> tshow n else tshow n
       keyed = [(f, keyOf k, d) | (k, d@(Document f _)) <- zip [1 :: Int ..] docs]
    in [(d, ChapterNotes home key (if f == home then keyed else [])) | (f, key, d) <- keyed]
 
+-- | The site of EPUB: the pages in the XHTML syntax (root ADR 0432).
 renderXhtml :: HtmlConfig -> FileTable -> Book -> XhtmlSite
-renderXhtml cfg ft book =
+renderXhtml cfg ft book = renderXhtmlWithPageBreaks cfg ft book Map.empty
+
+-- | EPUB page breaks in body text, indexed by its source span and character offset.
+renderXhtmlWithPageBreaks :: HtmlConfig -> FileTable -> Book -> Map SrcSpan [(Int, Text, Text)] -> XhtmlSite
+renderXhtmlWithPageBreaks = renderSite XhtmlSyntax
+
+-- | The site of the HTML target: the pages in the HTML syntax, without page breaks (root ADR 0432).
+renderHtml :: HtmlConfig -> FileTable -> Book -> XhtmlSite
+renderHtml cfg ft book = renderSite HtmlSyntax cfg ft book Map.empty
+
+-- | The site of the pages of 'pageTrees' written in a syntax (root ADR 0432).
+renderSite :: Syntax -> HtmlConfig -> FileTable -> Book -> Map SrcSpan [(Int, Text, Text)] -> XhtmlSite
+renderSite syntax cfg ft book pageBreaks =
   XhtmlSite
-    { sitePages = [(pagePath ft fid, page cfg ft book notes d) | chapter <- bookChapters book, (d@(Document fid _), notes) <- chapterNotes chapter],
+    { sitePages = [(pagePathIn syntax ft fid, M.writeDocument syntax tree) | (fid, tree) <- pageTrees cfg ft book pageBreaks],
       siteCss = css cfg book,
       siteAssets =
         sortOn fst
           $ Map.toList
           $ Map.fromList
           $ [(T.unpack (webOutput f), T.unpack (webSource f)) | Document _ bs <- bookDocs book, Block _ _ _ (FigureBlock f) <- allFigures bs]
-            <> [(fontOut p, p) | (ja, la) <- Map.elems (hcFonts cfg), Just p <- [ja, la]]
+            -- the fonts only when the site embeds them (docs/adr/0423)
+            <> [(fontOut p, p) | hcEmbedFonts cfg, (ja, la) <- Map.elems (hcFonts cfg), Just p <- [ja, la]]
+            -- and their license documents beside them (root ADR 0433)
+            <> [(fontOut p, p) | hcEmbedFonts cfg, p <- hcFontLicenses cfg],
+      siteLicenses = Set.toAscList (Set.fromList [fontOut p | hcEmbedFonts cfg, p <- hcFontLicenses cfg])
     }
+
+{- | The tree of the page of each document, after its doctype: the same
+for HTML and EPUB, which write it in their syntaxes (root ADR 0432).
+-}
+pageTrees :: HtmlConfig -> FileTable -> Book -> Map SrcSpan [(Int, Text, Text)] -> [(FileId, [Node])]
+pageTrees cfg ft book pageBreaks =
+  [ (fid, page cfg ft book pageBreaks notes endnotes d)
+  | chapter <- bookChapters book,
+    ((d@(Document fid _), notes), (_, endnotes)) <- zip (chapterNotes documentNotes chapter) (chapterNotes documentEndnotes chapter)
+  ]
 
 -- | The file that HTML and EPUB copy for a figure: its @web@ image, or the figure itself.
 webSource :: Figure -> Text
@@ -408,71 +474,91 @@ relLink from to =
   let depth = length (splitDirectories (takeDirectory from)) - (if takeDirectory from == "." then 1 else 0)
    in T.pack (concat (replicate depth "../") <> makeRelative "." to)
 
-page :: HtmlConfig -> FileTable -> Book -> ChapterNotes -> Document -> Text
-page cfg ft book notes (Document fid bs) =
-  let here = pagePath ft fid
+el :: Text -> [(Text, Text)] -> [Node] -> Node
+el = M.element
+
+textOf :: Text -> Node
+textOf = M.text
+
+nl :: Node
+nl = M.newline
+
+-- | The attributes added at the end of the first start tag of nodes.
+addAttrs :: [(Text, Text)] -> [Node] -> [Node]
+addAttrs extra = \case
+  Element n as cs : rest -> Element n (as <> [(k, Plain v) | (k, v) <- extra]) cs : rest
+  x : rest -> x : addAttrs extra rest
+  [] -> []
+
+-- | The value of an attribute of the first start tag of nodes changed.
+mapFirstAttr :: Text -> (Text -> Text) -> [Node] -> [Node]
+mapFirstAttr name f = \case
+  Element n as cs : rest -> Element n [(k, if k == name then Plain (f (M.attrValue XhtmlSyntax v)) else v) | (k, v) <- as] cs : rest
+  x : rest -> x : mapFirstAttr name f rest
+  [] -> []
+
+-- | Whether nodes write no text.
+writesNothing :: [Node] -> Bool
+writesNothing = T.null . M.writeNodes XhtmlSyntax
+
+page :: HtmlConfig -> FileTable -> Book -> Map SrcSpan [(Int, Text, Text)] -> ChapterNotes -> ChapterNotes -> Document -> [Node]
+page cfg ft book pageBreaks notes endnotes (Document fid bs) =
+  let here = pageBase ft fid
       local = Map.lookup fid (hcLocalStyles cfg)
-      c = Ctx cfg ft book here (maybe id (Map.union . hlParaStyles) local (hcParaStyles cfg)) 0 notes (citeIds book) (maybe id (Map.union . hlCharStyles) local (hcCharStyles cfg)) False
+      c = Ctx cfg ft book here (maybe id (Map.union . hlParaStyles) local (hcParaStyles cfg)) 0 notes endnotes (citeIds book) (maybe id (Map.union . hlCharStyles) local (hcCharStyles cfg)) False pageBreaks
       -- a page with styles of its own has the class of its position (docs/adr ADR 0014)
       classes = ["vertical" | hcVertical cfg] <> ["file-" <> tshow n | Just _ <- [local], (n, Document fid' _) <- zip [1 :: Int ..] (bookDocs book), fid' == fid]
-      body = topBlocks c bs <> notesSection c
+      body = topBlocks c bs <> notesSection c <> endnotesSection c
       title = case [hiTitle h | Block sp _ _ (Heading 1 _ _) <- bs, Just h <- [Map.lookup sp (bookHeadings book)]] of
         (t : _) -> T.concat (map plain t)
         [] -> hcTitle cfg
-   in T.concat
-        [ "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!DOCTYPE html>\n",
-          "<html xmlns=\"http://www.w3.org/1999/xhtml\" xmlns:epub=\"http://www.idpf.org/2007/ops\" lang=\"",
-          escapeXml (hcLanguage cfg),
-          "\" xml:lang=\"",
-          escapeXml (hcLanguage cfg),
-          "\">\n<head>\n<meta charset=\"UTF-8\"/>\n<title>",
-          escapeXml title,
-          "</title>\n<link rel=\"stylesheet\" type=\"text/css\" href=\"",
-          relLink here "style.css",
-          "\"/>\n</head>\n<body",
-          if null classes then "" else " class=\"" <> T.unwords classes <> "\"",
-          ">\n",
-          body,
-          "</body>\n</html>\n"
-        ]
+   in [ el
+          "html"
+          ([("xmlns", "http://www.w3.org/1999/xhtml"), ("xmlns:epub", "http://www.idpf.org/2007/ops")] <> langPairs (hcLanguage cfg))
+          [ nl,
+            el "head" [] [nl, el "meta" [("charset", "UTF-8")] [], nl, el "title" [] [textOf title], nl, el "link" [("rel", "stylesheet"), ("type", "text/css"), ("href", relLink here "style.css")] [], nl],
+            nl,
+            el "body" [("class", T.unwords classes) | not (null classes)] (nl : body),
+            nl
+          ],
+        nl
+      ]
 
 plain :: InlineF r -> Text
 plain = inlineText
 
-idAttr :: Maybe Text -> Text
-idAttr = maybe "" (\l -> " id=\"" <> escapeXml l <> "\"")
+idAttr :: Maybe Text -> [(Text, Text)]
+idAttr = maybe [] (\l -> [("id", l)])
 
--- | The attributes of a language: lang and xml:lang, as the html element has them (docs/adr ADR 0187).
+-- | The attributes of a language in the tree: lang and xml:lang, which HTML leaves out (docs/adr ADR 0187, root ADR 0432).
+langPairs :: Text -> [(Text, Text)]
+langPairs l = [("lang", l), ("xml:lang", l)]
+
+-- | The attributes of a language as XHTML writes them: lang and xml:lang (docs/adr ADR 0187).
 langAttrs :: Text -> Text
-langAttrs l = " lang=\"" <> escapeXml l <> "\" xml:lang=\"" <> escapeXml l <> "\""
+langAttrs l = T.concat [" " <> k <> "=\"" <> escapeXml v <> "\"" | (k, v) <- langPairs l]
 
-{- | A title as escaped text, for the table of contents page and the
-navigation document: the language spans kept as spans with lang and
-xml:lang, every other inline its text (docs/adr ADR 0187).
+{- | A title as escaped XHTML text, for the navigation document of EPUB:
+the language spans kept as spans with lang and xml:lang, every other
+inline its text (docs/adr ADR 0187).
 -}
 titleWithLanguages :: [InlineF r] -> Text
-titleWithLanguages = T.concat . map one
-  where
-    one :: InlineF r -> Text
-    one = \case
-      Lang _ l xs -> "<span" <> langAttrs l <> ">" <> titleWithLanguages xs <> "</span>"
-      Ruby _ _ segs -> T.concat [titleWithLanguages b | RubySegment b _ <- segs]
-      Kenten _ _ xs -> titleWithLanguages xs
-      Color _ _ xs -> titleWithLanguages xs
-      CharStyle _ _ xs -> titleWithLanguages xs
-      Link _ _ xs -> titleWithLanguages xs
-      Resolved _ _ _ xs -> titleWithLanguages xs
-      x -> escapeXml (inlineText x)
+titleWithLanguages = M.writeNodes XhtmlSyntax . titleNodes
 
--- | The attributes of a language after the name of the first start tag of the HTML of a block (docs/adr ADR 0187).
-withLangAttrs :: Maybe Text -> Text -> Text
-withLangAttrs lang html = case lang of
-  Nothing -> html
-  Just l -> case T.breakOn ">" html of
-    (open, after)
-      | T.null after -> html
-      | "/" `T.isSuffixOf` open -> T.dropEnd 1 open <> langAttrs l <> "/" <> after
-      | otherwise -> open <> langAttrs l <> after
+-- | The nodes of 'titleWithLanguages'.
+titleNodes :: [InlineF r] -> [Node]
+titleNodes = concatMap one
+  where
+    one :: InlineF r -> [Node]
+    one = \case
+      Lang _ l xs -> [el "span" (langPairs l) (titleNodes xs)]
+      Ruby _ _ segs -> concat [titleNodes b | RubySegment b _ <- segs]
+      Kenten _ _ xs -> titleNodes xs
+      Color _ _ xs -> titleNodes xs
+      CharStyle _ _ xs -> titleNodes xs
+      Link _ _ xs -> titleNodes xs
+      Resolved _ _ _ xs -> titleNodes xs
+      x -> [textOf (inlineText x)]
 
 {- | The blocks at the top of a document: the block after forced breaks
 carries the kind of the last of them on its outermost element; a break
@@ -482,7 +568,7 @@ nothing (docs/adr ADR 0030). Blank lines are a div of a br for each line
 between two blocks, and nothing before the first block, after a break or
 after the last block (docs/adr ADR 0046).
 -}
-topBlocks :: Ctx -> [Block] -> Text
+topBlocks :: Ctx -> [Block] -> [Node]
 topBlocks c = go Nothing Nothing 0 False
   where
     -- These boundaries are semantic, so inline margins take precedence over
@@ -493,13 +579,20 @@ topBlocks c = go Nothing Nothing 0 False
     nextSeparator rest = case filter displayed rest of
       next : _ -> isJust (separatorSpace next)
       _ -> False
+    -- blank lines are written before the next block unless a break or the end
+    -- comes first; the block before them keeps no margin on their side, so the
+    -- default margin of a paragraph is not added to them (root ADR 0398)
+    blankFollows rest = case break displayed rest of
+      (_, Block _ _ _ (ForcedBreak _) : _) -> False
+      (hidden, _ : _) -> sum [toInteger n | Block _ _ _ (BlankLines n) <- hidden] > 0
+      _ -> False
     styledBoundary before after html = case ["margin-block-start:0" | before] <> ["margin-block-end:0" | after] of
       [] -> html
-      declarations -> let (open, rest) = T.breakOn ">" html in open <> " style=\"" <> T.intercalate ";" declarations <> "\"" <> rest
+      declarations -> addAttrs [("style", T.intercalate ";" declarations)] html
     render before after b@(Block _ _ _ (Paragraph _ _)) = styledBoundary before after (block c b)
     render _ _ b = block c b
     -- the break pending, and the blank lines pending after a block (Nothing before one)
-    go _ _ _ _ [] = ""
+    go _ _ _ _ [] = []
     go _ _ _ _ (Block _ _ _ (ForcedBreak k) : rest) = go (breakName k) Nothing 0 False rest
     go _ blanks after previous (Block _ _ _ (PageControl control) : rest) | keepsPageBreak control = go (Just "avoid") blanks after previous rest
     go pending blanks after previous (Block _ _ _ (PageControl _) : rest) = go pending blanks after previous rest
@@ -509,8 +602,10 @@ topBlocks c = go Nothing Nothing 0 False
       | Just (name, key) <- boxOf b =
           let (more, rest') = span (\x -> fmap snd (boxOf x) == Just key && not (startsPage x)) rest
               lastIndex = length more
-              followingSeparator = nextSeparator rest'
-           in blankLines (max 0 (fromMaybe 0 blanks - after)) <> withBreak pending (styledBoundary previous followingSeparator ("<div class=\"box box-" <> escapeXml name <> "\">\n" <> T.concat [render (previous && i == 0) (followingSeparator && i == lastIndex) x | (i, x) <- zip [0 ..] (b : more)] <> "</div>\n")) <> go Nothing (Just 0) 0 False rest'
+              followingSeparator = nextSeparator rest' || blankFollows rest'
+              blanksBefore = max 0 (fromMaybe 0 blanks - after)
+              start = previous || blanksBefore > 0
+           in blankLines blanksBefore <> withBreak pending (styledBoundary start followingSeparator [el "div" [("class", "box box-" <> name)] (nl : concat [render (start && i == 0) (followingSeparator && i == lastIndex) x | (i, x) <- zip [0 ..] (b : more)]), nl]) <> go Nothing (Just 0) 0 False rest'
       | Just (before, after') <- separatorSpace b =
           let explicit = fromMaybe 0 blanks
               extra = if not previous && explicit > max after before then explicit - after else 0
@@ -520,11 +615,16 @@ topBlocks c = go Nothing Nothing 0 False
                 | otherwise = before
               marginAfter = if nextSeparator rest then 0 else after'
               html =
-                T.replace ("margin-block-end:" <> tshow after' <> "lh") ("margin-block-end:" <> tshow marginAfter <> "lh")
-                  . T.replace ("margin-block-start:" <> tshow before <> "lh") ("margin-block-start:" <> tshow marginBefore <> "lh")
-                  $ block c b
+                mapFirstAttr
+                  "style"
+                  ( T.replace ("margin-block-end:" <> tshow after' <> "lh") ("margin-block-end:" <> tshow marginAfter <> "lh")
+                      . T.replace ("margin-block-start:" <> tshow before <> "lh") ("margin-block-start:" <> tshow marginBefore <> "lh")
+                  )
+                  (block c b)
            in blankLines extra <> withBreak pending html <> go Nothing (Just 0) after' True rest
-      | otherwise = blankLines (max 0 (fromMaybe 0 blanks - after)) <> withBreak pending (render previous (nextSeparator rest) b) <> go Nothing (Just 0) 0 False rest
+      | otherwise =
+          let blanksBefore = max 0 (fromMaybe 0 blanks - after)
+           in blankLines blanksBefore <> withBreak pending (render (previous || blanksBefore > 0) (nextSeparator rest || blankFollows rest) b) <> go Nothing (Just 0) 0 False rest
     separatorSpace (Block sp _ _ (Separator name)) = case Map.lookup (sp, name) (bookSeparators (cBook c)) of
       Just (SeparatorTextAppearance before after _ _ _) -> Just (toInteger before, toInteger after)
       Just (SeparatorRuleAppearance before after _ _ _ _ _) -> Just (toInteger before, toInteger after)
@@ -537,14 +637,12 @@ topBlocks c = go Nothing Nothing 0 False
     -- a paragraph of a style with page-break other than any starts a box of its own
     startsPage x = maybe False (any ("break-before:" `T.isPrefixOf`) . hpsBreaks . snd) (styleOf x)
     blankLines n
-      | n > 0 = "<div class=\"blank-line\">" <> T.replicate (fromInteger n) "<br/>" <> "</div>\n"
-      | otherwise = ""
+      | n > 0 = [el "div" [("class", "blank-line")] (replicate (fromInteger n) (el "br" [] [])), nl]
+      | otherwise = []
     -- the attribute goes at the end of the first start tag
     withBreak pending html = case pending of
       Nothing -> html
-      Just name ->
-        let (open, after) = T.breakOn ">" html
-         in if T.null after then html else open <> " data-break-before=\"" <> name <> "\"" <> after
+      Just name -> addAttrs [("data-break-before", name)] html
 
 -- | The value of data-break-before; a column break has none.
 breakName :: BreakKind -> Maybe Text
@@ -557,58 +655,61 @@ breakName = \case
 {- | A block. A block with a language has it on its outermost element
 (docs/adr ADR 0187).
 -}
-block :: Ctx -> Block -> Text
-block c b@(Block _ _ lang _) = withLangAttrs lang (blockHtml c b)
+block :: Ctx -> Block -> [Node]
+block c b@(Block _ _ lang _) = maybe id (addAttrs . langPairs) lang (blockHtml c b)
 
-blockHtml :: Ctx -> Block -> Text
+blockHtml :: Ctx -> Block -> [Node]
 blockHtml c (Block sp lbl blang body) = case body of
   Paragraph st is ->
-    let cls = maybe "" (\n -> " class=\"ps-" <> escapeXml n <> "\"") st
+    let cls = maybe [] (\n -> [("class", "ps-" <> n)]) st
         -- the lines of a paragraph that keeps them, each a span; br is for readers without CSS (docs/adr ADR 0005).
         -- A hard break elsewhere is a br, so that text-indent stays on the first line (docs/adr ADR 0016)
         content
-          | keepsLines c st = T.intercalate "<br/>\n" ["<span class=\"line\">" <> inlines c l <> "</span>" | l <- splitAtLineBreaks is]
+          | keepsLines c st = intercalate [el "br" [] [], nl] [[el "span" [("class", "line")] (inlines c l)] | l <- splitAtLineBreaks is]
           | otherwise = inlines c is
-     in "<p" <> idAttr lbl <> cls <> ">" <> content <> "</p>\n" <> sidenotes c blang is
+     in [el "p" (idAttr lbl <> cls) content, nl] <> sidenotes c blang is
   Heading l _ is ->
     let tag = "h" <> T.pack (show l)
         info = Map.lookup sp (bookHeadings (cBook c))
         anchor = maybe (headingAnchor lbl sp) hiAnchor info
         num = numberSpan c sp (Just l) (foldMap inlineText is) (info >>= hiNumberText)
-     in "<" <> tag <> " id=\"" <> escapeXml anchor <> "\">" <> num <> inlines c is <> "</" <> tag <> ">\n"
-  BulletList items -> "<ul" <> idAttr lbl <> listClass (NE.length . hlBullets) <> ">\n" <> T.concat (map (item inList Nothing) items) <> "</ul>\n"
+     in [el tag [("id", anchor)] (num <> inlines c is), nl]
+  BulletList items -> [el "ul" (idAttr lbl <> listClass (NE.length . hlBullets)) (nl : concatMap (item inList Nothing) items), nl]
   OrderedList items ->
     let start = case items of
-          (ListItem (Just n) _ : _) -> " start=\"" <> T.pack (show n) <> "\""
-          _ -> ""
-     in "<ol" <> idAttr lbl <> listClass (NE.length . hlNumbers) <> start <> ">\n" <> T.concat (zipWith (\i it -> item inList (if i > (0 :: Int) then toInteger <$> itemNumber it else Nothing) it) [0 ..] items) <> "</ol>\n"
+          (ListItem (Just n) _ : _) -> [("start", T.pack (show n))]
+          _ -> []
+     in [el "ol" (idAttr lbl <> listClass (NE.length . hlNumbers) <> start) (nl : concat (zipWith (\i it -> item inList (if i > (0 :: Int) then toInteger <$> itemNumber it else Nothing) it) [0 ..] items)), nl]
   DefList gs ->
-    "<dl"
-      <> idAttr lbl
-      <> ">\n"
-      <> T.concat
-        [ T.concat ["<dt>" <> inlines c t <> "</dt>\n" | t <- ts] <> T.concat ["<dd>\n" <> T.concat (map (block c) d) <> "</dd>\n" | d <- ds]
-        | DefGroup ts ds <- gs
-        ]
-      <> "</dl>\n"
+    [ el
+        "dl"
+        (idAttr lbl)
+        ( nl
+            : concat
+              [ concat [[el "dt" [] (inlines c t), nl] | t <- ts] <> concat [[el "dd" [] (nl : concatMap (block c) d), nl] | d <- ds]
+              | DefGroup ts ds <- gs
+              ]
+        ),
+      nl
+    ]
   TableBlock t ->
     let al = tableAligns t
         cls a = case a of
-          AlignLeft -> " class=\"align-left\""
-          AlignCenter -> " class=\"align-center\""
-          AlignRight -> " class=\"align-right\""
-          AlignDefault -> ""
-        row tag cells = "<tr>" <> T.concat (zipWith (\a x -> "<" <> tag <> cls a <> ">" <> inlines c x <> "</" <> tag <> ">") (al <> repeat AlignDefault) cells) <> "</tr>\n"
+          AlignLeft -> [("class", "align-left")]
+          AlignCenter -> [("class", "align-center")]
+          AlignRight -> [("class", "align-right")]
+          AlignDefault -> []
+        row tag cells = [el "tr" [] (zipWith (\a x -> el tag (cls a) (inlines c x)) (al <> repeat AlignDefault) cells), nl]
         -- the paragraph style of the cells, the built-in table without a class (docs/adr/0262)
-        styleClass = maybe "" (\n -> " class=\"ps-" <> escapeXml n <> "\"") (tableStyle t)
+        styleClass = maybe [] (\n -> [("class", "ps-" <> n)]) (tableStyle t)
         -- the caption, the first child whichever side it is on (docs/adr/0262)
         caption = case tableCaption t of
-          Just is -> "<caption>" <> numberSpan c sp Nothing (foldMap inlineText is) (Map.lookup sp (bookTables (cBook c))) <> inlines c is <> "</caption>\n"
-          Nothing -> ""
+          Just is -> [el "caption" [] (numberSpan c sp Nothing (foldMap inlineText is) (Map.lookup sp (bookTables (cBook c))) <> inlines c is), nl]
+          Nothing -> []
         colgroup
-          | null (tableWidths t) = ""
-          | otherwise = "<colgroup>" <> T.concat [maybe "<col/>" (\w' -> "<col style=\"width: " <> w' <> "\"/>") (columnWidthCss w) | w <- tableWidths t] <> "</colgroup>\n"
-     in "<table" <> idAttr lbl <> styleClass <> ">\n" <> caption <> colgroup <> "<thead>\n" <> row "th" (tableHeader t) <> "</thead>\n<tbody>\n" <> T.concat (map (row "td") (tableRows t)) <> "</tbody>\n</table>\n"
+          | null (tableWidths t) = []
+          | otherwise = [el "colgroup" [] [el "col" (maybe [] (\w' -> [("style", "width: " <> w')]) (columnWidthCss w)) [] | w <- tableWidths t], nl]
+     in [el "table" (idAttr lbl <> styleClass) (nl : caption <> colgroup <> [el "thead" [] (nl : row "th" (tableHeader t)), nl, el "tbody" [] (nl : concatMap (row "td") (tableRows t)), nl]), nl]
   CodeBlock code ->
     let co = hcCode (cCfg c)
         lang = codeLang code
@@ -616,80 +717,78 @@ blockHtml c (Block sp lbl blang body) = case body of
         -- a caption or a file name: a figure (golem-driver ADR 0023)
         wrapped = isJust (codeCaption code) || isJust (codeFile code)
         caption =
-          [ "<figcaption>" <> maybe "" (\n -> escapeXml (n <> titleSeparator (hcLanguage (cCfg c)) (Map.lookup (spanFile sp, Nothing) (bookTitleSeparators (cBook c))) n (foldMap inlineText is))) (Map.lookup sp (bookListings (cBook c))) <> inlines c is <> "</figcaption>"
+          [ el "figcaption" [] (maybe [] (\n -> [textOf (n <> titleSeparator (hcLanguage (cCfg c)) (Map.lookup (spanFile sp, Nothing) (bookTitleSeparators (cBook c))) n (foldMap inlineText is))]) (Map.lookup sp (bookListings (cBook c))) <> inlines c is)
           | Just is <- [codeCaption code]
           ]
-        file = ["<div class=\"code-file\">" <> escapeXml f <> "</div>" | Just f <- [codeFile code]]
+        file = [el "div" [("class", "code-file")] [textOf f] | Just f <- [codeFile code]]
         numbered = fromMaybe (hcoLineNumbers co) (codeNumbers code)
         -- a block with line numbers, highlights, a diff or callouts: a span per line
         perLine = numbered || codeDiff code || any (\l -> clHighlight l || not (null (clCallouts l))) ls
         texts = highlightedLines lang (codeText code)
         line l h =
           let classes = T.unwords (["line"] <> ["hl" | clHighlight l] <> ["add" | clDiff l == Just DiffAdded] <> ["del" | clDiff l == Just DiffRemoved])
-              ln = ["<span class=\"ln\" aria-hidden=\"true\">" <> maybe "" tshow (clNumber l) <> "</span>" | numbered]
-              dm = ["<span class=\"dm\" aria-hidden=\"true\">" <> diffMark (clDiff l) <> "</span>" | codeDiff code]
-              callouts = [" <span class=\"callout\">" <> circled n <> "</span>" | n <- clCallouts l]
-           in "<span class=\"" <> classes <> "\">" <> T.concat (ln <> dm) <> h <> T.concat callouts <> "</span>"
+              ln = [el "span" [("class", "ln"), ("aria-hidden", "true")] [textOf (maybe "" tshow (clNumber l))] | numbered]
+              dm = [el "span" [("class", "dm"), ("aria-hidden", "true")] [textOf (diffMark (clDiff l))] | codeDiff code]
+              callouts = concat [[textOf " ", el "span" [("class", "callout")] [textOf (circled n)]] | n <- clCallouts l]
+           in [el "span" [("class", classes)] (ln <> dm <> h <> callouts)]
         content
-          | perLine = T.intercalate "\n" (zipWith line ls (if length texts == length ls then texts else map (escapeXml . clText) ls))
-          | otherwise = highlighted lang (codeText code)
-        pre = "<pre" <> (if wrapped then "" else idAttr lbl) <> "><code" <> maybe "" (\l -> " class=\"sourceCode language-" <> escapeXml l <> "\"") lang <> ">" <> content <> "</code></pre>"
+          | perLine = intercalate [nl] (zipWith line ls (if length texts == length ls then texts else map (\l -> [textOf (clText l)]) ls))
+          | otherwise = intercalate [nl] texts
+        pre = el "pre" (if wrapped then [] else idAttr lbl) [el "code" (maybe [] (\l -> [("class", "sourceCode language-" <> l)]) lang) content]
      in if wrapped
-          then "<figure class=\"listing\"" <> idAttr lbl <> ">" <> T.concat (caption <> file) <> pre <> "</figure>\n"
-          else pre <> "\n"
+          then [el "figure" ([("class", "listing")] <> idAttr lbl) (caption <> file <> [pre]), nl]
+          else [pre, nl]
   FigureBlock f ->
     let num = numberSpan c sp Nothing (T.concat [foldMap inlineText is | Block _ _ _ (Paragraph _ is) <- figCaption f]) (Map.lookup sp (bookFigures (cBook c)))
         -- a paragraph of the caption with a language is a span of it (docs/adr ADR 0187)
-        cap = T.concat [maybe id (\l x -> "<span" <> langAttrs l <> ">" <> x <> "</span>") pl (inlines c is) | Block _ _ pl (Paragraph _ is) <- figCaption f]
+        cap = concat [maybe id (\l x -> [el "span" (langPairs l) x]) pl (inlines c is) | Block _ _ pl (Paragraph _ is) <- figCaption f]
         -- no figcaption without a number and a caption (docs/adr/0200)
-        figcaption = if T.null (num <> cap) then "" else "<figcaption>" <> num <> cap <> "</figcaption>\n"
-     in "<figure" <> idAttr lbl <> ">\n<img src=\"" <> escapeXml (relLink (cHere c) (T.unpack (webOutput f))) <> "\" alt=\"" <> escapeXml (figAlt f) <> "\"" <> figureWidthStyle (hcVertical (cCfg c)) (figWidth f) <> "/>\n" <> figcaption <> "</figure>\n"
+        figcaption = if writesNothing (num <> cap) then [] else [el "figcaption" [] (num <> cap), nl]
+     in [el "figure" (idAttr lbl) ([nl, el "img" ([("src", relLink (cHere c) (T.unpack (webOutput f))), ("alt", figAlt f)] <> figureWidthStyle (hcVertical (cCfg c)) (figWidth f)) [], nl] <> figcaption), nl]
   ChannelOutput (TocOutput d) -> toc c (Just d)
   ChannelOutput IndexOutput -> index c sp
   ChannelOutput (CustomOutput name _) -> channelList c sp name
   ChannelOutput BibliographyOutput ->
-    "<ol class=\"bibliography\">\n"
-      <> T.concat
-        [ "<li id=\"" <> escapeXml (citeId c (Just (spanFile sp, sp)) k) <> "\">" <> maybe (escapeXml k) (T.concat . map entryPart) (Map.lookup k (hcBibliography (cCfg c))) <> "</li>\n"
-        | (k, _) <- bibliographyAt (cBook c) sp
-        ]
-      <> "</ol>\n"
-  ForcedBreak _ -> ""
-  PageControl _ -> ""
+    [ el
+        "ol"
+        [("class", "bibliography")]
+        ( nl
+            : concat
+              [ [el "li" [("id", citeId c (Just (spanFile sp, sp)) k)] (maybe [textOf k] (concatMap entryPart) (Map.lookup k (hcBibliography (cCfg c)))), nl]
+              | (k, _) <- bibliographyAt (cBook c) sp
+              ]
+        ),
+      nl
+    ]
+  ForcedBreak _ -> []
+  PageControl _ -> []
   -- placed by topBlocks (docs/adr ADR 0046)
-  BlankLines _ -> ""
+  BlankLines _ -> []
   Separator name -> case Map.lookup (sp, name) (bookSeparators (cBook c)) of
     Just (SeparatorTextAppearance before after align content charStyle) ->
-      "<div class=\"separator separator-text\" style=\"text-align:"
-        <> align
-        <> ";margin-block-start:"
-        <> tshow before
-        <> "lh;margin-block-end:"
-        <> tshow after
-        <> "lh\"><span"
-        <> maybe "" (\s -> " class=\"cs-" <> escapeXml s <> "\"") charStyle
-        <> ">"
-        <> escapeXml content
-        <> "</span></div>\n"
+      [el "div" [("class", "separator separator-text"), ("style", separatorStyle align before after)] [el "span" (maybe [] (\s -> [("class", "cs-" <> s)]) charStyle) [textOf content]], nl]
     Just (SeparatorRuleAppearance before after align len weight color stroke) ->
-      "<div class=\"separator separator-rule\" style=\"text-align:" <> align <> ";margin-block-start:" <> tshow before <> "lh;margin-block-end:" <> tshow after <> "lh\">" <> separatorRuleSvg c sp name len weight color stroke <> "</div>\n"
-    Nothing -> ""
+      [el "div" [("class", "separator separator-rule"), ("style", separatorStyle align before after)] [separatorRuleSvg c sp name len weight color stroke], nl]
+    Nothing -> []
+  -- a text frame at the place of the command; its position and shape are for the PDF only (root ADR 0438)
+  FrameBlock name bs -> [el "aside" [("class", "frame frame-" <> name)] (nl : concatMap (block c) bs), nl]
   where
+    separatorStyle align before after = "text-align:" <> align <> ";margin-block-start:" <> tshow before <> "lh;margin-block-end:" <> tshow after <> "lh"
     -- a URL of http or https is a link; another URL is not (golem-doc ADR 0005)
     entryPart = \case
-      EntryText t -> escapeXml t
+      EntryText t -> [textOf t]
       EntryUrl u
-        | any (`T.isPrefixOf` T.toLower u) ["http:", "https:"] -> "<a class=\"cs-url\" href=\"" <> escapeXml u <> "\">" <> escapeXml u <> "</a>"
-        | otherwise -> "<span class=\"cs-url\">" <> escapeXml u <> "</span>"
+        | any (`T.isPrefixOf` T.toLower u) ["http:", "https:"] -> [el "a" [("class", "cs-url"), ("href", u)] [textOf u]]
+        | otherwise -> [el "span" [("class", "cs-url")] [textOf u]]
     -- the lists inside count one deeper; with [lists], the class of the depth (golem-driver ADR 0013)
     depth = cListDepth c + 1
     inList = c {cListDepth = depth}
     listClass count = case hcLists (cCfg c) of
-      Just ls -> " class=\"list-" <> tshow (min depth (count ls)) <> "\""
-      Nothing -> ""
+      Just ls -> [("class", "list-" <> tshow (min depth (count ls)))]
+      Nothing -> []
 
 -- | An SVG keeps the rule's physical dash, gap and wave parameters in both writing modes.
-separatorRuleSvg :: Ctx -> SrcSpan -> Text -> Maybe Integer -> Integer -> Maybe Text -> SeparatorStroke -> Text
+separatorRuleSvg :: Ctx -> SrcSpan -> Text -> Maybe Integer -> Integer -> Maybe Text -> SeparatorStroke -> Node
 separatorRuleSvg c sp name len weight color stroke =
   let vertical = hcVertical (cCfg c)
       pt n = L.ptText (L.Sp n) <> "pt"
@@ -698,18 +797,18 @@ separatorRuleSvg c sp name len weight color stroke =
         Just sw -> let (r, g, b) = cmykToRgb sw in "rgb(" <> tshow r <> ", " <> tshow g <> ", " <> tshow b <> ")"
         Nothing -> "currentColor"
       segment pos thick extra =
-        let coords = if vertical then " x1=\"" <> pos <> "%\" y1=\"0\" x2=\"" <> pos <> "%\" y2=\"100\"" else " x1=\"0\" y1=\"" <> pos <> "%\" x2=\"100\" y2=\"" <> pos <> "%\""
-         in "<line" <> coords <> " stroke=\"" <> ink <> "\" stroke-width=\"" <> pt thick <> "\"" <> extra <> "/>"
-      base = segment "50" weight ""
+        let coords = if vertical then [("x1", pos <> "%"), ("y1", "0"), ("x2", pos <> "%"), ("y2", "100%")] else [("x1", "0"), ("y1", pos <> "%"), ("x2", "100%"), ("y2", pos <> "%")]
+         in el "line" (coords <> [("stroke", ink), ("stroke-width", pt thick)] <> extra) []
+      base = segment "50" weight []
       svgBody = case stroke of
-        StrokeSolid -> base
-        StrokeDashed dash gap -> segment "50" weight (" stroke-dasharray=\"" <> pt dash <> " " <> pt gap <> "\"")
-        StrokeDotted gap -> segment "50" weight (" stroke-linecap=\"round\" stroke-dasharray=\"0pt " <> pt gap <> "\"")
-        StrokeJapaneseDots gap -> segment "50" weight (" stroke-linecap=\"square\" stroke-dasharray=\"0pt " <> pt gap <> "\"")
+        StrokeSolid -> [base]
+        StrokeDashed dash gap -> [segment "50" weight [("stroke-dasharray", pt dash <> " " <> pt gap)]]
+        StrokeDotted gap -> [segment "50" weight [("stroke-linecap", "round"), ("stroke-dasharray", "0pt " <> pt gap)]]
+        StrokeJapaneseDots gap -> [segment "50" weight [("stroke-linecap", "square"), ("stroke-dasharray", "0pt " <> pt gap)]]
         StrokeMulti ratios ->
           let total = max 1 (sum ratios)
               edges = scanl (+) 0 ratios
-           in T.concat [segment (tshow ((100 * (a + b)) `div` (2 * total))) (weight * fromIntegral r `div` fromIntegral total) "" | (i, a, b, r) <- zip4 [0 :: Int ..] edges (drop 1 edges) ratios, even i]
+           in [segment (tshow ((100 * (a + b)) `div` (2 * total))) (weight * fromIntegral r `div` fromIntegral total) [] | (i, a, b, r) <- zip4 [0 :: Int ..] edges (drop 1 edges) ratios, even i]
         StrokeWavy ->
           let FileId fileNo = spanFile sp
               waveId = "separator-wave-" <> tshow fileNo <> "-" <> tshow (spanStart sp) <> "-" <> name
@@ -717,76 +816,102 @@ separatorRuleSvg c sp name len weight color stroke =
                 if vertical
                   then (pt weight, pt (4 * weight), "0 0 1 4", "M .5 0 Q 0 1 .5 2 T .5 4")
                   else (pt (4 * weight), pt weight, "0 0 4 1", "M 0 .5 Q 1 0 2 .5 T 4 .5")
-           in "<defs><pattern id=\"" <> escapeXml waveId <> "\" patternUnits=\"userSpaceOnUse\" width=\"" <> w <> "\" height=\"" <> h <> "\" viewBox=\"" <> view <> "\"><path d=\"" <> path <> "\" fill=\"none\" stroke=\"" <> ink <> "\" stroke-width=\"0.3\"/></pattern></defs><rect width=\"100%\" height=\"100%\" fill=\"url(#" <> escapeXml waveId <> ")\"/>"
-   in "<svg class=\"separator-rule-svg\" xmlns=\"http://www.w3.org/2000/svg\" aria-hidden=\"true\" style=\"display:inline-block;inline-size:" <> extent <> ";block-size:" <> pt weight <> ";vertical-align:middle;overflow:visible\">" <> svgBody <> "</svg>"
+           in [ el "defs" [] [el "pattern" [("id", waveId), ("patternUnits", "userSpaceOnUse"), ("width", w), ("height", h), ("viewBox", view)] [el "path" [("d", path), ("fill", "none"), ("stroke", ink), ("stroke-width", "0.3")] []]],
+                el "rect" [("width", "100%"), ("height", "100%"), ("fill", "url(#" <> waveId <> ")")] []
+              ]
+   in el "svg" [("class", "separator-rule-svg"), ("xmlns", "http://www.w3.org/2000/svg"), ("aria-hidden", "true"), ("style", "display:inline-block;inline-size:" <> extent <> ";block-size:" <> pt weight <> ";vertical-align:middle;overflow:visible")] svgBody
 
 {- | The number of a heading or a caption in its span, and the separator
 of the language of the book after it as text (golem-html ADR 0002).
 -}
-numberSpan :: Ctx -> SrcSpan -> Maybe Int -> Text -> Maybe Text -> Text
-numberSpan c sp level title = maybe "" (\n -> "<span class=\"number\">" <> escapeXml n <> "</span>" <> escapeXml (titleSeparator (hcLanguage (cCfg c)) (Map.lookup (spanFile sp, level) (bookTitleSeparators (cBook c))) n title))
+numberSpan :: Ctx -> SrcSpan -> Maybe Int -> Text -> Maybe Text -> [Node]
+numberSpan c sp level title = maybe [] (\n -> [el "span" [("class", "number")] [textOf n], textOf (titleSeparator (hcLanguage (cCfg c)) (Map.lookup (spanFile sp, level) (bookTitleSeparators (cBook c))) n title)])
 
-item :: Ctx -> Maybe Integer -> ListItem -> Text
+item :: Ctx -> Maybe Integer -> ListItem -> [Node]
 item c value (ListItem _ bs) =
-  "<li" <> maybe "" (\n -> " value=\"" <> T.pack (show n) <> "\"") value <> ">" <> case bs of
-    -- a paragraph of a language of its own keeps its element (docs/adr ADR 0187)
-    [Block _ _ Nothing (Paragraph Nothing is)] | not (keepsLines c Nothing) -> inlines c is <> "</li>\n"
-    _ -> "\n" <> T.concat (map (block c) bs) <> "</li>\n"
+  [ el "li" (maybe [] (\n -> [("value", T.pack (show n))]) value) $ case bs of
+      -- a paragraph of a language of its own keeps its element (docs/adr ADR 0187)
+      [Block _ _ Nothing (Paragraph Nothing is)] | not (keepsLines c Nothing) -> inlines c is
+      _ -> nl : concatMap (block c) bs,
+    nl
+  ]
 
 -- | Whether the paragraph style keeps the lines of its paragraphs (docs/adr ADR 0005).
 keepsLines :: Ctx -> Maybe Text -> Bool
 keepsLines c st = maybe False hpsKeepLines (Map.lookup (fromMaybe "body" st) (cParaStyles c))
 
-toc :: Ctx -> Maybe Int -> Text
+toc :: Ctx -> Maybe Int -> [Node]
 toc c depth =
-  "<nav epub:type=\"toc\" class=\"toc\">\n<ol>\n"
-    <> T.concat
-      [ "<li class=\"toc-"
-          <> T.pack (show (teLevel e))
-          <> "\"><a href=\""
-          <> linkTo c (teFile e) (teAnchor e)
-          <> "\">"
-          <> maybe "" (\n -> escapeXml (n <> titleSeparator (hcLanguage (cCfg c)) (Map.lookup (teFile e, Just (teLevel e)) (bookTitleSeparators (cBook c))) n (foldMap inlineText (teTitle e)))) (teNumber e)
-          <> inlines c {cInLink = True} (teTitle e)
-          <> "</a></li>\n"
-      | e <- bookToc (cBook c),
-        maybe True (teLevel e <=) depth
-      ]
-    <> "</ol>\n</nav>\n"
+  [ Element
+      "nav"
+      [plainAttr "epub:type" "toc", plainAttr "class" "toc"]
+      [ nl,
+        el
+          "ol"
+          []
+          ( nl
+              : concat
+                [ [ el
+                      "li"
+                      [("class", "toc-" <> T.pack (show (teLevel e)))]
+                      [ Element
+                          "a"
+                          [("href", linkTo c (teFile e) (teAnchor e))]
+                          ( maybe [] (\n -> [textOf (n <> titleSeparator (hcLanguage (cCfg c)) (Map.lookup (teFile e, Just (teLevel e)) (bookTitleSeparators (cBook c))) n (foldMap inlineText (teTitle e)))]) (teNumber e)
+                              <> inlines c {cInLink = True, cPageBreaks = Map.empty} (teTitle e)
+                          )
+                      ],
+                    nl
+                  ]
+                | e <- bookToc (cBook c),
+                  maybe True (teLevel e <=) depth
+                ]
+          ),
+        nl
+      ],
+    nl
+  ]
 
-linkTo :: Ctx -> FileId -> Text -> Text
+-- | A link to the place of an anchor: the page of the file in the syntax, or the anchor alone on the page itself.
+linkTo :: Ctx -> FileId -> Text -> AttrValue
 linkTo c fid anchor =
-  let target = pagePath (cFt c) fid
-      -- a path is escaped like any attribute value (docs/adr ADR 0035)
-      file = if target == cHere c then "" else escapeXml (relLink (cHere c) target)
-   in file <> "#" <> escapeXml anchor
+  let target = pageBase (cFt c) fid
+   in if target == cHere c then Plain ("#" <> anchor) else PageLink (relLink (cHere c) target) anchor
 
 {- | The index (docs/adr/0265): a heading and a list for each section, or
 one list in a book without headings. Each entry links its marks numbered
 from 1, a range by the links of its two ends; its references follow, as
 in the PDF, not linked.
 -}
-index :: Ctx -> SrcSpan -> Text
+index :: Ctx -> SrcSpan -> [Node]
 index c sp =
-  "<section class=\"index\">\n"
-    <> ( if hcIndexSectionHeadings (cCfg c)
-           then T.concat ["<p class=\"index-heading\">" <> escapeXml (isHeading s) <> "</p>\n" <> list (isGroups s) | s <- sections]
-           else list (concatMap isGroups sections)
-       )
-    <> "</section>\n"
+  [ el
+      "section"
+      [("class", "index")]
+      ( nl
+          : if hcIndexSectionHeadings (cCfg c)
+            then concat [[el "p" [("class", "index-heading")] [textOf (isHeading s)], nl] <> list (isGroups s) | s <- sections]
+            else list (concatMap isGroups sections)
+      ),
+    nl
+  ]
   where
     sections = indexAt (cBook c) sp
-    list gs = "<ul>\n" <> T.concat (map entry gs) <> "</ul>\n"
+    list gs = [el "ul" [] (nl : concatMap entry gs), nl]
     entry g =
-      "<li>"
-        <> escapeXml (T.intercalate " / " (igTerms g))
-        <> (if null (igLocators g) then "" else " " <> T.intercalate ", " (snd (mapAccumL link 1 (igLocators g))))
-        <> escapeXml (indexReferences (not (null (igLocators g))) (igSee g))
-        <> "</li>\n"
-    anchor i (fid, loc) = "<a href=\"" <> linkTo c fid (spanAnchor loc) <> "\">" <> T.pack (show (i :: Int)) <> "</a>"
+      [ el
+          "li"
+          []
+          ( [textOf (T.intercalate " / " (igTerms g))]
+              <> (if null (igLocators g) then [] else textOf " " : intercalate [textOf ", "] (snd (mapAccumL link 1 (igLocators g))))
+              <> [textOf (indexReferences (not (null (igLocators g))) (igSee g))]
+          ),
+        nl
+      ]
+    anchor i (fid, loc) = [Element "a" [("href", linkTo c fid (spanAnchor loc))] [textOf (T.pack (show (i :: Int)))]]
     link i = \case
       AtMark m -> (i + 1, anchor i m)
-      Between a b -> (i + 2, anchor i a <> "\x2013" <> anchor (i + 1) b)
+      Between a b -> (i + 2, anchor i a <> [textOf "\x2013"] <> anchor (i + 1) b)
 
 {- | The ids of the entries of the bibliographies, unique in the book
 (golem-doc ADR 0008): the lists in document order and their entries in
@@ -817,22 +942,35 @@ citeId c at k = fromMaybe ("cite-" <> k) (at >>= \a -> Map.lookup (a, k) (cCiteI
 in a ul, each with links to where its items are when the channel shows
 them.
 -}
-channelList :: Ctx -> SrcSpan -> Text -> Text
+channelList :: Ctx -> SrcSpan -> Text -> [Node]
 channelList c sp name =
-  "<section class=\"channel\" data-channel=\""
-    <> escapeXml name
-    <> "\">\n<ul>\n"
-    <> T.concat
-      [ "<li>"
-          <> inlines c (ceBody e)
-          <> ( if locators
-                 then " " <> T.intercalate ", " ["<a href=\"" <> linkTo c fid (channelAnchor name lsp) <> "\">" <> tshow i <> "</a>" | (i, (fid, lsp)) <- zip [1 :: Int ..] (ceLocations e)]
-                 else ""
-             )
-          <> "</li>\n"
-      | e <- channelAt (cBook c) sp
-      ]
-    <> "</ul>\n</section>\n"
+  [ el
+      "section"
+      [("class", "channel"), ("data-channel", name)]
+      [ nl,
+        el
+          "ul"
+          []
+          ( nl
+              : concat
+                [ [ el
+                      "li"
+                      []
+                      ( inlines c (ceBody e)
+                          <> ( if locators
+                                 then textOf " " : intercalate [textOf ", "] [[Element "a" [("href", linkTo c fid (channelAnchor name lsp))] [textOf (tshow i)]] | (i, (fid, lsp)) <- zip [1 :: Int ..] (ceLocations e)]
+                                 else []
+                             )
+                      ),
+                    nl
+                  ]
+                | e <- channelAt (cBook c) sp
+                ]
+          ),
+        nl
+      ],
+    nl
+  ]
   where
     locators = maybe False channelLocators (Map.lookup name (bookChannelDecls (cBook c)))
 
@@ -840,33 +978,49 @@ channelList c sp name =
 channelAnchor :: Text -> SrcSpan -> Text
 channelAnchor name (SrcSpan (FileId f) s _) = "c-" <> name <> "-" <> T.pack (show f) <> "-" <> T.pack (show s)
 
+-- | The empty span of the label of a note, the place its references go (root ADR 0422).
+labelSpan :: Text -> Node
+labelSpan l = el "span" [("id", l)] []
+
 spanAnchor :: SrcSpan -> Text
 spanAnchor (SrcSpan (FileId f) s _) = "i-" <> T.pack (show f) <> "-" <> T.pack (show s)
 
-inlines :: Ctx -> [InlineF r] -> Text
-inlines c = T.concat . map (inline c)
+inlines :: Ctx -> [InlineF r] -> [Node]
+inlines c = concatMap (inline c)
 
-inline :: Ctx -> InlineF r -> Text
-inline c = \case
-  Text _ t -> escapeXml t
+inline :: Ctx -> InlineF r -> [Node]
+inline c value = anchor <> inlineBody c value
+  where
+    anchor = maybe [] (\sp -> pageText (Map.findWithDefault [] sp (cPageBreaks c)) "") atom
+    atom = case value of
+      Tcy sp _ -> Just sp
+      Number sp _ _ -> Just sp
+      Ref sp _ _ -> Just sp
+      Cite sp _ -> Just sp
+      ChannelItem sp _ -> Just sp
+      _ -> Nothing
+
+inlineBody :: Ctx -> InlineF r -> [Node]
+inlineBody c = \case
+  Text sp t -> pageTextWith (textHtml c) (Map.findWithDefault [] sp (cPageBreaks c)) t
   Ruby _ _ segs
     | any (\seg -> rsOptions seg /= defaultRubyOptions || isJust (rsOtherReading seg)) segs ->
-        T.concat (map extendedRuby segs)
+        concatMap extendedRuby segs
     where
       extendedRuby seg =
         let options = rsOptions seg
-            monoClass = if length segs >= 2 || T.length (foldMap inlineText (rsBase seg)) == 1 then " class=\"mono\"" else ""
+            monoClass = [("class", "mono") | length segs >= 2 || T.length (foldMap inlineText (rsBase seg)) == 1]
             alignment = case roAlign options of
               Just "1-2-1" -> "ruby-align:space-around;"
               Just "0-1-0" -> "ruby-align:space-between;"
               Just value -> "ruby-align:" <> value <> ";"
               Nothing -> ""
             readingSize = case roSize options of
-              Just (RubySizeAbsolute size) -> " style=\"font-size:" <> L.ptText size <> "pt;\""
-              Just (RubySizeRelative size) -> " style=\"font-size:" <> L.emText size <> "em;\""
-              Nothing -> ""
-            readingHtml side readingText marks = T.concat [case mark of Nothing -> escapeXml (T.singleton ch); Just shape -> "<span style=\"text-emphasis-position:" <> (if side == "under" then "under left" else "over right") <> ";\" class=\"kenten kenten-" <> escapeXml shape <> "\">" <> escapeXml (T.singleton ch) <> "</span>" | (ch, mark) <- zip (T.unpack (fromMaybe "" readingText)) (marks <> repeat Nothing)]
-            wrap side baseText readingText marks = "<ruby" <> monoClass <> " style=\"ruby-position:" <> side <> ";" <> alignment <> "\">" <> baseText <> "<rp>（</rp><rt" <> readingSize <> ">" <> readingHtml side readingText marks <> "</rt><rp>）</rp></ruby>"
+              Just (RubySizeAbsolute size) -> [("style", "font-size:" <> L.ptText size <> "pt;")]
+              Just (RubySizeRelative size) -> [("style", "font-size:" <> L.emText size <> "em;")]
+              Nothing -> []
+            readingHtml side readingText marks = [case mark of Nothing -> textOf (T.singleton ch); Just shape -> el "span" [("style", "text-emphasis-position:" <> (if side == "under" then "under left" else "over right") <> ";"), ("class", "kenten kenten-" <> shape)] [textOf (T.singleton ch)] | (ch, mark) <- zip (T.unpack (fromMaybe "" readingText)) (marks <> repeat Nothing)]
+            wrap side baseNodes readingText marks = [el "ruby" (monoClass <> [("style", "ruby-position:" <> side <> ";" <> alignment)]) (baseNodes <> [el "rp" [] [textOf "（"], el "rt" readingSize (readingHtml side readingText marks), el "rp" [] [textOf "）"]])]
             base = inlines c (rsBase seg)
          in case roSide options of
               RubyBefore -> wrap "over" base (rsReading seg) (roReadingKenten options)
@@ -874,14 +1028,16 @@ inline c = \case
               RubyBoth -> wrap "under" (wrap "over" base (rsReading seg) (roReadingKenten options)) (rsOtherReading seg) (roOtherKenten options)
   Ruby _ _ segs ->
     -- several segments, or one base character, are mono ruby (golem-layout ADR 0009)
-    (if length segs >= 2 || T.length (T.concat [foldMap inlineText b | RubySegment b _ <- segs]) == 1 then "<ruby class=\"mono\">" else "<ruby>")
-      <> T.concat [inlines c b <> "<rp>（</rp><rt>" <> maybe "" escapeXml r <> "</rt><rp>）</rp>" | RubySegment b r <- segs]
-      <> "</ruby>"
+    [ el
+        "ruby"
+        [("class", "mono") | length segs >= 2 || T.length (T.concat [foldMap inlineText b | RubySegment b _ <- segs]) == 1]
+        (concat [inlines c b <> [el "rp" [] [textOf "（"], el "rt" [] (maybe [] (\r' -> [textOf r']) r), el "rp" [] [textOf "）"]] | RubySegment b r <- segs])
+    ]
   -- the shape of the IR; none (from a plugin) is sesame (golem-driver ADR 0019)
   Kenten _ sh xs ->
     if any containsRuby xs
-      then T.concat (map emphasized xs)
-      else "<span class=\"kenten kenten-" <> escapeXml (fromMaybe "sesame" sh) <> "\">" <> inlines c xs <> "</span>"
+      then concatMap emphasized xs
+      else [el "span" [("class", "kenten kenten-" <> fromMaybe "sesame" sh)] (inlines c xs)]
     where
       containsRuby = \case
         Ruby {} -> True
@@ -897,71 +1053,117 @@ inline c = \case
       emphasized (Link sp target ys) = inline c (Link sp target [Kenten sp sh ys])
       emphasized (Lang sp lang ys) = inline c (Lang sp lang [Kenten sp sh ys])
       emphasized (Resolved sp kind label ys) = inline c (Resolved sp kind label [Kenten sp sh ys])
-      emphasized x = "<span class=\"kenten kenten-" <> escapeXml (fromMaybe "sesame" sh) <> "\">" <> inline c x <> "</span>"
+      emphasized x = [el "span" [("class", "kenten kenten-" <> fromMaybe "sesame" sh)] (inline c x)]
       markSegment seg =
         let opts = rsOptions seg
             marks reading previous = take (maybe 0 T.length reading) (map (Just . fromMaybe (fromMaybe "sesame" sh)) (previous <> repeat Nothing))
          in seg {rsOptions = opts {roReadingKenten = marks (rsReading seg) (roReadingKenten opts), roOtherKenten = marks (rsOtherReading seg) (roOtherKenten opts)}}
-  Color _ s xs -> "<span class=\"swatch-" <> escapeXml s <> "\">" <> inlines c xs <> "</span>"
+  Color _ s xs -> [el "span" [("class", "swatch-" <> s)] (inlines c xs)]
   -- the built-in character styles keep their elements (docs/adr ADR 0005)
-  CharStyle _ "strong" xs -> "<strong>" <> inlines c xs <> "</strong>"
-  CharStyle _ "bold" xs -> "<b>" <> inlines c xs <> "</b>"
-  CharStyle _ "italic" xs -> "<i>" <> inlines c xs <> "</i>"
-  CharStyle _ "code" xs -> "<code>" <> inlines c xs <> "</code>"
+  CharStyle _ "strong" xs -> [el "strong" [] (inlines (styled "strong") xs)]
+  CharStyle _ "bold" xs -> [el "b" [] (inlines (styled "bold") xs)]
+  CharStyle _ "italic" xs -> [el "i" [] (inlines (styled "italic") xs)]
+  CharStyle _ "code" xs -> [el "code" [] (inlines c {cCfg = (cCfg c) {hcCharacterAdvance = Nothing}} xs)]
   -- superscript and subscript are sup and sub; the built-in ones without a class (docs/adr/0269)
   CharStyle _ s xs
     | Just e <- Map.lookup s (cCharStyles c) >>= hcsElement ->
-        "<" <> e <> (if s `elem` ["superscript", "subscript"] then "" else " class=\"cs-" <> escapeXml s <> "\"") <> ">" <> inlines c xs <> "</" <> e <> ">"
-  CharStyle _ s xs -> "<span class=\"cs-" <> escapeXml s <> "\">" <> inlines c xs <> "</span>"
-  Tcy _ t -> "<span class=\"tcy\">" <> escapeXml t <> "</span>"
+        [el e [("class", "cs-" <> s) | s `notElem` ["superscript", "subscript"]] (inlines (styled s) xs)]
+  CharStyle _ s xs -> [el "span" [("class", "cs-" <> s)] (inlines (styled s) xs)]
+  Tcy _ t -> [el "span" [("class", "tcy")] [textOf t]]
+  Upright _ t -> [el "span" [("class", "upright")] [textOf t]]
+  Warichu _ "" -> []
+  Warichu _ t ->
+    let units = graphemeClusters t
+        (first, second) = splitAt (length units `div` 2) units
+        row xs = el "span" [("class", "warichu-line")] [el "span" [("class", "warichu-cell")] [textOf u] | u <- xs]
+     in [el "span" [("class", "warichu")] [row first, row second]]
   Number _ n st
-    | not (hcVertical (cCfg c)) -> T.pack (show n)
+    | not (hcVertical (cCfg c)) -> [textOf (T.pack (show n))]
     | otherwise -> case fromMaybe (verticalStyleOf (verticalNumbersNamed (hcNumberDefault (cCfg c))) n) st of
-        StyleKanji -> kanji n
-        StyleKanjiDigits -> kanjiDigits n
-        StyleTcy -> "<span class=\"tcy\">" <> T.pack (show n) <> "</span>"
+        StyleKanji -> [textOf (kanji n)]
+        StyleKanjiDigits -> [textOf (kanjiDigits n)]
+        StyleTcy -> [el "span" [("class", "tcy")] [textOf (T.pack (show n))]]
   Ref _ _ l -> case Map.lookup l (bookLabels (cBook c)) of
-    Just t -> "<a href=\"" <> linkTo c (ltFile t) (ltAnchor t) <> "\">" <> inlines c (ltTitle t) <> "</a>"
-    Nothing -> ""
-  Deferred {} -> ""
-  Note _ n _ ->
+    -- a note has no title: its number, as [ref-number] gives it (root ADR 0422)
+    Just t@LabelTarget {ltNote = Just _} -> [Element "a" [("href", linkTo c (ltFile t) (ltAnchor t))] (inlines c {cPageBreaks = Map.empty} (maybe [] pure (ltNumber t)))]
+    Just t -> [Element "a" [("href", linkTo c (ltFile t) (ltAnchor t))] (inlines c {cPageBreaks = Map.empty} (ltTitle t))]
+    Nothing -> []
+  Deferred {} -> []
+  -- a labelled note: an empty span with its label as the id before the mark, where its references go (root ADR 0422)
+  Note sp n (Just l) b -> labelSpan l : inline c (Note sp n Nothing b)
+  Sidenote sp n (Just l) b -> labelSpan l : inline c (Sidenote sp n Nothing b)
+  Endnote sp n (Just l) b -> labelSpan l : inline c (Endnote sp n Nothing b)
+  Note _ n _ _ ->
     let key = cnKey (cNotes c) n
-     in "<a epub:type=\"noteref\" class=\"noteref\" href=\"" <> linkTo c (cnHome (cNotes c)) ("note-" <> key) <> "\" id=\"noteref-" <> key <> "\">" <> noteText c n <> "</a>"
-  Sidenote _ n _ -> "<sup class=\"sidenote-ref\">" <> tshow n <> "</sup>"
-  IndexMark sp _ -> "<span id=\"" <> spanAnchor sp <> "\"></span>"
+     in [Element "a" [plainAttr "epub:type" "noteref", plainAttr "class" "noteref", ("href", linkTo c (cnHome (cNotes c)) ("note-" <> key)), plainAttr "id" ("noteref-" <> key)] [textOf (noteText c n)]]
+  Sidenote _ n _ _ -> [el "sup" [("class", "sidenote-ref")] [textOf (tshow n)]]
+  -- a reference to an endnote in the list at the end of its chapter (root ADR 0412)
+  Endnote _ n _ _ ->
+    let key = cnKey (cEndnotes c) n
+     in [Element "a" [plainAttr "epub:type" "noteref", plainAttr "class" "endnoteref", ("href", linkTo c (cnHome (cEndnotes c)) ("endnote-" <> key)), plainAttr "id" ("endnoteref-" <> key)] [textOf (endnoteText c n)]]
+  IndexMark sp _ -> [el "span" [("id", spanAnchor sp)] []]
   -- an empty span with an id when the channel shows where its items are (golem-doc ADR 0007)
   ChannelItem sp ci
-    | maybe False channelLocators (Map.lookup (ciChannel ci) (bookChannelDecls (cBook c))) -> "<span id=\"" <> escapeXml (channelAnchor (ciChannel ci) sp) <> "\"></span>"
-    | otherwise -> ""
+    | maybe False channelLocators (Map.lookup (ciChannel ci) (bookChannelDecls (cBook c))) -> [el "span" [("id", channelAnchor (ciChannel ci) sp)] []]
+    | otherwise -> []
   -- the mark in a span, each number a link to its entry in the file of its bibliography;
   -- no link without one (golem-html ADR 0003, docs/adr/0266)
   Cite sp is -> case traverse (\i -> (,) i . Just <$> citeNumber (cBook c) sp (citKey i)) is of
     Just ns ->
       let at = fst =<< Map.lookup (spanFile sp, sp) (bookCiteMarks (cBook c))
           piece = \case
-            CiteText t -> escapeXml t
+            CiteText t -> [textOf t]
             -- U+00A0: the browser does not break between the label of a page and its value (docs/adr/0277)
-            CiteLocator l v -> escapeXml l <> "\xA0" <> escapeXml v
+            CiteLocator l v -> [textOf (l <> "\xA0" <> v)]
             CiteNumber k n -> case bibliographyHome (cBook c) sp of
-              Just home -> "<a href=\"" <> linkTo c home (citeId c at k) <> "\">" <> tshow n <> "</a>"
-              Nothing -> tshow n
-       in "<span class=\"cite\">" <> T.concat (map piece (citationPieces ns)) <> "</span>"
-    Nothing -> ""
-  ProofComment _ t -> if hcDev (cCfg c) then "<span class=\"proof\">" <> escapeXml t <> "</span>" else ""
-  LineBreak _ -> "<br/>"
+              Just home -> [Element "a" [("href", linkTo c home (citeId c at k))] [textOf (tshow n)]]
+              Nothing -> [textOf (tshow n)]
+       in [el "span" [("class", "cite")] (concatMap piece (citationPieces ns))]
+    Nothing -> []
+  ProofComment _ t -> [el "span" [("class", "proof")] [textOf t] | hcDev (cCfg c)]
+  LineBreak _ -> [el "br" [] []]
   -- an empty span with a margin; word joiners keep the line from breaking around it (docs/adr ADR 0019)
-  Aki _ a -> "&#x2060;<span class=\"aki\" style=\"margin-inline-start: " <> akiLength a <> "\"></span>&#x2060;"
+  Aki _ a -> [CharRef 0x2060, el "span" [("class", "aki"), ("style", "margin-inline-start: " <> akiLength a)] [], CharRef 0x2060]
   -- the URL as written: an IRI is a valid href (docs/adr ADR 0182)
-  Link _ u xs -> "<a href=\"" <> escapeXml u <> "\">" <> inlines c {cInLink = True} xs <> "</a>"
+  Link _ u xs -> [el "a" [("href", u)] (inlines c {cInLink = True} xs)]
   -- the tag as written, even the language of the book (docs/adr ADR 0187)
-  Lang _ l xs -> "<span" <> langAttrs l <> ">" <> inlines c xs <> "</span>"
+  Lang _ l xs -> [el "span" (langPairs l) (inlines c xs)]
   {- the text the reference resolved to (docs/adr/0215), a link to the place
   of its label as [ref-page] has; inside a link its text alone (docs/adr/0267) -}
   Resolved _ _ l xs
     | not (cInLink c),
       Just t <- Map.lookup l (bookLabels (cBook c)) ->
-        "<a href=\"" <> linkTo c (ltFile t) (ltAnchor t) <> "\">" <> inlines c {cInLink = True} xs <> "</a>"
+        [Element "a" [("href", linkTo c (ltFile t) (ltAnchor t))] (inlines c {cInLink = True} xs)]
   Resolved _ _ _ xs -> inlines c xs
+  where
+    styled name
+      | maybe False hcsCode (Map.lookup name (cCharStyles c)) = c {cCfg = (cCfg c) {hcCharacterAdvance = Nothing}}
+      | otherwise = c
+
+{- | The nodes of a run of text: with a character advance, each grapheme
+cluster that is not Western is wrapped so that it takes the advance (root ADR
+0380).
+-}
+textHtml :: Ctx -> Text -> [Node]
+textHtml c t = case hcCharacterAdvance (cCfg c) of
+  Just _ -> [if maybe False (\(ch, _) -> charClass ch /= Western && ch /= ' ' && ch /= '\n' && ch /= '\t') (T.uncons u) then el "span" [("class", "character-advance")] [textOf u] else textOf u | u <- graphemeClusters t]
+  Nothing -> [textOf t]
+
+-- | Insert page-break spans without changing the surrounding text or its styles.
+pageText :: [(Int, Text, Text)] -> Text -> [Node]
+pageText = pageTextWith (pure . textOf)
+
+{- | 'pageText' with the way each run of text between the page breaks becomes
+nodes.
+-}
+pageTextWith :: (Text -> [Node]) -> [(Int, Text, Text)] -> Text -> [Node]
+pageTextWith html breaks text = go 0 (sortOn (\(offset, _, _) -> offset) breaks)
+  where
+    go start [] = html (T.drop start text)
+    go start ((offset, ident, label) : rest) =
+      html (T.take (offset - start) (T.drop start text))
+        <> [Element "span" [plainAttr "epub:type" "pagebreak", plainAttr "role" "doc-pagebreak", plainAttr "id" ident, plainAttr "aria-label" label] []]
+        <> go offset rest
 
 {- | The CSS length of an aki: zw in em, an absolute amount in pt, at most
 four decimals (docs/adr ADR 0103).
@@ -978,48 +1180,63 @@ noteText :: Ctx -> Int -> Text
 noteText c n = fromMaybe (tshow n) (writeNumber (hcNoteNotation (cCfg c)) (toInteger n))
 
 -- | The sidenotes of a paragraph after it, in the language of the paragraph (docs/adr ADR 0187).
-sidenotes :: Ctx -> Maybe Text -> [Inline] -> Text
-sidenotes c lang is = T.concat ["<aside class=\"sidenote\"" <> maybe "" langAttrs lang <> "><span class=\"number\">" <> tshow n <> "</span>" <> T.concat (map (inlines c) (noteParagraphs body)) <> "</aside>\n" | Sidenote _ n body <- is]
+sidenotes :: Ctx -> Maybe Text -> [Inline] -> [Node]
+sidenotes c lang is = concat [[el "aside" ([("class", "sidenote")] <> maybe [] langPairs lang) (el "span" [("class", "number")] [textOf (tshow n)] : concatMap (inlines c) (noteParagraphs body)), nl] | Sidenote _ n _ body <- is]
+
+-- | The text of the links of an endnote, in the notation of [endnotes] mark-format (root ADR 0412).
+endnoteText :: Ctx -> Int -> Text
+endnoteText c n = fromMaybe (tshow n) (writeNumber (hcEndnoteNotation (cCfg c)) (toInteger n))
+
+{- | The endnotes of the chapter at the end of its last page, after its
+notes, as they are written (root ADR 0412).
+-}
+endnotesSection :: Ctx -> [Node]
+endnotesSection c = noteList c "endnotes" (endnotesTitle (hcLanguage (cCfg c))) "endnote" "endnote-" "endnoteref-" endnoteText [(f, key, n, xs) | (f, key, d) <- cnList (cEndnotes c), (_, n, xs) <- documentEndnotes d]
 
 {- | The notes of the chapter at the end of its last page, after a title
 (golem-driver ADR 0026); each links back to its mark, on whichever page.
 -}
-notesSection :: Ctx -> Text
-notesSection c =
-  case [(f, key, n, xs) | (f, key, d) <- cnList (cNotes c), (_, n, xs) <- documentNotes d] of
-    [] -> ""
-    ns ->
-      "<section class=\"notes\">\n<h2>"
-        <> escapeXml (notesTitle (hcLanguage (cCfg c)))
-        <> "</h2>\n"
-        <> T.concat
-          -- a p for each paragraph, the link back at the start of the first (docs/adr/0263)
-          [ "<aside epub:type=\"footnote\" id=\"note-"
-              <> key n
-              <> "\">"
-              <> T.concat ["<p>" <> (if i == (0 :: Int) then "<a href=\"" <> linkTo c f ("noteref-" <> key n) <> "\">" <> noteText c n <> "</a> " else "") <> inlines c is <> "</p>" | (i, is) <- zip [0 ..] ps]
-              <> "</aside>\n"
-          | (f, key, n, ps) <- ns
-          ]
-        <> "</section>\n"
+notesSection :: Ctx -> [Node]
+notesSection c = noteList c "notes" (notesTitle (hcLanguage (cCfg c))) "footnote" "note-" "noteref-" noteText [(f, key, n, xs) | (f, key, d) <- cnList (cNotes c), (_, n, xs) <- documentNotes d]
 
-{- | Code coloured with skylighting's classes (golem-html ADR 0001). An
-unknown language, or text the highlighter rejects, stays plain.
+{- | A list of notes or endnotes: the section of its class with its title,
+an aside of its kind for each, a p for each paragraph, the link back at
+the start of the first (docs/adr/0263).
 -}
-highlighted :: Maybe Text -> Text -> Text
-highlighted lang code = T.intercalate "\n" (highlightedLines lang code)
+noteList :: Ctx -> Text -> Text -> Text -> Text -> Text -> (Ctx -> Int -> Text) -> [(FileId, Int -> Text, Int, [[Inline]])] -> [Node]
+noteList _ _ _ _ _ _ _ [] = []
+noteList c cls title kind idPrefix backPrefix mark ns =
+  [ el
+      "section"
+      [("class", cls)]
+      ( [nl, el "h2" [] [textOf title], nl]
+          <> concat
+            [ [ Element
+                  "aside"
+                  [plainAttr "epub:type" kind, plainAttr "id" (idPrefix <> key n)]
+                  [el "p" [] ((if i == (0 :: Int) then [Element "a" [("href", linkTo c f (backPrefix <> key n))] [textOf (mark c n)], textOf " "] else []) <> inlines c is) | (i, is) <- zip [0 ..] ps],
+                nl
+              ]
+            | (f, key, n, ps) <- ns
+            ]
+      ),
+    nl
+  ]
 
--- | The lines of 'highlighted', each its own.
-highlightedLines :: Maybe Text -> Text -> [Text]
+{- | Code coloured with skylighting's classes (golem-html ADR 0001), a
+list of nodes for each line. An unknown language, or text the highlighter
+rejects, stays plain.
+-}
+highlightedLines :: Maybe Text -> Text -> [[Node]]
 highlightedLines lang code = case lang >>= \l -> S.lookupSyntax l S.defaultSyntaxMap of
   Nothing -> escaped
   Just syntax -> case S.tokenize (S.TokenizerConfig S.defaultSyntaxMap False) syntax code of
     Left _ -> escaped
-    Right ls -> map (T.concat . map tok) ls
+    Right ls -> map (map tok) ls
   where
-    escaped = map escapeXml (T.splitOn "\n" code)
-    tok (S.NormalTok, t) = escapeXml t
-    tok (ty, t) = "<span class=\"" <> shortClass ty <> "\">" <> escapeXml t <> "</span>"
+    escaped = map (pure . textOf) (T.splitOn "\n" code)
+    tok (S.NormalTok, t) = textOf t
+    tok (ty, t) = el "span" [("class", shortClass ty)] [textOf t]
 
 {- | The tokens of each line of code as the HTML colours them, with their
 token kinds (golem-driver ADR 0023): Nothing for a language skylighting
@@ -1204,6 +1421,44 @@ listRules cfg book ls =
     gapAfter m = if fromMaybe (not (endsWithSpacedPunctuation m)) (hlGap ls) then " " else ""
     str t = "\"" <> T.replace "\"" "\\\"" (T.replace "\\" "\\\\" t) <> "\""
 
+-- | Only books using the new inline forms receive their CSS (root ADR 0380).
+extendedInlineCss :: Book -> [Text]
+extendedInlineCss book
+  | any (any hasBlock . docBlocks) (bookDocs book) || or [any hasInline (ceBody e) | (_, _, entries) <- bookChannels book, e <- entries] =
+      [ ".upright { text-orientation: upright; }",
+        ".warichu { display: inline-flex; flex-direction: column; font-size: 0.5em; line-height: 1; vertical-align: middle; white-space: nowrap; }",
+        ".warichu-line { display: block; }",
+        ".warichu-cell { display: inline-block; inline-size: 1em; text-align: center; }"
+      ]
+  | otherwise = []
+  where
+    hasBlock = hasBody . blockBody
+    hasBody = \case
+      Paragraph _ xs -> any hasInline xs
+      Heading _ attrs xs -> any hasInline xs || maybe False (any hasInline) (haTocTitle attrs)
+      BulletList items -> any (any hasBlock . itemBlocks) items
+      OrderedList items -> any (any hasBlock . itemBlocks) items
+      DefList groups -> any (\g -> any (any hasInline) (dgTerms g) || any (any hasBlock) (dgDefs g)) groups
+      FigureBlock f -> any hasBlock (figCaption f)
+      TableBlock t -> any (any hasInline) (tableHeader t) || any (any (any hasInline)) (tableRows t) || maybe False (any hasInline) (tableCaption t)
+      CodeBlock c -> maybe False (any hasInline) (codeCaption c)
+      _ -> False
+    hasInline :: InlineF r -> Bool
+    hasInline = \case
+      Warichu {} -> True
+      Upright {} -> True
+      Ruby _ _ segments -> any (any hasInline . rsBase) segments
+      CharStyle _ _ xs -> any hasInline xs
+      Color _ _ xs -> any hasInline xs
+      Kenten _ _ xs -> any hasInline xs
+      Link _ _ xs -> any hasInline xs
+      Lang _ _ xs -> any hasInline xs
+      Resolved _ _ _ xs -> any hasInline xs
+      Note _ _ _ blocks -> any hasBlock blocks
+      Sidenote _ _ _ blocks -> any hasBlock blocks
+      ChannelItem _ c -> any hasInline (ciBody c)
+      _ -> False
+
 {- | The style sheet; the documents of the book in order number the rules
 of the styles of their files (docs/adr ADR 0014), and its lists give the
 largest numbers of the fixed list markers (golem-driver ADR 0013).
@@ -1219,7 +1474,8 @@ css cfg book =
         <> (if role `elem` boldRoles then " font-weight: bold;" else "")
         <> (if role `elem` italicRoles then " font-style: italic;" else "")
         <> " }"
-    | (role, (ja, la)) <- Map.toAscList (hcFonts cfg),
+    | hcEmbedFonts cfg,
+      (role, (ja, la)) <- Map.toAscList (hcFonts cfg),
       (kind, Just p) <- [("latin" :: Text, la), ("ja", ja)]
     ]
       <> [ "body { font-family: " <> fontStack "body" <> "; }",
@@ -1228,9 +1484,11 @@ css cfg book =
            "pre, code { font-family: " <> codeStack <> "; }",
            rule "pre" (["white-space: pre-wrap", "overflow-wrap: anywhere", "tab-size: 2", "hyphens: none", "font-kerning: none"] <> preDecls)
          ]
+      <> [".character-advance { display: inline-block; inline-size: " <> advance <> "; }" | Just advance <- [hcCharacterAdvance cfg]]
       <> [ruleText | not (Map.null (bookSeparators book)), ruleText <- [".separator { display: block; block-size: " <> separatorPitch <> "; line-height: " <> separatorPitch <> "; }"]]
       -- strong is always written (docs/adr ADR 0005)
       <> [charRule "strong" cs | Just cs <- [Map.lookup "strong" (hcCharStyles cfg)]]
+      <> extendedInlineCss book
       <> [ ".tcy { text-combine-upright: all; -epub-text-combine: horizontal; }",
            ".kenten { text-emphasis-style: sesame; -epub-text-emphasis-style: sesame; }",
            ".kenten-open-sesame { text-emphasis-style: open sesame; }",
@@ -1262,6 +1520,9 @@ css cfg book =
            "@media (min-width: 60em) { .sidenote { float: right; clear: right; width: 14em; margin-right: -16em; } }"
          ]
       -- Ordinary paragraph pitch never changes the inside of a note.
+      -- the endnotes as the notes, only in a book that has them (root ADR 0412)
+      <> ["section.endnotes aside p { margin-block: 0; padding-inline-start: 0; text-indent: 0; }" | hasEndnotes]
+      <> ["section.endnotes aside p { line-height: normal; }" | hasEndnotes, any (isJust . hpsPhysical) (Map.elems (hcParaStyles cfg) <> concatMap (Map.elems . hlParaStyles) (Map.elems (hcLocalStyles cfg)))]
       <> ["section.notes aside p { line-height: normal; }" | any (isJust . hpsPhysical) (Map.elems (hcParaStyles cfg) <> concatMap (Map.elems . hlParaStyles) (Map.elems (hcLocalStyles cfg)))]
       -- the captions of tables below them (docs/adr/0262)
       <> ["table > caption { caption-side: bottom; }" | hcTableCaptionBelow cfg]
@@ -1303,10 +1564,11 @@ css cfg book =
       -- the styles of the files, last, under the class of their pages (docs/adr ADR 0014)
       <> concat [localRules n l | (n, fid) <- zip [1 :: Int ..] docs, Just l <- [Map.lookup fid (hcLocalStyles cfg)]]
   where
+    hasEndnotes = not (all (null . documentEndnotes) (bookDocs book))
     separatorPitch = maybe "1lh" ((<> "pt") . L.ptText) (hcSeparatorPitch cfg)
     docs = [fid | Document fid _ <- bookDocs book]
-    -- the role of code, then monospace (golem-driver ADR 0017)
-    codeStack = T.intercalate ", " (maybe [] families (hcoFont (hcCode cfg)) <> ["monospace"])
+    -- the role of code, then its generic family or monospace (golem-driver ADR 0017, docs/adr/0423)
+    codeStack = T.intercalate ", " (maybe [] families (hcoFont (hcCode cfg)) <> [fromMaybe "monospace" (hcoFont (hcCode cfg) >>= genericOf)])
     preDecls =
       let co = hcCode cfg
        in [ d
@@ -1338,7 +1600,7 @@ css cfg book =
       "italic" -> ["font-style: italic"]
       _ -> []
     declsOf name cs =
-      [ "font-family: " <> T.intercalate ", " (families role <> fallback)
+      [ "font-family: " <> T.intercalate ", " (stack role)
       | -- code is in the rule of pre and code when it has the role of pre
         name /= "code" || hcsFont cs /= hcoFont (hcCode cfg),
         Just role <- [hcsFont cs]
@@ -1365,7 +1627,9 @@ css cfg book =
         -- a range that does not break; a br breaks inside it, as a forced break does in the PDF (docs/adr ADR 0272)
         <> ["white-space: nowrap" | hcsNoBreak cs]
       where
-        fallback = if hcsCode cs then ["monospace"] else families "body" <> ["serif"]
+        fallback = if hcsCode cs then [] else families "body"
+        -- the families of the role, then body's for a style not of code, then the generic family (docs/adr/0423)
+        stack role = families role <> fallback <> [charGeneric cs]
     {- the keys of the spacing of characters whose values differ from the
     defaults of body (docs/adr/0020): CSS kerns Japanese and Latin alike,
     so japanese-equal-width keeps the Latin kerning -}
@@ -1523,11 +1787,20 @@ css cfg book =
       [] -> ""
       ks -> "body" <> T.concat [":not(.file-" <> tshow k <> ")" | k <- ks]
     allStyles = [(n, ps) | (n, ps) <- Map.toAscList (hcParaStyles cfg), n /= "code"]
+    -- the families of the fonts of a role, none when the site names generic families only (docs/adr/0423)
     families role = case Map.lookup role (hcFonts cfg) of
-      Just (ja, la) -> ["\"" <> cssString (family role "latin") <> "\"" | Just _ <- [la]] <> ["\"" <> cssString (family role "ja") <> "\"" | Just _ <- [ja]]
-      Nothing -> []
+      Just (ja, la) | hcEmbedFonts cfg -> ["\"" <> cssString (family role "latin") <> "\"" | Just _ <- [la]] <> ["\"" <> cssString (family role "ja") <> "\"" | Just _ <- [ja]]
+      _ -> []
     family role kind = "golem-" <> role <> "-" <> kind
-    fontStack role = T.intercalate ", " (families role <> ["serif"])
+    {- the generic family that ends font-family (docs/adr/0423): that of the
+    role; for a paragraph, serif without one; for a character style of code,
+    monospace; for another character style, that of body, then serif -}
+    genericOf role = Map.lookup role (hcGenericFamilies cfg)
+    fontStack role = T.intercalate ", " (families role <> [fromMaybe "serif" (genericOf role)])
+    charGeneric cs
+      | hcsCode cs = fromMaybe "monospace" (hcsFont cs >>= genericOf)
+      | otherwise = fromMaybe "serif" ((hcsFont cs >>= genericOf) <|> genericOf "body")
+    charStack cs = T.intercalate ", " (maybe [] families (hcsFont cs) <> [charGeneric cs])
     {- the rules of the styles of a file: every property they handle, as a
     property left out would keep the value of the rule of style.toml -}
     readingRules prefix styles =
@@ -1551,7 +1824,7 @@ css cfg book =
           charRules =
             [ rule
                 (pre <> " " <> selectorOf name)
-                ( [ "font-family: " <> stackOr (hcsFont cs),
+                ( [ "font-family: " <> (if isJust (hcsFont cs) then charStack cs else "inherit"),
                     "font-weight: " <> (if hcsBold cs then "bold" else "normal"),
                     "font-style: " <> (if hcsItalic cs then "italic" else "normal"),
                     "color: " <> colorOf cs
@@ -1622,36 +1895,40 @@ css cfg book =
               <> [pre <> " div.box > p { padding-inline-start: 0; padding-inline-end: 0; }" | not (Map.null (hlParaStyles l)), any (isJust . hpsBox . snd) mergedList]
        in charRules <> markerRules (pre <> " ") (hlCharStyles l) <> readingRules (pre <> " ") (hlCharStyles l) <> paraStyleRules <> faceRules <> boxLocal <> listRule
 
--- | The table of contents page of the HTML target.
+{- | The table of contents page of the HTML target, index.html, in the HTML
+syntax (docs/adr ADR 0090, root ADR 0432).
+-}
 indexPage :: HtmlConfig -> FileTable -> Book -> Text
 indexPage cfg ft book =
   let items =
-        T.concat
-          [ "<li class=\"toc-"
-              <> T.pack (show (teLevel te))
-              <> "\"><a href=\""
-              <> escapeXml (T.pack (pagePath ft (teFile te)))
-              <> "#"
-              <> escapeXml (teAnchor te)
-              <> "\">"
-              <> maybe "" (\n -> escapeXml (n <> titleSeparator (hcLanguage cfg) (Map.lookup (teFile te, Just (teLevel te)) (bookTitleSeparators book)) n (foldMap inlineText (teTitle te)))) (teNumber te)
-              <> titleWithLanguages (teTitle te)
-              <> "</a></li>\n"
+        concat
+          [ [ el
+                "li"
+                [("class", "toc-" <> T.pack (show (teLevel te)))]
+                [ Element
+                    "a"
+                    [("href", PageLink (T.pack (pageBase ft (teFile te))) (teAnchor te))]
+                    ( maybe [] (\n -> [textOf (n <> titleSeparator (hcLanguage cfg) (Map.lookup (teFile te, Just (teLevel te)) (bookTitleSeparators book)) n (foldMap inlineText (teTitle te)))]) (teNumber te)
+                        <> titleNodes (teTitle te)
+                    )
+                ],
+              nl
+            ]
           | -- within the depth of @toc (golem-epub ADR 0002)
             te <- tocWithinDepth book
           ]
-   in T.concat
-        [ "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!DOCTYPE html>\n<html xmlns=\"http://www.w3.org/1999/xhtml\" lang=\"",
-          escapeXml (hcLanguage cfg),
-          "\" xml:lang=\"",
-          escapeXml (hcLanguage cfg),
-          "\">\n<head>\n<meta charset=\"UTF-8\"/>\n<title>",
-          escapeXml (hcTitle cfg),
-          "</title>\n<link rel=\"stylesheet\" type=\"text/css\" href=\"style.css\"/>\n</head>\n<body>\n<h1>",
-          escapeXml (hcTitle cfg),
-          "</h1>\n<nav class=\"toc\">\n<ol>\n",
-          items,
-          "</ol>\n</nav>\n</body>\n</html>\n"
+   in M.writeDocument
+        HtmlSyntax
+        [ el
+            "html"
+            ([("xmlns", "http://www.w3.org/1999/xhtml")] <> langPairs (hcLanguage cfg))
+            [ nl,
+              el "head" [] [nl, el "meta" [("charset", "UTF-8")] [], nl, el "title" [] [textOf (hcTitle cfg)], nl, el "link" [("rel", "stylesheet"), ("type", "text/css"), ("href", "style.css")] [], nl],
+              nl,
+              el "body" [] [nl, el "h1" [] [textOf (hcTitle cfg)], nl, el "nav" [("class", "toc")] [nl, el "ol" [] (nl : items), nl], nl],
+              nl
+            ],
+          nl
         ]
 
 {- | The cells of the tables of a paragraph style (docs/adr/0262): of a
@@ -1678,13 +1955,13 @@ horizontal book its width, in a vertical one its height, each with the
 maximum of 100% of the same direction, so that a width beyond the measure
 fits it as in the PDF. A length in pt, zw in em, a percentage in %.
 -}
-figureWidthStyle :: Bool -> Maybe Text -> Text
+figureWidthStyle :: Bool -> Maybe Text -> [(Text, Text)]
 figureWidthStyle vertical width = case width >>= parseFigureWidth of
-  Nothing -> ""
+  Nothing -> []
   Just w ->
     let prop = if vertical then "height" else "width"
         len = case w of
           WidthLength x -> L.ptText x <> "pt"
           WidthZw r -> L.emText r <> "em"
           WidthPercent r -> showRationalDigits 4 r <> "%"
-     in " style=\"" <> prop <> ": " <> len <> "; max-" <> prop <> ": 100%\""
+     in [("style", prop <> ": " <> len <> "; max-" <> prop <> ": 100%")]

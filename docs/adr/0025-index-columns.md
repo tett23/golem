@@ -1,6 +1,6 @@
 # ADR 0025: 索引の段組み
 
-Status: accepted
+Status: superseded [{"part":"切り替えの位置","by":["docs/adr/0441-index-columns-on-a-page-with-adjusted-lines.md"],"kind":"supplement"}]
 
 ## 文脈
 

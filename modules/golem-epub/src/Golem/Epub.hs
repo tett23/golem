@@ -5,6 +5,7 @@ module Golem.Epub
   ( EpubConfig (..),
     EpubCreator (..),
     packageDocument,
+    packageDocumentWithLicenses,
     navDocument,
     containerXml,
     writeEpub,
@@ -43,7 +44,8 @@ data EpubConfig = EpubConfig
     epCreators :: ![EpubCreator],
     -- | dc:contributor, with the role as a MARC relator code (docs/adr ADR 0033)
     epContributors :: ![EpubCreator],
-    epVertical :: !Bool
+    epVertical :: !Bool,
+    epPageList :: ![(Text, FilePath, Text)]
   }
 
 containerXml :: Text
@@ -68,12 +70,25 @@ mediaType p = case map toLower (takeExtension p) of
   ".woff2" -> "font/woff2"
   _ -> "application/octet-stream"
 
+{- | The media type of a license document of a font (root ADR 0433):
+text/markdown for .md, text/plain for any other extension, whatever
+'mediaType' gives the extension.
+-}
+licenseMediaType :: FilePath -> Text
+licenseMediaType p = if map toLower (takeExtension p) == ".md" then "text/markdown" else "text/plain"
+
 itemId :: Int -> Text
 itemId i = "item" <> T.pack (show i)
 
 -- | The package document. Pages keep the order of the book (spine).
 packageDocument :: EpubConfig -> [FilePath] -> [FilePath] -> Text
-packageDocument cfg pages others =
+packageDocument cfg = packageDocumentWithLicenses cfg []
+
+{- | The package document whose items of @licenses@ are license documents
+of fonts, of the media type 'licenseMediaType' (root ADR 0433).
+-}
+packageDocumentWithLicenses :: EpubConfig -> [FilePath] -> [FilePath] -> [FilePath] -> Text
+packageDocumentWithLicenses cfg licenses pages others =
   let items = zip [1 :: Int ..] (pages <> others)
       -- dc:creator or dc:contributor, its role and its reading (docs/adr ADR 0033)
       person element prefix (i, c) =
@@ -99,7 +114,7 @@ packageDocument cfg pages others =
                "<manifest>",
                "<item id=\"nav\" href=\"nav.xhtml\" media-type=\"application/xhtml+xml\" properties=\"nav\"/>"
              ]
-          <> ["<item id=\"" <> itemId i <> "\" href=\"" <> escapeXml (T.pack p) <> "\" media-type=\"" <> mediaType p <> "\"/>" | (i, p) <- items]
+          <> ["<item id=\"" <> itemId i <> "\" href=\"" <> escapeXml (T.pack p) <> "\" media-type=\"" <> (if p `elem` licenses then licenseMediaType p else mediaType p) <> "\"/>" | (i, p) <- items]
           <> ["</manifest>", "<spine" <> (if epVertical cfg then " page-progression-direction=\"rtl\"" else "") <> ">"]
           <> ["<itemref idref=\"" <> itemId i <> "\"/>" | (i, p) <- items, p `elem` pages]
           <> ["</spine>", "</package>"]
@@ -107,7 +122,7 @@ packageDocument cfg pages others =
 -- | The navigation document: the TOC channel, nested by level.
 navDocument :: EpubConfig -> FileTable -> Book -> Text
 navDocument cfg ft book =
-  T.unlines
+  T.unlines $
     [ "<?xml version=\"1.0\" encoding=\"UTF-8\"?>",
       "<!DOCTYPE html>",
       "<html xmlns=\"http://www.w3.org/1999/xhtml\" xmlns:epub=\"http://www.idpf.org/2007/ops\" lang=\"" <> escapeXml (epLanguage cfg) <> "\" xml:lang=\"" <> escapeXml (epLanguage cfg) <> "\">",
@@ -117,11 +132,17 @@ navDocument cfg ft book =
       "<h1>" <> escapeXml (epTitle cfg) <> "</h1>",
       -- within the depth of @toc (golem-epub ADR 0002)
       nested (tocWithinDepth book),
-      "</nav>",
-      "</body>",
-      "</html>"
+      "</nav>"
     ]
+      <> [pageList | not (null (epPageList cfg))]
+      <> ["</body>", "</html>"]
   where
+    pageList
+      | null (epPageList cfg) = ""
+      | otherwise =
+          "<nav epub:type=\"page-list\" id=\"page-list\"><ol>"
+            <> T.concat ["<li><a href=\"" <> escapeXml (T.pack file) <> "#" <> escapeXml anchor <> "\">" <> escapeXml label <> "</a></li>" | (label, file, anchor) <- epPageList cfg]
+            <> "</ol></nav>"
     entry e =
       "<a href=\""
         <> escapeXml (T.pack (pagePath ft (teFile e)))
@@ -153,7 +174,7 @@ writeEpub root out cfg ft book site = do
       entries =
         [ mimetype,
           toEntry "META-INF/container.xml" 0 (BL.fromStrict (TE.encodeUtf8 containerXml)),
-          text "package.opf" (packageDocument cfg pages others),
+          text "package.opf" (packageDocumentWithLicenses cfg (siteLicenses site) pages others),
           text "nav.xhtml" (navDocument cfg ft book),
           text "style.css" (siteCss site)
         ]

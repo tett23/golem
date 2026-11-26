@@ -21,6 +21,9 @@ git config core.hooksPath .githooks
 The hook calls [adr-guard](https://github.com/tett23/adr-guard) v0.13.1 or later, so install it beforehand (`cargo install --git https://github.com/tett23/adr-guard --tag v0.13.1`).
 This setting is not stored in the repository, so run it in every clone.
 `.githooks/pre-push` stops the push of a branch that changes the specification without updating the manual (see Documentation).
+It also stops a push when the wasmtime that the build links is not the version pinned by `scripts/fetch-wasmtime.sh` ([docs/adr/0418](./docs/adr/0418-stop-a-push-when-the-local-wasmtime-is-not-the-pinned-one.md)).
+So fetch wasmtime with `scripts/fetch-wasmtime.sh` before you push.
+The section "Git フックの有効化" of README describes the check.
 
 ## How a change proceeds
 
@@ -127,7 +130,7 @@ A check that the test design of an accepted ADR states as a time, such as "withi
 This is the rule for the tests outside golem-pdf, golem-svg and golem-driver.
 The tests of golem-pdf and golem-svg bound their time with `withinTimeLimits hangLimits` of `Golem.TestSupport.TimeLimit` in `modules/golem-test-support`, which stops them at 60 seconds of CPU time of the process or 300 seconds of real time.
 A test with a time bound takes at most 10 seconds of CPU time when run alone ([docs/adr/0091](./docs/adr/0091-cpu-time-limits-in-pdf-and-svg-tests.md)).
-The tests of golem-driver-test bound their time with `hangTimeout` of `modules/golem-driver/test/Support.hs` (300 seconds of real time), and do not write the value themselves.
+The tests of the four `-threaded` suites of golem-driver that hold the tests that do not change the state of the process (golem-driver-pdf-test, golem-driver-page-test, golem-driver-output-test and golem-driver-cli-test) bound their time with `hangTimeout` of `modules/golem-driver/test/Support.hs` (300 seconds of real time), and do not write the value themselves.
 The tests run at the same time on the threaded RTS, so they are not measured by CPU time ([docs/adr/0237](./docs/adr/0237-raise-the-hang-time-outs-of-golem-driver-test-to-300-seconds.md)).
 If a module other than `Support.hs` has `mkTimeout`, `scripts/ci/test.sh` fails.
 
@@ -227,7 +230,7 @@ When raising ghcup, change the ghcup version, the commit of the bootstrap script
 Format Haskell code with fourmolu 0.21.0.0 and resolve every hlint 3.10 hint.
 The `format` job in CI checks both.
 The generated parser (`modules/golem-parser/src/Golem/Parser/Generated.hs`) and the grammar without its labels (`modules/golem-parser/test/StrippedGrammar.hs`) are excluded.
-So are the two modules of golem-driver that `scripts/gen-embedded.sh` generates (`modules/golem-driver/src/Golem/Driver/Version/Embedded.hs` and `modules/golem-driver/src/Golem/Driver/Explain/Embedded.hs`).
+So are the two modules of golem-driver and golem-evaluate that `scripts/gen-embedded.sh` generates (`modules/golem-driver/src/Golem/Driver/Version/Embedded.hs` and `modules/golem-evaluate/src/Golem/Evaluate/Explain/Embedded.hs`).
 
 After changing the grammar (`modules/golem-parser/grammar/Golem.hpeg`), regenerate the parser with `scripts/gen-parser.sh` and commit the generated files.
 The script also generates the grammar without its labels; the golem-parser tests check that both grammars accept the same inputs.
@@ -245,7 +248,7 @@ When an item is implemented, remove it from roadmap.md and describe the behavior
 References to ADRs from the specification must link to the ADR file.
 When introducing a new term, add it to [docs/glossary.md](./docs/glossary.md).
 
-When you change [docs/diagnostics.md](./docs/diagnostics.md), run `sh scripts/gen-embedded.sh` in the same change and commit the regenerated `modules/golem-driver/src/Golem/Driver/Explain/Embedded.hs`.
+When you change [docs/diagnostics.md](./docs/diagnostics.md), run `sh scripts/gen-embedded.sh` in the same change and commit the regenerated `modules/golem-evaluate/src/Golem/Evaluate/Explain/Embedded.hs`.
 golem-driver embeds the document through this generated module ([docs/adr/0203](./docs/adr/0203-generated-modules-instead-of-template-haskell-in-golem-driver.md)).
 If you forget to regenerate it, the tests of golem-driver and the `build` job of CI fail.
 
@@ -288,7 +291,13 @@ If either rule is broken, the `changes` job of CI (`scripts/ci/rts-capabilities.
 In a test suite built with `-threaded`, tasty runs the tests at the same time.
 A test that changes the state of the process (an environment variable, the locale encoding, the current directory) is not put in such a suite, as the other tests would read the state half changed.
 In golem-driver, such tests go to `golem-driver-global-test`, which is not built with `-threaded` ([docs/adr/0146](./docs/adr/0146-threaded-golem-driver-test.md)).
-If a module of `golem-driver-test` uses `withEnv`, `setEnv`, `setLocaleEncoding`, `setCurrentDirectory` or the like, the `scripts-linux` job of CI (`scripts/ci/test.sh`) fails.
+If a module of the four `-threaded` suites of golem-driver other than golem-driver-parallel-test uses `withEnv`, `setEnv`, `setLocaleEncoding`, `setCurrentDirectory` or the like, the `scripts-linux` job of CI (`scripts/ci/test.sh`) fails.
+
+A test of golem-driver that does not change the state of the process goes to the one suite of its area ([docs/adr/0416](./docs/adr/0416-shorten-the-build-of-the-pull-request-ci.md)).
+The structure, the tags and the fonts of the PDF, and the figures that other tools wrote, go to `golem-driver-pdf-test`; paragraphs, headings, notes, figures and their placement, and page breaks go to `golem-driver-page-test`.
+HTML, EPUB, plain text, bibliographies, indexes and cross references go to `golem-driver-output-test`; diagnostics, functions, plugins, projects and the checks near the CLI go to `golem-driver-cli-test`.
+A new module is listed in the `other-modules` of its suite and in the module of its `main-is` (`PdfMain.hs` and the like).
+A module that imports a module of another suite lists that module too in the `other-modules` of its own suite.
 
 The `-threaded` suite `golem-driver-parallel-test` is wrapped in `watchTests` of `Golem.TestSupport.Watchdog` in `modules/golem-test-support`.
 A POSIX thread outside the Haskell runtime measures the wall-clock time; when a test runs for more than 300 seconds times the value of `GOLEM_RACE_TESTS`, or the process has not exited that long after its tests ended, it writes the names of the running tests and the heartbeat of the runtime to the standard error and stops the process with `abort()` ([docs/adr/0117](./docs/adr/0117-watchdog-outside-the-runtime-for-threaded-tests.md)).

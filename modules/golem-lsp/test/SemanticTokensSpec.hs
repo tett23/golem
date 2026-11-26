@@ -101,6 +101,13 @@ semanticTokensTests =
                 (3, 43, 1, L.SemanticTokenTypes_Operator, []),
                 (3, 47, 11, L.SemanticTokenTypes_Comment, [L.SemanticTokenModifiers_Modification])
               ],
+      testCase "root ADR 0459: the lines of ::: that open and close a body are marks" $
+        toks Utf8 "@x\n:::\n一\n\n二\n:::\n"
+          @?= [ (0, 0, 1, L.SemanticTokenTypes_Decorator, []),
+                (0, 1, 1, L.SemanticTokenTypes_Decorator, []),
+                (1, 0, 3, L.SemanticTokenTypes_Keyword, []),
+                (5, 0, 3, L.SemanticTokenTypes_Keyword, [])
+              ],
       testCase "code blocks, lists, definition lists, tables and keyword arguments" $
         toks Utf8 "```haskell\nmain = 1\n```\n\n- 一\n+ 二\n\n= 版面\n  説明。\n\n| a | b |\n|---|---|\n\n@figure x.png alt=\"図\"\n"
           @?= [ (0, 0, 3, L.SemanticTokenTypes_Keyword, []),
@@ -279,7 +286,7 @@ semanticTokensTests =
         isRight (L.makeSemanticTokens L.defaultSemanticTokensLegend [L.SemanticTokenAbsolute l c n t m | (l, c, n, t, m) <- ts]) === True,
       testCase "the initialize response keeps semanticTokensProvider" $ do
         let resp = "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"capabilities\":{\"positionEncoding\":\"utf-16\",\"semanticTokensProvider\":{\"full\":{\"delta\":false}}}}}"
-            expected = "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"capabilities\":{\"positionEncoding\":\"utf-8\",\"experimental\":{\"golem\":{\"planFileMove\":1}},\"semanticTokensProvider\":{\"full\":{\"delta\":false}}}}}"
+            expected = "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"capabilities\":{\"positionEncoding\":\"utf-8\",\"experimental\":{\"golem\":{\"planFileMove\":1,\"planMovedReferences\":1}},\"semanticTokensProvider\":{\"full\":{\"delta\":false}}}}}"
             decode = J.decode :: BL.ByteString -> Maybe J.Value
         (decode =<< rewriteInitializeResponse (M.IdInt 1) Utf8 resp) @?= decode expected,
       testCase "the server advertises full semantic tokens with a legend, without range or delta" $ withFixture $ \dir -> do

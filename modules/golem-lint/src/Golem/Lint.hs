@@ -160,8 +160,19 @@ unusedVariables input =
           (ns, target, _) <- usageImports (flUsage g),
           target == path
         ]
+        -- a variable listed by @import and used by its name or its alias (root ADR 0451, root ADR 0458)
+        || or
+          [ a `Set.member` usageListedRefs (flUsage g)
+          | g <- liFiles input,
+            (a, n, target, _) <- usageListed (flUsage g),
+            target == path,
+            n == v
+          ]
 
--- | G05003: an import whose namespace is never referenced.
+{- | G05003: an import whose namespace is never referenced, and a name an
+import lists that the file never uses, counted by its alias and reported
+at it (root ADR 0451, root ADR 0458).
+-}
 unusedImports :: LintInput -> [Diagnostic]
 unusedImports input =
   [ diagnostic "G05003" Error sp ("使われていない import です: " <> ns)
@@ -169,6 +180,11 @@ unusedImports input =
     (ns, _, sp) <- usageImports (flUsage f),
     not (Map.member ns (usageNamespaceRefs (flUsage f)))
   ]
+    <> [ diagnostic "G05003" Error sp ("使われていない import の名前です: " <> n)
+       | f <- liFiles input,
+         (n, _, _, sp) <- usageListed (flUsage f),
+         not (n `Set.member` usageListedRefs (flUsage f))
+       ]
 
 {- | G05004: a label nobody refers to. A warning in dev, an error in prod
 (adjusted in golem-syntax).

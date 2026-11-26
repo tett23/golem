@@ -121,12 +121,16 @@ topText c = T.concat . go False Nothing Nothing
 file :: Ctx -> Document -> [Document] -> Text
 file c (Document _ bs) chapter =
   let body = topText c bs
-      notes = [(n, noteParagraphs nb) | Document _ cbs <- chapter, Note _ n nb <- concatMap blockInlines cbs]
+      notes = [(n, noteParagraphs nb) | Document _ cbs <- chapter, Note _ n _ nb <- concatMap blockInlines cbs]
       noteMark n = (if cVariant c == Vertical then "※" else "*") <> T.pack (show n)
       -- the first paragraph after the mark, each other on a line of its own (docs/adr/0263)
-      noteText = T.intercalate "\n" (notesTitle (cLanguage c) : [noteMark n <> " " <> T.intercalate "\n" (map (inlines c) ps) | (n, ps) <- notes])
+      listText title ns = T.intercalate "\n" (title : [noteMark n <> " " <> T.intercalate "\n" (map (inlines c) ps) | (n, ps) <- ns])
+      -- the endnotes after the notes, under a title of their own (root ADR 0412)
+      endnotes = [(n, noteParagraphs nb) | Document _ cbs <- chapter, Endnote _ n _ nb <- concatMap blockInlines cbs]
+      lists = [listText (notesTitle (cLanguage c)) notes | not (null notes)] <> [listText (endnotesTitle (cLanguage c)) endnotes | not (null endnotes)]
+      noteText = T.intercalate "\n\n" lists
       full
-        | null notes = body
+        | null lists = body
         | T.null body = noteText
         | otherwise = body <> "\n\n" <> noteText
    in if T.null full then "" else full <> "\n"
@@ -191,6 +195,8 @@ block c ind (Block sp _ _ body) = case body of
     Just (SeparatorTextAppearance _ _ _ content _) -> content
     Just SeparatorRuleAppearance {} -> "---"
     Nothing -> ""
+  -- the paragraphs of a text frame at the place of the command, an empty line between two (root ADR 0438)
+  FrameBlock _ bs -> T.intercalate "\n\n" (filter (not . T.null) (map (block c ind) bs))
   ChannelOutput BibliographyOutput ->
     -- the entry, or the key that has none (golem-doc ADR 0004, 0005)
     T.intercalate "\n" ["[" <> T.pack (show n) <> "] " <> maybe k entryText (Map.lookup k (cBibliography c)) | (k, n) <- bibliographyAt (cBook c) sp]
@@ -215,7 +221,7 @@ block c ind (Block sp _ _ body) = case body of
       (Block _ _ _ (Paragraph Nothing is) : rest) | not (any isLineBreak is) -> T.intercalate "\n" (inlines c is : map (block inItem i) rest)
       _ -> T.intercalate "\n" (map (block inItem i) bs)
     sidenotes is =
-      T.concat ["\n※" <> T.pack (show n) <> " " <> T.intercalate "\n" (map (inlines c) (noteParagraphs nb)) | Sidenote _ n nb <- is]
+      T.concat ["\n※" <> T.pack (show n) <> " " <> T.intercalate "\n" (map (inlines c) (noteParagraphs nb)) | Sidenote _ n _ nb <- is]
 
 blockInlines :: Block -> [Inline]
 blockInlines (Block _ _ _ body) = case body of
@@ -226,6 +232,7 @@ blockInlines (Block _ _ _ body) = case body of
   DefList gs -> concatMap (\(DefGroup ts ds) -> concatMap deep ts <> concatMap (concatMap blockInlines) ds) gs
   TableBlock t -> concatMap deep (tableHeader t) <> concatMap (concatMap deep) (tableRows t)
   FigureBlock f -> concatMap blockInlines (figCaption f)
+  FrameBlock _ bs -> concatMap blockInlines bs
   _ -> []
   where
     deep = concatMap (\i -> i : nested i)
@@ -249,14 +256,20 @@ inline c = \case
   Color _ _ xs -> inlines c xs
   CharStyle _ _ xs -> inlines c xs
   Tcy _ t -> t
+  Warichu _ t -> t
+  Upright _ t -> t
   Number _ n st -> renderNumber (cVariant c) (cNumberDefault c) n st
   Ref _ RefPage l -> case Map.lookup l (bookLabels (cBook c)) of
+    -- a note has no title: its number, as [ref-number] gives it (root ADR 0422)
+    Just t@LabelTarget {ltNote = Just _} -> inlines c (maybe [] pure (ltNumber t))
     Just t -> "「" <> inlines c (ltTitle t) <> "」"
     Nothing -> ""
   Ref {} -> ""
   Deferred {} -> ""
-  Note _ n _ -> (if cVariant c == Vertical then "※" else "*") <> T.pack (show n)
-  Sidenote _ n _ -> "※" <> T.pack (show n)
+  Note _ n _ _ -> (if cVariant c == Vertical then "※" else "*") <> T.pack (show n)
+  Sidenote _ n _ _ -> "※" <> T.pack (show n)
+  -- the mark of an endnote is that of a note (root ADR 0412)
+  Endnote _ n _ _ -> (if cVariant c == Vertical then "※" else "*") <> T.pack (show n)
   IndexMark {} -> ""
   ChannelItem {} -> ""
   -- the mark of the default style; nothing when a number is not known (docs/adr/0266)

@@ -16,12 +16,12 @@ extra-source-files:
   VERSION
   diagnostics.md
 
--- plugins (docs/adr/0199): the plugins of golem-plugin (wasmtime) and golem
--- new. Without it, Golem.Driver.Plugins of src-no-plugins/ reports G06106
--- for a project that uses a plugin; the wasm build turns it off
--- (cabal.project.wasm). golem-cli and golem-lsp build with it.
+-- plugins (docs/adr/0199, root ADR 0434): golem new, Golem.Driver.New of
+-- src-plugins/. The plugins themselves are those of golem-evaluate, which
+-- has a flag plugins of its own; the wasm build turns both off
+-- (cabal.project.wasm). golem-cli builds with it.
 flag plugins
-  description: The plugins (golem-plugin, wasmtime) and golem new
+  description: golem new (golem-plugin)
   default:     True
   manual:      True
 
@@ -33,19 +33,14 @@ library
   import:           warnings
   hs-source-dirs:   src
   exposed-modules:  Golem.Driver
-                    Golem.Driver.Verse
-                    Golem.Driver.Explain
-                    Golem.Driver.Explain.Catalog
-                    Golem.Driver.Explain.Embedded
-                    Golem.Driver.Functions
                     Golem.Driver.Html
-                    Golem.Driver.Lint
-                    Golem.Driver.Plugins
+                    Golem.Driver.PageMap
                     Golem.Driver.Svg
                     Golem.Driver.Version
                     Golem.Driver.Version.Embedded
-  other-modules:    Golem.Driver.ProjectVars
+  other-modules:    Golem.Driver.PageMap.Alignment
   build-depends:
+    , aeson         >=2.2 && <2.3
     , base          >=4.20 && <4.21
     , bytestring    >=0.11 && <0.13
     , containers    >=0.6  && <0.8
@@ -54,12 +49,10 @@ library
     , golem-assemble
     , golem-bibliography
     , golem-doc
-    , golem-emet
     , golem-epub
-    , golem-eval
+    , golem-evaluate
     , golem-html
     , golem-length
-    , golem-lint
     , golem-pdf
     , golem-parser
     , golem-preflight
@@ -69,107 +62,29 @@ library
     , golem-text
     , golem-typeset
     , text          >=2.0  && <2.2
-    , time          >=1.12 && <1.15
+    , vector        >=0.13 && <0.14
   default-language: GHC2021
   if !arch(wasm32)
     c-sources:     cbits/output_lock.c
     build-depends: unix >=2.8 && <3
-  -- the two Golem.Driver.Plugins export the same names and types (docs/adr/0199)
+  -- golem new, only with the plugins (docs/adr/0199, root ADR 0434)
   if flag(plugins)
     hs-source-dirs:  src-plugins
     exposed-modules: Golem.Driver.New
     build-depends:   golem-plugin
-  else
-    hs-source-dirs:  src-no-plugins
 
-test-suite golem-driver-test
-  import:           warnings
-  type:             exitcode-stdio-1.0
+-- What the four suites that golem-driver-test was split into share: the
+-- options and the dependencies; each lists its own modules, and the
+-- modules that help the tests (Support and the Specs that others import)
+-- are built in each suite that uses them (root ADR 0416).
+-- -threaded: tasty runs the tests at the same time on every processor;
+-- none of them changes the state of the process, and those that do are
+-- in golem-driver-global-test (docs/adr/0146). -N: one capability per
+-- processor from the start (scripts/ci/rts-capabilities.sh)
+-- wasm32 has no threaded runtime: -threaded does not link there, and
+-- -N needs it (docs/adr/0293)
+common driver-suite
   hs-source-dirs:   test
-  main-is:          Main.hs
-  other-modules:
-    AlignSpaceSpec
-    ParagraphPitchSpec
-    ParagraphWrapPitchSpec
-    FontInstanceSpec
-    BookLanguageSpec
-    BuildSpec
-    CallsSpec
-    ChapterNotesSpec
-    NoteBodyStylesSpec
-    PageNoteNumbersSpec
-    CompressedNoteMarksSpec
-    CaptionSidenoteIndentSpec
-    VerseLineNumbersSpec
-    NumberTitleSeparatorSpec
-    CaptionSidenoteParagraphsSpec
-    ParagraphStyleControlsSpec
-    ColophonSpec
-    CliSpec
-    ComplexFixtureSpec
-    DiagnosticSitesSpec
-    ReuseSpec
-    CodeFontSpec
-    DiagnosticsSpec
-    DoubleDashSpec
-    EmetSamplesSpec
-    ExpansionSpec
-    FigureExternalSpec
-    FigureSpec
-    FileSpacesSpec
-    ForceTableSpec
-    FunctionLibrarySpec
-    FunctionsSpec
-    HeadingLevelsSpec
-    InMemorySpec
-    ManualEmetSpec
-    InsideLinksSpec
-    LinkSpec
-    NotesSpec
-    OutputGoldenSpec
-    DecorationsSpec
-    ExceptionsSpec
-    OpenTypeFeaturesSpec
-    PunctuationWidthSpec
-    ScriptsSpec
-    OverflowSpec
-    SoftHyphenSpec
-    PageElementsSpec
-    PageStartsSpec
-    ParagraphRuleSpec
-    SeparatorSpec
-    ParagraphSpec
-    PdfSpec
-    PlatesSpec
-    PopplerSpec
-    ReferencesSpec
-    SecuritySpec
-    BoxesSpec
-    KeepOptionsSpec
-    LineAdjustmentSpec
-    AdjustOrderSpec
-    NumberUnitBuildSpec
-    SinglePageSpec
-    PageLabelsSpec
-    IndexRangeSpec
-    ShapingMemoSpec
-    SpecimenGeometrySpec
-    TateChuYokoSpec
-    StylesSpec
-    TableCaptionsSpec
-    TableFilesSpec
-    TaggedPdfSpec
-    TocStylesSpec
-    UnwritableNumbersSpec
-    VarsSpec
-    VisualSubsetSpec
-    Support
-  -- -threaded: tasty runs the tests at the same time on every processor;
-  -- none of them changes the state of the process, and those that do are
-  -- in golem-driver-global-test (docs/adr/0146). -N: one capability per
-  -- processor from the start (scripts/ci/rts-capabilities.sh)
-  -- wasm32 has no threaded runtime: -threaded does not link there, and
-  -- -N needs it (docs/adr/0293)
   if !arch(wasm32)
     ghc-options:    -threaded "-with-rtsopts=-N"
   build-depends:
@@ -196,6 +111,8 @@ test-suite golem-driver-test
     , golem-syntax
     , golem-test-support
     , golem-typeset
+    , golem-unicode
+    , JuicyPixels    ==3.3.9
     , hedgehog       >=1.4 && <1.6
     , process
     , zlib
@@ -212,8 +129,150 @@ test-suite golem-driver-test
   -- tests that use them are not built
   if flag(plugins)
     cpp-options:   -DGOLEM_PLUGINS
-    other-modules: NewPlanSpec
     build-depends: golem-plugin
+
+-- The tests of the PDF: its structure, its tags, its fonts and the figures
+-- that other tools wrote (root ADR 0416).
+test-suite golem-driver-pdf-test
+  import:           warnings
+  import:           driver-suite
+  type:             exitcode-stdio-1.0
+  main-is:          PdfMain.hs
+  other-modules:
+    CodeFontSpec
+    DecorationsSpec
+    DoubleDashSpec
+    ExpansionSpec
+    FigureExternalSpec
+    FontInstanceSpec
+    LinkSpec
+    OpenTypeFeaturesSpec
+    PdfScreenSpec
+    PdfSpec
+    PlatesSpec
+    PopplerSpec
+    PunctuationWidthSpec
+    ScriptsSpec
+    ShapingMemoSpec
+    SpecimenGeometrySpec
+    Support
+    TaggedPdfSpec
+    TateChuYokoSpec
+    VisualSubsetSpec
+  -- golem-html's cmykToRgb and the HTML of the figures, which the PDF for
+  -- the screen is compared with (root ADR 0445)
+  build-depends: golem-html
+
+-- The tests of the pages: paragraphs, headings, notes, figures and their
+-- placement, and page breaks (root ADR 0416).
+test-suite golem-driver-page-test
+  import:           warnings
+  import:           driver-suite
+  type:             exitcode-stdio-1.0
+  main-is:          PageMain.hs
+  -- the modules of golem-evaluate that the tests import (root ADR 0434)
+  build-depends:    golem-evaluate
+  other-modules:
+    AdjustOrderSpec
+    AlignSpaceSpec
+    AroundBlocksSpec
+    BoxesSpec
+    CaptionSidenoteIndentSpec
+    CaptionSidenoteParagraphsSpec
+    ChapterNotesSpec
+    EndnotesSpec
+    CompressedNoteMarksSpec
+    FigureSpec
+    FileSpacesSpec
+    FramesSpec
+    HeadingLevelsSpec
+    KeepBookPartsSpec
+    KeepOptionsSpec
+    LineAdjustmentSpec
+    LinkSpec
+    NestedFiguresSpec
+    NoteBodyStylesSpec
+    NoteRefsSpec
+    NotesSpec
+    NumberTitleSeparatorSpec
+    OverflowSpec
+    PageElementsSpec
+    PageLabelsSpec
+    PageMapSpec
+    PageNoteNumbersSpec
+    PageStartsSpec
+    ParagraphPitchSpec
+    ParagraphRuleSpec
+    ParagraphSpec
+    ParagraphStyleControlsSpec
+    ParagraphWrapPitchSpec
+    ReuseSpec
+    SeparatorSpec
+    SinglePageSpec
+    SoftHyphenSpec
+    StylesSpec
+    Support
+    VerseLineNumbersSpec
+
+-- The tests of the outputs: HTML, EPUB and plain text, the goldens of the
+-- four targets, bibliographies, indexes and cross references (root ADR
+-- 0416).
+test-suite golem-driver-output-test
+  import:           warnings
+  import:           driver-suite
+  type:             exitcode-stdio-1.0
+  main-is:          OutputMain.hs
+  -- the modules of golem-evaluate that the tests import (root ADR 0434)
+  build-depends:    golem-evaluate
+  other-modules:
+    BookLanguageSpec
+    BuildSpec
+    ColophonSpec
+    ComplexFixtureSpec
+    EmetSamplesSpec
+    ExtendedJapaneseOutputsSpec
+    FontLicensesSpec
+    ForceTableSpec
+    GenericFontsSpec
+    HtmlSyntaxBuildSpec
+    InMemorySpec
+    IndexColumnsSpec
+    IndexRangeSpec
+    InsideLinksSpec
+    ManualEmetSpec
+    OutputGoldenSpec
+    ReferencesSpec
+    Support
+    TableCaptionsSpec
+    TableFilesSpec
+    TocStylesSpec
+
+-- The tests of diagnostics, functions, plugins, projects and the commands
+-- near the CLI (root ADR 0416).
+test-suite golem-driver-cli-test
+  import:           warnings
+  import:           driver-suite
+  type:             exitcode-stdio-1.0
+  main-is:          CliMain.hs
+  -- the modules of golem-evaluate that the tests import (root ADR 0434)
+  build-depends:    golem-evaluate
+  other-modules:
+    CallsSpec
+    CliSpec
+    DiagnosticSitesSpec
+    DiagnosticsSpec
+    ExceptionsSpec
+    FunctionLibrarySpec
+    FunctionsSpec
+    ImportGraphSpec
+    NumberUnitBuildSpec
+    PathDrawingSpec
+    SecuritySpec
+    Support
+    UnwritableNumbersSpec
+    VarsSpec
+  if flag(plugins)
+    other-modules: NewPlanSpec
 
 -- The tests of golem-driver that change the state of the process (the
 -- environment variable XDG_CACHE_HOME, the locale encoding), in a suite
@@ -250,6 +309,7 @@ test-suite golem-driver-global-test
     , golem-syntax
     , golem-test-support
     , golem-typeset
+    , golem-unicode
     , process
     , zlib
     , tasty          >=1.4 && <1.6
@@ -265,7 +325,7 @@ test-suite golem-driver-global-test
   if flag(plugins)
     cpp-options:   -DGOLEM_PLUGINS
     other-modules: PluginsSpec
-    build-depends: golem-plugin
+    build-depends: golem-plugin, golem-evaluate
 
 -- Parallel composition on several OS threads (ParallelSpec), in a suite of
 -- its own.
@@ -300,6 +360,7 @@ test-suite golem-driver-parallel-test
     , golem-syntax
     , golem-test-support
     , golem-typeset
+    , golem-unicode
     , hedgehog       >=1.4 && <1.6
     , process
     , zlib

@@ -227,7 +227,7 @@ fixture action = withSystemTempDirectory "golem-move-protocol" $ \tmp -> do
   mapM_
     (\(p, text) -> TIO.writeFile (root </> p) text)
     [ ("元 作品/manifest.toml", "chapters = [[\"章/a.gm\", { file = \"章/b.gm\", page-numbering = {start = 2} }], \"章/a.gm\"]" <> metadata),
-      ("元 作品/章/a.gm", "@import \"章/b.gm\" as b\n"),
+      ("元 作品/章/a.gm", "@import \"章/b.gm\" * as b\n"),
       ("元 作品/章/b.gm", "# 子孫\n"),
       ("別 作品/manifest.toml", "chapters = [\"before.gm\"]" <> metadata),
       ("別 作品/before.gm", "# 既存章\n"),

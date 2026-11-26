@@ -37,6 +37,7 @@ module Golem.Layout.Paginate
     HeadingBlock (..),
     Keep (..),
     defaultKeep,
+    flowSlotIds,
     StartOf (..),
     Part (..),
     splitAtBreak,
@@ -49,6 +50,12 @@ module Golem.Layout.Paginate
     paginate,
     paginateIn,
     paginateWithin,
+    paginateHeld,
+    paginateAvoiding,
+    AvoidAt,
+    noAvoid,
+    clearFrom,
+    Spot (..),
     pageLabels,
     labelPages,
     markPages,
@@ -57,21 +64,25 @@ module Golem.Layout.Paginate
   )
 where
 
+import Control.Applicative ((<|>))
 import Data.Bifunctor (bimap)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
-import Data.Maybe (listToMaybe)
+import Data.Maybe (fromMaybe, isJust, listToMaybe)
 import Data.Ratio ((%))
+import Data.Set (Set)
+import Data.Set qualified as Set
 import Data.Text (Text)
 import Golem.Doc.IR (BreakKind (..))
 import Golem.Layout.Code (CodeGeometry, codeSpan)
 import Golem.Layout.PageLabel
+import Golem.Layout.Paginate.BookParts (flattenBookParts, flowSlotIds, placeBookPart)
 import Golem.Layout.Paginate.Decide
 import Golem.Layout.Paginate.State
 import Golem.Layout.Paginate.Types
 import Golem.Layout.RuleArea (RuleGrid (..), RuleSide (..), ruleAfter, ruleAfterAtEnd)
 import Golem.Length (Sp (..))
-import Golem.Project.Style (HeadingBlockAlign (..))
+import Golem.Project.Style (HeadingBlockAlign (..), KeepParts (..))
 import Golem.Syntax (SrcSpan)
 
 {- | The pitch, span and offset of a heading of size @s@ and @m@ lines on
@@ -111,7 +122,7 @@ keptLookAhead = keptNeed . lookAheadEnv
 
 -- | A page of one column of the given grid lines.
 lookAheadEnv :: Int -> Env
-lookAheadEnv = Env maxBound 1 (ColumnSet 1 0 0 0)
+lookAheadEnv capacity = Env maxBound 1 (ColumnSet 1 0 0 0) KeepColumn Nothing capacity Set.empty noAvoid
 
 {- | Lays the flow out on pages of @columns@ columns of @capacity@ grid
 lines each (docs/adr ADR 0018).
@@ -137,9 +148,24 @@ one is placed in an empty column, past its end; that is not a rule
 (docs/adr/0206).
 -}
 paginateWithin :: Int -> Int -> ColumnSet -> Int -> [Flow] -> [PageOut]
-paginateWithin maxLines separatorLines base capacity flows =
+paginateWithin = paginateHeld Set.empty
+
+{- | 'paginateWithin' with the spans of the keep-with-next of the visible
+separators (root ADR 0398 I7): a separator hold goes with what the block
+after it keeps, and that block does not leave the hold for its own keeps.
+-}
+paginateHeld :: Set SrcSpan -> Int -> Int -> ColumnSet -> Int -> [Flow] -> [PageOut]
+paginateHeld = paginateAvoiding noAvoid
+
+{- | 'paginateHeld' with the areas of the frames of wrap around of each
+column (root ADR 0456): the tables, code blocks and figures are placed
+off them, the tables and code blocks broken before them as between
+columns, a table without its header row again after them.
+-}
+paginateAvoiding :: AvoidAt Int -> Set SrcSpan -> Int -> Int -> ColumnSet -> Int -> [Flow] -> [PageOut]
+paginateAvoiding avoid held maxLines separatorLines base capacity flows =
   let -- a footnote line always fits under the separator and one line of text
-      env = Env maxLines (max 1 (min separatorLines (capacity - 2))) base capacity
+      env = Env maxLines (max 1 (min separatorLines (capacity - 2))) base KeepColumn Nothing capacity held avoid
       final = closePage env (placeAll env (initialState env) flows)
       done = reverse (sDone final)
       -- controls not met in a column that made no output go with the last column
@@ -187,6 +213,12 @@ box, those of its body and those after the box (docs/adr/0271).
 -}
 step :: Env -> St -> Flow -> [Flow] -> St
 step env st f rest = case f of
+  FBookPart unit sp kind retained body ->
+    let run = go
+          where
+            go here [] = here
+            go here (g : more) = go (step env {envKeepParts = unit, envBookPartSpan = Just sp} here g (more <> rest)) more
+     in placeBookPart env run (if null retained then st else applyBreaks env st) unit sp kind retained body
   -- a no-break with nothing before it, or after a figure sent on, cannot be met
   FNoBreakLines _ 0 -> st
   FNoBreakLines sp _ -> step env st (FNoBreak sp) rest
@@ -200,7 +232,8 @@ step env st f rest = case f of
   -- the larger need-lines is kept; one larger than the need-lines judged is judged again (golem-layout ADR 0035),
   -- before the spaces placed after the block before it (golem-layout ADR 0043)
   FNeedLines sp n -> needMore env sp n st
-  FAdjustLines sp k -> adjustLines env (applyBreaks env st) sp k
+  -- the continued notes take the room added first (root ADR 0444)
+  FAdjustLines sp k -> drainPendingNotes env (adjustLines env (applyBreaks env st) sp k)
   -- blank lines with nothing after them that places anything are the end of the book's (docs/adr ADR 0046)
   FBlank sp n
     | all waitsFor rest -> st
@@ -317,6 +350,7 @@ waitsBehind st = \case
 -- | The flows that place nothing of their own: the breaks, the controls of page breaks, the blank lines and the spaces.
 waitsFor :: Flow -> Bool
 waitsFor = \case
+  FBookPart _ _ _ _ body -> all waitsFor body
   FBreak _ -> True
   FSection {} -> True
   FNoBreak _ -> True
@@ -418,7 +452,7 @@ placeKept env kp placeIn st isStart ls n =
         else
           if fitsHere
             then here
-            else if isEmpty stA then st1 else placeIn (nextColumn env stA) (isStart && null front) back
+            else if isEmpty stA || heldHere env stA then st1 else placeIn (nextColumn env stA) (isStart && null front) back
 
 {- | A no-break or a keep-with-next waiting for the next flow
 (docs/adr/0261): at the place of the first, the larger of the lines they
@@ -501,6 +535,7 @@ breakPage env st
 
 place :: Env -> St -> Flow -> [Flow] -> St
 place env st f rest = case f of
+  FBookPart _ _ _ _ body -> foldBody st body
   FRuled {} -> placeRuled env st f rest
   FParagraph kp ls -> placeLines env kp st True ls
   FStanza kp vs -> placeStanza env kp st True vs
@@ -508,14 +543,20 @@ place env st f rest = case f of
   -- the space before a table only below the first line of a column (golem-driver ADR 0031);
   -- in the columns gone on to, the header and the first row are kept together (golem-layout ADR 0025)
   -- the caption with the lines it touches (docs/adr/0262)
-  FTable i sp0 h rows capt below ->
-    let sp = if sUsed st == top st then 0 else sp0
-        headed = tableHead h rows capt below
-        st1
-          | sp + headed <= free env st || isEmpty st = st {sUsed = sUsed st + min sp (free env st)}
-          | otherwise = keep env (nextColumn env st) (const headed)
-     in placeTable env st1 i h rows capt below
-  FDefTerm ls -> placeLines env defaultKeep (keep env st (\s -> needIn env s (termNeed ls) need)) True ls
+  FTable i sp0 h rows capt below
+    | envKeepParts env /= KeepColumn ->
+        let space = if sUsed st == top st then 0 else sp0
+            started = if space <= free env st then st {sUsed = sUsed st + space} else nextColumn env st
+         in placeTableAcross env started i h rows capt below
+    | otherwise ->
+        let sp = if sUsed st == top st then 0 else sp0
+            headed = tableHead h rows capt below
+         in if sp + headed <= free env st || isEmpty st
+              then tableAt env st i (sUsed st + max 0 (min sp (free env st))) headed (\s -> placeTable env s i h rows capt below)
+              else let st1 = keep env (nextColumn env st) (const headed) in tableAt env st1 i (sUsed st1) headed (\s -> placeTable env s i h rows capt below)
+  FDefTerm ls
+    | envKeepParts env /= KeepColumn -> placeLines env (Keep 1 1 False) st True ls
+    | otherwise -> placeLines env defaultKeep (keep env st (\s -> needIn env s (termNeed ls) need)) True ls
   -- the notes of a heading count as the notes of a line do (golem-layout ADR 0013)
   FHeading _ recto n ls ->
     let st1 = if recto then parityStart env odd st else keep env st (\s -> needIn env s (Need n (noteLinesOf ls)) need)
@@ -524,8 +565,11 @@ place env st f rest = case f of
   -- figures keep the order written: after a figure sent on, the next ones wait too (golem-layout ADR 0015)
   FFigure i n labels marks
     | not (null (sDeferred st)) -> st {sDeferred = sDeferred st <> [f]}
-    | n <= free env st || isEmpty st -> putSlot st n (SFigure i) labels marks
-    | otherwise -> st {sDeferred = sDeferred st <> [f]}
+    | otherwise -> case spotOf env st i n of
+        SpotAt u -> putSlot st {sUsed = u} n (SFigure i) labels marks
+        -- left out of an empty column by the frames of wrap around (root ADR 0456)
+        SpotUnplaced -> addUnmet (UnplacedBlock i) st
+        SpotNone -> st {sDeferred = sDeferred st <> [f]}
   -- a turned figure takes a page with nothing on it, or waits (golem-driver ADR 0034)
   FPageFigure i labels marks
     | null (sDeferred st) && sColumn st == 0 && sUsed st == 0 && null (sNotes st) && sNoteLines st == 0 -> pageFigure env st {sAdjust = 0} i labels marks
@@ -533,16 +577,28 @@ place env st f rest = case f of
   FWrapped i n labels marks beside ->
     let st0 = flushFigures env st
         size = max n (length beside)
-        -- the continued notes take the foot of the columns gone on to (golem-layout ADR 0025)
-        st1 = keep env st0 (const size)
-        st2 = putSlot st1 0 (SWrapped i) labels marks
-     in (placeLines env defaultKeep st2 False beside) {sUsed = max (sUsed st1 + size) (sUsed (placeLines env defaultKeep st2 False beside))}
+        -- the continued notes take the foot of the columns gone on to (golem-layout ADR 0025);
+        -- the figure fits with the notes of its side lines and their separator (root ADR 0443)
+        kept = keep env st0 (\s -> needIn env s (Need size (noteLinesOf beside)) mempty)
+     in case spotOf env kept i n of
+          -- past the frames of wrap around it overlaps, with its side lines (root ADR 0456)
+          SpotAt u ->
+            let st1 = kept {sUsed = u}
+                st2 = putSlot st1 0 (SWrapped i) labels marks
+                placed = placeLines env defaultKeep st2 False beside
+                -- the side lines their notes send on take the next column from its top (golem-driver ADR 0005)
+                sentOn = (sPage placed, sColumn placed) /= (sPage st2, sColumn st2)
+             in if sentOn then placed else placed {sUsed = max (sUsed st1 + size) (sUsed placed)}
+          SpotNone -> place env (nextColumn env kept) f rest
+          -- left out, its side lines are lines of the column (root ADR 0456)
+          SpotUnplaced -> placeLines env defaultKeep (addUnmet (UnplacedBlock i) kept) False beside
   FBreak k -> st {sBreaks = sBreaks st <> [PendingBreak k]}
   FSection of_ k -> st {sBreaks = sBreaks st <> [PendingStart of_ k]}
   FCode g caption first cont ls -> placeCode env st (g, caption, first, cont) True ls
   FSwitchColumns set ->
     let st1 = flushDeferred env st
-     in if (csColumns (envBase env) == 1 && free env st1 > 0) || (isEmpty st1 && sColumn st1 == 0)
+     in -- the set ends at the type area or above the footnotes, whichever comes first (root ADR 0025, root ADR 0030, root ADR 0441)
+        if (csColumns (envBase env) == 1 && typeAreaFree env st1 > 0) || (isEmpty st1 && sColumn st1 == 0)
           then startSet env st1 set (sUsed st1)
           else (nextPage env st1) {sSet = set {csFirstLine = 0}}
   FRestoreColumns
@@ -561,13 +617,15 @@ place env st f rest = case f of
   FBlank _ _ -> st
   {- a box (docs/adr/0271): where its grid lines before, the first part
   of its body and its grid lines after fit; its body placed as outside a
-  box, each part of it in a column closed by its grid lines after -}
+  box, each part of it in a column closed by its grid lines after; the
+  room kept for those that its last part does not take, as when that part
+  has no text line, goes to the continued notes first (root ADR 0444) -}
   FBoxed i kb ka body ->
     let st1 = keep env st (\s -> kb + ka + needIn env s mempty (nextNeed env body))
         inBox = foldBody (openBox st1 {sBox = Just (BoxAt i kb ka 0 False)}) body
         closed = closeBox inBox
         ends = [bsLast b + 1 | b <- drop (length (sBoxes inBox)) (sBoxes closed)]
-     in closed {sBox = Nothing, sUsed = maximum (sUsed closed : ends)}
+     in drainPendingNotes env closed {sBox = Nothing, sUsed = maximum (sUsed closed : ends)}
   where
     need = nextNeed env rest
     foldBody s0 body = foldl' (\s (g, more) -> step env s g (more <> rest)) s0 [(g, drop k body) | (k, g) <- zip [1 ..] body]
@@ -578,23 +636,45 @@ The first part has its caption and its first rows; a part before the
 last has a row for the text that it continues (golem-driver ADR 0023).
 -}
 placeCode :: Env -> St -> (CodeGeometry, Int, Int, Bool) -> Bool -> [LineBox] -> St
-placeCode _ st _ _ [] = st
-placeCode env st c@(g, cap0, first, cont) isFirst ls@(l0 : _) =
+placeCode env st0 c isFirst ls = placeCodeFrom env st0 (maybe 0 lbId (listToMaybe ls)) c isFirst ls
+
+{- | 'placeCode' of a code block by the id of its first row: a part ends
+before an area of a frame of wrap around as at the end of a column, and
+the next part is placed past it in the column (root ADR 0456). An empty
+column that the least part fits without the frames, but past them not,
+leaves the code block out.
+-}
+placeCodeFrom :: Env -> St -> Int -> (CodeGeometry, Int, Int, Bool) -> Bool -> [LineBox] -> St
+placeCodeFrom _ st _ _ _ [] = st
+placeCodeFrom env st ident c@(g, cap0, first, cont) isFirst ls =
   let len = length ls
       captionRows = if isFirst then cap0 else 0
       least = if isFirst then min len (max 1 first) else 1
       spanOf j = captionRows + codeSpan g (j + (if cont && j < len then 1 else 0))
-      k0 = length (takeWhile (\j -> spanOf j <= free env st) [1 .. len])
-      k
-        | k0 >= least = k0
-        | isEmpty st = least
-        | otherwise = 0
-      (part, rest) = splitAt k ls
-      n = spanOf k
-      st1 = putSlot st n (SCode (lbId l0) k n) (concatMap lbLabels part) (concatMap lbMarks part)
-   in if k == 0
-        then placeCode env (nextColumn env st) c isFirst ls
-        else if null rest then st1 else placeCode env (nextColumn env st1) c False rest
+      areas = avoidHere env st ident
+      -- the areas of the frames that end the room of the column before its end
+      cutsRoom s = [a | (a, b) <- areas, b > sUsed s, a < sUsed s + free env s]
+      room = minimum (free env st : [max 0 (a - sUsed st) | a <- cutsRoom st])
+      k0 = length (takeWhile (\j -> spanOf j <= room) [1 .. len])
+      put k =
+        let (part, rest) = splitAt k ls
+            n = spanOf k
+            l0 = maybe 0 lbId (listToMaybe part)
+            st1 = putSlot st n (SCode l0 k n) (concatMap lbLabels part) (concatMap lbMarks part)
+         in -- the next part past the frame in the column, or in the next column
+            if null rest then st1 else placeCodeFrom env (if null (cutsRoom st1) then nextColumn env st1 else st1) ident c False rest
+   in if k0 >= least
+        then put k0
+        else
+          if null (cutsRoom st)
+            then if isEmpty st then put least else placeCodeFrom env (nextColumn env st) ident c isFirst ls
+            else case spotOf env st ident (spanOf least) of
+              SpotAt v
+                | v /= sUsed st -> placeCodeFrom env st {sUsed = v} ident c isFirst ls
+                -- an empty column that it does not fit even without the frames
+                | otherwise -> put least
+              SpotUnplaced -> addUnmet (UnplacedBlock ident) st
+              SpotNone -> placeCodeFrom env (nextColumn env st) ident c isFirst ls
 
 {- | Lines of one paragraph; orphans and widows are moved, by the keep of
 the paragraph (docs/adr/0261). A paragraph of keep-all-lines that its
@@ -696,9 +776,14 @@ placeRuled env st fr rest = case sJoin st of
     | frJoined fr,
       Just b <- frBefore fr,
       not (isRecto (frBody fr)),
-      let plan = planOf env st fr rest (Just (j, b)),
-      planNeed env st fr plan <= free env st ->
-        commitRuled env st fr plan
+      Just placed <- settleRuled env st fr rest (Just (j, b)) ->
+        placed
+  -- a block that cannot share the area in this column starts in the next one, after the rule of its own (root ADR 0449)
+  Just _
+    | frJoined fr,
+      isJust (frBefore fr),
+      not (isRecto (frBody fr)) ->
+        placeRuled env (nextColumn env (flushJoin env st)) fr rest
   Just _ -> placeRuled env (flushJoin env st) fr rest
   Nothing ->
     let st1 = if isRecto (frBody fr) then parityStart env odd st else st
@@ -710,16 +795,42 @@ placeRuled env st fr rest = case sJoin st of
           | isHeadingBody (frBody fr) && not (isRecto (frBody fr)) = keep env st1 (\s -> needIn env s (planParts fr (planOf env s fr rest Nothing)) (nextNeed env rest))
           | Just kn <- keepNext = keep env st1 (\s -> needIn env s (planParts fr (planOf env s fr rest Nothing)) kn)
           | otherwise = st1
-        plan2 = planOf env st2 fr rest Nothing
-     in if planNeed env st2 fr plan2 <= free env st2
-          then commitRuled env st2 fr plan2
-          else
-            if isEmpty st2
-              then splitRuled env st2 fr rest
-              else
+     in case settleRuled env st2 fr rest Nothing of
+          Just placed -> placed
+          Nothing
+            | isEmpty st2 -> splitRuled env st2 fr rest
+            | otherwise ->
                 let st3 = nextColumn env st2
-                    plan3 = planOf env st3 fr rest Nothing
-                 in if planNeed env st3 fr plan3 <= free env st3 then commitRuled env st3 fr plan3 else splitRuled env st3 fr rest
+                 in fromMaybe (splitRuled env st3 fr rest) (settleRuled env st3 fr rest Nothing)
+
+{- | A block placed here when its block fits the room. Its rule after
+shares an area with the next block's rule before only when that block
+goes on in this column (golem-driver ADR 0027, 「隣り合う罫線」);
+otherwise the area is its own and is counted in the block, so that the
+rule stays in the column.
+-}
+settleRuled :: Env -> St -> Flow -> [Flow] -> Maybe ((Int, RuleGrid, RuleSide, Int), RuleSide) -> Maybe St
+settleRuled env st fr rest joined =
+  let fits plan = planNeed env st fr plan <= free env st
+      shared = planOf env st fr rest joined
+      own = planOf env st fr [] joined
+      placed = commitRuled env st fr shared
+   in if fits shared && settlesAfter env placed rest
+        then Just placed
+        else if fits own then Just (commitRuled env st fr own) else Nothing
+
+{- | Whether the rule after that waits stays in the column: the next block
+takes it into its area in this column, or its own area fits the room.
+-}
+settlesAfter :: Env -> St -> [Flow] -> Bool
+settlesAfter env st rest = case sJoin st of
+  Nothing -> True
+  Just j -> case flattenBookParts rest of
+    next@FRuled {frJoined = True, frBefore = Just b} : later
+      | not (isRecto (frBody next)),
+        isJust (settleRuled env st next later (Just (j, b))) ->
+          True
+    _ -> maybe True ((<= free env st) . snd) (ownAfter env st)
 
 commitRuled :: Env -> St -> Flow -> Plan -> St
 commitRuled env st fr (k1, before, k2, after, waiting) =
@@ -751,14 +862,20 @@ splitRuled env st0 fr rest =
 
 -- | The rule after of the block before, in its own area: nothing shares it.
 flushJoin :: Env -> St -> St
-flushJoin env st = case sJoin st of
+flushJoin env st = case ownAfter env st of
   Nothing -> st
+  Just (rule, k) -> st {sRules = sRules st <> [rule], sUsed = sUsed st + min k (free env st), sJoin = Nothing}
+
+-- | The rule after that waits, in its own area: the rule and the grid lines of the area.
+ownAfter :: Env -> St -> Maybe (PlacedRule, Int)
+ownAfter env st = case sJoin st of
+  Nothing -> Nothing
   Just (aid, g@(RuleGrid p h), a, aLast) ->
     let (ki, offi) = ruleAfter g a 0
         (k, off)
           | aLast + 1 + ki >= cap env st - sNoteLines st = ruleAfterAtEnd g a {rsdOutside = if sNoteLines st > 0 then Nothing else rsdOutside a}
           | otherwise = (ki, offi)
-     in st {sRules = sRules st <> [PlacedRule aid False (fromIntegral aLast * p + h + off)], sUsed = sUsed st + min k (free env st), sJoin = Nothing}
+     in Just (PlacedRule aid False (fromIntegral aLast * p + h + off), k)
 
 {- | A table: rows whole, a page break between rows repeats the header
 without its labels, notes and marks (golem-driver ADR 0008). The
@@ -772,20 +889,100 @@ placeTable env st i h rows capt below =
       st1 = foldl' (putLine env) st0 h
       -- the last row takes the caption below with it (docs/adr/0262)
       withCaption rest r = if below && null rest then r <> capt else r
-      rowsFrom stc first [] = segment stc first
-      rowsFrom stc first (r : rest)
-        | fitting env stc r' >= length r' || sUsed stc == first + length h = rowsFrom (foldl' (putLine env) stc r) first rest
+      -- a part of the table: from its first grid line, with the header row or not
+      rowsFrom stc first headed [] = segment stc first headed
+      rowsFrom stc first headed (r : rest)
+        -- a row over a frame of wrap around goes on past it in the column, without the header row again (root ADR 0456)
+        | past /= sUsed stc && length r' <= cap env stc - past - sNoteLines stc =
+            rowsFrom (segment stc first headed) {sUsed = past} past False (r : rest)
+        | past == sUsed stc && (fitting env stc r' >= length r' || sUsed stc == first + (if headed then length h else 0)) = rowsFrom (foldl' (putLine env) stc r) first headed rest
         | otherwise =
-            let closed = segment stc first
-                fresh = keep env (nextColumn env closed) (const (length h + length r'))
+            let closed = segment stc first headed
+                fresh0 = keep env (nextColumn env closed) (const (length h + length r'))
+                -- the header row again and the row off the frames of wrap around (root ADR 0456)
+                fresh = case spotOf env fresh0 i (length h + length r') of
+                  SpotAt v -> fresh0 {sUsed = v}
+                  _ -> fresh0
                 repeated = foldl' (putLine env) fresh [l {lbNotes = [], lbLabels = [], lbMarks = []} | l <- h]
-             in rowsFrom repeated (sUsed fresh) (r : rest)
+             in rowsFrom repeated (sUsed fresh) True (r : rest)
         where
           r' = withCaption rest r
-      headerEnd first = if null h then Nothing else Just (first + length h - 1)
-      segment stc first = stc {sTables = sTables stc <> [TableSegment i first (headerEnd first) (sUsed stc - 1)]}
-      placed = rowsFrom st1 start rows
+          past = clearFrom (avoidHere env stc i) (sUsed stc) (length r')
+      headerEnd first headed = if null h || not headed then Nothing else Just (first + length h - 1)
+      segment stc first headed
+        | sUsed stc <= first = stc
+        | otherwise = stc {sTables = sTables stc <> [TableSegment i first (headerEnd first headed) (sUsed stc - 1)]}
+      placed = rowsFrom st1 start True rows
    in if below then foldl' (putLine env) placed capt else placed
+
+{- | A table from grid line @u@ of its column, placed by @continue@ (root
+ADR 0456): there when its header row and first row (@headed@ grid lines)
+miss the areas of the frames of wrap around; else past them when they fit
+there, else in the next column. An empty column that they fit without the
+frames, but past them not, leaves the table out.
+-}
+tableAt :: Env -> St -> Int -> Int -> Int -> (St -> St) -> St
+tableAt env st i u headed continue = case spotFrom env st i u headed of
+  SpotAt v -> continue st {sUsed = v}
+  SpotUnplaced -> addUnmet (UnplacedBlock i) st
+  SpotNone ->
+    let st1 = keep env (nextColumn env st) (const headed)
+     in tableAt env st1 i (sUsed st1) headed continue
+
+{- | Within page/spread retention, a header is repeated when a physical
+page changes, while columns of the same page may separate whole rows.
+-}
+placeTableAcross :: Env -> St -> Int -> [LineBox] -> [[LineBox]] -> [LineBox] -> Bool -> St
+placeTableAcross env initial ident header rows caption below =
+  finish (go True initial (sUsed initial) Nothing groups)
+  where
+    groups = [(False, caption) | not below && not (null caption)] <> [(True, header) | not (null header)] <> [(False, row) | row <- rows] <> [(False, caption) | below && not (null caption)]
+    repeated = [line {lbNotes = [], lbLabels = [], lbMarks = []} | line <- header]
+    record state first headerEnd
+      | sUsed state <= first = state
+      | otherwise =
+          let segment = TableSegment ident first headerEnd (sUsed state - 1)
+           in case reverse (sTables state) of
+                previous : earlier
+                  | tsTable previous == ident && tsLast previous + 1 == first ->
+                      state {sTables = reverse earlier <> [previous {tsLast = tsLast segment, tsHeaderEnd = tsHeaderEnd previous <|> headerEnd}]}
+                _ -> state {sTables = sTables state <> [segment]}
+    finish (state, first, headerEnd) = record state first headerEnd
+    go _ state first headerEnd [] = (state, first, headerEnd)
+    go True state first headerEnd tailGroups@[(False, row), (False, captionLines)]
+      | below,
+        not (null caption),
+        captionLines == caption,
+        Just source <- envBookPartSpan env =
+          let closed = record state first headerEnd
+              run start _ =
+                let mustRepeat = sPage start /= sPage state && not (null repeated)
+                    withHeader = if mustRepeat then foldl' (putLine env) start repeated else start
+                    headingEnd = if mustRepeat then Just (sUsed withHeader - 1) else Nothing
+                 in finish (go False withHeader (sUsed start) headingEnd tailGroups)
+              retained = map lbId (row <> captionLines)
+              kept = placeBookPart env run closed (envKeepParts env) source "表の末尾とキャプション" retained [FContinued defaultKeep (row <> captionLines)]
+           in (kept, sUsed kept, Nothing)
+    go retain state first headerEnd ((isHeader, lines') : remaining) = placeGroup False state first headerEnd
+      where
+        placeGroup retried here beginning headingEnd
+          | fitting env here lines' >= length lines' || isEmpty here =
+              let isCaption = not (null caption) && lines' == caption
+                  bordered = if isCaption && below then record here beginning headingEnd else here
+                  after = foldl' (putLine env) bordered lines'
+                  beginning' = if isCaption then sUsed after else beginning
+                  headingEnd'
+                    | isCaption = Nothing
+                    | isHeader = Just (sUsed after - 1)
+                    | otherwise = headingEnd
+               in go retain after beginning' headingEnd' remaining
+          | otherwise =
+              let closed = record here beginning headingEnd
+                  fresh = nextColumn env closed
+                  mustRepeat = sPage fresh /= sPage here && not isHeader && not retried && not (null repeated)
+                  afterHeader = if mustRepeat then foldl' (putLine env) fresh repeated else fresh
+                  endHeader = if mustRepeat then Just (sUsed afterHeader - 1) else Nothing
+               in placeGroup (retried || mustRepeat) afterHeader (sUsed fresh) endHeader
 
 {- | The label of each page by its number (docs/adr/0260), from the
 sections given and the first pages the pagination recorded.

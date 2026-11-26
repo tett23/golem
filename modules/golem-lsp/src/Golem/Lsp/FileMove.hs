@@ -1,8 +1,8 @@
-module Golem.Lsp.FileMove (fileMoveRegistration, planFileMove) where
+module Golem.Lsp.FileMove (fileMoveRegistration, planFileMove, planMovedReferences) where
 
 import Control.Applicative ((<|>))
 import Control.Exception (IOException, try)
-import Control.Monad (foldM, guard, unless, when)
+import Control.Monad (foldM, forM_, guard, unless, when)
 import Data.Aeson qualified as J
 import Data.Aeson.KeyMap qualified as KM
 import Data.Aeson.Types qualified as J
@@ -10,15 +10,15 @@ import Data.Bifunctor (first)
 import Data.ByteString qualified as BS
 import Data.Char (isControl, toLower)
 import Data.Int (Int32)
-import Data.List (find, isPrefixOf, nub, sort, sortOn)
+import Data.List (find, findIndex, isPrefixOf, nub, sort, sortOn)
 import Data.Map.Strict qualified as Map
-import Data.Maybe (fromMaybe)
+import Data.Maybe (fromMaybe, isJust)
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Golem.Lsp.Features qualified as F
-import Golem.Lsp.FileMove.Chapters (ByteEdit, ChapterTransfer (..), transferChapters)
+import Golem.Lsp.FileMove.Chapters (ByteEdit, ChapterTransfer (..), Placement (..), partitionChapters, partitionOutgoing, partitionTransfers, rebuildChapters)
 import Golem.Lsp.FileRename qualified as R
 import Golem.Project.Paths (normalizeRelative)
 import Golem.Syntax qualified as S
@@ -41,8 +41,8 @@ data Document = Document
 
 data Request = Request
   { workspace :: !FilePath,
-    sourcePath :: !FilePath,
-    destinationPath :: !FilePath,
+    -- | Independent moves: source and destination of each pair.
+    moves :: ![(FilePath, FilePath)],
     projects :: ![Project],
     wikiSheets :: ![Sheet],
     documents :: ![Document]
@@ -95,11 +95,13 @@ parseRequest = J.withObject "file move" $ \o -> do
   unless complete (fail "workspace inventory is incomplete")
   Request
     <$> (o J..: "workspaceUri" >>= parseUri)
-    <*> (o J..: "oldUri" >>= parseUri)
-    <*> (o J..: "newUri" >>= parseUri)
+    <*> (pure <$> movePair o)
     <*> (o J..: "projects" >>= traverse parseProject)
     <*> (o J..: "wikiSheets" >>= traverse parseSheet)
     <*> (o J..: "documents" >>= traverse parseDocument)
+
+movePair :: J.Object -> J.Parser (FilePath, FilePath)
+movePair o = (,) <$> (o J..: "oldUri" >>= parseUri) <*> (o J..: "newUri" >>= parseUri)
 
 planFileMove :: F.Encoding -> Maybe FilePath -> J.Value -> IO (Either J.Value J.Value)
 planFileMove encoding registration params = fmap (first issueJson) $
@@ -113,17 +115,27 @@ planFileMove encoding registration params = fmap (first issueJson) $
 
 planRegistered :: F.Encoding -> Request -> IO (Result J.Value)
 planRegistered enc req = do
-  let root = workspace req
-  readRoot <- attempt root $ do
-    canonical <- canonicalizePath root
-    if canonical /= root then pure (Left (problem root "workspace traverses a symbolic link")) else indexTree root
+  readRoot <- readWorkspace (workspace req)
   case readRoot of
     Left e -> pure (Left e)
-    Right dirs -> case checkInventory req dirs of
-      Left e -> pure (Left e)
-      Right files -> do
-        snapshots <- readDocuments req files
-        pure (snapshots >>= buildPlan enc req dirs files)
+    Right dirs -> planIndexed enc id dirs req dirs
+
+readWorkspace :: FilePath -> IO (Result DirectoryIndex)
+readWorkspace root = attempt root $ do
+  canonical <- canonicalizePath root
+  if canonical /= root then pure (Left (problem root "workspace traverses a symbolic link")) else indexTree root
+
+{- | Plan the moves of a request on an index of the workspace before them.
+@locate@ maps a path before the moves to where it is now on the disk and
+where the response names it; @shown@ is the index of the disk as it is now,
+which the snapshot reports.
+-}
+planIndexed :: F.Encoding -> (FilePath -> FilePath) -> DirectoryIndex -> Request -> DirectoryIndex -> IO (Result J.Value)
+planIndexed enc locate shown req dirs = case checkInventory req dirs of
+  Left e -> pure (Left e)
+  Right files -> do
+    snapshots <- readDocuments locate req files
+    pure (snapshots >>= buildPlan enc locate shown req files)
 
 -- Index physical directories without following symbolic links, including
 -- conventional build directory names that can contain source documents.
@@ -191,18 +203,19 @@ checkInventory req dirs = do
     Left (problem root "duplicate project, sheet or open document URI")
   unless (noNesting declared && noNesting (map (movedPath req) declared)) $
     Left (problem root "nested Golem projects are not supported")
-  unless (old /= root && within root old && within root new && not (within old new)) $
-    Left (problem old "move is outside the workspace or into its own subtree")
-  unless (safe old File || safe old Directory) (Left (problem old "missing or symbolic-link source"))
-  when (old `elem` [p </> "manifest.toml" | p <- declared]) $
-    Left (problem old "a project manifest can only move with its project")
-  unless (not (safe old File) || new /= takeDirectory new </> "manifest.toml") $
-    Left (problem new "a file move cannot introduce a project manifest")
-  unless (Map.member (takeDirectory new) dirs && Map.notMember new files) $
-    Left (problem new "destination already exists or its parent is unavailable")
-  case find (\(p, k) -> k == Symlink && within old p) (Map.toList files) of
-    Just (link, _) -> Left (problem link "moving a symbolic link is not supported")
-    Nothing -> pure ()
+  forM_ (moves req) $ \(old, new) -> do
+    unless (old /= root && within root old && within root new && not (within old new)) $
+      Left (problem old "move is outside the workspace or into its own subtree")
+    unless (safe old File || safe old Directory) (Left (problem old "missing or symbolic-link source"))
+    when (old `elem` [p </> "manifest.toml" | p <- declared]) $
+      Left (problem old "a project manifest can only move with its project")
+    unless (not (safe old File) || new /= takeDirectory new </> "manifest.toml") $
+      Left (problem new "a file move cannot introduce a project manifest")
+    unless (Map.member (takeDirectory new) dirs && Map.notMember new files) $
+      Left (problem new "destination already exists or its parent is unavailable")
+    case find (\(p, k) -> k == Symlink && within old p) (Map.toList files) of
+      Just (link, _) -> Left (problem link "moving a symbolic link is not supported")
+      Nothing -> pure ()
   mapM_
     ( \(Project p plot) -> do
         unless (safe (p </> "manifest.toml") File) (Left (problem p "manifest cannot be read"))
@@ -216,19 +229,19 @@ checkInventory req dirs = do
   pure files
   where
     root = workspace req
-    old = sourcePath req
-    new = destinationPath req
     unique xs = length xs == Set.size (Set.fromList xs)
     noNesting roots = and [p == q || not (within p q) | p <- roots, q <- roots]
 
 movedPath :: Request -> FilePath -> FilePath
-movedPath req p
-  | p == old = new
-  | within old p = new </> makeRelative old p
-  | otherwise = p
-  where
-    old = sourcePath req
-    new = destinationPath req
+movedPath = through . moves
+
+-- | The composite mapping of independent moves.
+through :: [(FilePath, FilePath)] -> FilePath -> FilePath
+through pairs p = case find (\(old, _) -> within old p) pairs of
+  Just (old, new)
+    | p == old -> new
+    | otherwise -> new </> makeRelative old p
+  Nothing -> p
 
 owner :: [FilePath] -> FilePath -> Maybe FilePath
 owner roots p = find (`within` p) roots
@@ -236,8 +249,8 @@ owner roots p = find (`within` p) roots
 extension :: FilePath -> String
 extension = map toLower . takeExtension
 
-readDocuments :: Request -> Map.Map FilePath EntryKind -> IO (Result [Document])
-readDocuments req files = do
+readDocuments :: (FilePath -> FilePath) -> Request -> Map.Map FilePath EntryKind -> IO (Result [Document])
+readDocuments locate req files = do
   let plots = [p | Project _ (Just p) <- projects req]
       projectFiles = [projectPath p </> name | p <- projects req, name <- ["manifest.toml", "style.toml"], Map.member (projectPath p </> name) files]
       sheets = [p | Sheet p _ <- wikiSheets req]
@@ -245,7 +258,7 @@ readDocuments req files = do
       markdown = [p | p <- sheets, extension p == ".md"]
       pathways = Set.toAscList (Set.fromList (plots <> projectFiles <> sources <> markdown <> map docPath (documents req)))
       opening = Map.fromList [(docPath d, d) | d <- documents req]
-  checked <- traverse (\p -> attempt p (Right <$> withBinaryFile p ReadMode (const (pure ())))) (filter (`notElem` pathways) sheets)
+  checked <- traverse (\p -> attempt p (Right <$> withBinaryFile (locate p) ReadMode (const (pure ())))) (filter (`notElem` pathways) sheets)
   case sequence checked of
     Left e -> pure (Left e)
     Right _ -> sequence <$> traverse (readOne opening) pathways
@@ -253,24 +266,24 @@ readDocuments req files = do
     readOne opening path
       | Map.lookup path files /= Just File = pure (Left (problem path "reference source is not a regular file"))
       | otherwise = attempt path $ do
-          canonical <- canonicalizePath path
-          if canonical /= path
+          canonical <- canonicalizePath (locate path)
+          if canonical /= locate path
             then pure (Left (problem path "reference source now traverses a symbolic link"))
             else case Map.lookup path opening of
               Just doc -> pure (Right doc)
               Nothing -> do
-                contents <- BS.readFile path
+                contents <- BS.readFile (locate path)
                 pure (first (problem path . show) (Document path <$> TE.decodeUtf8' contents <*> pure Nothing))
 
-buildPlan :: F.Encoding -> Request -> DirectoryIndex -> Map.Map FilePath EntryKind -> [Document] -> Result J.Value
-buildPlan enc req dirs files docs = do
+buildPlan :: F.Encoding -> (FilePath -> FilePath) -> DirectoryIndex -> Request -> Map.Map FilePath EntryKind -> [Document] -> Result J.Value
+buildPlan enc locate shown req files docs = do
   (chapterEdits, summary) <- chapterPlan req files docs
   editGroups <- foldM (collect chapterEdits) Map.empty docs
   pure $
     J.object
       [ "complete" J..= True,
-        "groups" J..= [J.object ["projectUri" J..= fmap L.filePathToUri p, "edits" J..= reverse edits] | (p, edits) <- Map.toList editGroups],
-        "snapshot" J..= J.object ["documents" J..= map documentJson docs, "projects" J..= map projectJson (projects req), "wikiSheets" J..= map sheetJson (wikiSheets req), "directories" J..= map directoryJson (Map.toList dirs)],
+        "groups" J..= [J.object ["projectUri" J..= fmap (L.filePathToUri . locate) p, "edits" J..= reverse edits] | (p, edits) <- Map.toList editGroups],
+        "snapshot" J..= J.object ["documents" J..= map (documentJson locate) docs, "projects" J..= map (projectJson locate) (projects req), "wikiSheets" J..= map (sheetJson locate) (wikiSheets req), "directories" J..= map directoryJson (Map.toList shown)],
         "chapters" J..= summary
       ]
   where
@@ -279,7 +292,7 @@ buildPlan enc req dirs files docs = do
     workspaceRoot = workspace req
     plotFiles = [plot | Project _ (Just plot) <- projects req]
     indexed = [(makeRelative workspaceRoot p, title) | Sheet p title <- wikiSheets req]
-    wikiPairs = [(makeRelative workspaceRoot (sourcePath req), makeRelative workspaceRoot (destinationPath req))]
+    wikiPairs = [(makeRelative workspaceRoot old, makeRelative workspaceRoot new) | (old, new) <- moves req]
     future = Map.fromList [(movedPath req path, kind) | (path, kind) <- Map.toList files]
     collect chapterEdits groups doc = do
       let path = docPath doc
@@ -302,7 +315,7 @@ buildPlan enc req dirs files docs = do
       edits <- mergeEdits path (structural <> references)
       if null edits
         then pure groups
-        else pure (Map.insertWith (<>) existingOwner [documentEdit enc doc edits] groups)
+        else pure (Map.insertWith (<>) existingOwner [documentEdit enc locate doc edits] groups)
     rewriteRef from before _ _ spelling
       | "://" `T.isInfixOf` T.pack spelling = Right Nothing
       | otherwise = do
@@ -322,30 +335,60 @@ buildPlan enc req dirs files docs = do
             Left "reference path contains an unsupported control character"
           pure (if written == relative then Nothing else Just written)
 
+{- | Transfer chapter registrations between manifests. Each move whose
+source belongs to a project that stays, and whose destination is outside
+that project, makes the project a source. Every chapter of a source project
+is placed once by the composite mapping, so a manifest gets one edit, and
+a destination appends its incoming chapters in the order of the moves.
+-}
 chapterPlan :: Request -> Map.Map FilePath EntryKind -> [Document] -> Result (Map.Map FilePath [ByteEdit], [J.Value])
-chapterPlan req files docs = case owner roots (sourcePath req) of
-  Nothing -> Right (Map.empty, [])
-  Just from
-    | movedPath req from /= from || target == Just from -> Right (Map.empty, [])
-    | otherwise -> do
-        old <- manifest from
-        new <- traverse manifest target
-        (oldEdit, newEdit, chapters) <- first (problem (docPath old)) (transferChapters (relocate from) (docText old) (docText <$> new))
-        let replacements = Map.fromList ([(docPath old, oldEdit) | not (null oldEdit)] <> [(docPath d, newEdit) | not (null newEdit), Just d <- [new]])
-        pure (replacements, map (summary from) chapters)
+chapterPlan req files docs = do
+  sourceParts <- traverse (\from -> manifest from >>= \old -> (from,old,) <$> first (problem (docPath old)) (partitionChapters (place True from) (docText old))) sources
+  let active = [(from, old, part) | (from, old, part) <- sourceParts, not (null (partitionTransfers part))]
+      outgoing = sortOn (\(_, k, _, _) -> k) [(d, k, node, old) | (_, old, part) <- active, (d, k, node) <- partitionOutgoing part]
+      receivers = nub [d | (Just d, _, _, _) <- outgoing]
+      incoming d = [node | (Just d', _, node, _) <- outgoing, d' == d]
+  let sourceEdits = [(docPath old, rebuildChapters part (incoming from)) | (from, old, part) <- active]
+  destinationEdits <-
+    traverse
+      ( \d -> do
+          new <- manifest d
+          let blame = case [old | (Just d', _, _, old) <- outgoing, d' == d] of
+                old : _ -> old
+                [] -> new
+          part <- first (problem (docPath blame)) (partitionChapters (place False d) (docText new))
+          pure (docPath new, rebuildChapters part (incoming d))
+      )
+      [d | d <- receivers, d `notElem` [from | (from, _, _) <- active]]
+  let transfers = sortOn (\(_, _, k, _) -> k) [(from, d, k, t) | (from, _, part) <- active, (d, k, t) <- partitionTransfers part]
+  pure (Map.fromList [(path, edit) | (path, edit) <- sourceEdits <> destinationEdits, not (null edit)], map summary transfers)
   where
     roots = map projectPath (projects req)
-    target = owner roots (destinationPath req)
+    sources = nub [from | (old, new) <- moves req, Just from <- [owner roots old], movedPath req from == from, owner roots new /= Just from]
     manifest root =
       let path = root </> "manifest.toml"
        in maybe (Left (problem path "manifest snapshot is missing")) Right (find ((== path) . docPath) docs)
-    relocate from path = do
-      relative <- first show (normalizeRelative path)
-      let original = from </> relative
-          moved = movedPath req original
-      unless (Map.lookup original files == Just File) (Left ("chapter cannot be read: " <> original))
-      pure (if original == moved then Nothing else Just (moved, maybe moved (`makeRelative` moved) target))
-    summary from transfer =
+    -- A source project reads every chapter; a destination keeps entries it
+    -- cannot read, as the manifest rewrite skips its chapters.
+    place strict project entry = case entry of
+      Left reason -> if strict then Left reason else Right Keep
+      Right path -> case normalizeRelative path of
+        Left e -> if strict then Left (show e) else Right Keep
+        Right relative -> do
+          let original = project </> relative
+              moved = movedPath req original
+              target = owner roots moved
+          when ((strict || original /= moved) && Map.lookup original files /= Just File) (Left ("chapter cannot be read: " <> original))
+          if original == moved
+            then pure Keep
+            else
+              if target == Just project
+                then pure (Rewrite (makeRelative project moved))
+                else do
+                  unless strict (Left ("chapter of a destination project moves to another project: " <> original))
+                  let order = fromMaybe 0 (findIndex (\(old, _) -> within old original) (moves req))
+                  pure (Transfer target order moved (maybe moved (`makeRelative` moved) target))
+    summary (from, target, _, transfer) =
       J.object
         [ "oldUri" J..= L.filePathToUri (normalise (from </> chapterOld transfer)),
           "newUri" J..= L.filePathToUri (chapterNew transfer),
@@ -372,20 +415,20 @@ positionRange enc source start end = L.Range (pos start) (pos end)
     pos i = case F.toLineCol enc index i of
       S.LineCol line column -> L.Position (fromIntegral line) (fromIntegral column)
 
-documentEdit :: F.Encoding -> Document -> [ByteEdit] -> L.TextDocumentEdit
-documentEdit enc (Document path source version) edits =
+documentEdit :: F.Encoding -> (FilePath -> FilePath) -> Document -> [ByteEdit] -> L.TextDocumentEdit
+documentEdit enc locate (Document path source version) edits =
   L.TextDocumentEdit
-    (L.OptionalVersionedTextDocumentIdentifier (L.filePathToUri path) (maybe (L.InR L.Null) L.InL version))
+    (L.OptionalVersionedTextDocumentIdentifier (L.filePathToUri (locate path)) (maybe (L.InR L.Null) L.InL version))
     [L.InL (L.TextEdit (positionRange enc source start end) text) | (start, end, text) <- edits]
 
-documentJson :: Document -> J.Value
-documentJson d = J.object ["uri" J..= L.filePathToUri (docPath d), "text" J..= docText d, "version" J..= docVersion d]
+documentJson :: (FilePath -> FilePath) -> Document -> J.Value
+documentJson locate d = J.object ["uri" J..= L.filePathToUri (locate (docPath d)), "text" J..= docText d, "version" J..= docVersion d]
 
-projectJson :: Project -> J.Value
-projectJson (Project path plot) = J.object ["uri" J..= L.filePathToUri path, "plotCsv" J..= fmap L.filePathToUri plot]
+projectJson :: (FilePath -> FilePath) -> Project -> J.Value
+projectJson locate (Project path plot) = J.object ["uri" J..= L.filePathToUri (locate path), "plotCsv" J..= fmap (L.filePathToUri . locate) plot]
 
-sheetJson :: Sheet -> J.Value
-sheetJson (Sheet path title) = J.object ["uri" J..= L.filePathToUri path, "title" J..= title]
+sheetJson :: (FilePath -> FilePath) -> Sheet -> J.Value
+sheetJson locate (Sheet path title) = J.object ["uri" J..= L.filePathToUri (locate path), "title" J..= title]
 
 directoryJson :: (FilePath, [(FilePath, EntryKind)]) -> J.Value
 directoryJson (path, children) = J.object ["uri" J..= L.filePathToUri path, "entries" J..= [J.object ["uri" J..= L.filePathToUri entry, "kind" J..= entryKind kind] | (entry, kind) <- children]]
@@ -397,3 +440,100 @@ directoryJson (path, children) = J.object ["uri" J..= L.filePathToUri path, "ent
 
 issueJson :: Issue -> J.Value
 issueJson (Issue path range target reason) = J.object ["issues" J..= [J.object ["uri" J..= L.filePathToUri path, "range" J..= range, "targetUri" J..= fmap L.filePathToUri target, "reason" J..= reason]]]
+
+{- | Plan the reference edits for independent moves already made on the
+disk (root ADR 0426). The request names the state after the moves; the
+disk index and the request are mapped back to the state before them, then
+planned as 'planFileMove' plans one move, with the composite mapping.
+-}
+planMovedReferences :: F.Encoding -> Maybe FilePath -> J.Value -> IO (Either J.Value J.Value)
+planMovedReferences encoding registration params = fmap (first issueJson) $
+  case J.parseEither parseMovedRequest params of
+    Left e -> pure (Left (problem root e))
+    Right r
+      | Just (workspace r) /= registration -> pure (Left (problem (workspace r) "workspace was not registered at initialize"))
+      | otherwise -> planMoved encoding r
+  where
+    root = fromMaybe "/" registration
+
+parseMovedRequest :: J.Value -> J.Parser Request
+parseMovedRequest = J.withObject "moved references" $ \o -> do
+  complete <- o J..: "inventoryComplete"
+  unless complete (fail "workspace inventory is incomplete")
+  Request
+    <$> (o J..: "workspaceUri" >>= parseUri)
+    <*> (o J..: "moves" >>= traverse (J.withObject "move" movePair))
+    <*> (o J..: "projects" >>= traverse parseProject)
+    <*> (o J..: "wikiSheets" >>= traverse parseSheet)
+    <*> (o J..: "documents" >>= traverse parseDocument)
+
+planMoved :: F.Encoding -> Request -> IO (Result J.Value)
+planMoved enc after = do
+  readRoot <- readWorkspace root
+  case readRoot >>= \dirs -> dirs <$ checkMoved after dirs of
+    Left e -> pure (Left e)
+    Right dirs -> do
+      let pairs = moves after
+          back = through [(new, old) | (old, new) <- pairs]
+          before =
+            after
+              { projects = [Project (back p) (back <$> plot) | Project p plot <- projects after],
+                wikiSheets = [Sheet (back p) title | Sheet p title <- wikiSheets after],
+                documents = [d {docPath = back (docPath d)} | d <- documents after]
+              }
+          forward = through pairs
+      first (relocateIssue forward) <$> planIndexed enc forward dirs before (unmoveIndex root pairs dirs)
+  where
+    root = workspace after
+
+relocateIssue :: (FilePath -> FilePath) -> Issue -> Issue
+relocateIssue f (Issue path range target reason) = Issue (f path) range (f <$> target) reason
+
+{- | The checks on the state after the moves: the moves are given, stay in
+the workspace and are independent; each source is gone and each
+destination is present, without a symbolic link. Presence is decided by
+the names the parent directory lists, so a change of case is a move.
+-}
+checkMoved :: Request -> DirectoryIndex -> Result ()
+checkMoved req dirs = do
+  when (null pairs) (Left (problem root "no moves were given"))
+  forM_ pairs $ \(old, new) ->
+    case find (\p -> p == root || not (within root p)) [old, new] of
+      Just outside -> Left (problem outside "move is outside the workspace")
+      Nothing -> pure ()
+  forM_ (zip [0 :: Int ..] pairs) $ \(i, (old, new)) -> do
+    when (related old new) (Left (problem old "move is into its own subtree"))
+    forM_ (take i pairs) $ \(old', new') ->
+      when (or [related x y | x <- [old', new'], y <- [old, new]]) $
+        Left (problem old "moves are not independent: they chain or nest")
+  forM_ pairs $ \(old, new) -> do
+    when (isJust (entry old)) (Left (problem old "move source still exists"))
+    forM_ (ancestors old) $ \parent -> case entry parent of
+      Just kind | kind /= Directory -> Left (problem parent "move source parent is not a directory")
+      _ -> pure ()
+    case entry new of
+      Nothing -> Left (problem new "move destination does not exist")
+      Just Symlink -> Left (problem new "move destination is a symbolic link")
+      Just _ -> pure ()
+    case find (\(p, k) -> k == Symlink && within new p) entries of
+      Just (link, _) -> Left (problem link "move destination contains a symbolic link")
+      Nothing -> pure ()
+  where
+    root = workspace req
+    pairs = moves req
+    entries = concat (Map.elems dirs)
+    entry p = Map.lookup (takeDirectory p) dirs >>= lookup p
+    related x y = within x y || within y x
+    ancestors p = takeWhile (\a -> a /= root && within root a) (drop 1 (iterate takeDirectory p))
+
+{- | The index before the moves: each entry under a destination goes back
+under its source, and a source parent removed after the move is rebuilt.
+-}
+unmoveIndex :: FilePath -> [(FilePath, FilePath)] -> DirectoryIndex -> DirectoryIndex
+unmoveIndex root pairs dirs = Map.unionWith (<>) (Map.fromList [(d, []) | d <- root : [p | (p, Directory) <- Map.toList complete]]) children
+  where
+    back = through [(new, old) | (old, new) <- pairs]
+    restored = Map.fromList [(back p, k) | listing <- Map.elems dirs, (p, k) <- listing]
+    complete = Map.union restored (Map.fromList [(a, Directory) | p <- Map.keys restored, a <- parents p])
+    parents p = takeWhile (\a -> a /= root && within root a) (drop 1 (iterate takeDirectory p))
+    children = Map.map (sortOn fst) (Map.fromListWith (<>) [(takeDirectory p, [(p, k)]) | (p, k) <- Map.toList complete])

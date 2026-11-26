@@ -111,6 +111,8 @@ sample here node = case (reverse here, node) of
   ("numbers" : "lists" : _, _) -> List [Text "{n}"]
   -- an OpenType feature (docs/adr/0268)
   ("features" : _, _) -> List [Text "smcp"]
+  -- the path data of a text frame (root ADR 0438)
+  ("path" : _ : "frames" : _, _) -> Text "M 0 0 L 1 0 L 1 1 Z"
   _ -> case node of
     NValue l -> leafSample l
     NTable _ -> Table (table (required here ""))

@@ -1,4 +1,4 @@
-@import common/values.gm as values
+@import common/values.gm * as values
 
 @label intro
 # はじめに

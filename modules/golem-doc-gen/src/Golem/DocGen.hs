@@ -40,6 +40,8 @@ genInlineWith mr =
     Gen.choice
     ( [ Text <$> genSpan <*> genText,
         Tcy <$> genSpan <*> genText,
+        Warichu <$> genSpan <*> genText,
+        Upright <$> genSpan <*> genText,
         Number <$> genSpan <*> genInt64 <*> Gen.maybe Gen.enumBounded,
         Ref <$> genSpan <*> Gen.enumBounded <*> genText,
         Deferred <$> genSpan <*> (DeferredExpr <$> genExpr),
@@ -56,9 +58,11 @@ genInlineWith mr =
     [ Kenten <$> genSpan <*> Gen.maybe genText <*> sub,
       Color <$> genSpan <*> genText <*> sub,
       CharStyle <$> genSpan <*> genText <*> sub,
-      -- the body of a note: paragraphs without a style, one for a sidenote (docs/adr/0263)
-      Note <$> genSpan <*> Gen.int (Range.linear 1 99) <*> Gen.list (Range.linear 1 3) para,
-      Sidenote <$> genSpan <*> Gen.int (Range.linear 1 99) <*> fmap pure para,
+      -- the body of a note: paragraphs without a style, one for a sidenote (docs/adr/0263); a label or none (root ADR 0422)
+      Note <$> genSpan <*> Gen.int (Range.linear 1 99) <*> Gen.maybe genText <*> Gen.list (Range.linear 1 3) para,
+      Sidenote <$> genSpan <*> Gen.int (Range.linear 1 99) <*> Gen.maybe genText <*> fmap pure para,
+      -- the body of an endnote: paragraphs without a style, as a note (root ADR 0412)
+      Endnote <$> genSpan <*> Gen.int (Range.linear 1 99) <*> Gen.maybe genText <*> Gen.list (Range.linear 1 3) para,
       -- a citation of distinct keys, with any locator, prefix and suffix (docs/adr/0266)
       Cite <$> genSpan <*> citeItems,
       -- a link to an external URL (docs/adr ADR 0182)
@@ -160,7 +164,9 @@ genBlock =
       [ BulletList <$> Gen.list (Range.linear 1 3) (ListItem <$> Gen.maybe genNat <*> Gen.list (Range.linear 0 2) genBlock),
         OrderedList <$> Gen.list (Range.linear 1 3) (ListItem Nothing <$> Gen.list (Range.linear 0 2) genBlock),
         DefList <$> Gen.list (Range.linear 1 2) (DefGroup <$> Gen.list (Range.linear 1 2) inl <*> Gen.list (Range.linear 1 2) (Gen.list (Range.linear 0 2) genBlock)),
-        FigureBlock <$> (Figure <$> genText <*> Gen.maybe genText <*> genText <*> Gen.maybe Gen.enumBounded <*> Gen.maybe genText <*> Gen.list (Range.linear 0 1) genBlock <*> Gen.maybe (Gen.integral (Range.linear 1 9)) <*> Gen.bool <*> Gen.bool)
+        FigureBlock <$> (Figure <$> genText <*> Gen.maybe genText <*> genText <*> Gen.maybe Gen.enumBounded <*> Gen.maybe genText <*> Gen.list (Range.linear 0 1) genBlock <*> Gen.maybe (Gen.integral (Range.linear 1 9)) <*> Gen.bool <*> Gen.bool),
+        -- a text frame of paragraphs (root ADR 0438)
+        FrameBlock <$> Gen.element ["quote", "a", "side-1"] <*> Gen.list (Range.linear 0 2) (Block <$> genSpan <*> Gen.maybe genText <*> Gen.maybe genText <*> (Paragraph <$> Gen.maybe genText <*> inl))
       ]
   where
     inl = Gen.list (Range.linear 0 3) genInline

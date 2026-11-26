@@ -94,7 +94,7 @@ codePaddingTests =
       testCase "D1, D2: in vertical text" $
         pads env {ceVertical = True} [txt "あ", code " 漢 ", txt "い"] @?= [("あ", 0, 0), ("漢", quarter, quarter), ("い", 0, 0)],
       testCase "D1, D2: the mark of a note between spaces of code takes both paddings" $ do
-        let marked = [txt "あ", IR.CharStyle sp "code" [txt " ", IR.Note sp 1 (IR.noteBody sp [txt "n"]), txt " "], txt "い"]
+        let marked = [txt "あ", IR.CharStyle sp "code" [txt " ", IR.Note sp 1 Nothing (IR.noteBody sp [txt "n"]), txt " "], txt "い"]
         [(bcPadStart c, bcPadEnd c) | Box _ c <- itemsIn env marked, boxKind c == KindNoteMark] @?= [(quarter, quarter)],
       testCase "D1, D2: ruby after a space of code takes no padding, nor does anything else" $ do
         let ruby = IR.Ruby sp () [IR.RubySegment [IR.Text sp "漢"] (Just "かん")]

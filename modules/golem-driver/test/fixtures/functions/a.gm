@@ -1,4 +1,4 @@
-@import fn/book.emet as book
+@import fn/book.emet * as book
 
 # 関数
 

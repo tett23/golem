@@ -1,6 +1,6 @@
 # ADR 0244: `verapdf` を `build` の全体でなく成果物 `conformance-pdfs` を待つジョブにし、CI の臨界経路から外す
 
-Status: accepted
+Status: superseded [{"part":"待った後の取り寄せの手順","by":["docs/adr/0442-download-the-waited-artifacts-with-retries-checked-by-digest.md"],"kind":"replace"},{"part":"`wasm`、`editors-lsp`、`verapdf` の権限","by":["docs/adr/0442-download-the-waited-artifacts-with-retries-checked-by-digest.md"],"kind":"replace"}]
 
 ## 文脈
 

@@ -28,7 +28,7 @@ import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Text (Text)
 import Data.Text qualified as T
-import Golem.Pdf.Rect (Rect (..))
+import Golem.Geometry (Rect (..))
 import Golem.Project.Style
 import Golem.Syntax
 
@@ -150,7 +150,8 @@ pageGeometry fid marks style = case stPage style of
           gap = maybe 0 (dimToSp fs) (gridColumnGap grid)
           vertical = pageVertical page
           lineDepth = pitch * fromInteger (nLines - 1) + fs -- across the lines
-          columnLength = fs * fromInteger n -- along a line
+          cellAdvance = maybe fs (dimToSp fs) (gridCharacterAdvance grid)
+          columnLength = cellAdvance * fromInteger (n - 1) + fs -- the final cell ends at its unchanged glyph size (root ADR 0380)
           (taW, taH)
             | vertical = (lineDepth, fromInteger cols * columnLength + fromInteger (cols - 1) * gap)
             | otherwise = (fromInteger cols * columnLength + fromInteger (cols - 1) * gap, lineDepth)

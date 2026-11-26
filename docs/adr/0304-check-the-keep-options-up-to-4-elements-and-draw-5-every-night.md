@@ -1,6 +1,6 @@
 # ADR 0304: 保持の設定の列挙を毎晩のジョブの範囲として分け、要素 4 個まですべて調べ、5 個の入力を抜き取る
 
-Status: accepted
+Status: superseded [{"by":["docs/adr/0415-fix-the-medium-findings-of-the-conformance-audit-of-2026-11-18.md"],"part":"60 分の判定のしかた","kind":"supplement"}]
 
 ## 文脈
 

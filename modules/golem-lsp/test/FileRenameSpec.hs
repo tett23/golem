@@ -34,13 +34,13 @@ fileRenameTests =
         validateRenames [("chapters", "parts"), ("chapters/a.gm", "other/a.gm")] @?= Left "conflicting destination"
         validateRenames [("chapters", "parts"), ("chapters/a.gm", "parts/a.gm")] @?= Right [("chapters", "parts"), ("chapters/a.gm", "parts/a.gm")],
       testCase "R2: every import occurrence has its own byte range" $ do
-        planImports [("a.gm", "b.gm")] "@import a.gm as first\n@import a.gm as second\n"
-          @?= Right [(8, 12, "b.gm"), (30, 34, "b.gm")],
+        planImports [("a.gm", "b.gm")] "@import a.gm * as first\n@import a.gm * as second\n"
+          @?= Right [(8, 12, "b.gm"), (32, 36, "b.gm")],
       testCase "R2: quoted import keeps its quoting and escapes the new path" $ do
-        planImports [("a.gm", "a name.gm")] "@import \"a.gm\" as first\n"
+        planImports [("a.gm", "a name.gm")] "@import \"a.gm\" * as first\n"
           @?= Right [(8, 14, "\"a name.gm\"")],
       testCase "R1: an unrelated word in the manuscript stays unchanged" $ do
-        planImports [("a.gm", "b.gm")] "a.gm\n@import b.gm as first\n" @?= Right [],
+        planImports [("a.gm", "b.gm")] "a.gm\n@import b.gm * as first\n" @?= Right [],
       testCase "R2: figure, table and listing edit only their file arguments" $ do
         let source = "@figure a.png web=\"web.png\"\n@table data.csv\n@listing code.txt\n"
             operations = [("a.png", "b.png"), ("web.png", "screen.png"), ("data.csv", "other.csv"), ("code.txt", "new.txt")]
@@ -65,7 +65,7 @@ fileRenameTests =
         withSystemTempDirectory "golem-rename-emet" $ \root -> do
           createDirectory (root </> "fn")
           TIO.writeFile (root </> "manifest.toml") "chapters=[\"a.gm\"]\n[metadata]\nid=\"urn:uuid:11111111-2222-4333-8444-555555555555\"\ntitle=\"T\"\nlanguage=\"ja\"\ndate=2026-10-11\n[targets.html]\n"
-          TIO.writeFile (root </> "a.gm") "@import fn/book.emet as book\n"
+          TIO.writeFile (root </> "a.gm") "@import fn/book.emet * as book\n"
           TIO.writeFile (root </> "fn/book.emet") "import \"fn/lib.emet\"\npub twice :: Nat -> Nat\ntwice n = 2 * n\n"
           TIO.writeFile (root </> "fn/lib.emet") "pub three :: Nat\nthree = 3\n"
           ws <- openWorkspace root
@@ -152,7 +152,7 @@ fileRenameTests =
       testCase "R2: willRename returns old URI edits without renaming files" $
         withSystemTempDirectory "golem-rename-protocol" $ \root -> do
           TIO.writeFile (root </> "manifest.toml") "chapters=[\"a.gm\"]\n[metadata]\nid=\"urn:uuid:11111111-2222-4333-8444-555555555555\"\ntitle=\"T\"\nlanguage=\"ja\"\ndate=2026-10-11\n[targets.html]\n"
-          TIO.writeFile (root </> "a.gm") "@import \"旧 章.gm\" as old\n"
+          TIO.writeFile (root </> "a.gm") "@import \"旧 章.gm\" * as old\n"
           TIO.writeFile (root </> "旧 章.gm") "# Old\n"
           (serverIn, clientOut) <- createPipe
           (clientIn, serverOut) <- createPipe
@@ -168,7 +168,7 @@ fileRenameTests =
                       [(L.uriToFilePath uri, version, length replacements) | L.InL (L.TextDocumentEdit (L.OptionalVersionedTextDocumentIdentifier uri version) replacements) <- changes]
                     _ -> []
             liftIO $ do
-              TIO.writeFile (root </> "a.gm") "@import \"新 章.gm\" as old\n"
+              TIO.writeFile (root </> "a.gm") "@import \"新 章.gm\" * as old\n"
               renameFile (root </> "旧 章.gm") (root </> "新 章.gm")
             LT.sendNotification M.SMethod_WorkspaceDidRenameFiles files
             M.TResponseMessage _ _ second <- LT.request M.SMethod_WorkspaceWillRenameFiles files

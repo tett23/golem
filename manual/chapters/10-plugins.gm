@@ -64,7 +64,7 @@ $ golem build
 path = "plugins/local.wasm"
 ```
 
-パスはプロジェクトのフォルダーからの相対パスで書きます。
+パスはプロジェクトのフォルダからの相対パスで書きます。
 [code: path] のプラグインは [code: plugins.lock] に書かれず、[code: golem plugin fetch] も要りません。
 原稿と同じく、リポジトリに入れて管理します。
 [code: url] と [code: path] の両方を書くか、どちらも書かないと、エラー（G03001）になります。
@@ -82,7 +82,8 @@ overrides = ["ruby"]
 ```
 
 書いていない名前は置き換わりません。
-置き換えられるのは、見た目に関わる十のコマンド（[code: strong]、[code: bold]、[code: italic]、[code: code]、[code: ruby]、[code: kenten]、[code: color]、[code: style]、[code: tcy]、[code: number-text]）です。
+置き換えられるのは、見た目に関わる十二のコマンド（[code: strong]、[code: bold]、[code: italic]、[code: code]、[code: ruby]、[code: kenten]、[code: color]、[code: style]、[code: warichu]、[code: upright]、[code: tcy]、[code: number-text]）です。
+ブロックコマンドは、[code: overrides] の代わりに [code: block-overrides] に書き、[code: toc]、[code: index]、[code: bibliography]、[code: printings]、[code: separator] の五つを置き換えられます。
 注、傍注、索引、引用、相互参照のように本の構造に関わるコマンドと、[code: aki] は置き換えられません。
 [code: overrides] にこれらの名前を書くと、エラー（G06008）になります。
 
@@ -154,7 +155,7 @@ TSV の読み方と [code: align] の書き方は、[code: @table] と同じで�
 ブロックコマンドは、グラフのような図をプラグインが描いて、図版として返すこともあります。
 その図版は、[code: @figure] の図版と同じく番号が付き、[code: @label] で参照でき、同じ検査を受けます。
 HTML と EPUB では、図の画像は [code: images/golem-plugin/] に置かれます。
-原稿の画像をこのフォルダーに置くと、エラー（G08102）になります。
+原稿の画像をこのフォルダに置くと、エラー（G08102）になります。
 
 ## プラグインの一覧を置く
 
@@ -265,7 +266,7 @@ data = { table = "data/words.tsv" }
 プラグインが受け取らない名前を書くと、エラー（G06102）になります。
 表ごとにファイルを渡すプラグインのように、どんな名前でも受け取るプラグインもあります。
 そのときも、名前は英小文字で始め、英小文字、数字、[code: -] だけで書きます。
-パスはプロジェクトのフォルダーからの相対パスで書きます。
+パスはプロジェクトのフォルダからの相対パスで書きます。
 ファイルがないとき（G06101）、プロジェクトの外を指すとき（G03003）、一つのプラグインのデータが合わせて 64 MiB を超えるとき（G06103）も、エラーになります。
 データのファイルの中身の誤りは、プラグインによっては読み込みのときに一度だけ、データのファイルの行の位置で報告されます。
 データのファイルを書き換えると、次のビルドから新しい内容が使われます。

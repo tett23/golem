@@ -2,8 +2,9 @@
 
 module Main (main) where
 
+import AliasLspSpec (aliasLspTests)
 import Control.Concurrent (forkIO)
-import Control.Monad (void)
+import Control.Monad (forM_, void)
 import Data.Aeson qualified as J
 import Data.ByteString qualified as BS
 import Data.ByteString.Lazy qualified as BL
@@ -18,8 +19,8 @@ import EditingSpec (editingTests)
 import FileMoveSpec (fileMoveTests)
 import FileRenameSpec (fileRenameTests)
 import FunctionsLspSpec (functionsLspTests)
-import Golem.Driver.Explain (codeDescriptionUrl)
 import Golem.Eval.File (builtinInlineCommands)
+import Golem.Evaluate.Explain (codeDescriptionUrl)
 import Golem.Lsp.Features
 import Golem.Lsp.Server (lspSeverity, rewriteInitializeResponse, runGolemLspWithHandles)
 import Golem.Lsp.Workspace
@@ -36,12 +37,14 @@ import Hedgehog.Range qualified as Range
 import Language.LSP.Protocol.Message qualified as M
 import Language.LSP.Protocol.Types qualified as L
 import Language.LSP.Test qualified as LT
+import MovedReferencesSpec (movedReferencesTests)
 import PositionEnumSpec (positionEnumTests)
 import PublishSpec (publishTests)
 import SemanticTokensSpec (semanticTokensTests)
+import SetRenameSpec (setRenameTests)
 import StaleS1Spec (staleS1Tests)
 import Support (codesOf)
-import System.Directory (copyFile, createDirectoryIfMissing, doesDirectoryExist, listDirectory, makeAbsolute)
+import System.Directory (canonicalizePath, copyFile, createDirectoryIfMissing, doesDirectoryExist, listDirectory, makeAbsolute)
 import System.Environment (lookupEnv)
 import System.FilePath (takeDirectory, (</>))
 import System.IO (hClose)
@@ -56,6 +59,21 @@ import TomlSpec (tomlTests)
 
 root :: FilePath
 root = "test/fixtures/proj"
+
+{- | A project of a.gm with a style.toml, the workspace opened on it
+(root ADR 0438).
+-}
+withFrameProject :: Text -> Text -> (Workspace -> IO a) -> IO a
+withFrameProject style source act = withSystemTempDirectory "golem-lsp-frames" $ \tmp0 -> do
+  tmp <- canonicalizePath tmp0
+  TIO.writeFile (tmp </> "manifest.toml") (manifestToml testManifest {tmChapters = ["a.gm"]})
+  TIO.writeFile (tmp </> "style.toml") style
+  TIO.writeFile (tmp </> "a.gm") source
+  openWorkspace tmp >>= act
+
+-- | A style with two text frames (root ADR 0438).
+frameStyle :: Text
+frameStyle = "[color.swatches]\naccent = { cmyk = [0, 80, 100, 0] }\n\n[paragraph-styles.quote]\nspace-between = 1\n\n[frames.quote]\nx = \"10mm\"\ny = \"10mm\"\nwidth = \"60mm\"\nheight = \"20mm\"\n\n[frames.note]\npath = \"M 0 0 L 60 0 L 60 20 Z\"\n"
 
 main :: IO ()
 main = do
@@ -114,6 +132,7 @@ tests =
     "golem-lsp (ADR 0001)"
     [ fileRenameTests,
       fileMoveTests,
+      movedReferencesTests,
       positionEnumTests,
       testCase "no codeDescription for a code outside docs/diagnostics.md (golem-cli ADR 0005)" $
         codeDescriptionUrl (DiagnosticCode "X001") @?= Nothing,
@@ -173,11 +192,35 @@ tests =
         assertBool "commands" ("color" `elem` names (offsetIn src "[co" 3))
         names (offsetIn src "[color " 7) @?= ["accent"]
         assertBool "paths" ("common/values.gm" `elem` names (offsetIn src "@import " 8)),
+      testCase "root ADR 0422: completion of label= after a note command, of the labels of notes after a reference, definition and rename" $ do
+        ws0 <- openWorkspace root
+        let src = "本文[note label=n-one: 注。]と[endnote label=n-two: 後。]。\n\n[note \n\n[sidenote \n\n[ref-number \n\n[ref-page n-one]\n"
+        ws <- updateFile ws0 "b.gm" src
+        let names o = map cmpLabel (completions ws "b.gm" o)
+        assertBool "label= after note" ("label=" `elem` names (offsetIn src "[note \n" 6))
+        assertBool "label= after sidenote" ("label=" `elem` names (offsetIn src "[sidenote \n" 10))
+        assertBool "the labels of notes" (all (`elem` names (offsetIn src "[ref-number \n" 12)) ["n-one", "n-two", "intro"])
+        map (slice ws) (definition ws "b.gm" (offsetIn src "n-one]" 1)) @?= ["n-one"]
+        map locPath (definition ws "b.gm" (offsetIn src "n-one]" 1)) @?= ["b.gm"]
+        fmap (map snd) (renameLabel ws "b.gm" (offsetIn src "n-one]" 1) "n-first") @?= Right ["n-first", "n-first"],
+      testCase "root ADR 0459: completion and definition in a body between ::: lines, and its folding range" $ do
+        ws0 <- openWorkspace root
+        let src = "@label sec\n:::\n# 見出し\n\n本文 [ref-title sec]。\n:::\n\n@stage\n:::\n一\n\n@note n\n:::\n二\n\n三\n:::\n\n:::\n\n[ref-page sec]\n"
+        ws <- updateFile ws0 "b.gm" src
+        assertBool "labels" ("sec" `elem` map cmpLabel (completions ws "b.gm" (offsetIn src "[ref-title " 11)))
+        map (slice ws) (definition ws "b.gm" (offsetIn src "sec]。" 1)) @?= ["sec"]
+        map (slice ws) (definition ws "b.gm" (offsetIn src "sec]\n" 1)) @?= ["sec"]
+        foldingRanges src @?= [(1, 5), (8, 18), (12, 16)],
       testCase "completion: a project without plugins has the built-in names only" $ do
         ws0 <- openWorkspace root
         ws <- updateFile ws0 "b.gm" "本文。\n\n["
         map cmpLabel (completions ws "b.gm" (BS.length (TE.encodeUtf8 "本文。\n\n["))) @?= builtinInlineCommands
-        length builtinInlineCommands @?= 21
+        length builtinInlineCommands @?= 24
+        -- [endnote] is built in, and @endnote is a block command (root ADR 0412)
+        assertBool "endnote" ("endnote" `elem` builtinInlineCommands)
+        map cmpLabel (completions ws "b.gm" (BS.length (TE.encodeUtf8 "本文。\n\n["))) `seq` pure ()
+        ws' <- updateFile ws "b.gm" "本文。\n\n@endn"
+        assertBool "@endnote" ("endnote" `elem` map cmpLabel (completions ws' "b.gm" (BS.length (TE.encodeUtf8 "本文。\n\n@endn"))))
         -- [shy] is built in (docs/adr ADR 0272)
         assertBool "shy" ("shy" `elem` builtinInlineCommands)
         -- [link] is built in (docs/adr ADR 0182)
@@ -192,6 +235,16 @@ tests =
         map cmpLabel (found (offsetIn src "@style " 7)) @?= ["body", "caption", "quote", "sidenote", "table", "toc-1", "toc-2", "toc-3", "toc-4", "toc-5", "toc-6", "verse"]
         map cmpKind (found (offsetIn src "@style " 7)) @?= replicate 12 CkParaStyle
         map cmpLabel (found (offsetIn src "[style " 7)) @?= ["bold", "code", "italic", "no-break", "note-mark", "strong", "subscript", "superscript", "toc-page-number", "url"],
+      testCase "root ADR 0438 I11: every name of [frames] is completed after @frame" $
+        withFrameProject frameStyle "前。\n\n@frame \n" $ \ws -> do
+          let src = textOf ws "a.gm"
+          map cmpLabel (completions ws "a.gm" (offsetIn src "@frame " 7)) @?= ["note", "quote"],
+      testCase "root ADR 0438: a name of @frame [frames] does not have is a diagnostic of the LSP" $
+        withFrameProject frameStyle "前。\n\n@frame missing\n  引用。\n" $ \ws ->
+          [c | d <- fromMaybe [] (Map.lookup "a.gm" (diagnosticsFor ws)), let { DiagnosticCode c = diagCode d }] @?= ["G03289"],
+      testCase "root ADR 0438: a frame of style.toml of neither shape is a diagnostic of the LSP" $
+        withFrameProject (frameStyle <> "\n[frames.empty]\ntext = \"x\"\n") "前。\n" $ \ws ->
+          assertBool (show (wsProjectErrors ws, diagnosticsFor ws)) ("G03285" `elem` [c | d <- wsProjectErrors ws <> concat (Map.elems (diagnosticsFor ws)), let DiagnosticCode c = diagCode d]),
       testCase "root ADR 0398 A5: separator name completion" $ do
         ws0 <- openWorkspace root
         ws <- updateFile ws0 "b.gm" "@separator \n"
@@ -330,7 +383,7 @@ tests =
         assertBool (show codes) (all (`notElem` codes) ["G03006", "G03010", "G08002"]),
       testCase "a missing import is reported on the file of the @import (golem-project ADR 0006)" $ withSystemTempDirectory "golem-lsp" $ \tmp -> do
         mapM_ (\f -> copyFile (root </> f) (tmp </> f)) ["manifest.toml", "b.gm"]
-        BS.writeFile (tmp </> "a.gm") "@import nope.gm as x\n"
+        BS.writeFile (tmp </> "a.gm") "@import nope.gm * as x\n"
         ws <- openWorkspace tmp
         let codesIn p = [c | d <- fromMaybe [] (Map.lookup p (diagnosticsFor ws)), let DiagnosticCode c = diagCode d]
         codesIn "a.gm" @?= ["G03002"]
@@ -353,6 +406,36 @@ tests =
         ws <- openWorkspace tmp
         let codes = [c | ds <- Map.elems (diagnosticsFor ws), d <- ds, let DiagnosticCode c = diagCode d]
         filter (`elem` ["G07127", "G07128"]) codes @?= [],
+      testCase "root ADR 0433: the LSP reports a font without its license key on style.toml as G03282, and no missing license file" $ withSystemTempDirectory "golem-lsp" $ \tmp -> do
+        forM_ [("html", True), ("epub", True), ("pdf", False)] $ \(target, reported) -> do
+          let fonts = if target == "pdf" then "" else "fonts = \"embed\"\n"
+          BS.writeFile (tmp </> "manifest.toml") (TE.encodeUtf8 (manifestToml testManifest {tmTargets = []} <> "\n[targets." <> target <> "]\n" <> fonts))
+          BS.writeFile (tmp </> "style.toml") "[fonts.body]\nja = \"fonts/none.otf\"\nlatin = \"fonts/none-latin.otf\"\nlatin-license = \"fonts/none.txt\"\n"
+          TIO.writeFile (tmp </> "a.gm") "本文。\n"
+          ws <- openWorkspace tmp
+          let codesIn p = [c | d <- fromMaybe [] (Map.lookup p (diagnosticsFor ws)), let DiagnosticCode c = diagCode d]
+              everywhere = [c | ds <- Map.elems (diagnosticsFor ws), d <- ds, let DiagnosticCode c = diagCode d]
+          (target, codesIn "style.toml") @?= (target, ["G03282" | reported])
+          (target, filter (`elem` ["G03010", "G03283", "G03284"]) everywhere) @?= (target, []),
+      testCase "root ADR 0448 I4: the LSP reports G03282 once for each font without its key, only when the manifest declares a web target that embeds the fonts" $ withSystemTempDirectory "golem-lsp" $ \tmp -> do
+        let embedHtml = "[targets.html]\nfonts = \"embed\"\n" :: Text
+            oneFont = "[fonts.body]\nja = \"fonts/a.otf\"\n" :: BS.ByteString
+        forM_
+          [ ("no [fonts]", embedHtml, "", 0),
+            ("one font, HTML embeds", embedHtml, oneFont, 1),
+            ("two fonts, HTML embeds", embedHtml, "[fonts.body]\nja = \"fonts/a.otf\"\nlatin = \"fonts/b.otf\"\n", 2),
+            ("one font, HTML and EPUB embed", "[targets.html]\nfonts = \"embed\"\n\n[targets.epub]\nfonts = \"embed\"\n", oneFont, 1),
+            ("HTML generic, EPUB embeds", "[targets.html]\nfonts = \"generic\"\n\n[targets.epub]\nfonts = \"embed\"\n", oneFont, 1),
+            ("HTML generic", "[targets.html]\nfonts = \"generic\"\n", oneFont, 0),
+            ("HTML embeds, EPUB generic", "[targets.html]\nfonts = \"embed\"\n\n[targets.epub]\n", oneFont, 1)
+          ]
+          $ \(name, targets, style, expected) -> do
+            BS.writeFile (tmp </> "manifest.toml") (TE.encodeUtf8 (manifestToml testManifest {tmTargets = []} <> "\n" <> targets))
+            BS.writeFile (tmp </> "style.toml") style
+            TIO.writeFile (tmp </> "a.gm") "本文。\n"
+            ws <- openWorkspace tmp
+            let g03282 = [() | d <- fromMaybe [] (Map.lookup "style.toml" (diagnosticsFor ws)), diagCode d == DiagnosticCode "G03282"]
+            (name :: String, length g03282) @?= (name, expected),
       testCase "a bibliography with a character that cannot be written is G03108 on manifest.toml (docs/adr/0159)" $ withSystemTempDirectory "golem-lsp" $ \tmp -> do
         let manifest = TE.encodeUtf8 (manifestToml testManifest {tmTitle = "LSP", tmLanguage = "en"})
         BS.writeFile (tmp </> "a.gm") "A.\n"
@@ -544,7 +627,7 @@ tests =
         encodingKind Utf16 @?= L.PositionEncodingKind_UTF16,
       testCase "only the matching initialize response gets its positionEncoding replaced (ADR 0002)" $ do
         let resp = "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"capabilities\":{\"positionEncoding\":\"utf-16\",\"hoverProvider\":true},\"serverInfo\":{\"name\":\"x\"}}}"
-            expected = "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"capabilities\":{\"positionEncoding\":\"utf-8\",\"experimental\":{\"golem\":{\"planFileMove\":1}},\"hoverProvider\":true},\"serverInfo\":{\"name\":\"x\"}}}"
+            expected = "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"capabilities\":{\"positionEncoding\":\"utf-8\",\"experimental\":{\"golem\":{\"planFileMove\":1,\"planMovedReferences\":1}},\"hoverProvider\":true},\"serverInfo\":{\"name\":\"x\"}}}"
             decode = J.decode :: BL.ByteString -> Maybe J.Value
         (decode =<< rewriteInitializeResponse (M.IdInt 1) Utf8 resp) @?= decode expected
         rewriteInitializeResponse (M.IdInt 2) Utf8 resp @?= Nothing
@@ -577,6 +660,8 @@ tests =
             ],
       editingTests,
       functionsLspTests,
+      setRenameTests,
+      aliasLspTests,
       tableWatchTests,
       staleS1Tests,
       publishTests,

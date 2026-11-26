@@ -7,7 +7,7 @@ where
 
 import Data.ByteString qualified as BS
 import Data.Char (isDigit)
-import Data.Maybe (fromMaybe, mapMaybe)
+import Data.Maybe (fromMaybe, listToMaybe, mapMaybe)
 import Data.Ratio ((%))
 import Data.Text (Text)
 import Data.Text qualified as T
@@ -56,7 +56,9 @@ lower fid root = case annotate fid root of
 -- ------------------------------------------------------------------ blocks
 
 blocks :: [P] -> [Located Block]
-blocks = mapMaybe block
+blocks = concatMap $ \case
+  p@(PN NAttributed _ _) -> attributed p
+  p -> maybe [] pure (block p)
 
 block :: P -> Maybe (Located Block)
 block p@(PN k sp cs) = case k of
@@ -70,7 +72,8 @@ block p@(PN k sp cs) = case k of
   NDefList -> Just (Located sp (DefList [defGroup gs | PN NDefGroup _ gs <- cs]))
   NTable -> Just (Located sp (table cs))
   NCodeBlock -> Just (Located sp (codeBlock cs))
-  NAttributed -> Just (attributed p)
+  -- 'blocks' takes every group of the node; a group is never the body of another
+  NAttributed -> listToMaybe (attributed p)
   NBlockCommand -> Just (blockCommand p)
   NErrorNode -> Just (Located sp ErrorBlock)
   _ -> Nothing
@@ -141,16 +144,37 @@ codeBlock cs =
     dropNewline t = fromMaybe t (T.stripSuffix "\n" t)
     withoutNewline sp t = if "\n" `T.isSuffixOf` t then mkSpan (spanFile sp) (spanStart sp) (spanEnd sp - 1) else sp
 
-attributed :: P -> Located Block
+{- | The commands written in a row and their body (root ADR 0459). A
+command with an indented body ends the commands: those after it are
+another group. The last group takes the next block, or the blocks between
+::: lines.
+-}
+attributed :: P -> [Located Block]
 attributed (PN _ sp cs) =
-  let cmds = [blockCommand c | c@(PN NBlockCommand _ _) <- cs]
-      target = case filter (\c -> isBlockNode c && pkind c /= NBlockCommand) cs of
+  let cmds = [c | c@(PN NBlockCommand _ _) <- cs]
+      target = case [c | c <- cs, (isBlockNode c && pkind c /= NBlockCommand) || pkind c == NDiv] of
+        (PN NDiv dsp dcs : _) -> Just (Located dsp (Fenced (blocks dcs)))
         (b : _) -> block b
         [] -> Nothing
-   in case (cmds, target) of
-        ([single], Nothing) -> single
-        _ -> Located sp (Attributed cmds target)
-attributed p = Located (pspan p) ErrorBlock
+      groups = segments cmds
+      lastIndex = length groups - 1
+      one i g =
+        let t = if i == lastIndex then target else Nothing
+            lcs = map blockCommand g
+         in case (lcs, t) of
+              ([single], Nothing) -> single
+              _ -> Located (coverSpan (map pspan g <> maybe [] (pure . locSpan) t)) (Attributed lcs t)
+   in case groups of
+        [] -> [Located sp ErrorBlock]
+        _ -> zipWith one [0 :: Int ..] groups
+  where
+    hasBody = \case
+      PN _ _ ccs -> any ((== NCommandBody) . pkind) ccs
+      PT {} -> False
+    segments xs = case break hasBody xs of
+      (before, c : rest) -> (before <> [c]) : (if null rest then [] else segments rest)
+      (before, []) -> [before]
+attributed p = [Located (pspan p) ErrorBlock]
 
 blockCommand :: P -> Located Block
 blockCommand (PN _ sp cs) =

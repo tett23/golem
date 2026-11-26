@@ -18,7 +18,7 @@ import Test.Tasty.HUnit
 
 -- | A note of a number, its body one character.
 note :: Int -> Inline
-note n = Note (mkSpan (FileId 0) 1 2) n (noteBody (mkSpan (FileId 0) 1 2) [sp0 "注"])
+note n = Note (mkSpan (FileId 0) 1 2) n Nothing (noteBody (mkSpan (FileId 0) 1 2) [sp0 "注"])
 
 {- | The environment of a mark format, vertical or not, flat or not: the
 characters of uneven advances, so that halving each one is seen.
@@ -99,7 +99,7 @@ compressedNoteMarksTests =
           a <- markOf normal n
           b <- markOf flat n
           assertEqual (T.unpack format <> " " <> show n) a b,
-    testCase "ADR 0381: the mark at the start of a note body is set flat as the mark in the text" $ do
+    testCase "ADR 0381 I1: the mark at the start of a note body is set flat as the mark in the text" $ do
       normal <- envOf "（{n:kanji}）" True False
       flat <- envOf "（{n:kanji}）" True True
       fmt <- either (assertFailure . T.unpack) pure (parseMarkFormat "（{n:kanji}）")

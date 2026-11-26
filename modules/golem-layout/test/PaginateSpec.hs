@@ -9,11 +9,13 @@ separator takes.
 -}
 module PaginateSpec (paginateTests) where
 
+import AdjacentRules (Adjacent (..), adjacentCases, adjacentGrid, gridShared, rulesOverlap)
 import Control.Exception (evaluate)
 import Control.Monad (forM_, replicateM, when)
 import Data.List (sortOn)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (fromMaybe, isJust)
+import Data.Set qualified as Set
 import Data.Text (Text)
 import Golem.Doc.IR (BreakKind (..))
 import Golem.Layout.Code (CodeGeometry (..))
@@ -22,6 +24,7 @@ import Golem.Layout.Paginate
 import Golem.Layout.Paginate.State qualified as S
 import Golem.Layout.RuleArea (RuleGrid (..), RuleSide (..))
 import Golem.Length (Sp (..))
+import Golem.Project.Style (KeepParts (..))
 import Golem.Syntax (FileId (..), SrcSpan, mkSpan)
 import Hedgehog
 import Hedgehog.Gen qualified as Gen
@@ -77,10 +80,16 @@ paginateTests =
       testGroup "the rules added by the implementation of ADR 0180 (docs/adr/0205)" addedRuleTests,
       testGroup "page references that do not settle (S2)" pageRefTests,
       testGroup "figures in the order written (golem-layout ADR 0015)" figureOrderTests,
+      testGroup "the side lines of a wrapped figure sent on by their notes (golem-driver ADR 0005)" wrappedNoteTests,
+      testGroup "a wrapped figure fits with the notes of its side lines (root ADR 0443)" wrappedFitNoteTests,
+      testGroup "the footnotes in order while one continues (root ADR 0444)" (continuedNoteOrderTests <> continuedBoxNoteTests <> [continuedGoldenTest]),
       testGroup "turned figures on pages of their own (golem-driver ADR 0034)" pageFigureTests,
       testGroup "manual control of page breaks (docs/adr ADR 0030)" pageControlTests,
+      testGroup "the index columns after page-lines (root ADR 0025, root ADR 0030)" indexAfterAdjustTests,
+      testGroup "the index columns on a page of adjusted lines (root ADR 0441)" indexOnAdjustedPageTests,
       testGroup "blank lines (docs/adr ADR 0046)" blankLineTests,
       testGroup "paragraphs and headings with rules (golem-driver ADR 0027)" ruledTests,
+      testGroup "the rule after of a block the next block does not join stays in the column (golem-driver ADR 0027, root ADR 0352 I3)" joinedRuleTests,
       testGroup "a heading taller than its column (golem-layout ADR 0020)" tallHeadingTests,
       testGroup "the points the invariants did not decide (docs/adr/0206)" undecidedPointTests,
       testGroup "a heading sent on is checked again after the figures sent on (golem-layout ADR 0023)" keepAfterFiguresTests,
@@ -654,6 +663,33 @@ unmets = concatMap poUnmet
 columnsOf :: [PageOut] -> [(Int, Int, [Int])]
 columnsOf ps = [(poNumber p, poColumn p, [i | (_, SLine i) <- poSlots p]) | p <- ps]
 
+{- | The switch to the index columns counts only the lines of the type
+area: the lines added by @page-lines belong to the column of the mark,
+and the columns of the index keep the lines of the type area (root ADR
+0025, root ADR 0030).
+-}
+indexAfterAdjustTests :: [TestTree]
+indexAfterAdjustTests =
+  [ testCase "root ADR 0025: after page-lines +3 and 12 lines on a page of 10, the index starts at line 0 of the next page" $ do
+      let ps = paginate 1 10 ([FAdjustLines mk 3, FParagraph defaultKeep (lines' 0 12), FSwitchColumns index2] <> entries 100 3 <> [FRestoreColumns])
+      setsOf ps @?= [(1, 0, 1, 0), (2, 0, 2, 0)]
+      columnsOf ps @?= [(1, 0, [0 .. 11]), (2, 0, [100, 101, 102])]
+      [l | p <- drop 1 ps, (l, _) <- poSlots p] @?= [0, 1, 2],
+    testCase "root ADR 0025: after page-lines +3 and exactly 10 lines, no line of the type area is left" $ do
+      let ps = paginate 1 10 ([FAdjustLines mk 3, FParagraph defaultKeep (lines' 0 10), FSwitchColumns index2] <> entries 100 3 <> [FRestoreColumns])
+      setsOf ps @?= [(1, 0, 1, 0), (2, 0, 2, 0)],
+    testCase "root ADR 0030: after page-lines +3 and 7 lines, each index column keeps the 3 lines left of the type area" $ do
+      let ps = paginate 1 10 ([FAdjustLines mk 3, FParagraph defaultKeep (lines' 0 7), FSwitchColumns index2] <> entries 100 8 <> [FRestoreColumns])
+      setsOf ps @?= [(1, 0, 1, 0), (1, 0, 2, 7), (1, 1, 2, 7), (2, 0, 2, 0)]
+      columnsOf ps @?= [(1, 0, [0 .. 6]), (1, 0, [100, 101, 102]), (1, 1, [103, 104, 105]), (2, 0, [106, 107])]
+      map poLines (drop 1 ps) @?= [10, 10, 10]
+      [l | p <- drop 1 ps, (l, _) <- poSlots p, l >= 10] @?= []
+  ]
+  where
+    index2 = ColumnSet 2 (15 * 65536) (2 * 65536) 0
+    entries base n = [FParagraph defaultKeep [LineBox (base + i) [] [] [] 0] | i <- [0 .. n - 1]]
+    setsOf = map (\p -> (poNumber p, poColumn p, csColumns (poColumnSet p), csFirstLine (poColumnSet p)))
+
 pageControlTests :: [TestTree]
 pageControlTests =
   [ testCase "ADR 0376 I1: inv1_no_page_break_lines_property" $
@@ -836,6 +872,22 @@ figureOrderTests =
       contents ps @?= [[SLine 0, SLine 1, SLine 2], [SFigure 98, SWrapped 99, SLine 10, SLine 11], [SLine 20]]
   ]
 
+{- | golem-driver ADR 0005: the side lines of a wrapped figure that their
+notes do not let fit go to the next page as 'placeLines' sends lines on;
+the page they go to is used from its top, not from where the exclusion
+ended on the page of the figure.
+-}
+wrappedNoteTests :: [TestTree]
+wrappedNoteTests =
+  [ testCase "golem-driver ADR 0005: the side lines sent on by their notes take the next page from its top" $ do
+      let ps = paginate 1 4 [FWrapped 1 2 [] [] [LineBox 10 [NoteBody (nid 900) 2] [] [] 0, LineBox 11 [] [] [] 0], FParagraph defaultKeep (lines' 20 3)]
+      [(poNumber p, poSlots p, poFootnotes p) | p <- ps]
+        @?= [(1, [(0, SWrapped 1), (0, SLine 10)], [(nid 900, 0, 2)]), (2, [(0, SLine 11), (1, SLine 20), (2, SLine 21), (3, SLine 22)], [])],
+    testCase "golem-driver ADR 0005: the side lines that fit beside the figure keep the rest of its exclusion" $ do
+      let ps = paginate 1 6 [FWrapped 1 3 [] [] (lines' 10 1), FParagraph defaultKeep (lines' 20 1)]
+      map poSlots ps @?= [[(0, SWrapped 1), (0, SLine 10), (3, SLine 20)]]
+  ]
+
 -- | A block of the generated flows with figures: a paragraph, a figure of n lines, or a wrapped figure of n lines with k lines beside it.
 data FigBlock = FPara !Int | FFig !Int | FWrap !Int !Int
   deriving stock (Show)
@@ -998,7 +1050,15 @@ gridLines = map (map fst . poSlots)
 
 ruledTests :: [TestTree]
 ruledTests =
-  [ testCase "keep-in-column = false at the start of columns that start mid-page: in the column, as keep-in-column = true (golem-driver ADR 0040)" $ do
+  [ testCase "golem-driver ADR 0035: a ruled paragraph longer than the empty column a column switch started down the page is broken there without rules" $ do
+      let ps = paginate 1 4 [FParagraph defaultKeep (lines' 0 2), FSwitchColumns (ColumnSet 2 0 0 0), FParagraph defaultKeep (lines' 10 2), ruled Nothing (Just (spaced 2 2)) (lines' 20 3), FParagraph defaultKeep (lines' 30 1)]
+      [(poNumber p, poColumn p, poSlots p, poRules p) | p <- ps]
+        @?= [ (1, 0, [(0, SLine 0), (1, SLine 1)], []),
+              (1, 0, [(2, SLine 10), (3, SLine 11)], []),
+              (1, 1, [(2, SLine 20), (3, SLine 21)], []),
+              (2, 0, [(0, SLine 22), (1, SLine 30)], [])
+            ],
+    testCase "keep-in-column = false at the start of columns that start mid-page: in the column, as keep-in-column = true (golem-driver ADR 0040)" $ do
       let outside = (spaced 5 10) {rsdOutside = Just (100 * 65536)}
           flows b = [FParagraph defaultKeep (lines' 0 2), FSwitchColumns (ColumnSet 2 0 0 0), ruled (Just b) Nothing (lines' 10 1)]
           inside = paginateIn 1 (ColumnSet 1 0 0 0) 10 (flows (spaced 5 10))
@@ -1063,6 +1123,105 @@ ruledTests =
       gridLines ps @?= [[0, 1, 2]]
       map poRules ps @?= [[PlacedRule 0 False (2 * 17 * 65536 + 10 * 65536 + 5 * 65536)]]
   ]
+
+{- | The grid of the boundary inputs of root ADR 0352: a pitch of 10 sp and
+an em box of 8 sp; a rule of 12 sp without spaces takes 1 grid line inside
+a column, 2 at its start or its end and 3 shared by two blocks.
+-}
+smallGrid :: RuleGrid
+smallGrid = RuleGrid 10 8
+
+{- | The rule of so many sp of a block of the small grid; the rules of the
+blocks of id 200 or more may go out of the column by 20 sp
+(keep-in-column = false).
+-}
+smallSide :: Sp -> Int -> RuleSide
+smallSide w i = RuleSide 0 0 w False (if i >= 200 then Just 20 else Nothing)
+
+-- | A block of the small grid: the weight of its rules, id, rule before, rule after, whether it joins the block before, body.
+smallRuled :: Sp -> Int -> Bool -> Bool -> Bool -> RuledBody -> Flow
+smallRuled w i b a j = FRuled i (smallSide w i <$ guardB b) (smallSide w i <$ guardB a) j smallGrid 0
+  where
+    guardB x = if x then Just () else Nothing
+
+{- | The rules of a page of the small grid that are not in its column: a
+rule of keep-in-column = true starts at or after the start of the column
+and its weight ends at or before the end of the em box of the last grid
+line above the lines of the notes of the page. A rule of keep-in-column =
+false may go 20 sp further out, but not into the notes.
+-}
+rulesOutOfColumn :: Sp -> Int -> PageOut -> [PlacedRule]
+rulesOutOfColumn w c p =
+  let noteLines = sum [n | (_, _, n) <- poFootnotes p]
+      end = fromIntegral (c - noteLines - 1) * 10 + 8
+      room r = if prId r >= 200 && noteLines == 0 then 20 else 0
+   in [r | r <- poRules p, prAt r < negate (room r) || prAt r + w > end + room r]
+
+{- | Golem-driver ADR 0027: two rules share an area only when the block
+after goes on in the same column (「隣り合う罫線」); otherwise the rule
+after is the first block's own, its block is not split and keeps the rule
+inside the column (keep-in-column = true), going whole to the next
+column, or broken without rules when an empty column cannot hold it
+(golem-driver ADR 0035). Root ADR 0352 I3: one column's placement keeps
+these rules for any capacity.
+-}
+joinedRuleTests :: [TestTree]
+joinedRuleTests =
+  [ testCase "I3: the boundary input of root ADR 0352: the first block that cannot share is broken without rules, not ruled out of the column" $ do
+      -- capacity 3: the first block alone takes 2 + 1 + 2 lines, more than an empty column
+      let ps = paginate 1 3 [smallRuled 12 100 True True True (RuledLines defaultKeep (lines' 0 1)), smallRuled 12 101 True True True (RuledLines defaultKeep (lines' 10 1)), FParagraph defaultKeep (lines' 20 1)]
+      concatMap (rulesOutOfColumn 12 3) ps @?= []
+      map poSlots ps @?= [[(0, SLine 0)], [(0, SLine 10), (1, SLine 20)]]
+      map poRules ps @?= [[], []],
+    testCase "I3: the first block whose own rule after does not fit the room goes whole to the next column" $ do
+      -- capacity 4, two lines before: the block of one line and its rule after at the end take 3 lines, 2 are left
+      let ps = paginate 1 4 [FParagraph defaultKeep (lines' 0 2), smallRuled 12 100 False True False (RuledLines defaultKeep (lines' 10 1)), smallRuled 12 101 True True True (RuledLines defaultKeep (lines' 20 1))]
+      concatMap (rulesOutOfColumn 12 4) ps @?= []
+      take 2 (map poSlots ps) @?= [[(0, SLine 0), (1, SLine 1)], [(0, SLine 10)]]
+      take 2 (map poRules ps) @?= [[], [PlacedRule 100 False 8]],
+    testCase "I3: the rules of two ruled blocks in a row lie in their columns and above the notes, joined or not" $
+      sequence_
+        [ assertBool (show (c, w, map showFlow flows, [(poNumber p, poRules p) | p <- ps])) (all (null . rulesOutOfColumn w c) ps)
+        | c <- [2 .. 6],
+          lead <- [[], [FParagraph defaultKeep (lines' 0 1)], [FParagraph defaultKeep (lines' 0 2)], [FParagraph defaultKeep [noted 0 1]], [FParagraph defaultKeep [noted 0 2, LineBox 1 [] [] [] 0]]],
+          b1 <- [False, True],
+          n <- [1 .. 3],
+          a2 <- [False, True],
+          second <- [RuledLines defaultKeep (lines' 20 1), RuledLines defaultKeep (lines' 20 2), RuledLines defaultKeep (lines' 20 3), RuledHeading False 1 (lines' 20 1)],
+          i <- [100, 200],
+          -- rule areas inside a column, at its start or end and shared: 0, 1, 1; 1, 2, 3; 2, 3, 5 grid lines
+          w <- [2, 12, 22],
+          third <- [[], [smallRuled w (i + 2) True True True (RuledLines defaultKeep (lines' 30 1))]],
+          k <- [1, 2],
+          let flows = lead <> [smallRuled w i b1 True False (RuledLines defaultKeep (lines' 10 n)), smallRuled w (i + 1) True a2 True second] <> third <> [FParagraph defaultKeep (lines' 40 k)]
+              ps = paginate 1 c flows
+        ],
+    testCase "I3: two blocks that fit one column still share one area" $ do
+      let ps = paginate 1 8 [smallRuled 12 100 False True False (RuledLines defaultKeep (lines' 0 1)), smallRuled 12 101 True False True (RuledLines defaultKeep (lines' 10 1))]
+      map poSlots ps @?= [[(0, SLine 0), (4, SLine 10)]]
+      map (map prId . poRules) ps @?= [[100, 101]],
+    testCase "root ADR 0449 I1: in the grid placement, a ruled paragraph or heading and the ruled paragraph or heading right after it in the same column share one area at the places of the shared formula" $
+      sequence_
+        [ assertBool (show (ad, [(poNumber p, poSlots p, poRules p) | p <- ps])) (gridShared ad ps /= Just False)
+        | ad <- adjacentCases,
+          not (adSpace ad),
+          let ps = paginate 1 (adCapacity ad) (adjacentGrid ad)
+        ],
+    testCase "root ADR 0449 I2: in the grid placement, the rules of two adjacent ruled blocks do not overlap" $
+      sequence_
+        [ assertBool (show (ad, [(poNumber p, poSlots p, poRules p) | p <- ps])) (all (null . rulesOverlap ad) ps)
+        | ad <- adjacentCases,
+          let ps = paginate 1 (adCapacity ad) (adjacentGrid ad)
+        ]
+  ]
+  where
+    showFlow = \case
+      FRuled {frId = i, frBefore = b, frAfter = a, frJoined = j, frBody = body} -> "R" <> show i <> ":" <> concatMap (\x -> if x then "1" else "0") [isJust b, isJust a, j] <> ":" <> either' body
+      FParagraph _ ls -> "P" <> show (map lbId ls) <> show (sum [m | l <- ls, NoteBody _ m <- lbNotes l])
+      _ -> "?"
+    either' = \case
+      RuledLines _ ls -> "L" <> show (length ls)
+      RuledHeading _ m _ -> "H" <> show m
 
 -- | The flows of n lines of each kind a heading keeps the first part of, numbered from 30.
 splittable :: Int -> [(String, Flow)]
@@ -1243,7 +1402,7 @@ given and a continued note of the lines given waiting, and a need.
 -}
 keepFrom :: Int -> Int -> [Int] -> Int -> Int -> (S.St, S.St)
 keepFrom cols c figs noteLen need =
-  let env = S.Env maxBound 1 (ColumnSet cols 0 0 0) c
+  let env = S.Env maxBound 1 (ColumnSet cols 0 0 0) KeepColumn Nothing c Set.empty noAvoid
       st0 = S.putLine env (S.initialState env) (LineBox 0 [] [] [] 0)
       st = st0 {S.sDeferred = [FFigure (1000 + j) n [] [] | (j, n) <- zip [0 ..] figs], S.sPendingNotes = [(nid 900, 0, noteLen) | noteLen > 0]}
    in (st, S.keep env st (const need))
@@ -1263,7 +1422,7 @@ keepTests =
           noteLen <- [0 .. 2],
           need <- [1 .. c + 1],
           let (st, r) = keepFrom cols c figs noteLen need
-              env = S.Env maxBound 1 (ColumnSet cols 0 0 0) c
+              env = S.Env maxBound 1 (ColumnSet cols 0 0 0) KeepColumn Nothing c Set.empty noAvoid
               fitsOrEmpty = need <= S.free env r || S.isEmpty r
               advanced = (S.sPage r - S.sPage st) * cols + S.sColumn r - S.sColumn st
         ],
@@ -1812,3 +1971,263 @@ spaceBeforeWaitingTests =
         <> (show k <> " column" <> (if k > 1 then "s, " else ", "))
         <> (show w <> " figures of " <> show h <> " lines waiting between " <> show s <> " spaces and need-lines 2, ")
         <> (show r <> " grid lines left before the spaces")
+
+{- | The index columns on the page of the switch end before the footnotes
+of the column before it, @page-lines or not: at
+min(the lines of the type area, the lines of that column − the lines of
+its footnotes) (root ADR 0441).
+-}
+indexOnAdjustedPageTests :: [TestTree]
+indexOnAdjustedPageTests =
+  [ testCase "root ADR 0441 I1, I2: page-lines -3, two lines and a note of two, the index takes lines 2 and 3 only" $ do
+      let ps = switchPage (-3) 2 2
+      indexRows 1 ps @?= [2, 3, 2, 3]
+      length (indexRows 2 ps) @?= 8,
+    testCase "root ADR 0441 I2: page-lines -3, two lines and no note, the index takes lines 2 to 6" $
+      indexRows 1 (switchPage (-3) 2 0) @?= [2 .. 6] <> [2 .. 6],
+    testCase "root ADR 0441 I1, I2: page-lines -3, three lines and a note of two, the index takes line 3 only" $
+      indexRows 1 (switchPage (-3) 3 2) @?= [3, 3],
+    testCase "root ADR 0441 I3: page-lines -3, four lines and a note of two leave no line, the index starts on the next page" $ do
+      let ps = switchPage (-3) 4 2
+      indexRows 1 ps @?= []
+      take 2 (indexRows 2 ps) @?= [0, 1],
+    testCase "root ADR 0441 I3: page-lines -3, five lines and a note of two, the index starts on the next page" $
+      indexRows 1 (switchPage (-3) 5 2) @?= [],
+    testCase "root ADR 0441 I1, I2: page-lines +3, two lines and a note of two, the index takes lines 2 to 9 above the note" $ do
+      let ps = switchPage 3 2 2
+      indexRows 1 ps @?= [2 .. 9] <> [2 .. 5]
+      [(poLines p, noteRows p) | p <- take 1 ps] @?= [(13, [10, 11, 12])],
+    testCase "root ADR 0441 I1, I4: no page-lines, two lines and a note of two, the index takes lines 2 to 6 as before" $
+      indexRows 1 (switchPage 0 2 2) @?= [2 .. 6] <> [2 .. 6],
+    testCase "root ADR 0441 I1, I2, I3: whatever the page-lines, the lines and the note, the index on the page of the switch ends before the note and the type area" $
+      forM_ [(k, n, m) | k <- [-4 .. 4], n <- [1 .. 7], m <- [0 .. 3]] $ \(k, n, m) -> do
+        let ps = switchPage k n m
+        case [p | p <- ps, poNumber p == 1, csColumns (poColumnSet p) == 1] of
+          body : _ -> do
+            let end = min 10 (poLines body - length (noteRows body))
+                used = 1 + maximum (0 : map fst (lineRows body))
+                rows = indexRows 1 ps
+                what = show (k, n, m, end, rows)
+            assertBool ("I2 " <> what) (all (< end) rows)
+            assertBool ("I1 " <> what) (all (`notElem` noteRows body) rows)
+            when (used >= end) $ assertBool ("I3 " <> what) (null rows)
+          [] -> assertFailure "no column of the body on page 1"
+  ]
+  where
+    index2 = ColumnSet 2 (15 * 65536) (2 * 65536) 0
+    entries base n = [FParagraph defaultKeep [LineBox (base + i) [] [] [] 0] | i <- [0 .. n - 1]]
+    -- a page of 10 lines and a separator of 1: page-lines k, a paragraph of n lines whose first has a note of m lines, then 12 entries in two columns
+    switchPage k n m =
+      let first = if m > 0 then noted 0 m else LineBox 0 [] [] [] 0
+          adjust = [FAdjustLines mk k | k /= 0]
+       in paginate 1 10 (adjust <> [FParagraph defaultKeep (first : lines' 1 (n - 1)), FSwitchColumns index2] <> entries 100 12 <> [FRestoreColumns])
+    lineRows p = [(l, i) | (l, SLine i) <- poSlots p]
+    -- the grid lines of the entries on a page, column by column
+    indexRows page ps = [l | p <- ps, poNumber p == page, (l, i) <- lineRows p, i >= 100]
+    -- the grid lines of the separator and the notes of a column, at the end of its lines
+    noteRows p =
+      let k = sum [n | (_, _, n) <- poFootnotes p]
+       in if k == 0 then [] else [poLines p - k - 1 .. poLines p - 1]
+
+{- | On the grid, a wrapped figure fits the column when the larger of its
+lines and its side lines, the lines of the notes of its side lines and
+the separator, if they are the first notes of the column, fit; otherwise
+the figure and its side lines go to the next column together (root ADR
+0443).
+-}
+wrappedFitNoteTests :: [TestTree]
+wrappedFitNoteTests =
+  [ testCase "root ADR 0443 I2: a figure of 2, 5 side lines and a note of 5 do not fit 8 lines left and go to the next page" $
+      placesOf (wrappedAfter 8 2 5 5) @?= [(2, 1), (2, 10), (2, 11), (2, 12), (2, 13), (2, 14)],
+    testCase "root ADR 0443 I1: with exactly 11 lines left, the figure, its side lines and their note stay" $
+      placesOf (wrappedAfter 5 2 5 5) @?= [(1, 1), (1, 10), (1, 11), (1, 12), (1, 13), (1, 14)],
+    testCase "root ADR 0443 I2: with 10 lines left, they go to the next page" $
+      placesOf (wrappedAfter 6 2 5 5) @?= [(2, 1), (2, 10), (2, 11), (2, 12), (2, 13), (2, 14)],
+    testCase "root ADR 0443 I1: with 10 lines left and a note already in the column, no separator is counted and they stay" $
+      -- four lines, the first with a note of one: 4 + separator 1 + note 1 = 6 used, 10 left
+      placesOf (paginate 1 16 [FParagraph defaultKeep (LineBox 0 [NoteBody (nid 800) 1] [] [] 0 : lines' 1 3), wrapped 2 5 5])
+        @?= [(1, 1), (1, 10), (1, 11), (1, 12), (1, 13), (1, 14)],
+    testCase "root ADR 0443 I2: a figure of 10 with 2 side lines and a note of 5 do not fit 11 lines left" $
+      placesOf (wrappedAfter 5 10 2 5) @?= [(2, 1), (2, 10), (2, 11)],
+    testCase "root ADR 0443 I2: a heading before such a figure goes to the next page with it" $ do
+      let ps = paginate 1 16 [FParagraph defaultKeep (lines' 0 7), FHeading 2 False 1 (lines' 20 1), wrapped 2 5 5]
+      [poNumber p | p <- ps, (_, SHeading 20 _) <- poSlots p] @?= [2]
+      placesOf ps @?= [(2, 1), (2, 10), (2, 11), (2, 12), (2, 13), (2, 14)],
+    testCase "root ADR 0443 I4: with a note of 20, the figure and its side lines take the next page from its top, and the side lines that do not fit go on" $ do
+      let ps = wrappedAfter 8 2 5 20
+      take 2 (placesOf ps) @?= [(2, 1), (2, 10)]
+      [(poNumber p, at) | p <- ps, (at, SWrapped 1) <- poSlots p] @?= [(2, 0)],
+    testCase "root ADR 0443 I3: side lines without notes fit as before" $
+      placesOf (wrappedAfter 11 2 5 0) @?= [(1, 1), (1, 10), (1, 11), (1, 12), (1, 13), (1, 14)],
+    testCase "root ADR 0443 I1, I2, I4: whatever the lines left, the figure, the side lines and the note, the figure and its side lines part only when they exceed a column" $
+      forM_ [(used, n, k, m) | used <- [0 .. 15], n <- [1 .. 6], k <- [1 .. 5], m <- [0 .. 6]] $ \(used, n, k, m) -> do
+        let need = max n k + m + (if m > 0 then 1 else 0)
+            places = placesOf (wrappedAfter used n k m)
+            pages = map fst places
+            what = show (used, n, k, m, places)
+        when (need <= 16 - used) $ assertBool ("I1 " <> what) (all (== 1) pages)
+        when (need > 16 - used && need <= 16 && used > 0) $ assertBool ("I2 " <> what) (all (== 2) pages)
+        when (need <= 16) $ assertBool ("I4 " <> what) (and (zipWith (==) pages (drop 1 pages)))
+  ]
+  where
+    -- a figure of n lines whose k side lines from 10 have a note of m lines on the first
+    wrapped n k m =
+      let first = if m > 0 then LineBox 10 [NoteBody (nid 900) m] [] [] 0 else LineBox 10 [] [] [] 0
+       in FWrapped 1 n [] [] (first : lines' 11 (k - 1))
+    -- on a page of 16 lines, that figure after a paragraph of used lines
+    wrappedAfter used n k m = paginate 1 16 ([FParagraph defaultKeep (lines' 100 used) | used > 0] <> [wrapped n k m])
+    -- the page of the figure and of each side line
+    placesOf ps = [(poNumber p, i) | p <- ps, (_, s) <- poSlots p, i <- case s of SWrapped 1 -> [1]; SLine j | j >= 10 && j < 20 -> [j]; _ -> []]
+
+{- | The footnotes keep the order written while one continues: when
+@page-lines lengthens a column whose note continues, the continued note
+takes the room first (root ADR 0444).
+-}
+continuedNoteOrderTests :: [TestTree]
+continuedNoteOrderTests =
+  [ testCase "root ADR 0444 I1: page-lines +2 puts the last 2 lines of note 500 on page 1, and line 10 with note 510 on page 2" $ do
+      let ps = continuedPages (2, 5, Just 1, 0)
+      notePartsOf ps @?= [(1, nid 500, 0, 5), (2, nid 510, 0, 1)]
+      pageOfLine 10 ps @?= [2],
+    testCase "root ADR 0444 I1, I2: page-lines +1 puts one more line of note 500 on page 1; the rest and note 510 after it on page 2" $ do
+      let ps = continuedPages (1, 5, Just 1, 0)
+      notePartsOf ps @?= [(1, nid 500, 0, 4), (2, nid 500, 4, 1), (2, nid 510, 0, 1)]
+      pageOfLine 10 ps @?= [2],
+    testCase "root ADR 0444 I1: page-lines +3 leaves one line, too few for line 10 and note 510" $ do
+      let ps = continuedPages (3, 5, Just 1, 0)
+      pageOfLine 10 ps @?= [2]
+      notePartsOf ps @?= [(1, nid 500, 0, 5), (2, nid 510, 0, 1)],
+    testCase "root ADR 0444 I1: page-lines +4 leaves exactly the two lines of line 10 and note 510 after note 500" $ do
+      let ps = continuedPages (4, 5, Just 1, 0)
+      pageOfLine 10 ps @?= [1]
+      notePartsOf ps @?= [(1, nid 500, 0, 5), (1, nid 510, 0, 1)],
+    testCase "root ADR 0444 I1, I4: page-lines +3 and line 10 without a note: line 10 stays on page 1" $
+      pageOfLine 10 (continuedPages (3, 5, Nothing, 0)) @?= [1],
+    testCase "root ADR 0444 I2, I4: page-lines +1 then a paragraph of 2 lines without notes: the paragraph starts on page 2" $ do
+      let ps = continuedPages (1, 5, Nothing, 2)
+      pageOfLine 20 ps @?= [2]
+      pageOfLine 21 ps @?= [2],
+    testCase "root ADR 0444 I1, I2, I4: whatever the page-lines and the notes, the notes keep the order written, a note that goes on leaves no room, and every line is placed once in order" $
+      forM_ continuedInputs $ \(k, len, second, more) -> do
+        let ps = continuedPages (k, len, second, more)
+            parts = notePartsOf ps
+            what = show (k, len, second, more, parts, map poSlots ps)
+            order = [i | (_, i, _, _) <- parts]
+        -- I1: no part of note 510 before a part of note 500
+        assertBool ("I1 " <> what) (nid 500 `notElem` dropWhile (/= nid 510) order)
+        -- I2: a page whose note goes on to the next has no room left
+        forM_ ps $ \p ->
+          when (any (\(q, i, _, _) -> q == poNumber p + 1 && i `elem` [i' | (i', _, _) <- poFootnotes p]) parts && poNumber p == 1) $
+            assertBool ("I2 " <> what) (poLines p - length (poSlots p) - noteLinesOn p == 0)
+        -- I4: every line once, in order
+        [i | p <- ps, (_, SLine i) <- poSlots p] @?= [0, 10] <> take more [20 ..]
+  ]
+  where
+    notePartsOf ps = [(poNumber p, i, from, n) | p <- ps, (i, from, n) <- poFootnotes p]
+    pageOfLine j ps = [poNumber p | p <- ps, (_, SLine i) <- poSlots p, i == j]
+    noteLinesOn p = let n = sum [c | (_, _, c) <- poFootnotes p] in if n == 0 then 0 else n + 1
+
+-- | The inputs of 'continuedNoteOrderTests' enumerated: page-lines, the lines of note 500, the note of line 10 and the lines after.
+continuedInputs :: [(Int, Int, Maybe Int, Int)]
+continuedInputs = [(k, len, second, more) | k <- [0 .. 5], len <- [1 .. 8], second <- [Nothing, Just 1, Just 2], more <- [0 .. 2]]
+
+-- | The pages of an input of 'continuedInputs' (root ADR 0444).
+continuedPages :: (Int, Int, Maybe Int, Int) -> [PageOut]
+continuedPages (k, len, second, more) =
+  paginateWithin 9 1 (ColumnSet 1 0 0 0) 5 $
+    [FParagraph defaultKeep [LineBox 0 [NoteBody (nid 500) len] [] [] 0]]
+      <> [FAdjustLines mk k | k /= 0]
+      <> [FParagraph defaultKeep [LineBox 10 [NoteBody (nid 510) n | Just n <- [second]] [] [] 0]]
+      <> [FParagraph defaultKeep (lines' 20 more) | more > 0]
+
+-- | Whether a note of the pages is placed in two or more parts.
+splitsNote :: [PageOut] -> Bool
+splitsNote ps = let ids = [i | p <- ps, (i, _, _) <- poFootnotes p] in length ids /= length (Set.fromList ids)
+
+-- | The slots and the footnotes of each page, as the golden records them.
+pagesText :: [PageOut] -> String
+pagesText ps = show [(poNumber p, poSlots p, poFootnotes p) | p <- ps]
+
+{- | root ADR 0444 I3: test/golden/continued-notes.tsv holds, for every
+input of 'continuedInputs', whether the pages before root ADR 0444 split
+a note and those pages; an input whose note was not split is laid out as
+before.
+-}
+continuedGoldenTest :: TestTree
+continuedGoldenTest =
+  testCase "root ADR 0444 I3: an input whose notes were not split before is laid out as before (test/golden/continued-notes.tsv)" $ do
+    golden <- lines <$> readFile "test/golden/continued-notes.tsv"
+    length golden @?= length continuedInputs
+    forM_ golden $ \row -> case splitOn '\t' row of
+      [input, "0", before] -> do
+        assertBool ("split " <> input) (not (splitsNote (continuedPages (read input))))
+        pagesText (continuedPages (read input)) @?= before
+      [_, "1", _] -> pure ()
+      _ -> assertFailure ("a malformed row: " <> row)
+  where
+    splitOn c s = case break (== c) s of
+      (a, []) -> [a]
+      (a, _ : rest) -> a : splitOn c rest
+
+{- | root ADR 0444 I1 and I4 when the note goes on from the inside of a
+box: the end of a box gives back the grid lines kept for after it, which
+the next line uses, so the note that goes on keeps its place. A last part
+of a box with no text line (a code row, a wrapped figure without side
+lines) takes no grid lines after it, so the continued note takes the
+room given back first.
+-}
+continuedBoxNoteTests :: [TestTree]
+continuedBoxNoteTests =
+  [ testCase "root ADR 0444 I1, I4: a note going on from a box, whatever the page-lines and its grid lines before and after, comes before the next note, and every line is placed once in order" $
+      forM_ [(k, before', after', len, second) | k <- [0 .. 3], before' <- [0, 1], after' <- [0, 1], len <- [1 .. 7], second <- [Nothing, Just 1, Just 2]] $ \(k, before', after', len, second) -> do
+        let ps =
+              paginateWithin 9 1 (ColumnSet 1 0 0 0) 5 $
+                [FBoxed 1 before' after' [FParagraph defaultKeep [LineBox 0 [NoteBody (nid 500) len] [] [] 0]]]
+                  <> [FAdjustLines mk k | k /= 0]
+                  <> [FParagraph defaultKeep [LineBox 10 [NoteBody (nid 510) n | Just n <- [second]] [] [] 0]]
+            order = [i | p <- ps, (i, _, _) <- poFootnotes p]
+            what = show (k, before', after', len, second, [(poNumber p, poSlots p, poFootnotes p) | p <- ps])
+        assertBool ("I1 " <> what) (nid 500 `notElem` dropWhile (/= nid 510) order)
+        assertEqual ("I4 " <> what) [0, 10] [i | p <- ps, (_, SLine i) <- poSlots p],
+    testCase "root ADR 0444 I1: a box whose last part is a code row and no text line: the rest of note 500 comes before note 520" $ do
+      let ps = lineLessEnd (FCode plainCode 0 1 False (lines' 10 1))
+      notesIn ps @?= [(1, nid 500, 0, 1), (2, nid 500, 1, 2), (3, nid 520, 0, 1)]
+      contents ps @?= [[SLine 0], [SCode 10 1 1], [SLine 20, SLine 30, SLine 31]],
+    testCase "root ADR 0444 I1: a box whose last part is a wrapped figure without side lines: the rest of note 500 comes before note 520" $ do
+      let ps = lineLessEnd (FWrapped 1 1 [] [] [])
+      notesIn ps @?= [(1, nid 500, 0, 1), (2, nid 500, 1, 2), (3, nid 520, 0, 1)]
+      contents ps @?= [[SLine 0], [SWrapped 1], [SLine 20, SLine 30, SLine 31]],
+    testCase "root ADR 0444 I1, I4: a box whose last part has no text line, whatever the column, its grid lines, its last flow and the notes, keeps the notes in the order written, and every line is placed once in order" $
+      forM_ lineLessInputs $ \input@(c, _, _, _, end, _, more) -> do
+        let ps = paginate 1 c (lineLessFlows input)
+            order = [i | (_, i, _, _) <- notesIn ps]
+            what = show (input, [(poNumber p, poSlots p, poFootnotes p) | p <- ps])
+        assertBool ("I1 " <> what) (and (zipWith (\a b -> rank a <= rank b) order (drop 1 order)))
+        assertEqual ("I4 " <> what) ([0] <> [10 | end == 3] <> [20] <> take more [30 ..]) [i | p <- ps, (_, SLine i) <- poSlots p]
+  ]
+  where
+    notesIn ps = [(poNumber p, i, from, n) | p <- ps, (i, from, n) <- poFootnotes p]
+    rank i = length (takeWhile (/= i) [nid 500, nid 520])
+    plainCode = CodeGeometry 10 10 10 10 0
+    -- the counterexample of the Lean model of root ADR 0352: capacity 5, a box of 2 grid lines after
+    lineLessEnd end =
+      paginate
+        1
+        5
+        [ FBoxed 100 0 2 [FParagraph defaultKeep [LineBox 0 [NoteBody (nid 500) 3] [] [] 0], end],
+          FParagraph defaultKeep [LineBox 20 [NoteBody (nid 520) 1] [] [] 0],
+          FParagraph defaultKeep (lines' 30 2)
+        ]
+    -- column, grid lines before and after the box, lines of note 500, the last flow of the box, the note of line 20, lines after
+    lineLessInputs = [(c, kb, ka, len, end, second, more) | c <- [4 .. 7], kb <- [0, 1], ka <- [1, 2], len <- [1 .. 6], end <- [0 .. 3 :: Int], second <- [Nothing, Just 1, Just 2], more <- [0, 2]]
+    lineLessFlows (_, kb, ka, len, end, second, more) =
+      [ FBoxed 100 kb ka [FParagraph defaultKeep [LineBox 0 [NoteBody (nid 500) len] [] [] 0], lastOf end],
+        FParagraph defaultKeep [LineBox 20 [NoteBody (nid 520) n | Just n <- [second]] [] [] 0]
+      ]
+        <> [FParagraph defaultKeep (lines' 30 more) | more > 0]
+    -- a code row, two code rows, a wrapped figure without side lines, or a text line
+    lastOf = \case
+      0 -> FCode plainCode 0 1 False (lines' 10 1)
+      1 -> FCode plainCode 0 1 False (lines' 10 2)
+      2 -> FWrapped 1 1 [] [] []
+      _ -> FParagraph defaultKeep (lines' 10 1)

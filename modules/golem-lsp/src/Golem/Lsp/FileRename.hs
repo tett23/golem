@@ -21,6 +21,7 @@ import Golem.Emet.Syntax (Decl (DImport), Loc (..), Module (..))
 import Golem.Emet.Syntax qualified as E
 import Golem.Parser (parseAst)
 import Golem.Parser.AST qualified as A
+import Golem.Project.Imports (ImportSite (..), importSite)
 import Golem.Project.Manifest (positionSpan, readTomlTable)
 import Golem.Project.Paths (normalizeRelative)
 import Golem.Syntax (Diagnostic (..), FileId (..), Severity (Error), SrcSpan (..))
@@ -97,12 +98,14 @@ planImportsWith strict rewrite source = do
       raw sp = TE.decodeUtf8 (BS.take (spanEnd sp - spanStart sp) (BS.drop (spanStart sp) bytes))
       sites (A.Located _ (A.BlockCommand (A.Located _ name) args body)) = commandSites name args <> concatMap sites body
       sites (A.Located _ (A.Attributed commands inner)) = concatMap sites commands <> maybe [] sites inner
+      sites (A.Located _ (A.Fenced inner)) = concatMap sites inner
       sites (A.Located _ (A.BulletList items)) = concatMap (concatMap sites) items
       sites (A.Located _ (A.OrderedList items)) = concatMap (concatMap sites) items
       sites (A.Located _ (A.DefList groups)) = concatMap (concatMap (concatMap sites) . A.dgDefs) groups
       sites _ = []
       commandSites name args = case (name, args) of
-        ("import", arg : _) -> [(A.locSpan arg, path) | Just path <- [importPath (map A.locValue args)]]
+        -- both forms of @import (root ADR 0451)
+        ("import", arg : _) -> [(A.locSpan arg, isPath site) | Right site <- [importSite (A.locSpan arg) args]]
         ("figure", _) -> take 1 (mapMaybe positional args) <> mapMaybe (keyword "web") args
         ("table", _) -> take 1 (mapMaybe positional args) <> mapMaybe (keyword "src") args
         ("listing", _) -> take 1 (mapMaybe positional args) <> mapMaybe (keyword "src") args
@@ -135,9 +138,6 @@ planImportsWith strict rewrite source = do
       )
   where
     bareChar c = isAlphaNum c || c `elem` ("./_-" :: String)
-    importPath [A.Positional (A.Word path), A.Positional (A.Word "as"), A.Positional (A.Word _)] = Just path
-    importPath [A.Positional (A.StringLit path), A.Positional (A.Word "as"), A.Positional (A.Word _)] = Just path
-    importPath _ = Nothing
     literal (A.Word path) = Just path
     literal (A.StringLit path) = Just path
     literal _ = Nothing

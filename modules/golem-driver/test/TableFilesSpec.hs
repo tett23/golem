@@ -56,7 +56,7 @@ tableFileTests =
   testGroup
     "table files (golem-eval ADR 0004)"
     [ -- docs/adr/0184
-      testCase "ADR 0343 I1 I2: assetRefs collects only a valid positional table path" $
+      testCase "ADR 0343 I1, I2: assetRefs collects only a valid positional table path" $
         withTables [("a.gm", "@table data/t.csv\n\n@table src=data/u.csv\n\n@table data/v.csv src=data/u.csv\n\n@table data/v.csv data/v.csv\n\n@table data/v.csv [= \"data/u.csv\"]\n")] [("data/t.csv", "a\n"), ("data/u.csv", "a\n"), ("data/v.csv", "a\n")] $ \tmp -> do
           e <- evaluateProject Dev tmp >>= either (const (assertFailure "the project does not load")) pure
           [r | sf <- Map.elems (projectSources (evProject e)), sfPath sf == "a.gm", r <- assetRefs (sfAst sf)]
@@ -142,7 +142,7 @@ tableFileTests =
       testCase "align=right reaches HTML, and the PDF sets it as a | table with ---:" $ do
         written <- withTables [("a.gm", "@table data/x.csv align=right\n")] [("data/x.csv", TE.encodeUtf8 "項目,値\n幅,10\n")] $ \tmp -> do
           r <- build (defaultOptions tmp) {optTargets = Just [TargetHtml]}
-          mapM (fmap TE.decodeUtf8 . BS.readFile) (filter (".xhtml" `isSuffixOf`) (brWritten r))
+          mapM (fmap TE.decodeUtf8 . BS.readFile) (filter (".html" `isSuffixOf`) (brWritten r))
         assertBool "align-right" (any ("class=\"align-right\"" `T.isInfixOf`) written)
         fromCsv <- miniPdf fakeProvider True horizontalStyle "@table data.csv align=right\n" [("data.csv", TE.encodeUtf8 "項目,値\n幅,10\n")] >>= fmap BS.concat . inflateAll
         fromBars <- miniPdf fakeProvider True horizontalStyle "| 項目 | 値 |\n|---:|---:|\n| 幅 | 10 |\n" [] >>= fmap BS.concat . inflateAll
@@ -240,7 +240,7 @@ cellLimitTests =
       [] -> ""
       h : rest -> TE.encodeUtf8 (T.concat (bar h : T.concat ["|", T.replicate h "---|", "\n"] : map bar rest))
     bar n = "| " <> T.intercalate " | " (replicate n "x") <> " |\n"
-    fromEmet name = "@import functions/book.emet as book\n\n@book." <> name <> "\n"
+    fromEmet name = "@import functions/book.emet * as book\n\n@book." <> name <> "\n"
     -- tables of Emet of 9,091 rows of 11 cells (N + 1)
     emetFile =
       ( "functions/book.emet",

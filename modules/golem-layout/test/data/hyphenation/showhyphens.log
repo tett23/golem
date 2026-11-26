@@ -1,0 +1,154 @@
+This is LuaHBTeX, Version 1.24.0 (TeX Live 2026)  (format=lualatex 2026.11.1)  25 NOV 2026 22:04
+ restricted system commands enabled.
+**showhyphens.tex
+(./showhyphens.tex
+LaTeX2e <2026-11-01>
+L3 programming layer <2026-09-09>
+Lua module: luaotfload 2024-12-03 v3.29 Lua based OpenType font support
+Lua module: lualibs 2023-07-13 v2.76 ConTeXt Lua standard libraries.
+Lua module: lualibs-extended 2023-07-13 v2.76 ConTeXt Lua libraries -- extended collection.
+luaotfload | conf : Root cache directory is "/usr/local/texlive/2026/texmf-var/luatex-cache/generic/names".
+luaotfload | init : Loading fontloader "fontloader-2023-12-28.lua" from kpse-resolved path "/usr/local/texlive/2026/texmf-dist/tex/luatex/luaotfload/fontloader-2023-12-28.lua".
+Lua-only attribute luaotfload@noligature = 1
+luaotfload | init : Context OpenType loader version 3.134
+Inserting `luaotfload.node_processor' in `pre_linebreak_filter'.
+Inserting `luaotfload.node_processor' in `hpack_filter'.
+Inserting `luaotfload.glyph_stream' in `glyph_stream_provider'.
+Inserting `luaotfload.define_font' in `define_font'.
+Lua-only attribute luaotfload_color_attribute = 2
+luaotfload | conf : Root cache directory is "/usr/local/texlive/2026/texmf-var/luatex-cache/generic/names".
+Inserting `luaotfload.harf.strip_prefix' in `find_opentype_file'.
+Inserting `luaotfload.harf.strip_prefix' in `find_truetype_file'.
+Removing  `luaotfload.glyph_stream' from `glyph_stream_provider'.
+Inserting `luaotfload.harf.glyphstream' in `glyph_stream_provider'.
+Inserting `luaotfload.harf.finalize_vlist' in `post_linebreak_filter'.
+Inserting `luaotfload.harf.finalize_hlist' in `hpack_filter'.
+Inserting `luaotfload.cleanup_files' in `wrapup_run'.
+Inserting `luaotfload.harf.finalize_unicode' in `finish_pdffile'.
+Inserting `luaotfload.glyphinfo' in `glyph_info'.
+Lua-only attribute luaotfload.letterspace_done = 3
+Inserting `luaotfload.aux.set_sscale_dimens' in `luaotfload.patch_font'.
+Inserting `luaotfload.aux.set_font_index' in `luaotfload.patch_font'.
+Inserting `luaotfload.aux.patch_cambria_domh' in `luaotfload.patch_font'.
+Inserting `luaotfload.aux.fixup_fontdata' in `luaotfload.patch_font_unsafe'.
+Inserting `luaotfload.aux.set_capheight' in `luaotfload.patch_font'.
+Inserting `luaotfload.aux.set_xheight' in `luaotfload.patch_font'.
+Inserting `luaotfload.rewrite_fontname' in `luaotfload.patch_font'.
+Inserting `tracingstacklevels' in `input_level_string'. (/usr/local/texlive/2026/texmf-dist/tex/latex/base/article.cls
+Document Class: article 2026-06-04 v1.4n Standard LaTeX document class
+(/usr/local/texlive/2026/texmf-dist/tex/latex/base/size10.clo
+File: size10.clo 2026-06-04 v1.4n Standard LaTeX file (size option)
+luaotfload | db : Font names database loaded from /usr/local/texlive/2026/texmf-var/luatex-cache/generic/names/luaotfload-names.luc.gz)
+\c@part=\count274
+\c@section=\count275
+\c@subsection=\count276
+\c@subsubsection=\count277
+\c@paragraph=\count278
+\c@subparagraph=\count279
+\c@figure=\count280
+\c@table=\count281
+\abovecaptionskip=\skip49
+\belowcaptionskip=\skip50
+\bibindent=\dimen149
+) (/usr/local/texlive/2026/texmf-dist/tex/latex/l3kernel/l3backend-luatex.def
+File: l3backend-luatex.def 2026-09-09 L3 backend support: PDF output (LuaTeX)
+\l__color_backend_stack_int=\count282
+Inserting `l3color' in `luaotfload.parse_color'.)
+No file showhyphens.aux.
+
+\openout1 = showhyphens.aux
+LaTeX Font Info:    Checking defaults for OML/cmm/m/it on input line 6.
+LaTeX Font Info:    ... okay on input line 6.
+LaTeX Font Info:    Checking defaults for OMS/cmsy/m/n on input line 6.
+LaTeX Font Info:    ... okay on input line 6.
+LaTeX Font Info:    Checking defaults for OT1/cmr/m/n on input line 6.
+LaTeX Font Info:    ... okay on input line 6.
+LaTeX Font Info:    Checking defaults for T1/cmr/m/n on input line 6.
+LaTeX Font Info:    ... okay on input line 6.
+LaTeX Font Info:    Checking defaults for TS1/cmr/m/n on input line 6.
+LaTeX Font Info:    ... okay on input line 6.
+LaTeX Font Info:    Checking defaults for TU/lmr/m/n on input line 6.
+LaTeX Font Info:    ... okay on input line 6.
+LaTeX Font Info:    Checking defaults for OMX/cmex/m/n on input line 6.
+LaTeX Font Info:    ... okay on input line 6.
+LaTeX Font Info:    Checking defaults for U/cmr/m/n on input line 6.
+LaTeX Font Info:    ... okay on input line 6.
+GOLEM-LANG enus
+
+Underfull \hbox (badness 10000) in paragraph at lines 14--14
+[] \TU/lmr/m/n/10 hy-phen-ation type-set-ting al-go-rithm
+
+\hbox(6.94+2.06)x16383.99998, glue set 3246.09326, direction TLT []
+
+GOLEM-LANG engb
+
+Underfull \hbox (badness 10000) in paragraph at lines 15--15
+[] \TU/lmr/m/n/10 table tables hy-phen-a-tion ty-po-graphy char-ac-ter pro-gram-ming or-gan-isa-tion in-de-pend-ent
+
+\hbox(6.94+2.06)x16383.99998, glue set 1200.14673, direction TLT []
+
+GOLEM-LANG fr
+
+Underfull \hbox (badness 10000) in paragraph at lines 16--16
+[] \TU/lmr/m/n/10 pa-pa pomme pro-verbe ty-po-gra-phie dic-tion-naire ma-nus-crit im-pri-me-rie élé-men-taire connais-sance bon-jour
+
+\hbox(6.98+2.06)x16383.99998, glue set 955.6399, direction TLT []
+
+GOLEM-LANG de1996
+
+Underfull \hbox (badness 10000) in paragraph at lines 17--17
+[] \TU/lmr/m/n/10 na-se na-sen sil-ben-tren-nung buch-dru-cker-kunst stra-ße mög-lich-keit über-set-zung wör-ter-buch
+
+\hbox(7.05+2.06)x16383.99998, glue set 1199.67224, direction TLT []
+
+GOLEM-LANG es
+
+Underfull \hbox (badness 10000) in paragraph at lines 18--18
+[] \TU/lmr/m/n/10 ca-sa pe-rro ti-po-gra-fía dic-cio-na-rio es-pa-ñol im-pren-ta compu-tado-ra pe-que-ño
+
+\hbox(7.05+2.06)x16383.99998, glue set 1204.69482, direction TLT []
+
+GOLEM-LANG it
+
+Underfull \hbox (badness 10000) in paragraph at lines 19--19
+[] \TU/lmr/m/n/10 me-la gat-to ti-po-gra-fia di-zio-na-rio stam-pa-to-re ita-lia-no mac-chi-na gnoc-chi
+
+\hbox(7.05+2.06)x16383.99998, glue set 1205.62427, direction TLT []
+
+GOLEM-LANG pt
+
+Underfull \hbox (badness 10000) in paragraph at lines 20--20
+[] \TU/lmr/m/n/10 ca-sas ca-sais ti-po-gra-fia di-ci-o-ná-rio por-tu-guês com-pu-ta-dor im-pres-são bi-bli-o-teca
+
+\hbox(7.05+2.06)x16383.99998, glue set 1203.42676, direction TLT []
+
+GOLEM-LANG nl
+
+Underfull \hbox (badness 10000) in paragraph at lines 21--21
+[] \TU/lmr/m/n/10 boek boe-ken woor-den-boek boek-druk-kunst af-breek-pa-tro-nen ne-der-lands ty-po-gra-fie zie-ken-huis
+
+\hbox(7.05+2.06)x16383.99998, glue set 1198.432, direction TLT []
+
+(./showhyphens.aux)
+ ***********
+LaTeX2e <2026-11-01>
+L3 programming layer <2026-09-09>
+ ***********
+)
+
+Here is how much of LuaTeX's memory you used:
+ 449 strings out of 475522
+ 100000,662416 words of node,token memory allocated
+ 1459 words of node memory still in use:
+   5 hlist, 2 vlist, 1 rule, 16 disc, 1 local_par, 12 glue, 19 kern, 1 penalty, 97 glyph, 8 attribute, 48 glue_spec, 8 attribute_list, 2 write nodes
+   avail lists: 2:7,3:1,4:1,5:8,6:1,7:112,9:1,11:19
+ 23531 multiletter control sequences out of 65536+600000
+ 15 fonts using 723367 bytes
+ 35i,1n,37p,157b,47s stack positions out of 10000i,1000n,20000p,200000b,200000s
+
+warning  (pdf backend): no pages of output.
+
+PDF statistics: 0 PDF objects out of 1000 (max. 8388607)
+ 0 named destinations out of 1000 (max. 1048576)
+ 1 words of extra memory for PDF output out of 10000 (max. 100000000)
+

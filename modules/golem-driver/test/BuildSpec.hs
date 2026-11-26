@@ -34,7 +34,7 @@ import Golem.TestSupport.Env (envFlag)
 import Golem.TestSupport.Skipped (Skips, countSkipped)
 import Golem.Typeset (CodeInfo (..), PartLine (..), PdfLayout (..), instanceIdInputs, numberedTitle, producer, runningHeadLines)
 import Support
-import System.Directory (copyFile, createDirectoryIfMissing, doesDirectoryExist, listDirectory)
+import System.Directory (copyFile, createDirectoryIfMissing, createFileLink, doesDirectoryExist, listDirectory)
 import System.FilePath ((</>))
 import System.IO.Temp (withSystemTempDirectory)
 import Test.Tasty
@@ -91,22 +91,22 @@ buildTests :: [TestTree]
 buildTests =
   [ golden "text-horizontal-01.txt" "build/text/horizontal/chapters/01.txt",
     golden "text-vertical-01.txt" "build/text/vertical/chapters/01.txt",
-    golden "html-01.xhtml" "build/html/chapters/01.xhtml",
-    golden "html-front.xhtml" "build/html/front.xhtml",
-    golden "html-02.xhtml" "build/html/chapters/02.xhtml",
+    golden "html-01.html" "build/html/chapters/01.html",
+    golden "html-front.html" "build/html/front.html",
+    golden "html-02.html" "build/html/chapters/02.html",
     golden "html-style.css" "build/html/style.css",
     -- prod drops the proofreading comment of chapters/01.gm (docs/adr/0064)
     goldenIn Prod "prod-text-horizontal-01.txt" "build/text/horizontal/chapters/01.txt",
     goldenIn Prod "prod-text-vertical-01.txt" "build/text/vertical/chapters/01.txt",
-    goldenIn Prod "prod-html-01.xhtml" "build/html/chapters/01.xhtml",
+    goldenIn Prod "prod-html-01.html" "build/html/chapters/01.html",
     differsInProd "build/text/horizontal/chapters/01.txt",
     differsInProd "build/text/vertical/chapters/01.txt",
-    differsInProd "build/html/chapters/01.xhtml",
-    sameInProd "build/html/front.xhtml",
-    sameInProd "build/html/chapters/02.xhtml",
+    differsInProd "build/html/chapters/01.html",
+    sameInProd "build/html/front.html",
+    sameInProd "build/html/chapters/02.html",
     testCase "two builds produce identical bytes" $ do
-      a <- buildAndRead Dev "build/html/chapters/01.xhtml"
-      b <- buildAndRead Dev "build/html/chapters/01.xhtml"
+      a <- buildAndRead Dev "build/html/chapters/01.html"
+      b <- buildAndRead Dev "build/html/chapters/01.html"
       a @?= b
       c <- buildAndRead Dev "build/text/vertical/chapters/01.txt"
       d <- buildAndRead Dev "build/text/vertical/chapters/01.txt"
@@ -173,14 +173,14 @@ publicDomainTests skips =
     "public-domain books"
     [ testCase "The Tempest builds horizontally to every target" $ do
         (written, pdf, texts) <- buildBook "tempest"
-        assertBool (show written) (all (\ext -> any (ext `isSuffixOf`) written) [".pdf", ".epub", ".xhtml", ".txt"])
+        assertBool (show written) (all (\ext -> any (ext `isSuffixOf`) written) [".pdf", ".epub", ".html", ".txt"])
         let horizontal = [t | (p, t) <- texts, "horizontal/tempest.txt" `isSuffixOf` p]
         assertBool "verse lines" (any ("Full fathom five thy father lies;\nOf his bones are coral made;" `T.isInfixOf`) horizontal)
         assertBool "horizontal" (not ("/Identity-V" `BS.isInfixOf` pdf))
         qpdfCheck pdf,
       testCase "蟹工船 builds vertically to every target" $ do
         (written, pdf, _) <- buildBook "kanikosen"
-        assertBool (show written) (all (\ext -> any (ext `isSuffixOf`) written) [".pdf", ".epub", ".xhtml", ".txt"])
+        assertBool (show written) (all (\ext -> any (ext `isSuffixOf`) written) [".pdf", ".epub", ".html", ".txt"])
         assertBool "vertical" ("/Identity-V" `BS.isInfixOf` pdf)
         -- 「——漁夫は」: the dashes (CID 722) turned (golem-driver ADR 0015) and scaled along the line (docs/adr ADR 0172)
         content <- BS.concat <$> inflateAll pdf
@@ -228,7 +228,7 @@ pdBookTest skips (name, vertical) = testCase name $ withSystemTempDirectory "gol
   assertEqual "no errors" [] [(diagCode d, diagMessage d) | d <- brDiagnostics r, isError d]
   when full $ do
     let written = brWritten r
-    assertBool (show written) (all (\ext -> any (ext `isSuffixOf`) written) [".pdf", ".epub", ".xhtml", ".txt"])
+    assertBool (show written) (all (\ext -> any (ext `isSuffixOf`) written) [".pdf", ".epub", ".html", ".txt"])
     pdf <- case filter (".pdf" `isSuffixOf`) written of
       [p] -> BS.readFile p
       other -> assertFailure (show other)
@@ -239,6 +239,8 @@ pdBookTest skips (name, vertical) = testCase name $ withSystemTempDirectory "gol
 withStyleProject :: BS.ByteString -> [(FilePath, BS.ByteString)] -> (FilePath -> IO a) -> IO a
 withStyleProject style files act = withSystemTempDirectory "golem-files" $ \tmp -> do
   copyTree fixture tmp
+  -- HTML and EPUB embed the fonts, so that they look for the files (golem-project ADR 0004, docs/adr/0423)
+  embedFonts tmp
   BS.writeFile (tmp </> "style.toml") style
   writeFiles tmp files
   act tmp
@@ -281,8 +283,9 @@ styleFileTests =
       [s | (DiagnosticCode "G03010", s) <- codeSeverities r] @?= [Error]
       doesDirectoryExist (tmp </> "build/html") >>= assertBool "no HTML" . not,
     testCase "the PDF does not report roles it does not use; HTML leaves only the missing face out" $ do
-      let style = horizontalStyle <> fakeBody <> "\n[fonts.mono]\nlatin = \"fonts/missing.otf\"\n"
-      withStyleProject style fakeFontFiles $ \tmp -> do
+      -- with the license document of the body font, which HTML copies with it (root ADR 0433)
+      let style = horizontalStyle <> fakeBody <> "ja-license = \"fonts/OFL.txt\"\n\n[fonts.mono]\nlatin = \"fonts/missing.otf\"\n"
+      withStyleProject style (("fonts/OFL.txt", "OFL") : fakeFontFiles) $ \tmp -> do
         r <- build (defaultOptions tmp) {optTargets = Just [TargetPdf], optFonts = fakeProvider}
         -- the fixture has code and no [fonts.code]: G08008 (golem-driver ADR 0017)
         filter ((/= DiagnosticCode "G08008") . fst) (codeSeverities r) @?= []
@@ -292,8 +295,8 @@ styleFileTests =
         assertBool "body face" ("font-family: \"golem-body-ja\"; src" `T.isInfixOf` css)
         assertBool "no mono face" (not ("font-family: \"golem-mono-latin\"; src" `T.isInfixOf` css)),
     testCase "a missing ICC profile is G08006 for the PDF and nothing for HTML" $ do
-      let style = horizontalStyle <> fakeBody <> "\n[color]\nintent = \"icc/none.icc\"\n"
-      withStyleProject style fakeFontFiles $ \tmp -> do
+      let style = horizontalStyle <> fakeBody <> "ja-license = \"fonts/OFL.txt\"\n\n[color]\nintent = \"icc/none.icc\"\n"
+      withStyleProject style (("fonts/OFL.txt", "OFL") : fakeFontFiles) $ \tmp -> do
         r <- build (defaultOptions tmp) {optTargets = Just [TargetPdf], optFonts = fakeProvider}
         codeSeverities r @?= [(DiagnosticCode "G08006", Error)]
         doesDirectoryExist (tmp </> "build/pdf") >>= assertBool "no PDF" . not
@@ -309,7 +312,63 @@ styleFileTests =
         r <- build (defaultOptions tmp) {optTargets = Just [TargetHtml, TargetEpub]}
         codeSeverities r @?= [(DiagnosticCode "G03010", Warning)]
   ]
+    <> outsideFileTests
     <> newTemplateTests
+
+{- | A path of style.toml outside the project is one G03279 error for that
+path, for every target and profile, with neither G03010 nor G08002 (root ADR 0421 I2).
+-}
+assertOutside :: FilePath -> BuildResult -> Assertion
+assertOutside path r = do
+  let codes = map diagCode (brDiagnostics r)
+      hits = [diagSeverity d | d <- brDiagnostics r, diagCode d == DiagnosticCode "G03279", T.pack path `T.isInfixOf` diagMessage d]
+  assertEqual (show (brDiagnostics r)) [Error] hits
+  assertBool (show codes) (all (`notElem` codes) [DiagnosticCode "G03010", DiagnosticCode "G08002", DiagnosticCode "G08006"])
+  assertEqual "nothing written" [] (brWritten r)
+
+-- | style.toml with its body font at that path.
+outsideFontStyle :: T.Text -> BS.ByteString
+outsideFontStyle path = horizontalStyle <> TE.encodeUtf8 ("\n[fonts.body]\nja = \"" <> path <> "\"\n")
+
+outsideFileTests :: [TestTree]
+outsideFileTests =
+  [ testCase ("root ADR 0421 I2: a font at ../fonts/a.otf is one G03279 error for " <> show t <> " in " <> show p) $
+      withStyleProject (outsideFontStyle "../fonts/a.otf") [] $ \tmp -> do
+        r <- build (defaultOptions tmp) {optTargets = Just [t], optProfile = p, optFonts = fakeProvider}
+        assertOutside "../fonts/a.otf" r
+  | t <- allTargets,
+    p <- [Dev, Prod]
+  ]
+    <> [ testCase "root ADR 0421 I2: a font outside the project is reported once when every target is built" $
+           withStyleProject (outsideFontStyle "../fonts/a.otf") [] $ \tmp -> do
+             r <- build (defaultOptions tmp) {optTargets = Just allTargets, optFonts = fakeProvider}
+             assertOutside "../fonts/a.otf" r,
+         testCase "root ADR 0421 I2: golem check reports a font outside the project once, as G03279" $
+           withStyleProject (outsideFontStyle "../fonts/a.otf") [] $ \tmp -> do
+             r <- build (defaultOptions tmp) {optTargets = Just allTargets, optCheckOnly = True, optFonts = fakeProvider}
+             assertOutside "../fonts/a.otf" r,
+         testCase "root ADR 0421 I2: a symbolic link to a font outside the project is G03279 for every target" $
+           withSystemTempDirectory "golem-outside" $ \outside -> do
+             BS.writeFile (outside </> "a.otf") "fake"
+             withStyleProject (outsideFontStyle "fonts/link.otf") [] $ \tmp -> do
+               createDirectoryIfMissing True (tmp </> "fonts")
+               createFileLink (outside </> "a.otf") (tmp </> "fonts/link.otf")
+               forM_ [(t, p) | t <- allTargets, p <- [Dev, Prod]] $ \(t, p) -> do
+                 r <- build (defaultOptions tmp) {optTargets = Just [t], optProfile = p, optFonts = fakeProvider}
+                 assertOutside "fonts/link.otf" r,
+         testCase "root ADR 0421 I2: an absolute font path is G03279 for every target" $
+           withSystemTempDirectory "golem-outside" $ \outside -> do
+             BS.writeFile (outside </> "a.otf") "fake"
+             withStyleProject (outsideFontStyle (T.pack (outside </> "a.otf"))) [] $ \tmp ->
+               forM_ [(t, p) | t <- allTargets, p <- [Dev, Prod]] $ \(t, p) -> do
+                 r <- build (defaultOptions tmp) {optTargets = Just [t], optProfile = p, optFonts = fakeProvider}
+                 assertOutside (outside </> "a.otf") r,
+         testCase "root ADR 0421 I2: an output intent outside the project is G03279 for every target" $
+           withStyleProject (horizontalStyle <> fakeBody <> "\n[color]\nintent = \"../icc/a.icc\"\n") fakeFontFiles $ \tmp ->
+             forM_ [(t, p) | t <- allTargets, p <- [Dev, Prod]] $ \(t, p) -> do
+               r <- build (defaultOptions tmp) {optTargets = Just [t], optProfile = p, optFonts = fakeProvider}
+               assertOutside "../icc/a.icc" r
+       ]
 
 -- | The manifest of the one-chapter project in another language.
 langManifest :: T.Text -> BS.ByteString
@@ -335,7 +394,7 @@ sepHtmlStyle lang style source = withSystemTempDirectory "golem-sep" $ \tmp -> d
   writeFiles tmp img
   r <- build (defaultOptions tmp) {optTargets = Just [TargetHtml]}
   assertEqual "no errors" [] (map diagCode (filter isError (brDiagnostics r)))
-  (,) <$> TIO.readFile (tmp </> "build/html/a.xhtml") <*> TIO.readFile (tmp </> "build/html/index.xhtml")
+  (,) <$> TIO.readFile (tmp </> "build/html/a.html") <*> TIO.readFile (tmp </> "build/html/index.html")
 
 -- | The EPUB navigation document of the one-chapter project of the language.
 sepNav :: T.Text -> T.Text -> T.Text -> IO T.Text
@@ -346,7 +405,7 @@ sepNav lang format source = withSystemTempDirectory "golem-sep" $ \tmp -> do
   e <- evaluateProject Dev tmp >>= either (assertFailure . show . pfDiagnostics) pure
   book <- maybe (assertFailure "no book") pure (evBook e)
   let md = manifestMetadata (projectManifest (evProject e))
-      cfg = EpubConfig (mdId md) (mdTitle md) Nothing (mdLanguage md) (mdDate md) Nothing [] [] False
+      cfg = EpubConfig (mdId md) (mdTitle md) Nothing (mdLanguage md) (mdDate md) Nothing [] [] False []
   pure (navDocument cfg (projectFiles (evProject e)) book)
 
 -- | Builds the one-chapter project of the language with a style.toml to a target; the file it writes.
@@ -464,7 +523,8 @@ newTemplateTests =
            let dir = tmp </> "book"
            createProject dir (templateFiles lang uuid0) Nothing >>= assertBool "written" . isRight
            r <- build (defaultOptions dir) {optTargets = Just allTargets}
-           codeSeverities r @?= [(DiagnosticCode "G03010", Warning), (DiagnosticCode "G08002", Error)]
+           -- HTML and EPUB name generic families and do not look for the fonts (docs/adr/0423)
+           codeSeverities r @?= [(DiagnosticCode "G08002", Error)]
            mapM_ (\d -> doesDirectoryExist (dir </> d) >>= assertBool d) ["build/html", "build/epub", "build/text"]
            doesDirectoryExist (dir </> "build/pdf") >>= assertBool "no PDF" . not
        | (lang, tag) <- [(Japanese, "ja"), (English, "en")]

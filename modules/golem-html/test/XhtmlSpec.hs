@@ -67,7 +67,12 @@ cfg0 =
       hcLists = Nothing,
       hcCode = HtmlCode Nothing Nothing Nothing "0.5em" Nothing "0.25pt" False Nothing Nothing Nothing Nothing Map.empty,
       hcHeadingRules = Map.empty,
-      hcNoteNotation = arabic
+      hcNoteNotation = arabic,
+      hcEndnoteNotation = arabic,
+      hcEmbedFonts = True,
+      hcFontLicenses = [],
+      hcGenericFamilies = Map.empty,
+      hcCharacterAdvance = Nothing
     }
 
 -- | A book of one document, a.gm, with nothing assembled.
@@ -146,7 +151,7 @@ multipleBibliographyTests =
 assembled :: [[Block]] -> Book
 assembled bss = fst (assemble acfg (\_ _ _ -> Right "") [Document f bs | (f, bs) <- zip [fidA, fidB] bss])
   where
-    acfg = AssembleConfig Map.empty "" Map.empty NumberPerFile [] "" "" Map.empty 40
+    acfg = AssembleConfig Map.empty "" Map.empty NumberPerFile [] "" "" Map.empty 40 NumberPerChapter
 
 -- | A paragraph at offset s that cites the keys, one byte apart.
 citing :: FileId -> Int -> [Text] -> Block
@@ -179,7 +184,7 @@ channelTests =
     ]
   where
     decls = [ChannelDecl "people" OrderDocument True, ChannelDecl "glossary" OrderReading False, ChannelDecl "a-1" OrderDocument True, ChannelDecl "a" OrderDocument True]
-    withChannels bss = fst (assemble (AssembleConfig Map.empty "" Map.empty NumberPerFile [] "" "" (Map.fromList [(channelName d, d) | d <- decls]) 40) (\_ _ _ -> Right "") [Document f bs | (f, bs) <- zip [fidA, fidB] bss])
+    withChannels bss = fst (assemble (AssembleConfig Map.empty "" Map.empty NumberPerFile [] "" "" (Map.fromList [(channelName d, d) | d <- decls]) 40 NumberPerChapter) (\_ _ _ -> Right "") [Document f bs | (f, bs) <- zip [fidA, fidB] bss])
     item f s c t = ChannelItem (mkSpan f s (s + 1)) (ChannelItemData c (Just t) (Just t) [Text (mkSpan f s (s + 1)) t])
     list f s c = Block (mkSpan f s (s + 1)) Nothing Nothing (ChannelOutput (CustomOutput c Nothing))
 
@@ -245,8 +250,8 @@ twoFileBook :: Int -> Int -> [Int] -> Book
 twoFileBook na nb chapters =
   (bookOf [])
     { bookDocs =
-        [ Document fidA [para 0 [txt "甲", Note (at 1) na (noteBody (at 1) [txt "注甲。"])]],
-          Document fidB [Block (atB 0) Nothing Nothing (Paragraph Nothing [txt "乙", Note (atB 1) nb (noteBody (atB 1) [txt "注乙。"])])]
+        [ Document fidA [para 0 [txt "甲", Note (at 1) na Nothing (noteBody (at 1) [txt "注甲。"])]],
+          Document fidB [Block (atB 0) Nothing Nothing (Paragraph Nothing [txt "乙", Note (atB 1) nb Nothing (noteBody (atB 1) [txt "注乙。"])])]
         ],
       bookChapterOf = chapters
     }
@@ -430,9 +435,9 @@ boxTests =
       body
         @?= T.concat
           [ "<div class=\"box box-col\" data-break-before=\"page\">\n<p class=\"ps-col\">x</p>\n</div>\n",
-            "<div class=\"box box-top\">\n<p class=\"ps-top\">x</p>\n</div>\n",
+            "<div class=\"box box-top\" style=\"margin-block-end:0\">\n<p class=\"ps-top\" style=\"margin-block-end:0\">x</p>\n</div>\n",
             "<div class=\"blank-line\"><br/></div>\n",
-            "<div class=\"box box-col\">\n<p class=\"ps-col\">x</p>\n</div>\n"
+            "<div class=\"box box-col\" style=\"margin-block-start:0\">\n<p class=\"ps-col\" style=\"margin-block-start:0\">x</p>\n</div>\n"
           ],
     testCase "the rule of the box; no indent and no outer margin of the paragraphs in a box; the spaces before and after on the box" $ do
       let cfg = cfg0 {hcParaStyles = Map.fromList [("body", plainPara {hpsSpaceAfter = 2}), ("col", (boxed "a") {hpsSpaceBefore = 1, hpsSpaceAfter = 3})]}
@@ -540,7 +545,26 @@ tests =
       assertBool "square dots" ("stroke-linecap=\"square\"" `T.isInfixOf` japanese)
       assertBool "multiple strokes" (T.count "<line" multiple == 2)
       assertBool "wavy path" ("<path" `T.isInfixOf` wavy)
-      assertBool "vertical path" ("y2=\"100\"" `T.isInfixOf` vertical),
+      assertBool "vertical path" ("y2=\"100%\"" `T.isInfixOf` vertical),
+    testCase "root ADR 0398 A2: a rule line spans the whole SVG, the measure, in both writing modes" $ do
+      let rule = (bookOf [Block (at 1) Nothing Nothing (Separator "scene")]) {bookSeparators = Map.singleton (at 1, "scene") (SeparatorRuleAppearance 1 1 "center" Nothing 32768 Nothing StrokeSolid)}
+          horizontal = bodyA cfg0 rule
+          vertical = bodyA (cfg0 {hcVertical = True}) rule
+      assertBool (T.unpack horizontal) ("inline-size:100%" `T.isInfixOf` horizontal)
+      assertBool (T.unpack horizontal) ("<line x1=\"0\" y1=\"50%\" x2=\"100%\" y2=\"50%\"" `T.isInfixOf` horizontal)
+      assertBool (T.unpack vertical) ("<line x1=\"50%\" y1=\"0\" x2=\"50%\" y2=\"100%\"" `T.isInfixOf` vertical),
+    testCase "root ADR 0398 A4: paragraphs next to blank lines drop their margin on that side in both writing modes" $
+      mapM_
+        ( \vertical -> do
+            let blank n = Block (at 2) Nothing Nothing (BlankLines n)
+                body = bodyA (cfg0 {hcVertical = vertical}) (bookOf [para 1 [txt "a"], blank 2, para 3 [txt "b"], para 4 [txt "c"]])
+            assertBool (T.unpack body) ("<p style=\"margin-block-end:0\">a</p>\n<div class=\"blank-line\"><br/><br/></div>\n<p style=\"margin-block-start:0\">b</p>\n<p>c</p>\n" `T.isInfixOf` body)
+        )
+        [False, True],
+    testCase "root ADR 0398 A4: no blank line is written before a break, so the paragraph keeps its margin" $ do
+      let body = bodyA cfg0 (bookOf [para 1 [txt "a"], Block (at 2) Nothing Nothing (BlankLines 2), Block (at 3) Nothing Nothing (ForcedBreak BreakPage), para 4 [txt "b"]])
+      assertBool (T.unpack body) ("<p>a</p>" `T.isInfixOf` body)
+      T.count "<br/>" body @?= 0,
     testGroup "the rules of paragraph styles and headings (golem-driver ADR 0027)" ruleTests,
     testGroup "the boxes of paragraph styles (docs/adr/0271)" boxTests,
     testGroup "the alignment, spaces and end indent of paragraph styles (docs/adr/0189)" alignSpaceTests,
@@ -660,12 +684,12 @@ tests =
     testCase "text is escaped for XML" $
       bodyA cfg0 (bookOf [para 0 [txt "a < b & \"c\" > d"]]) @?= "<p>a &lt; b &amp; &quot;c&quot; &gt; d</p>\n",
     testCase "a sidenote is a numbered mark and an aside after the paragraph" $
-      bodyA cfg0 (bookOf [para 0 [txt "本文", Sidenote (at 1) 1 (noteBody (at 1) [txt "補足。"]), txt "。"]])
+      bodyA cfg0 (bookOf [para 0 [txt "本文", Sidenote (at 1) 1 Nothing (noteBody (at 1) [txt "補足。"]), txt "。"]])
         @?= "<p>本文<sup class=\"sidenote-ref\">1</sup>。</p>\n<aside class=\"sidenote\"><span class=\"number\">1</span>補足。</aside>\n",
     testCase "sidenotes are smaller than the text when no size is given (golem-driver ADR 0011)" $
       cssLines ".sidenote" cfg0 @?= [".sidenote { font-size: 0.85em; }"],
     testCase "I5: a note of two paragraphs is a p for each, the link back at the start of the first (docs/adr/0263)" $
-      bodyA cfg0 (bookOf [para 0 [txt "本文", Note (at 1) 1 [Block (at 1) Nothing Nothing (Paragraph Nothing [txt p]) | p <- ["一。", "二。"]]]])
+      bodyA cfg0 (bookOf [para 0 [txt "本文", Note (at 1) 1 Nothing [Block (at 1) Nothing Nothing (Paragraph Nothing [txt p]) | p <- ["一。", "二。"]]]])
         @?= T.concat
           [ "<p>本文<a epub:type=\"noteref\" class=\"noteref\" href=\"#note-1\" id=\"noteref-1\">1</a></p>\n",
             "<section class=\"notes\">\n<h2>注</h2>\n",
@@ -675,7 +699,7 @@ tests =
     testCase "style.css takes the margins and the indents off the paragraphs of notes (docs/adr/0263)" $
       cssLines "section.notes" cfg0 @?= ["section.notes aside p { margin-block: 0; padding-inline-start: 0; text-indent: 0; }"],
     testCase "a footnote links to its note at the end of the file, which links back" $
-      bodyA cfg0 (bookOf [para 0 [txt "本文", Note (at 1) 1 (noteBody (at 1) [txt "注の本文。"])], para 5 [txt "次。"]])
+      bodyA cfg0 (bookOf [para 0 [txt "本文", Note (at 1) 1 Nothing (noteBody (at 1) [txt "注の本文。"])], para 5 [txt "次。"]])
         @?= T.concat
           [ "<p>本文<a epub:type=\"noteref\" class=\"noteref\" href=\"#note-1\" id=\"noteref-1\">1</a></p>\n",
             "<p>次。</p>\n",
@@ -778,13 +802,13 @@ tests =
     testGroup
       "cross references"
       [ testCase "a page reference in the same file links to the anchor with the title of the target" $
-          let book = (bookOf [para 0 [Ref (at 1) RefPage "intro", txt "を見よ。"]]) {bookLabels = Map.fromList [("intro", LabelTarget (at 9) Nothing [txt "はじめに"] "intro" fidA)]}
+          let book = (bookOf [para 0 [Ref (at 1) RefPage "intro", txt "を見よ。"]]) {bookLabels = Map.fromList [("intro", LabelTarget (at 9) Nothing [txt "はじめに"] "intro" fidA Nothing)]}
            in bodyA cfg0 book @?= "<p><a href=\"#intro\">はじめに</a>を見よ。</p>\n",
         testCase "a page reference to another file links to its page" $
           let book =
                 (bookOf [para 0 [Ref (at 1) RefPage "second"]])
                   { bookDocs = [Document fidA [para 0 [Ref (at 1) RefPage "second"]], Document fidB []],
-                    bookLabels = Map.fromList [("second", LabelTarget (mkSpan fidB 0 1) Nothing [txt "次の章"] "second" fidB)]
+                    bookLabels = Map.fromList [("second", LabelTarget (mkSpan fidB 0 1) Nothing [txt "次の章"] "second" fidB Nothing)]
                   }
            in bodyA cfg0 book @?= "<p><a href=\"b.xhtml#second\">次の章</a></p>\n",
         -- docs/adr/0267
@@ -794,17 +818,17 @@ tests =
                   { bookDocs = [Document fidA [para 0 [Resolved (at 1) RefNumber "intro" [txt "1"], txt "と", Resolved (at 2) RefTitle "second" [txt "次の章"]]], Document fidB []],
                     bookLabels =
                       Map.fromList
-                        [ ("intro", LabelTarget (at 9) Nothing [txt "はじめに"] "intro" fidA),
-                          ("second", LabelTarget (mkSpan fidB 0 1) Nothing [txt "次の章"] "second" fidB)
+                        [ ("intro", LabelTarget (at 9) Nothing [txt "はじめに"] "intro" fidA Nothing),
+                          ("second", LabelTarget (mkSpan fidB 0 1) Nothing [txt "次の章"] "second" fidB Nothing)
                         ]
                   }
            in bodyA cfg0 book @?= "<p><a href=\"#intro\">1</a>と<a href=\"b.xhtml#second\">次の章</a></p>\n",
         testCase "I11 a resolved reference copied into the table of contents is its text alone" $
           let entry = TocEntry 1 (Just "第一章") [txt "見出し", Resolved (at 3) RefNumber "intro" [txt "2"]] "intro" fidA (at 9)
-              book = (bookOf [Block (at 0) Nothing Nothing (ChannelOutput (TocOutput 2))]) {bookToc = [entry], bookLabels = Map.fromList [("intro", LabelTarget (at 9) Nothing [txt "見出し"] "intro" fidA)]}
+              book = (bookOf [Block (at 0) Nothing Nothing (ChannelOutput (TocOutput 2))]) {bookToc = [entry], bookLabels = Map.fromList [("intro", LabelTarget (at 9) Nothing [txt "見出し"] "intro" fidA Nothing)]}
            in bodyA cfg0 book @?= "<nav epub:type=\"toc\" class=\"toc\">\n<ol>\n<li class=\"toc-1\"><a href=\"#intro\">第一章\x3000見出し2</a></li>\n</ol>\n</nav>\n",
         testCase "I11 a resolved reference inside another is the text of the outer link" $
-          let book = (bookOf [para 0 [Resolved (at 1) RefTitle "intro" [txt "題", Resolved (at 2) RefNumber "other" [txt "3"]]]]) {bookLabels = Map.fromList [("intro", LabelTarget (at 9) Nothing [txt "題"] "intro" fidA), ("other", LabelTarget (at 8) Nothing [txt "他"] "other" fidA)]}
+          let book = (bookOf [para 0 [Resolved (at 1) RefTitle "intro" [txt "題", Resolved (at 2) RefNumber "other" [txt "3"]]]]) {bookLabels = Map.fromList [("intro", LabelTarget (at 9) Nothing [txt "題"] "intro" fidA Nothing), ("other", LabelTarget (at 8) Nothing [txt "他"] "other" fidA Nothing)]}
            in bodyA cfg0 book @?= "<p><a href=\"#intro\">題3</a></p>\n",
         testCase "I11 a resolved reference whose label the book does not have is its text" $
           bodyA cfg0 (bookOf [para 0 [Resolved (at 1) RefNumber "missing" [txt "1"]]]) @?= "<p>1</p>\n"
@@ -986,7 +1010,7 @@ blockTests =
         @?= "<pre id=\"c\"><code>a &amp; b\nc</code></pre>\n"
   ]
 
--- | The table of contents page of the HTML target, moved from golem-driver (docs/adr ADR 0090).
+-- | The table of contents page of the HTML target, moved from golem-driver (docs/adr ADR 0090), in the HTML syntax (root ADR 0432).
 indexPageTests :: TestTree
 indexPageTests =
   testGroup
@@ -994,22 +1018,22 @@ indexPageTests =
     [ testCase "a book of two files with a numbered heading of level 1 and a heading of level 2" $
         indexPage cfg0 ft twoHeadings
           @?= T.concat
-            [ "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!DOCTYPE html>\n<html xmlns=\"http://www.w3.org/1999/xhtml\" lang=\"ja\" xml:lang=\"ja\">\n",
-              "<head>\n<meta charset=\"UTF-8\"/>\n<title>本</title>\n<link rel=\"stylesheet\" type=\"text/css\" href=\"style.css\"/>\n</head>\n",
+            [ "<!DOCTYPE html>\n<html lang=\"ja\">\n",
+              "<head>\n<meta charset=\"UTF-8\">\n<title>本</title>\n<link rel=\"stylesheet\" type=\"text/css\" href=\"style.css\">\n</head>\n",
               "<body>\n<h1>本</h1>\n<nav class=\"toc\">\n<ol>\n",
-              "<li class=\"toc-1\"><a href=\"a.xhtml#intro\">第一章\x3000はじめに</a></li>\n",
-              "<li class=\"toc-2\"><a href=\"b.xhtml#detail\">細部</a></li>\n",
+              "<li class=\"toc-1\"><a href=\"a.html#intro\">第一章\x3000はじめに</a></li>\n",
+              "<li class=\"toc-2\"><a href=\"b.html#detail\">細部</a></li>\n",
               "</ol>\n</nav>\n</body>\n</html>\n"
             ],
-      testCase "the title and the language are escaped in title, h1, lang and xml:lang" $ do
+      testCase "the title and the language are escaped in title, h1 and lang (root ADR 0432)" $ do
         let page = indexPage cfg0 {hcTitle = "<A & B>", hcLanguage = "ja&<"} ft twoHeadings
         assertBool (T.unpack page) ("<title>&lt;A &amp; B&gt;</title>" `T.isInfixOf` page)
         assertBool (T.unpack page) ("<h1>&lt;A &amp; B&gt;</h1>" `T.isInfixOf` page)
-        assertBool (T.unpack page) ("lang=\"ja&amp;&lt;\" xml:lang=\"ja&amp;&lt;\"" `T.isInfixOf` page),
+        assertBool (T.unpack page) ("<html lang=\"ja&amp;&lt;\">" `T.isInfixOf` page),
       testCase "with @toc of depth 1, the heading of level 2 is not listed (golem-epub ADR 0002)" $ do
         let page = indexPage cfg0 ft twoHeadings {bookTocDepth = Just 1}
-        assertBool (T.unpack page) ("a.xhtml#intro" `T.isInfixOf` page)
-        assertBool (T.unpack page) (not ("b.xhtml#detail" `T.isInfixOf` page))
+        assertBool (T.unpack page) ("a.html#intro" `T.isInfixOf` page)
+        assertBool (T.unpack page) (not ("b.html#detail" `T.isInfixOf` page))
     ]
   where
     twoHeadings =
@@ -1046,7 +1070,7 @@ langTests =
         bodyA cfg0 (bookOf [Block (at 0) Nothing Nothing (BulletList [ListItem Nothing [(para 1 [txt "a"]) {blockLang = Just "de"}]])])
           @?= "<ul>\n<li>\n<p lang=\"de\" xml:lang=\"de\">a</p>\n</li>\n</ul>\n",
       testCase "the sidenotes of a paragraph with a language have it too" $
-        bodyA cfg0 (bookOf [(para 0 [txt "a", Sidenote (at 1) 1 (noteBody (at 1) [txt "s"])]) {blockLang = Just "en"}])
+        bodyA cfg0 (bookOf [(para 0 [txt "a", Sidenote (at 1) 1 Nothing (noteBody (at 1) [txt "s"])]) {blockLang = Just "en"}])
           @?= "<p lang=\"en\" xml:lang=\"en\">a<sup class=\"sidenote-ref\">1</sup></p>\n<aside class=\"sidenote\" lang=\"en\" xml:lang=\"en\"><span class=\"number\">1</span>s</aside>\n",
       testCase "the spans stay in the items of @toc, the toc page and the copies; character styles drop out of the toc page" $ do
         let title = [txt "見出し", Lang (at 1) "en" [CharStyle (at 1) "strong" [txt "Tokyo"]]]
@@ -1055,16 +1079,68 @@ langTests =
             body = bodyA cfg0 book
         assertBool (T.unpack body) ("<span lang=\"en\" xml:lang=\"en\"><strong>Tokyo</strong></span></a>" `T.isInfixOf` body)
         let page = indexPage cfg0 ft book
-        assertBool (T.unpack page) ("見出し<span lang=\"en\" xml:lang=\"en\">Tokyo</span></a></li>" `T.isInfixOf` page),
+        assertBool (T.unpack page) ("見出し<span lang=\"en\">Tokyo</span></a></li>" `T.isInfixOf` page),
       testCase "the toc page writes the language of a heading around its title" $ do
         let h = Block (at 0) (Just "intro") (Just "en") (Heading 1 noHeadingAttrs [txt "Tokyo"])
             page = indexPage cfg0 ft (assembled [[h]])
-        assertBool (T.unpack page) ("<a href=\"a.xhtml#intro\">1\x3000<span lang=\"en\" xml:lang=\"en\">Tokyo</span></a>" `T.isInfixOf` page),
+        assertBool (T.unpack page) ("<a href=\"a.html#intro\">1\x3000<span lang=\"en\">Tokyo</span></a>" `T.isInfixOf` page),
       testCase "the body of a note is in the language of its mark" $ do
-        let book = assembled [[para 0 [txt "本文", Lang (at 1) "en" [txt "text", Note (at 2) 1 (noteBody (at 2) [txt "a note"])]]]]
+        let book = assembled [[para 0 [txt "本文", Lang (at 1) "en" [txt "text", Note (at 2) 1 Nothing (noteBody (at 2) [txt "a note"])]]]]
             body = bodyA cfg0 book
         assertBool (T.unpack body) ("</a> <span lang=\"en\" xml:lang=\"en\">a note</span></p></aside>" `T.isInfixOf` body)
     ]
 
 xhtmlTests :: TestTree
-xhtmlTests = testGroup "XHTML and CSS (golem-html ADR 0001)" (tests <> [indexPageTests, langTests])
+xhtmlTests = testGroup "XHTML and CSS (golem-html ADR 0001)" (tests <> [indexPageTests, langTests, pageBreakTests, genericFontTests, fontLicenseTests])
+
+-- | The fonts of a site, embedded or named by generic families (root ADR 0423).
+genericFontTests :: TestTree
+genericFontTests =
+  testGroup
+    "root ADR 0423"
+    [ testCase "root ADR 0423 I1: a site of generic families has no @font-face and no font among its assets" $ do
+        let site = renderXhtml (withBody False) ft (bookOf [])
+        (filter (T.isPrefixOf "@font-face") (T.lines (siteCss site)), [a | (a, _) <- siteAssets site, a == "fonts/b.otf"]) @?= ([], []),
+      testCase "root ADR 0423 I2: the body of a site of generic families names only the generic family of body" $
+        cssLines "body {" (withBody False) @?= ["body { font-family: sans-serif; }"],
+      testCase "root ADR 0423 I3: the body of a site that embeds the fonts ends with the generic family of body" $ do
+        cssLines "body {" (withBody True) @?= ["body { font-family: \"golem-body-ja\", sans-serif; }"]
+        cssLines "@font-face" (withBody True) @?= ["@font-face { font-family: \"golem-body-ja\"; src: url(\"fonts/b.otf\"); }"],
+      testCase "root ADR 0423 I5: without generic-family, the body of a site that embeds the fonts ends with serif" $
+        cssLines "body {" (withBody True) {hcGenericFamilies = Map.empty} @?= ["body { font-family: \"golem-body-ja\", serif; }"]
+    ]
+  where
+    withBody embed = cfg0 {hcFonts = Map.singleton "body" (Just "fonts/b.otf", Nothing), hcEmbedFonts = embed, hcGenericFamilies = Map.singleton "body" "sans-serif"}
+
+-- | The license documents of the fonts a site embeds (root ADR 0433).
+fontLicenseTests :: TestTree
+fontLicenseTests =
+  testGroup
+    "root ADR 0433"
+    [ testCase "root ADR 0433 I1: a site that embeds the fonts copies each license document to fonts/ by its own name" $ do
+        let site = renderXhtml (licensed True ["fonts/OFL.txt", "licenses/LICENSE-B.md"]) ft (bookOf [])
+        siteAssets site @?= [("fonts/LICENSE-B.md", "licenses/LICENSE-B.md"), ("fonts/OFL.txt", "fonts/OFL.txt"), ("fonts/b.otf", "fonts/b.otf")]
+        siteLicenses site @?= ["fonts/LICENSE-B.md", "fonts/OFL.txt"],
+      testCase "root ADR 0433 I5: a site of generic families copies no license document" $ do
+        let site = renderXhtml (licensed False ["fonts/OFL.txt"]) ft (bookOf [])
+        (siteAssets site, siteLicenses site) @?= ([], []),
+      testCase "root ADR 0433 I6: one license document that two fonts name is copied once" $ do
+        let site = renderXhtml (licensed True ["fonts/OFL.txt", "fonts/OFL.txt"]) ft (bookOf [])
+        [a | (a, _) <- siteAssets site, a == "fonts/OFL.txt"] @?= ["fonts/OFL.txt"]
+        siteLicenses site @?= ["fonts/OFL.txt"],
+      testCase "root ADR 0433 I1: the HTML syntax copies the same license documents as the XHTML syntax" $ do
+        let cfg = licensed True ["fonts/OFL.txt"]
+        (siteAssets (renderHtml cfg ft (bookOf [])), siteLicenses (renderHtml cfg ft (bookOf []))) @?= (siteAssets (renderXhtml cfg ft (bookOf [])), siteLicenses (renderXhtml cfg ft (bookOf [])))
+    ]
+  where
+    licensed embed ls = cfg0 {hcFonts = Map.singleton "body" (Just "fonts/b.otf", Nothing), hcEmbedFonts = embed, hcFontLicenses = ls}
+
+-- | Fixed-page positions are empty anchors in the original text (root ADR 0386).
+pageBreakTests :: TestTree
+pageBreakTests = testCase "root ADR 0386 I1: each page-list destination occurs once in body order" $ do
+  let sp = mkSpan fidA 0 4
+      book = bookOf [Block sp Nothing Nothing (Paragraph Nothing [Text sp "日本語句"])]
+      anchors = Map.singleton sp [(0, "GolemFixedPage-1", "i"), (2, "GolemFixedPage-2", "1")]
+      body = maybe "" bodyOf (lookup "a.xhtml" (sitePages (renderXhtmlWithPageBreaks cfg0 ft book anchors)))
+  [T.takeWhile (/= '"') piece | piece <- drop 1 (T.splitOn "id=\"" body)] @?= ["GolemFixedPage-1", "GolemFixedPage-2"]
+  assertBool "body text retains its order" ("日本<span" `T.isInfixOf` body && "></span>語句" `T.isInfixOf` body)

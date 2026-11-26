@@ -1,0 +1,23 @@
+# テキストフレームの見本の横組みの本（root ADR 0437 A1、root ADR 0438 A1、root ADR 0456 A1）。見た目の回帰のテストが組む。
+# フォントはコミットしない。組む前に fonts/ja.otf と fonts/latin.otf を写す（../README.md）。
+chapters = [
+  { file = "chapters/01-frames.gm", master = "body" },
+  { file = "chapters/02-shapes.gm", master = "shapes" },
+  { file = "chapters/03-blocks.gm", master = "body" },
+]
+
+[metadata]
+id = "urn:uuid:00000000-0000-4000-8000-000000000438"
+title = "テキストフレームの見本"
+language = "ja"
+date = 2026-11-26
+publisher = "Golem プロジェクト"
+
+[[metadata.creators]]
+name = "Golem プロジェクト"
+role = "author"
+
+[source]
+paragraph-separator = "blank-line"
+
+[targets.pdf]

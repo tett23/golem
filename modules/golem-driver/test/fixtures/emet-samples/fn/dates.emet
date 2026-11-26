@@ -1,5 +1,5 @@
 -- Dates: the Japanese era and the dates of the colophon.
--- In .gm: `@import fn/dates.emet as d`.
+-- In .gm: `@import fn/dates.emet * as d`.
 
 import "fn/numbers.emet"
 

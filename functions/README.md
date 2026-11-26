@@ -32,7 +32,7 @@ Emet は、Golem の 1.x のあいだ実験的な機能である。
 次の原稿は、空行で段落を区切るプロジェクト（`paragraph-separator = "blank-line"`）のものである。
 
 ```
-@import functions/colophon.emet as colophon
+@import functions/colophon.emet * as colophon
 
 [colophon.issued "2026-11-08"]
 
@@ -70,7 +70,7 @@ golem-driver のテスト（[`modules/golem-driver/test/FunctionLibrarySpec.hs`]
 ほかに、どのファイルも `golem fmt` の整形のとおりであること、`golem lint` が何も報告しないことも確かめる。
 
 ```sh
-cabal test golem-driver:test:golem-driver-test --test-option=-p --test-option='/functions of the repository/'
+cabal test golem-driver:test:golem-driver-cli-test --test-option=-p --test-option='/functions of the repository/'
 ```
 
 ## ライセンス

@@ -12,6 +12,8 @@ cabal.project.local
 /manual-dev/common/build-info.gm
 /modules/golem-driver/test/fixtures/pd/*/fonts/
 /modules/golem-driver/test/fixtures/single-page/fonts/
+# the fonts CI copies into the book of the license documents of fonts (docs/adr/0433)
+/modules/golem-driver/test/fixtures/font-licenses/fonts/
 # the fonts copied into the two books of docs/adr/0175 to build them by hand
 /modules/golem-driver/test/fixtures/complex-vertical/fonts/
 /modules/golem-driver/test/fixtures/complex-horizontal/fonts/
@@ -22,3 +24,5 @@ cabal.project.local
 /tools/editors/node_modules/
 /dist-wasm/
 /scripts/browser/node_modules/
+# the font measure.sh copies into the benchmark of path drawing (root ADR 0439)
+/scripts/bench/path-drawing/fonts/

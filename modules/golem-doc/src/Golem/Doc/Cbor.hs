@@ -33,7 +33,7 @@ import Control.Monad (when, (>=>))
 import Data.Bifunctor (first)
 import Data.ByteString (ByteString)
 import Data.ByteString.Lazy qualified as BL
-import Data.Maybe (isNothing)
+import Data.Maybe (isNothing, listToMaybe)
 import Data.Ratio (denominator, numerator, (%))
 import Data.String (IsString (..))
 import Data.Text (Text)
@@ -114,6 +114,7 @@ bodyT = \case
   PageControl c -> tagged 12 [pageControlT c]
   BlankLines n -> tagged 13 [int n]
   Separator name -> tagged 15 [text name]
+  FrameBlock name bs -> tagged 16 [text name, list blockT bs]
 
 pageControlT :: PageControl -> Term
 pageControlT = \case
@@ -169,12 +170,17 @@ inlineT rt = \case
   Color s c xs -> tagged 6 [spanT s, text c, sub xs]
   CharStyle s c xs -> tagged 7 [spanT s, text c, sub xs]
   Tcy s t -> tagged 8 [spanT s, text t]
+  Warichu s t -> tagged 27 [spanT s, text t]
+  Upright s t -> tagged 28 [spanT s, text t]
   Number s n st -> tagged 9 [spanT s, int n, opt (int . fromEnum) st]
   Ref s k l -> tagged 10 [spanT s, int (fromEnum k), text l]
   Deferred s (DeferredExpr e) -> tagged 11 [spanT s, exprT e]
   -- 12 and 13 are retired: the body is blocks (docs/adr/0263)
-  Note s n bs -> tagged 23 [spanT s, int n, list blockT bs]
-  Sidenote s n bs -> tagged 24 [spanT s, int n, list blockT bs]
+  -- the label after the body, only when the note has one (root ADR 0422)
+  Note s n lbl bs -> tagged 23 ([spanT s, int n, list blockT bs] <> maybe [] (pure . text) lbl)
+  Sidenote s n lbl bs -> tagged 24 ([spanT s, int n, list blockT bs] <> maybe [] (pure . text) lbl)
+  -- an endnote (root ADR 0412)
+  Endnote s n lbl bs -> tagged 26 ([spanT s, int n, list blockT bs] <> maybe [] (pure . text) lbl)
   IndexMark s (IndexEntry ts rs k) -> tagged 14 [spanT s, list text ts, list text rs, indexKindT k]
   -- 15 is retired: a citation is its items (docs/adr/0266)
   Cite s is -> tagged 25 [spanT s, list citeItemT is]
@@ -435,6 +441,7 @@ termBody t =
         12 | [c] <- fs -> PageControl <$> termPageControl c
         13 | [n] <- fs -> BlankLines . fromInteger <$> asInt n
         15 | [name] <- fs -> Separator <$> asText name
+        16 | [name, bs] <- fs -> FrameBlock <$> asText name <*> (asList bs >>= traverse termBlock)
         -- 0 (paragraph without a style) and 9 (verse) are retired (docs/adr ADR 0005)
         _ -> bad "ブロックの種類"
     [] -> bad "ブロックの種類"
@@ -545,12 +552,16 @@ termInline rd t =
         (6, [c, x]) -> Color s <$> asText c <*> sub x
         (7, [c, x]) -> CharStyle s <$> asText c <*> sub x
         (8, [x]) -> Tcy s <$> asText x
+        (27, [x]) -> Warichu s <$> asText x
+        (28, [x]) -> Upright s <$> asText x
         (9, [n, st]) -> Number s <$> asInt n <*> asOpt asEnum st
         (10, [k, l]) -> Ref s <$> asEnum k <*> asText l
         (11, [e]) -> Deferred s . DeferredExpr <$> termExpr e
         -- 12 and 13 are retired (docs/adr/0263)
-        (23, [n, x]) -> Note s <$> asIntI n <*> (asList x >>= traverse termBlock)
-        (24, [n, x]) -> Sidenote s <$> asIntI n <*> (asList x >>= traverse termBlock)
+        -- a note, a sidenote and an endnote (root ADR 0412), with a label after the body or not (root ADR 0422)
+        (23, n : x : l) | length l <= 1 -> Note s <$> asIntI n <*> traverse asText (listToMaybe l) <*> (asList x >>= traverse termBlock)
+        (24, n : x : l) | length l <= 1 -> Sidenote s <$> asIntI n <*> traverse asText (listToMaybe l) <*> (asList x >>= traverse termBlock)
+        (26, n : x : l) | length l <= 1 -> Endnote s <$> asIntI n <*> traverse asText (listToMaybe l) <*> (asList x >>= traverse termBlock)
         (14, [ts, rs, k]) -> (\a b c -> IndexMark s (IndexEntry a b c)) <$> (asList ts >>= traverse asText) <*> (asList rs >>= traverse asText) <*> termIndexKind k
         -- 15 is retired (docs/adr/0266)
         (25, [x]) -> Cite s <$> (asList x >>= traverse (termCiteItem sub))

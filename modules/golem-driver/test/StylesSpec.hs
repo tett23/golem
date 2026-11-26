@@ -8,7 +8,7 @@ import Data.Text qualified as T
 import Data.Text.IO qualified as TIO
 import Golem.Assemble (Book)
 import Golem.Driver
-import Golem.Driver.Lint (lintProject)
+import Golem.Evaluate.Lint (lintProject)
 import Golem.Layout.KnuthPlass (BoxContent (..), Item (..), Line (..))
 import Golem.Layout.Look (Look (..), Synthetic (..))
 import Golem.LayoutSpec (pageGeometry)
@@ -70,8 +70,8 @@ regexStyleTests =
       withChapters "" [("c1.gm", "@style-def character n synthetic-bold=true\n@style-def regex body pattern=\"[0-9]+\" style=n\n\n第12章\n"), ("c2.gm", "第12章\n")] [] $ \tmp -> do
         r <- build (defaultOptions tmp) {optTargets = Just [TargetHtml]}
         assertEqual "no errors" [] (map diagCode (filter isError (brDiagnostics r)))
-        p1 <- TIO.readFile (tmp </> "build/html/c1.xhtml")
-        p2 <- TIO.readFile (tmp </> "build/html/c2.xhtml")
+        p1 <- TIO.readFile (tmp </> "build/html/c1.html")
+        p2 <- TIO.readFile (tmp </> "build/html/c2.html")
         assertBool (T.unpack p1) ("第<span class=\"cs-n\">12</span>章" `T.isInfixOf` p1)
         assertBool (T.unpack p2) ("第12章" `T.isInfixOf` p2),
     testCase "PDF: vertical, a match inside a ruby base is set and the reading drawn" $ do
@@ -102,9 +102,9 @@ inFileTests =
       withChapters "" (letters <> [("c3.gm", "本文。\n")]) [] $ \tmp -> do
         r <- build (defaultOptions tmp) {optTargets = Just [TargetHtml]}
         assertEqual "no errors" [] (map diagCode (filter isError (brDiagnostics r)))
-        p1 <- TIO.readFile (tmp </> "build/html/c1.xhtml")
-        p2 <- TIO.readFile (tmp </> "build/html/c2.xhtml")
-        p3 <- TIO.readFile (tmp </> "build/html/c3.xhtml")
+        p1 <- TIO.readFile (tmp </> "build/html/c1.html")
+        p2 <- TIO.readFile (tmp </> "build/html/c2.html")
+        p3 <- TIO.readFile (tmp </> "build/html/c3.html")
         assertBool "c1" ("<body class=\"file-1\">" `T.isInfixOf` p1)
         assertBool "c2" ("<body class=\"file-2\">" `T.isInfixOf` p2)
         assertBool "c3" ("<body>" `T.isInfixOf` p3)
@@ -116,7 +116,7 @@ inFileTests =
     testCase "HTML: the class of a vertical page" $
       withChapters pdfStyle (take 1 letters) [] $ \tmp -> do
         _ <- build (defaultOptions tmp) {optTargets = Just [TargetHtml]}
-        p1 <- TIO.readFile (tmp </> "build/html/c1.xhtml")
+        p1 <- TIO.readFile (tmp </> "build/html/c1.html")
         assertBool "c1" ("<body class=\"vertical file-1\">" `T.isInfixOf` p1),
     testCase "PDF: the same name indents by the definition of each file" $ do
       let fs = 655360
@@ -161,7 +161,7 @@ inFileTests =
           fontsOf c = nub [dFont d | d <- ds, dGlyph d == fromEnum c]
       (fontsOf '手', fontsOf '本') @?= (["/F1"], ["/F2"]),
     testCase "the styles of a file imported are not the importer's" $
-      withChapters "" [("c1.gm", "@import common.gm as c\n\n@style letter\n手紙。\n")] [("common.gm", "@style-def paragraph letter\n\n@set v = 1\n")] $ \tmp -> do
+      withChapters "" [("c1.gm", "@import common.gm * as c\n\n@style letter\n手紙。\n")] [("common.gm", "@style-def paragraph letter\n\n@set v = 1\n")] $ \tmp -> do
         ev <- evaluateProject Dev tmp
         case ev of
           Left f -> assertFailure (show (pfDiagnostics f))
@@ -174,21 +174,21 @@ inFileTests =
       withChapters "" [("c1.gm", "@manifest paragraph-separator=line\n\n一。\n二。\n三。\n"), ("c2.gm", "一。\n二。\n")] [] $ \tmp -> do
         r <- build (defaultOptions tmp) {optTargets = Just [TargetHtml]}
         assertEqual "no errors" [] (map diagCode (filter isError (brDiagnostics r)))
-        p1 <- TIO.readFile (tmp </> "build/html/c1.xhtml")
-        p2 <- TIO.readFile (tmp </> "build/html/c2.xhtml")
+        p1 <- TIO.readFile (tmp </> "build/html/c1.html")
+        p2 <- TIO.readFile (tmp </> "build/html/c2.html")
         T.count "<p>" p1 @?= 3
         T.count "<p>" p2 @?= 1,
     testCase "HTML: @manifest wins over the entry of the chapter" $
       withEntries "" ["{ file = \"c1.gm\", paragraph-separator = \"line\" }"] [("c1.gm", "@manifest paragraph-separator=blank-line\n\n一。\n二。\n")] [] $ \tmp -> do
         r <- build (defaultOptions tmp) {optTargets = Just [TargetHtml]}
         assertEqual "no errors" [] (map diagCode (filter isError (brDiagnostics r)))
-        p1 <- TIO.readFile (tmp </> "build/html/c1.xhtml")
+        p1 <- TIO.readFile (tmp </> "build/html/c1.html")
         T.count "<p>" p1 @?= 1,
     testCase "HTML: @manifest of a file imported does not reach the importer" $
-      withChapters "" [("c1.gm", "@import common.gm as c\n\n[= c.v]。\n二。\n")] [("common.gm", "@manifest paragraph-separator=line\n\n@set v = 1\n")] $ \tmp -> do
+      withChapters "" [("c1.gm", "@import common.gm * as c\n\n[= c.v]。\n二。\n")] [("common.gm", "@manifest paragraph-separator=line\n\n@set v = 1\n")] $ \tmp -> do
         r <- build (defaultOptions tmp) {optTargets = Just [TargetHtml]}
         assertEqual "no errors" [] (map diagCode (filter isError (brDiagnostics r)))
-        p1 <- TIO.readFile (tmp </> "build/html/c1.xhtml")
+        p1 <- TIO.readFile (tmp </> "build/html/c1.html")
         T.count "<p>" p1 @?= 1,
     testCase "lint: two Latin lines of a file in the line style are not G05001" $
       withChapters "" [("c1.gm", "@manifest paragraph-separator=line\n\nFull fathom five\nOf his bones\n"), ("c2.gm", "Full fathom five\nOf his bones\n")] [] $ \tmp -> do

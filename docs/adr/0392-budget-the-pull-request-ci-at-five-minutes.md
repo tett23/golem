@@ -1,6 +1,6 @@
 # ADR 0392: プルリクエストの CI の時間を 5 分の予算にする
 
-Status: accepted
+Status: superseded [{"by":["docs/adr/0424-fix-the-low-findings-of-the-audit-that-need-an-adr.md"],"part":"予算の番号","kind":"supplement"}]
 
 ## 文脈
 

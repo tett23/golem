@@ -27,6 +27,10 @@ module Golem.Layout.Paginate.Types
     defaultKeep,
     StartOf (..),
     Part (..),
+    AvoidAt,
+    noAvoid,
+    clearFrom,
+    Spot (..),
   )
 where
 
@@ -36,6 +40,7 @@ import Golem.Layout.Code (CodeGeometry)
 import Golem.Layout.Look (NoteId (..))
 import Golem.Layout.RuleArea (RuleGrid (..), RuleSide (..))
 import Golem.Length (Sp)
+import Golem.Project.Style (KeepParts)
 import Golem.Syntax (SrcSpan)
 
 data NoteBody = NoteBody {nbId :: !NoteId, nbLines :: !Int}
@@ -80,7 +85,9 @@ data StartOf = OfSection !Int | OfParagraph !SrcSpan
 type Flow = FlowAt Int
 
 data FlowAt position
-  = -- | a paragraph and how it is broken (docs/adr/0261)
+  = -- | A book part and its retained slot IDs (root ADR 0377 and 0401).
+    FBookPart !KeepParts !SrcSpan !Text ![Int] ![FlowAt position]
+  | -- | a paragraph and how it is broken (docs/adr/0261)
     FParagraph !Keep [LineBox]
   | {- | a stanza of verse, a paragraph of line-breaks = "keep": its verse
     lines, each the lines it is broken into (docs/adr/0180). A verse line
@@ -287,7 +294,9 @@ data AdjustLimit
 
 -- | A manual control of page breaks that could not be met (docs/adr ADR 0030).
 data Unmet
-  = UnmetNoBreak !SrcSpan
+  = -- | A book part split after an empty retention unit failed (root ADR 0401).
+    SplitBookPart !SrcSpan !Text !KeepParts
+  | UnmetNoBreak !SrcSpan
   | -- | the lines asked for
     UnmetNeedLines !SrcSpan !Int
   | -- | the lines the column was changed by, and why it was cut short
@@ -307,6 +316,12 @@ data Unmet
     UnplaceableFootnote !NoteId !Int
   | -- | a paragraph of keep-all-lines broken, as an empty column does not hold it: the id of its first line (docs/adr/0261)
     SplitKept !Int
+  | {- | a block that cannot be shortened left out of an empty column of
+    frames of wrap around, as no place of the column keeps its least part
+    off them, though it would fit the column without them (root ADR 0456):
+    the id of the block
+    -}
+    UnplacedBlock !Int
   | {- | a first or last part shorter than its keep, placed in an empty
     column (docs/adr/0261): which part, the id of the first line of the
     paragraph, the lines asked for and the lines placed
@@ -338,3 +353,32 @@ data BoxSegmentAt position = BoxSegment
     bsLast :: !position
   }
   deriving stock (Eq, Show, Functor)
+
+{- | The areas of a column that a block that cannot be shortened (a table,
+a code block or a figure) is not placed over (root ADR 0456): for the
+page, the column, the set of columns of the column and the id of the
+block (the id of a table, of the first row of a code block, of a figure),
+the ranges across the lines from the start of the column, each from its
+first position to the position after it, in the positions of the slots.
+A block whose positions overlap a range is placed from its end.
+-}
+type AvoidAt position = Int -> Int -> ColumnSetAt position -> Int -> [(position, position)]
+
+-- | No area: the pagination of the pages without frames of wrap around.
+noAvoid :: AvoidAt position
+noAvoid _ _ _ _ = []
+
+{- | The first position from @u@ where a block of extent @n@ overlaps none
+of the areas (root ADR 0456): past the end of each area it overlaps.
+-}
+clearFrom :: (Ord position, Num position) => [(position, position)] -> position -> position -> position
+clearFrom areas u n = case [b | (a, b) <- areas, a < u + n, b > u] of
+  [] -> u
+  ends -> clearFrom areas (maximum ends) n
+
+{- | Where the least part of a block that cannot be shortened goes in the
+current column (root ADR 0456): from a position, past the areas of the
+frames it overlaps; nowhere in this column; or nowhere at all, left out.
+-}
+data Spot position = SpotAt !position | SpotNone | SpotUnplaced
+  deriving stock (Eq, Show)

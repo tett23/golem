@@ -4,6 +4,10 @@ golem-pdf does not depend on golem-svg; this module joins them.
 -}
 module Golem.Typeset.Svg
   ( svgDrawing,
+    recolorFigure,
+    drawingImportedPage,
+    drawingSvg,
+    figureColor,
     unsupportedMessage,
     markerMessage,
     markerSegmentsMessage,
@@ -11,10 +15,16 @@ module Golem.Typeset.Svg
 where
 
 import Data.List.NonEmpty (NonEmpty (..))
+import Data.Map.Strict qualified as Map
+import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
+import Golem.Length.Decimal (showRationalDigits)
 import Golem.Pdf qualified as P
+import Golem.Pdf.Object qualified as O
+import Golem.Project.Style (Style (..), Swatch (..))
 import Golem.Svg qualified as S
+import Golem.Typeset.FigureColor (Cmyk, rgbTone)
 
 -- | The drawing of an SVG in the terms of golem-pdf.
 svgDrawing :: S.Svg -> P.Drawing
@@ -91,3 +101,85 @@ markers draw; no line and column, since the count is of the whole drawing.
 -}
 markerSegmentsMessage :: Text -> Integer -> Text
 markerSegmentsMessage path n = "SVG の図版の marker が描くパスの区間が 1000000 を超えます: " <> path <> "（" <> T.pack (show n) <> "）"
+
+-- | Reuse the PDF colour traversal without changing the ordinary SVG writer.
+drawingImportedPage :: P.Drawing -> P.ImportedPage
+drawingImportedPage drawing =
+  let (width, height) = P.drSize drawing
+      content = P.drawingContentForRecoloring drawing
+   in P.ImportedPage
+        (P.sha256 ("Golem SVG figure\n" <> content))
+        1
+        (0, 0, width, height)
+        0
+        (width, height)
+        (O.ODict [("ColorSpace", O.ODict [("GolemSRGB", O.OArr [O.OName "ICCBased", O.ORef 0])])])
+        Nothing
+        content
+        [(0, O.OStream [("N", O.OInt 3)] P.srgbProfile)]
+        [P.UseIcc 3 P.srgbProfile]
+        0
+
+-- | Grayscale has priority over a single chromatic colour (root ADR 0403).
+recolorFigure :: Cmyk -> P.FigureContent -> P.FigureContent
+recolorFigure swatch figure@(P.SvgFigure drawing)
+  | Set.null used = figure
+  | all gray (Set.toList used) = paint (\(r, _, _) -> rgbTone swatch (fromIntegral r / 255))
+  | Set.size used == 1 = paint (const (rgbTone swatch 0))
+  | otherwise = figure
+  where
+    used = Set.fromList (concatMap colors (P.drItems drawing))
+    gray (r, g, b) = r == g && g == b
+    colors (P.DrawPath p _) = maybe [] pure (P.ppFill p) <> maybe [] (pure . P.psColor) (P.ppStroke p)
+    colors (P.DrawGroup _ _ items) = concatMap colors items
+    paint convert = P.SvgFigure drawing {P.drItems = map (replace convert) (P.drItems drawing)}
+    replace convert (P.DrawPath p segments) = P.DrawPath p {P.ppFill = convert <$> P.ppFill p, P.ppStroke = (\stroke -> stroke {P.psColor = convert (P.psColor stroke)}) <$> P.ppStroke p} segments
+    replace convert (P.DrawGroup matrix clip items) = P.DrawGroup matrix clip (map (replace convert) items)
+recolorFigure _ figure = figure
+
+-- | A self-contained SVG of the supported drawing subset, preserving geometry.
+drawingSvg :: P.Drawing -> Text
+drawingSvg (P.Drawing (width, height) items) =
+  "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"" <> number width <> "\" height=\"" <> number height <> "\" viewBox=\"0 0 " <> number width <> " " <> number height <> "\">" <> children "g" items <> "</svg>"
+  where
+    number = showRationalDigits 12
+    point (x, y) = number x <> " " <> number y
+    attribute key value = " " <> key <> "=\"" <> value <> "\""
+    rgb (r, g, b) = "rgb(" <> T.intercalate "," (map (T.pack . show) [r, g, b]) <> ")"
+    children prefix xs = T.concat [item (prefix <> "-" <> T.pack (show i)) x | (i, x) <- zip [0 :: Int ..] xs]
+    item ident = \case
+      P.DrawGroup matrix clip xs ->
+        "<g"
+          <> attribute "transform" ("matrix(" <> T.intercalate " " (map number matrix) <> ")")
+          <> ">"
+          <> maybe "" (\(x, y, w, h) -> "<defs><clipPath" <> attribute "id" ident <> "><rect" <> attribute "x" (number x) <> attribute "y" (number y) <> attribute "width" (number w) <> attribute "height" (number h) <> "/></clipPath></defs><g" <> attribute "clip-path" ("url(#" <> ident <> ")") <> ">") clip
+          <> children ident xs
+          <> maybe "" (const "</g>") clip
+          <> "</g>"
+      P.DrawPath paint segments ->
+        "<path"
+          <> attribute "d" (T.intercalate " " (map segment segments))
+          <> attribute "fill" (maybe "none" rgb (P.ppFill paint))
+          <> attribute "fill-rule" (if P.ppEvenOdd paint then "evenodd" else "nonzero")
+          <> maybe (attribute "stroke" "none") stroke (P.ppStroke paint)
+          <> "/>"
+    segment = \case
+      P.SegMove p -> "M " <> point p
+      P.SegLine p -> "L " <> point p
+      P.SegCurve a b c -> "C " <> point a <> " " <> point b <> " " <> point c
+      P.SegClose -> "Z"
+    stroke s =
+      attribute "stroke" (rgb (P.psColor s))
+        <> attribute "stroke-width" (number (P.psWidth s))
+        <> attribute "stroke-linecap" (case P.psCap s of 1 -> "round"; 2 -> "square"; _ -> "butt")
+        <> attribute "stroke-linejoin" (case P.psJoin s of 1 -> "round"; 2 -> "bevel"; _ -> "miter")
+        <> attribute "stroke-miterlimit" (number (P.psMiterLimit s))
+        <> attribute "stroke-dasharray" (if null (P.psDash s) then "none" else T.intercalate " " (map number (P.psDash s)))
+        <> attribute "stroke-dashoffset" (number (P.psDashOffset s))
+
+-- | The explicitly selected swatch, independent of page furniture and rules.
+figureColor :: Style -> Maybe Cmyk
+figureColor style = do
+  name <- stFigureColor style
+  Swatch components <- Map.lookup name (stSwatches style)
+  pure components

@@ -27,6 +27,9 @@ module Golem.Project.Style
     resolvedParagraphSpacing,
     GridPosition (..),
     FontRole (..),
+    GenericFamily (..),
+    genericFamilyValues,
+    genericFamilyName,
     Feature (..),
     FeatureSite (..),
     charFeatures,
@@ -96,7 +99,11 @@ module Golem.Project.Style
     HeadingBlockAlign (..),
     NotesPlacement (..),
     noteStyleFor,
+    Endnotes (..),
+    defaultEndnotes,
+    endnoteStyle,
     Composition (..),
+    KeepParts (..),
     RubyStyleDef (..),
     kentenShapeNames,
     SidenoteStyle (..),
@@ -106,6 +113,11 @@ module Golem.Project.Style
     effectiveHiddenFolio,
     HiddenFolioPages (..),
     MasterDef (..),
+    FrameDef (..),
+    FrameXFrom (..),
+    FrameWrap (..),
+    FrameShape (..),
+    frameShape,
     RunningHeadDef (..),
     RunningContent (..),
     RunningRef (..),
@@ -136,6 +148,9 @@ module Golem.Project.Style
     checkPosition,
     loadStyle,
     fontFiles,
+    FontFile (..),
+    fontFilesWithLicenses,
+    fontLicenseKeyDiagnostics,
     pageSize,
   )
 where
@@ -143,6 +158,7 @@ where
 import Control.Applicative ((<|>))
 import Control.Monad (foldM, join, unless, when)
 import Data.Bifunctor (bimap)
+import Data.Bifunctor qualified as Bifunctor
 import Data.ByteString qualified as BS
 import Data.Char (isAsciiLower, isAsciiUpper, isDigit, isLetter)
 import Data.Foldable (asum, toList)
@@ -156,12 +172,13 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Golem.Assemble (NoteNumbering (..))
-import Golem.Assemble.Formats (Braces (..), Legacy (..), MarkFormat, NumberSlotName (..), Piece (..), Slot (..), defaultMarkFormat, notationName, parseFormat, parseHeadingNumberFormatText, parseMarkFormat, parseNumberFormatText)
+import Golem.Assemble.Formats (Braces (..), FormatCause (..), FormatError (..), Legacy (..), MarkFormat (..), NumberSlotName (..), Piece (..), Slot (..), arabic, defaultMarkFormat, notationName, parseFormat, parseHeadingNumberFormatText, parseMarkFormat, parseNumberFormatText, unknownSlot)
 import Golem.Assemble.ListMarkers (NumberFormat, parseNumberFormat, parseNumberFormatLegacy)
 import Golem.Length (Sp (..))
 import Golem.Length qualified as L
 import Golem.Project.Feature
-import Golem.Project.Manifest (decodeStrictBy, decodeStrictTableWith, decodeStrictWith, maxNaturalInt, naturalIntOf, naturalOf, positionSpan, readTomlTable)
+import Golem.Project.Manifest (codedMessage, decodeStrictBy, decodeStrictTableWith, decodeStrictWith, failAtCode, maxNaturalInt, naturalIntOf, naturalOf, positionSpan, readTomlTable)
+import Golem.Project.PathData (Path (..), SubPath (..), pathUnit, readStylePath)
 import Golem.Project.Paths (normalizeRelative)
 import Golem.Project.Position qualified as P
 import Golem.Project.TomlMessage (schemaMessage)
@@ -173,7 +190,7 @@ import Numeric.Natural (Natural)
 import Toml qualified
 import Toml.Schema
 import Toml.Schema.Matcher (inIndex, inKey)
-import Toml.Semantics (valueAnn)
+import Toml.Semantics (valueAnn, valueType)
 import Toml.Syntax (Position (..))
 import Prelude hiding (fail)
 
@@ -234,7 +251,9 @@ data Grid = Grid
     gridColumns :: !Natural,
     gridColumnGap :: !(Maybe Dim),
     gridTop :: !Dim,
-    gridPosition :: !GridPosition
+    gridPosition :: !GridPosition,
+    -- | the cell advance without resizing its glyph (root ADR 0380)
+    gridCharacterAdvance :: !(Maybe Dim)
   }
   deriving stock (Eq, Show)
 
@@ -317,9 +336,30 @@ data FontRole = FontRole
     {- | the coordinates of axes by their tags, over those of the instance,
     in the order of the tags (Golem ADR 0358); finite numbers, checked
     against the font when it is loaded
-    -} frAxes :: ![(Text, Double)]
+    -} frAxes :: ![(Text, Double)],
+    -- | the generic family HTML and EPUB end the role's font-family with (docs/adr/0423); unused by the PDF
+    frGenericFamily :: !(Maybe GenericFamily),
+    -- | ja-license: the license document HTML and EPUB copy with the ja font they embed (root ADR 0433)
+    frJaLicense :: !(Maybe FilePath),
+    -- | latin-license: the license document of the latin font (root ADR 0433)
+    frLatinLicense :: !(Maybe FilePath)
   }
   deriving stock (Eq, Show)
+
+-- | The generic families a role can name (docs/adr/0423): Mincho-like, Gothic-like, and monospace.
+data GenericFamily = GenericSerif | GenericSansSerif | GenericMonospace
+  deriving stock (Eq, Ord, Show, Enum, Bounded)
+
+-- | The values of generic-family, as CSS writes them (docs/adr/0423).
+genericFamilyValues :: [(Text, GenericFamily)]
+genericFamilyValues = [(genericFamilyName g, g) | g <- [minBound .. maxBound]]
+
+-- | The CSS name of a generic family.
+genericFamilyName :: GenericFamily -> Text
+genericFamilyName = \case
+  GenericSerif -> "serif"
+  GenericSansSerif -> "sans-serif"
+  GenericMonospace -> "monospace"
 
 {- | The kerning method of a style (docs/adr/0020). 'KernOptical' is read
 and then rejected by the checks of style.toml (G03021): it is a v2 item.
@@ -1186,6 +1226,10 @@ data HeadingStyle = HeadingStyle
   }
   deriving stock (Eq, Show)
 
+-- | The physical unit that retains book parts (root ADR 0377 and 0401).
+data KeepParts = KeepColumn | KeepPage | KeepSpread
+  deriving stock (Eq, Ord, Show)
+
 data Composition = Composition
   { compKinsokuStrict :: !Bool,
     compHanging :: !Bool,
@@ -1203,7 +1247,8 @@ data Composition = Composition
     compNumberUnitPenalty :: !Int,
     {- | [composition.hyphenation-exceptions] (docs/adr ADR 0272): the words
     of each language tag as written, hyphens where they may break
-    -} compHyphenationExceptions :: !(Map Text [Text])
+    -} compHyphenationExceptions :: !(Map Text [Text]),
+    compKeepParts :: !KeepParts
   }
   deriving stock (Eq, Show)
 
@@ -1415,9 +1460,56 @@ data RunningHeadDef = RunningHeadDef
 data MasterDef = MasterDef
   { mdRunningHead :: !(Maybe RunningHeadDef),
     mdFolio :: !(Maybe (Text, Text)), -- position, format
-    mdFolioCharacterStyle :: !(Maybe Text)
+    mdFolioCharacterStyle :: !(Maybe Text),
+    -- | the text frames the master page puts on its pages, in the order written (root ADR 0438)
+    mdFrames :: ![Text]
   }
   deriving stock (Eq, Show)
+
+{- | Where the x of a text frame is measured from (root ADR 0438): the left
+edge of the trimmed page, the edge at the spine (towards the fore-edge)
+or the fore-edge (towards the spine). The last two mirror the frame on
+the left and right pages.
+-}
+data FrameXFrom = FromLeft | FromInside | FromOutside
+  deriving stock (Eq, Show)
+
+-- | How the body goes with a text frame (root ADR 0438): over it, or shortened around its bounding rectangle.
+data FrameWrap = FrameWrapNone | FrameWrapAround
+  deriving stock (Eq, Show)
+
+{- | A text frame of @[frames.<name>]@ (root ADR 0438): its rectangle (x, y,
+width and height) or its path, as written; the origin is the top of the
+trimmed page, y going down. The checks of the style make sure a frame
+has exactly one of the two ('frameShape').
+-}
+data FrameDef = FrameDef
+  { frX :: !(Maybe Dim),
+    frY :: !(Maybe Dim),
+    frWidth :: !(Maybe Dim),
+    frHeight :: !(Maybe Dim),
+    -- | the path in sp, its y going down from the top of the trimmed page
+    frPath :: !(Maybe Path),
+    frXFrom :: !FrameXFrom,
+    frParagraphStyle :: !(Maybe Text),
+    -- | horizontal or vertical; Nothing is that of [page]
+    frWritingMode :: !(Maybe Text),
+    frWrap :: !FrameWrap,
+    -- | the text of a frame a master page puts (no expression)
+    frText :: !(Maybe Text)
+  }
+  deriving stock (Eq, Show)
+
+-- | The shape of a text frame: its rectangle (x, y, width, height) or its path.
+data FrameShape = FrameRect !Dim !Dim !Dim !Dim | FramePath !Path
+  deriving stock (Eq, Show)
+
+-- | The shape of a frame that has exactly one: all four keys of the rectangle, or a path.
+frameShape :: FrameDef -> Maybe FrameShape
+frameShape f = case (frX f, frY f, frWidth f, frHeight f, frPath f) of
+  (Just x, Just y, Just w, Just h, Nothing) -> Just (FrameRect x y w h)
+  (Nothing, Nothing, Nothing, Nothing, Just p) -> Just (FramePath p)
+  _ -> Nothing
 
 {- | [lists] (golem-driver ADR 0013): the bullet and the number format of
 each depth, and the gap between a marker and the text. Without bullets,
@@ -1493,7 +1585,7 @@ parseRunningFormatLegacy t0
   | T.null t0 = Left "空の行があります"
   | T.any (== '\n') t0 = Left "行の中に改行があります。行は配列の要素で分けてください"
   | otherwise = do
-      (ps, legacy) <- parseFormat DoubledToo (fmap TextSlot . slot) t0
+      (ps, legacy) <- Bifunctor.first formatReason (parseFormat DoubledToo (bimap unknownSlot TextSlot . slot) t0)
       pure (merge [part p | p <- ps], legacy)
   where
     part = \case
@@ -1586,13 +1678,15 @@ data DecorationSpec = DecorationSpec
     dsDash :: !(Maybe Dim),
     dsGap :: !(Maybe Dim),
     -- | the swatch; none is the colour of the characters
-    dsColor :: !(Maybe Text)
+    dsColor :: !(Maybe Text),
+    -- | the side of a vertical underline (root ADR 0380)
+    dsSide :: !Text
   }
   deriving stock (Eq, Show)
 
 -- | The line of true and of an empty table: 0.05zw, at the face, solid, the colour of the characters.
 defaultDecoration :: DecorationSpec
-defaultDecoration = DecorationSpec (Zw (1 % 20)) (Abs 0) ("solid", Nothing) Nothing Nothing Nothing
+defaultDecoration = DecorationSpec (Zw (1 % 20)) (Abs 0) ("solid", Nothing) Nothing Nothing Nothing "right"
 
 {- | The weight and the line style of a decoration at a size, its lengths
 in sp: the defaults of the dash and the gap are those of a rule of the
@@ -1742,8 +1836,9 @@ instance FromValue DecorationSpec where
       Integer' _ 0 -> pure (Abs 0)
       Text' l t -> maybe (failAt l (T.unpack ("offset の長さの書き方が不正です: " <> t <> "（0.05zw や -1pt のように書きます）"))) pure (parseSignedDim t)
       v -> failAt (valueAnn v) "offset は \"0.05zw\" のように文字列で書きます"
+    side <- enumKey "side" ["left", "right"]
     let d = defaultDecoration
-    pure (DecorationSpec (fromMaybe (dsWeight d) weight) (fromMaybe (dsOffset d) offset) style dash gap color)
+    pure (DecorationSpec (fromMaybe (dsWeight d) weight) (fromMaybe (dsOffset d) offset) style dash gap color (fromMaybe "right" side))
 
 -- | 0.3pt.
 defaultRuleWeight :: Sp
@@ -1843,8 +1938,12 @@ data Style = Style
     stFootnoteBodyStyle :: !(Maybe Text),
     stChapterEndBodyStyle :: !(Maybe Text),
     stChapterEndHeadingStyle :: !(Maybe Text),
+    -- | [endnotes]: the endnotes, a channel apart from the notes (root ADR 0412)
+    stEndnotes :: !Endnotes,
     stSidenotes :: !(Maybe SidenoteStyle),
     stFigureNumber :: !Text,
+    -- | [figures] color: the swatch of single-colour SVG figures (root ADR 0386).
+    stFigureColor :: !(Maybe Text),
     -- | [tables] number: the format of table numbers (docs/adr/0262)
     stTableNumber :: !Text,
     -- | [tables] caption-position: the side of the captions of tables (docs/adr/0262)
@@ -1853,6 +1952,8 @@ data Style = Style
     stIntent :: !(Maybe FilePath),
     stSwatches :: !(Map Text Swatch),
     stMasters :: !(Map Text MasterDef),
+    -- | the text frames by their names (root ADR 0438)
+    stFrames :: !(Map Text FrameDef),
     -- | [toc] leader: "dots" or "none" (golem-driver ADR 0009)
     stTocLeader :: !Text,
     -- | [printings] format: the format of a line of @printings, Nothing for the default (docs/adr ADR 0375)
@@ -1871,7 +1972,7 @@ data Style = Style
   deriving stock (Eq, Show)
 
 defaultComposition :: Composition
-defaultComposition = Composition True False defaultRubyStyleDef "sesame" 100 200 (Abs 0) False Nothing 50 10000 Map.empty
+defaultComposition = Composition True False defaultRubyStyleDef "sesame" 100 200 (Abs 0) False Nothing 50 10000 Map.empty KeepColumn
 
 defaultStyle :: Style
 defaultStyle =
@@ -1899,14 +2000,17 @@ defaultStyle =
       stFootnoteBodyStyle = Nothing,
       stChapterEndBodyStyle = Nothing,
       stChapterEndHeadingStyle = Nothing,
+      stEndnotes = defaultEndnotes,
       stSidenotes = Nothing,
       stFigureNumber = "図{chapter}-{n}",
+      stFigureColor = Nothing,
       stTableNumber = "表{chapter}-{n}",
       stTableCaption = CaptionAbove,
       stWrapGap = Zw 1,
       stIntent = Nothing,
       stSwatches = Map.empty,
       stMasters = Map.empty,
+      stFrames = Map.empty,
       stTocLeader = "dots",
       stPrintingsFormat = Nothing,
       stLists = defaultListStyle,
@@ -2096,7 +2200,15 @@ gridOf layout = parseTableFromValue $ do
   case colsAt of
     Just (l, c) | c > 1 && isNothing gap -> failTableAt l "columns が 2 以上のときは column-gap が要ります"
     _ -> pure ()
-  pure (Grid fs ch ls lp (if alignment == Just "free" then AlignFree else AlignGrid) cols gap top pos)
+  advance <- optKeyOf "character-advance" $ \v -> do
+    d <- case v of
+      Text' l text -> maybe (failAt l "character-advance は寸法で書きます") pure (parseDim text)
+      _ -> failAt (valueAnn v) "character-advance は寸法で書きます"
+    case d of
+      Abs x | x > 0 -> pure d
+      Zw x | x > 0 -> pure d
+      _ -> failAt (valueAnn v) "character-advance は 0 より大きい寸法です"
+  pure (Grid fs ch ls lp (if alignment == Just "free" then AlignFree else AlignGrid) cols gap top pos advance)
 
 -- | Validate the mode before constructing an unambiguous physical position.
 positionOf :: PageLayout -> Value' l -> Matcher l (Dim, GridPosition)
@@ -2147,24 +2259,38 @@ instance FromValue Page where
 instance FromValue FontRole where
   fromValue =
     parseTableFromValue $
-      (FontRole . fmap T.unpack <$> optKey "ja") <*> (fmap T.unpack <$> optKey "latin") <*> featuresKey <*> (fromMaybe False <$> optKey "punctuation-proportional") <*> optKey "instance" <*> axesKey
+      (FontRole . fmap T.unpack <$> optKey "ja") <*> (fmap T.unpack <$> optKey "latin") <*> featuresKey <*> (fromMaybe False <$> optKey "punctuation-proportional") <*> instanceKey <*> axesKey <*> genericFamilyKey <*> (fmap T.unpack <$> optKey "ja-license") <*> (fmap T.unpack <$> optKey "latin-license")
+
+-- | The named instance of a role (Golem ADR 0358): a string; anything else is G03260 (root ADR 0413).
+instanceKey :: ParseTable l (Maybe Text)
+instanceKey =
+  optKeyOf "instance" $ \case
+    Text' _ t -> pure t
+    v -> failAtCode (valueAnn v) "G03260" ("expected string but got " <> valueType v)
+
+-- | generic-family (docs/adr/0423): a wrong value is G03281 (codeAt in parseStyle).
+genericFamilyKey :: ParseTable l (Maybe GenericFamily)
+genericFamilyKey = fmap (>>= (`lookup` genericFamilyValues)) (enumKey "generic-family" (map fst genericFamilyValues))
 
 {- | The axes of a role (Golem ADR 0358): a table of axis tags and finite
 numbers, in the order of the tags. Whether the font has the axes and the
 values lie in them is checked when the font is loaded (G08111, G08112).
+Each error has its code (root ADR 0413): axes that are not a table
+G03261, a value that is not a number G03262, one that is not finite
+G03263.
 -}
 axesKey :: ParseTable l [(Text, Double)]
 axesKey =
   fmap (fromMaybe []) . optKeyOf "axes" $ \case
     Table' _ (MkTable t) -> sequence [(k,) <$> inKey k (number v) | (k, (_, v)) <- Map.toAscList t]
-    v -> failAt (valueAnn v) "axes には軸のタグと数の表を書きます（{ wght = 650 } のように書きます）"
+    v -> failAtCode (valueAnn v) "G03261" "axes には軸のタグと数の表を書きます（{ wght = 650 } のように書きます）"
   where
     number = \case
       Integer' _ n -> pure (fromInteger n)
       Double' l d
-        | isNaN d || isInfinite d -> failAt l "軸の値には有限の数を書きます"
+        | isNaN d || isInfinite d -> failAtCode l "G03263" "軸の値には有限の数を書きます"
         | otherwise -> pure d
-      v -> failAt (valueAnn v) "軸の値には数を書きます"
+      v -> failAtCode (valueAnn v) "G03262" "軸の値には数を書きます"
 
 instance FromValue CharStyleDef where
   fromValue = parseTableFromValue $ do
@@ -2477,6 +2603,7 @@ instance FromValue Composition where
     eh <- optKey "explicit-hyphen-penalty"
     nu <- optKey "number-unit-penalty"
     hx <- optKey "hyphenation-exceptions"
+    parts <- enumKey "keep-parts" keepPartsValues
     let d = defaultComposition
     pure
       Composition
@@ -2491,7 +2618,8 @@ instance FromValue Composition where
           compExpansion = (\(Expansion l s) -> (l, s)) <$> ex,
           compExplicitHyphenPenalty = fromMaybe (compExplicitHyphenPenalty d) eh,
           compNumberUnitPenalty = fromMaybe (compNumberUnitPenalty d) nu,
-          compHyphenationExceptions = fromMaybe Map.empty hx
+          compHyphenationExceptions = fromMaybe Map.empty hx,
+          compKeepParts = case parts of Just "page" -> KeepPage; Just "spread" -> KeepSpread; _ -> KeepColumn
         }
 
 instance FromValue SidenoteStyle where
@@ -2593,9 +2721,50 @@ instance FromValue MasterDef where
   fromValue = parseTableFromValue $ do
     rh <- optKey "running-head"
     fo <- optKey "folio"
+    frames <- fromMaybe [] <$> optKey "frames"
     let pc (PosContent a b _) = (a, b)
         cs (PosContent _ _ n) = n
-    pure (MasterDef rh (pc <$> fo) (fo >>= cs))
+    pure (MasterDef rh (pc <$> fo) (fo >>= cs) frames)
+
+{- | A text frame (root ADR 0438). A width or a height of 0 is wrong at its
+value; the path is read in its unit. Which keys of the shape are written
+is checked with the style ('frameShapeChecks').
+-}
+instance FromValue FrameDef where
+  fromValue = parseTableFromValue $ do
+    x <- fmap (\(DimV d) -> d) <$> optKey "x"
+    y <- fmap (\(DimV d) -> d) <$> optKey "y"
+    w <- optKeyOf "width" positive
+    h <- optKeyOf "height" positive
+    unitText <- optKeyOf "unit" $ \case
+      Text' l t -> either (\_ -> failAt l ("パスの unit は mm、pt、Q のどれかです: " <> T.unpack t)) pure (pathUnit (Just t))
+      v -> failAt (valueAnn v) "パスの unit は文字列で書きます"
+    let unit = fromMaybe L.Mm unitText
+    path <- optKeyOf "path" $ \case
+      Text' l t -> either (\e -> failAt l ("パスのデータが読めません: " <> show e)) pure (readStylePath unit t)
+      v -> failAt (valueAnn v) "パスは文字列で書きます"
+    xFrom <- optKeyOf "x-from" $ \case
+      Text' _ "left" -> pure FromLeft
+      Text' _ "inside" -> pure FromInside
+      Text' _ "outside" -> pure FromOutside
+      v -> failAt (valueAnn v) "x-from は left、inside、outside のどれかです"
+    para <- optKey "paragraph-style"
+    wm <- optKeyOf "writing-mode" $ \case
+      Text' _ t | t `elem` ["horizontal", "vertical"] -> pure t
+      v -> failAt (valueAnn v) "writing-mode は horizontal か vertical です"
+    wrap <- optKeyOf "wrap" $ \case
+      Text' _ "none" -> pure FrameWrapNone
+      Text' _ "around" -> pure FrameWrapAround
+      v -> failAt (valueAnn v) "wrap は none か around です"
+    text <- optKey "text"
+    pure (FrameDef x y w h path (fromMaybe FromLeft xFrom) para wm (fromMaybe FrameWrapNone wrap) text)
+    where
+      positive v = do
+        DimV d <- fromValue v
+        case d of
+          Abs n | n <= 0 -> failAt (valueAnn v) "フレームの幅と高さは 0 より大きい長さです"
+          Zw r | r <= 0 -> failAt (valueAnn v) "フレームの幅と高さは 0 より大きい長さです"
+          _ -> pure d
 
 instance FromValue Swatch where
   fromValue = parseTableFromValue $ do
@@ -2628,6 +2797,79 @@ data NoteStyle = NoteStyle (Maybe Text) (Maybe Text)
 
 instance FromValue NoteStyle where
   fromValue = parseTableFromValue (NoteStyle <$> optKey "body-style" <*> optKey "heading-style")
+
+{- | [endnotes] (root ADR 0412): the keys of [notes] of the same names
+but placement, rule and the tables of placement. A key not written takes
+the default of the endnotes, never the value of [notes]. numbering =
+"page" is read, and is G03278 ('endnoteChecks').
+-}
+data Endnotes = Endnotes
+  { enNumbering :: !NoteNumbering,
+    enMarkFormat :: !MarkFormat,
+    enMarkStyle :: !Text,
+    enBodyMarkStyle :: !(Maybe Text),
+    enMarkFlat :: !Bool,
+    enBodyStyle :: !(Maybe Text),
+    enHeadingStyle :: !(Maybe Text)
+  }
+  deriving stock (Eq, Show)
+
+-- | The endnotes of a book without [endnotes]: per chapter, marked {n} in note-mark (root ADR 0412).
+defaultEndnotes :: Endnotes
+defaultEndnotes = Endnotes NumberPerChapter (MarkFormat "" arabic "") "note-mark" Nothing False Nothing Nothing
+
+instance FromValue Endnotes where
+  fromValue =
+    parseTableFromValue $ do
+      let d = defaultEndnotes
+      numbering <- enumKey "numbering" numberingValues
+      format <- optKeyOf "mark-format" (withValue (\l f -> either (\why -> failAt l (T.unpack ("[endnotes] の mark-format が正しくありません（" <> why <> "）: " <> f))) pure (parseMarkFormat f)))
+      markStyle <- optKey "mark-style"
+      bodyMarkStyle <- optKey "body-mark-style"
+      bodyStyle <- optKey "body-style"
+      headingStyle <- optKey "heading-style"
+      shape <- enumKey "mark-shape" markShapeValues
+      pure
+        Endnotes
+          { enNumbering = maybe (enNumbering d) numberingOf numbering,
+            enMarkFormat = fromMaybe (enMarkFormat d) format,
+            enMarkStyle = fromMaybe (enMarkStyle d) markStyle,
+            enBodyMarkStyle = bodyMarkStyle,
+            enMarkFlat = shape == Just "flat",
+            enBodyStyle = bodyStyle,
+            enHeadingStyle = headingStyle
+          }
+
+-- | A value of numbering, of [notes] and of [endnotes] (golem-driver ADR 0018, docs/adr/0383).
+numberingOf :: Text -> NoteNumbering
+numberingOf = \case
+  "file" -> NumberPerFile
+  "book" -> NumberPerBook
+  "page" -> NumberPerPage
+  _ -> NumberPerChapter
+
+{- | The style with the values of [endnotes] in place of those of [notes]
+(root ADR 0412): the endnotes are set with what sets the notes at the end
+of a chapter, from their own keys alone.
+-}
+endnoteStyle :: Style -> Style
+endnoteStyle st =
+  let e = stEndnotes st
+   in st
+        { stNotesPlacement = PlaceChapterEnd,
+          stNotesNumbering = enNumbering e,
+          stNotesRule = Nothing,
+          stNotesMarkSize = Nothing,
+          stNotesMarkFormat = enMarkFormat e,
+          stNotesMarkFlat = enMarkFlat e,
+          stNotesMarkStyle = enMarkStyle e,
+          stNotesBodyMarkStyle = enBodyMarkStyle e,
+          stNotesBodyStyle = enBodyStyle e,
+          stNotesHeadingStyle = enHeadingStyle e,
+          stFootnoteBodyStyle = Nothing,
+          stChapterEndBodyStyle = Nothing,
+          stChapterEndHeadingStyle = Nothing
+        }
 
 -- | Resolve placement overrides while preserving common defaults (root ADR 0404).
 noteStyleFor :: NotesPlacement -> Style -> Style
@@ -2709,7 +2951,7 @@ instance FromValue CodeSec where
           [] -> pure cs
     pure (CodeSec (CodeStyle (fromMaybe (cdNumber d) number) (fromMaybe False ln) lnc hl added removed (fromMaybe "" wm) (fromMaybe "" cont) colors))
 
-data Figures = Figures (Maybe Text) (Maybe Dim)
+data Figures = Figures (Maybe Text) (Maybe Dim) (Maybe Text)
 
 {- | The side of the captions of tables (docs/adr/0262): above is before
 the table (on its right in vertical text), below after it (on its left).
@@ -2724,7 +2966,7 @@ instance FromValue TablesSec where
   fromValue = parseTableFromValue (TablesSec <$> optKey "number" <*> enumKey "caption-position" captionPositionValues)
 
 instance FromValue Figures where
-  fromValue = parseTableFromValue (Figures <$> optKey "number" <*> dimKey "wrap-gap")
+  fromValue = parseTableFromValue (Figures <$> optKey "number" <*> dimKey "wrap-gap" <*> optKey "color")
 
 -- | The retired [verse] (docs/adr ADR 0005, 0006): an error that names its replacement.
 data VerseV
@@ -2795,19 +3037,49 @@ instance FromValue IndexSec where
 formats of style.toml are (docs/adr ADR 0177), with @{{@ and @}}@ as the
 current way of writing a brace: no notice. Every field is a text slot, so
 an explicit format writes decimal digits whatever the writing mode. A
-newline is an error: one printing is one line.
+newline is an error: one printing is one line. Each cause has its code
+(root ADR 0413): a newline first, then the first cause read from the
+front.
 -}
 printingTemplate :: l -> Text -> Matcher l [Piece Text]
 printingTemplate loc format
   -- the format is not repeated in the message: it would break the line
-  | T.any (`elem` ("\r\n" :: String)) format = failAt loc "[printings] の format が正しくありません（改行は書けません）"
+  | T.any (`elem` ("\r\n" :: String)) format = failAtCode loc "G03264" "[printings] の format が正しくありません（改行は書けません）"
   | otherwise = either wrong (pure . fst) (parseFormat DoubledToo slot format)
   where
-    wrong why = failAt loc (T.unpack ("[printings] の format が正しくありません（" <> why <> "）: " <> format))
+    wrong (FormatError cause why) = failAtCode loc (printingFormatCode cause) (T.unpack ("[printings] の format が正しくありません（" <> printingFormatReason cause why <> "）: " <> format))
     slot name
       | name == "printing" = Right (TextSlot "number")
       | name `elem` ["year", "month", "day", "date", "edition"] = Right (TextSlot name)
-      | otherwise = Left ("表にない欄です: {" <> name <> "}")
+      | otherwise = Left (unknownSlot ("表にない欄です: {" <> name <> "}"))
+
+{- | The code of a cause of an error of the format of [printings] (root
+ADR 0413). Every field is a text slot, so a notation on one is
+'NotationOnText'; the causes of number slots and samples cannot come from
+this table, and take the code of a notation written on a field.
+-}
+printingFormatCode :: FormatCause -> Text
+printingFormatCode = \case
+  UnknownSlot -> "G03265"
+  NotationOnText -> "G03266"
+  UnknownNotation -> "G03266"
+  NotationOnSample -> "G03266"
+  UnclosedBrace -> "G03267"
+  UnopenedBrace -> "G03268"
+  EmptySlot -> "G03269"
+  BadEscape -> "G03270"
+  TrailingBackslash -> "G03271"
+
+{- | The reason of an error of the format of [printings] (root ADR 0424):
+[printings] writes a brace as @{{@ and @}}@ (ADR 0375), so the reasons
+of a @{@ not closed and a @}@ without its @{@ recommend them in place of
+the @\\{@ and @\\}@ of 'parseFormat', which the other formats keep.
+-}
+printingFormatReason :: FormatCause -> Text -> Text
+printingFormatReason = \case
+  UnclosedBrace -> const "閉じていない { があります。文字の { は {{ と書きます"
+  UnopenedBrace -> const "対応する { のない } があります。文字の } は }} と書きます"
+  _ -> id
 
 -- | Substitute the fields of one printing, leaving literal text intact.
 renderPrintingTemplate :: (Text -> Text) -> [Piece Text] -> Text
@@ -2858,11 +3130,15 @@ instance FromValue Style where
         case (size, markSizeConflict cstyles markStyle) of
           (Just _, Just d) -> inKey "mark-size" (failAt (keyPosition v "mark-size") (T.unpack (markSizeConflictMessage markStyle d)))
           _ -> pure notes
+    -- the endnotes (root ADR 0412)
+    endnotes <- fromMaybe defaultEndnotes <$> optKey "endnotes"
     side <- optKey "sidenotes"
-    Figures fnum fgap <- fromMaybe (Figures Nothing Nothing) <$> optKey "figures"
+    Figures fnum fgap fcolor <- fromMaybe (Figures Nothing Nothing Nothing) <$> optKey "figures"
     TablesSec tnum tcap <- fromMaybe (TablesSec Nothing Nothing) <$> optKey "tables"
     ColorSec intent swatches <- fromMaybe (ColorSec Nothing Map.empty) <$> optKey "color"
     masters <- fromMaybe Map.empty <$> optKey "masters"
+    -- the text frames (root ADR 0438)
+    frames <- fromMaybe Map.empty <$> optKey "frames"
     (_ :: Maybe VerseV) <- optKey "verse"
     TocSec leader <- fromMaybe (TocSec Nothing) <$> optKey "toc"
     printingFormat <- optKeyOf "printings" (parseTableFromValue (optKeyOf "format" (withValue printingTemplate)))
@@ -2909,14 +3185,17 @@ instance FromValue Style where
           stFootnoteBodyStyle = fbody,
           stChapterEndBodyStyle = ebody,
           stChapterEndHeadingStyle = ehead,
+          stEndnotes = endnotes,
           stSidenotes = side,
           stFigureNumber = fromMaybe (stFigureNumber d) fnum,
+          stFigureColor = fcolor,
           stTableNumber = fromMaybe (stTableNumber d) tnum,
           stTableCaption = if tcap == Just "below" then CaptionBelow else CaptionAbove,
           stWrapGap = fromMaybe (stWrapGap d) fgap,
           stIntent = T.unpack <$> intent,
           stSwatches = swatches,
           stMasters = masters,
+          stFrames = frames,
           stTocLeader = fromMaybe (stTocLeader d) leader,
           stPrintingsFormat = fromMaybe Nothing printingFormat,
           stLists = lists,
@@ -3055,10 +3334,10 @@ resolveStyleValues fid src (MkTable root) = do
             | otherwise = Left (bad "G03256" pos ("行数の宣言値が正しくありません: " <> raw))
     reference defs cache stack wanted pos name = do
       case Map.lookup name defs of
-        Nothing -> Left (bad (if null stack then "G03257" else "G03256") pos ("値の名前がありません: " <> name))
+        Nothing -> Left (bad "G03257" pos ("値の名前がありません: " <> name))
         Just _ -> do
           ((actual, resolved), next) <- resolveName defs cache stack name
-          if actual == wanted then Right (resolved, next) else Left (bad (if null stack then "G03258" else "G03256") pos ("値 " <> name <> " の種類が違います: 要求 " <> kindText wanted <> "、実際 " <> kindText actual))
+          if actual == wanted then Right (resolved, next) else Left (bad "G03258" pos ("値 " <> name <> " の種類が違います: 要求 " <> kindText wanted <> "、実際 " <> kindText actual))
     kindText = \case
       LengthKind -> "length"
       AkiKind -> "aki"
@@ -3245,6 +3524,8 @@ parseStyle fid src = do
       ScopeKey t : _ : ScopeKey k : _ | t `elem` ["character-styles", "paragraph-styles"], k `elem` featureKeys -> "G03021"
       -- an element of features that does not read is G03124 (docs/adr/0268)
       [ScopeKey t, _, ScopeKey "features", ScopeIndex _] | t `elem` ["fonts", "character-styles", "paragraph-styles"] -> "G03124"
+      -- a generic-family that is no generic family is G03281 (docs/adr/0423)
+      [ScopeKey "fonts", _, ScopeKey "generic-family"] -> "G03281"
       _ -> "G03006"
 
 {- | The checks of the styles of a 'Style' (docs/adr ADR 0005, 0006, 0014):
@@ -3265,6 +3546,7 @@ styleChecks owner s =
     <> paragraphDimensionChecks s
     <> ruleStyleChecks s
     <> singlePageChecks s
+    <> frameChecks s
     <> [("G03029", "", path, m) | (path, m, _) <- hiddenFolioChecks (effectiveHiddenFolio s)]
     <> fontRoleChecks s
     <> styleReferenceChecks owner s
@@ -3274,6 +3556,16 @@ styleChecks owner s =
     <> opticalKerningChecks s
     <> spineAlignChecks s
     <> markPositionChecks s
+    <> endnoteChecks s
+
+{- | G03278 (root ADR 0412): [endnotes] numbering = "page"; a list at the
+end of a chapter has no page to number its endnotes by.
+-}
+endnoteChecks :: Style -> [(Text, Text, [Scope], Text)]
+endnoteChecks s =
+  [ ("G03278", "", styleKeys ["endnotes", "numbering"], "章末の注にはページごとの番号を使えません。[endnotes] の numbering には \"chapter\"、\"file\"、\"book\" のどれかを書きます")
+  | enNumbering (stEndnotes s) == NumberPerPage
+  ]
 
 paragraphDimensionChecks :: Style -> [(Text, Text, [Scope], Text)]
 paragraphDimensionChecks s =
@@ -3315,7 +3607,7 @@ writes it. [notes] places the marks.
 markPositionChecks :: Style -> [(Text, Text, [Scope], Text)]
 markPositionChecks s =
   [ ("G03125", name, charKey definer "position", "注の印の文字スタイル " <> name <> " の position は \"normal\" だけを書けます（印の位置は [notes] で決まります）")
-  | let name = stNotesMarkStyle s,
+  | name <- nub [stNotesMarkStyle s, enMarkStyle (stEndnotes s)],
     (definer, d) <- take 1 [nd | nd@(_, d') <- namedChainOf (const csBasedOn) (stCharStyles s) name, isJust (csPosition d')],
     csPosition d /= Just P.PositionNormal
   ]
@@ -3363,7 +3655,7 @@ numberFormatChecks s =
 -- | G03006: the names of the character and paragraph styles.
 styleNameChecks :: Style -> [(Text, Text, [Scope], Text)]
 styleNameChecks s =
-  [("G03006", n, styleKeys [kind, n], "スタイルの名前は英小文字で始まり、英小文字、数字、- だけからなります: " <> n) | (kind, n) <- map ("character-styles",) (Map.keys (stCharStyles s)) <> map ("paragraph-styles",) (Map.keys (stParaStyles s)) <> map ("separators",) (Map.keys (stSeparators s)), not (validStyleName n)]
+  [("G03006", n, styleKeys [kind, n], "スタイルの名前は英小文字で始まり、英小文字、数字、- だけからなります: " <> n) | (kind, n) <- map ("character-styles",) (Map.keys (stCharStyles s)) <> map ("paragraph-styles",) (Map.keys (stParaStyles s)) <> map ("separators",) (Map.keys (stSeparators s)) <> map ("frames",) (Map.keys (stFrames s)), not (validStyleName n)]
 
 separatorChecks :: Style -> [(Text, Text, [Scope], Text)]
 separatorChecks s =
@@ -3624,9 +3916,20 @@ styleReferenceChecks owner s =
                | (placement, key, Just n) <- [("footnote", "body-style", stFootnoteBodyStyle s), ("chapter-end", "body-style", stChapterEndBodyStyle s), ("chapter-end", "heading-style", stChapterEndHeadingStyle s)],
                  Map.notMember n ps
                ]
+            -- the styles of [endnotes] (root ADR 0412)
+            <> [ ("", styleKeys ["endnotes", k], "[endnotes] の " <> k <> " の文字スタイルがありません: " <> n)
+               | (k, Just n) <- [("mark-style", Just (enMarkStyle (stEndnotes s))), ("body-mark-style", enBodyMarkStyle (stEndnotes s))],
+                 Map.notMember n cs
+               ]
+            <> [ ("", styleKeys ["endnotes", k], "[endnotes] の " <> k <> " の段落スタイルがありません: " <> n)
+               | (k, Just n) <- [("body-style", enBodyStyle (stEndnotes s)), ("heading-style", enHeadingStyle (stEndnotes s))],
+                 Map.notMember n ps
+               ]
             <> [("", styleKeys ["lists", "marker-style"], "[lists] の marker-style の文字スタイルがありません: " <> n) | Just n <- [lsMarkerStyle (stLists s)], Map.notMember n cs]
             <> [("", styleKeys ["sidenotes", "marker-style"], "[sidenotes] の marker-style の文字スタイルがありません: " <> n) | Just n <- [stSidenotes s >>= snMarkerStyle], Map.notMember n cs]
             <> [("", styleKeys ["composition", "ruby", "reading-style"], "[composition.ruby] の reading-style の文字スタイルがありません: " <> n) | Just n <- [rdReadingStyle (compRuby (stComposition s))], Map.notMember n cs]
+            -- the paragraph style of a text frame (root ADR 0438)
+            <> [("", styleKeys ["frames", n, "paragraph-style"], "フレーム " <> n <> " の段落スタイルがありません: " <> p) | (n, FrameDef {frParagraphStyle = Just p}) <- Map.toList (stFrames s), Map.notMember p ps]
             <> [("", styleKeys ["masters", master, part, "character-style"], "マスター " <> master <> " の " <> part <> " の文字スタイルがありません: " <> name) | (master, def) <- Map.toList (stMasters s), (part, Just name) <- [("running-head", mdRunningHead def >>= rhCharacterStyle), ("folio", mdFolioCharacterStyle def)], Map.notMember name cs]
             <> [ (n, charKey n "based-on", "文字スタイル " <> n <> " の based-on がありません: " <> b)
                | (n, CharStyleDef {csBasedOn = Just b}) <- Map.toList cs,
@@ -3668,6 +3971,7 @@ styleReferenceChecks owner s =
             -- the swatch of a background (golem-driver ADR 0017)
             <> [(n, paraKey n "background", "段落スタイル " <> n <> " の background のスウォッチがありません: " <> c) | (n, ParaStyleDef {psBackground = Just (Just c)}) <- Map.toList ps, Map.notMember c (stSwatches s)]
             <> [(n, paraKey n "border", "段落スタイル " <> n <> " の border のスウォッチがありません: " <> c) | (n, ParaStyleDef {psBorder = Just (Just c)}) <- Map.toList ps, Map.notMember c (stSwatches s)]
+            <> [("", styleKeys ["figures", "color"], "[figures] の color のスウォッチがありません: " <> c) | Just c <- [stFigureColor s], Map.notMember c (stSwatches s)]
             -- the swatch of a rule (golem-driver ADR 0028)
             <> [("", styleKeys ["notes", "rule", "color"], "[notes.rule] の color のスウォッチがありません: " <> c) | Just RuleSpec {rsColor = Just c} <- [stNotesRule s], Map.notMember c (stSwatches s)]
             <> [ (n, styleKeys ["paragraph-styles", n, k, "color"], "段落スタイル " <> n <> " の罫線の color のスウォッチがありません: " <> c)
@@ -3757,6 +4061,34 @@ spineAlignChecks s =
   ]
 
 -- | Constraints independent of the body or whether a master is used.
+
+{- | The checks of the text frames (root ADR 0438), each cause its own
+code: both or neither of the rectangle and the path (G03285), only some
+of the keys of the rectangle (G03286), a path with a subpath that is not
+closed (G03287), and a name in the frames of a master page that
+[frames] does not have (G03289). x-from inside and outside of the
+single-page mode (G03288) is in 'singlePageChecks'.
+-}
+frameChecks :: Style -> [(Text, Text, [Scope], Text)]
+frameChecks s =
+  concat
+    [ let rect = [k | (k, Just _) <- [("x", frX f), ("y", frY f), ("width", frWidth f), ("height", frHeight f)]]
+       in case (frPath f, rect) of
+            (Just _, _ : _) -> [("G03285", "", styleKeys ["frames", n, "path"], "フレーム " <> n <> " は矩形のキー（x、y、width、height）と path の両方を持っています。どちらか一方を書きます")]
+            (Nothing, []) -> [("G03285", "", styleKeys ["frames", n], "フレーム " <> n <> " は矩形のキー（x、y、width、height）も path も持っていません。どちらか一方を書きます")]
+            (Nothing, ks)
+              | length ks < 4 -> [("G03286", "", styleKeys ["frames", n], "フレーム " <> n <> " の矩形のキーが足りません: " <> T.intercalate "、" [k | k <- ["x", "y", "width", "height"], k `notElem` ks])]
+            (Just p, [])
+              | not (all subClosed (pathSubPaths p)) -> [("G03287", "", styleKeys ["frames", n, "path"], "フレーム " <> n <> " の path に閉じていない部分パスがあります。部分パスを Z で閉じます")]
+            _ -> []
+    | (n, f) <- Map.toList (stFrames s)
+    ]
+    <> [ ("G03289", "", styleKeys ["masters", m, "frames"], "マスター " <> m <> " の frames に、[frames] にないフレームの名前があります: " <> n)
+       | (m, md) <- Map.toList (stMasters s),
+         n <- mdFrames md,
+         Map.notMember n (stFrames s)
+       ]
+
 singlePageChecks :: Style -> [(Text, Text, [Scope], Text)]
 singlePageChecks s
   | not (singlePage s) = []
@@ -3767,6 +4099,11 @@ singlePageChecks s
            | (name, md) <- Map.toList (stMasters s),
              (kind, Just pos) <- [("running-head", rhPosition <$> mdRunningHead md), ("folio", fst <$> mdFolio md)],
              any (`T.isSuffixOf` pos) ["-inside", "-outside"]
+           ]
+        -- the x of a text frame from the spine or the fore-edge (root ADR 0438)
+        <> [ ("G03288", "", styleKeys ["frames", n, "x-from"], "左右固定モードではフレームの x-from に inside と outside を使えません。left を使います（frames." <> n <> ".x-from）")
+           | (n, f) <- Map.toList (stFrames s),
+             frXFrom f `elem` [FromInside, FromOutside]
            ]
 
 -- ------------------------------------------------------------------ styles in a file
@@ -3879,7 +4216,9 @@ readLocal kvs = run (Table (table [(k, value k v) | (k, v) <- kvs]))
       Success [] a -> Right a
       Success ws _ -> Left (map message ws)
     -- a negative number at a natural key is G02103 (docs/adr ADR 0102, docs/adr/0261)
-    message (MatchMessage _ path msg) = (if msg == "integer out of range for Natural" then "G02103" else codeOf path, schemaMessage path msg)
+    message (MatchMessage _ path coded) =
+      let (own, msg) = codedMessage coded
+       in (fromMaybe (if msg == "integer out of range for Natural" then "G02103" else codeOf path) own, schemaMessage path msg)
     codeOf = \case
       ScopeKey k : _ | k `elem` featureKeys -> "G03021"
       -- an element of features that does not read (docs/adr/0268)
@@ -3984,12 +4323,45 @@ loadStyle fid = maybe (Right defaultStyle) (parseStyle fid)
 fontFiles :: Style -> [(Text, FilePath)]
 fontFiles s = [(r, p) | (r, FontRole {frJa = ja, frLatin = la}) <- Map.toAscList (stFonts s), Just p <- [ja, la]]
 
+-- | A font file of a role with the key it is written in and its license document (root ADR 0433).
+data FontFile = FontFile
+  { ffRole :: !Text,
+    -- | ja or latin
+    ffKey :: !Text,
+    ffPath :: !FilePath,
+    -- | the value of ja-license or latin-license
+    ffLicense :: !(Maybe FilePath)
+  }
+  deriving stock (Eq, Show)
+
+-- | The font files of 'fontFiles', in its order, with their license documents (root ADR 0433).
+fontFilesWithLicenses :: Style -> [FontFile]
+fontFilesWithLicenses s =
+  [ FontFile r k p l
+  | (r, fr) <- Map.toAscList (stFonts s),
+    (k, Just p, l) <- [("ja", frJa fr, frJaLicense fr), ("latin", frLatin fr, frLatinLicense fr)]
+  ]
+
+{- | G03282 (root ADRs 0433 and 0448): one for each @present@ font file
+whose role has no license document for its key, whether or not the
+outputs embed the fonts; the callers ask that. At the top of style.toml, a
+warning that the profile prod makes an error. The language server, which
+looks at no file, takes every font as present.
+-}
+fontLicenseKeyDiagnostics :: FileId -> Style -> (FilePath -> Bool) -> [Diagnostic]
+fontLicenseKeyDiagnostics fid style present =
+  [ diagnostic "G03282" Warning (mkSpan fid 0 0) ("フォントのライセンスの文書を指定していません: [fonts." <> ffRole f <> "] の " <> ffKey f <> "-license（" <> T.pack (ffPath f) <> "）")
+  | f <- fontFilesWithLicenses style,
+    present (ffPath f),
+    isNothing (ffLicense f)
+  ]
+
 -- ------------------------------------------------------------------ the schema
 
 {- | The values of the enumerations of style.toml, written once for the
 decoder and the schema (docs/adr ADR 0169).
 -}
-bindingValues, writingModeValues, lineBreaksValues, pageBreakValues, monoAlignValues, groupAlignValues, baseSpacingValues, overhangOntoValues, kinsokuValues, sideValues, markerValues, verticalValues, refPageValues, placementValues, numberingValues, markShapeValues, leaderValues :: [Text]
+bindingValues, writingModeValues, lineBreaksValues, pageBreakValues, monoAlignValues, groupAlignValues, baseSpacingValues, overhangOntoValues, kinsokuValues, keepPartsValues, sideValues, markerValues, verticalValues, refPageValues, placementValues, numberingValues, markShapeValues, leaderValues :: [Text]
 bindingValues = ["right", "left"]
 writingModeValues = ["vertical", "horizontal"]
 lineBreaksValues = ["join", "keep"]
@@ -3999,6 +4371,7 @@ groupAlignValues = ["1:2:1", "0:1:0", "center", "start"]
 baseSpacingValues = ["1:2:1", "0:1:0", "center"]
 overhangOntoValues = ["kana", "none"]
 kinsokuValues = ["strict", "loose"]
+keepPartsValues = ["column", "page", "spread"]
 sideValues = ["outside", "left", "right"]
 markerValues = ["number", "symbol", "none"]
 verticalValues = ["kanji", "kanji-digits", "tcy", "auto", "auto-digits"]
@@ -4035,7 +4408,7 @@ styleSchema =
   NTable
     [ ("values", NTable [("length", NNamed Nothing dim), ("aki", NNamed Nothing str), ("count", NNamed Nothing int)]),
       ("page", pageNode),
-      ("fonts", NNamed (Just FontRoles) (NTable [("ja", str), ("latin", str), ("features", features), ("punctuation-proportional", bool), ("instance", str), ("axes", NNamed Nothing numberNode)])),
+      ("fonts", NNamed (Just FontRoles) (NTable [("ja", str), ("latin", str), ("features", features), ("punctuation-proportional", bool), ("instance", str), ("axes", NNamed Nothing numberNode), ("generic-family", enum (map fst genericFamilyValues)), ("ja-license", str), ("latin-license", str)])),
       ("character-styles", NNamed (Just CharStyles) charStyleNode),
       ("paragraph-styles", NNamed (Just ParaStyles) paraStyleNode),
       ("separators", NNamed Nothing separatorNode),
@@ -4044,11 +4417,25 @@ styleSchema =
       ("numbers", NTable [("vertical", enum verticalValues), ("ref-page", enum refPageValues)]),
       ("emphasis", NRejected),
       ("notes", notesNode),
+      -- the keys of [notes] for the endnotes; numbering = "page" is G03278, which completion leaves out (root ADR 0412)
+      ( "endnotes",
+        NTable
+          [ ("numbering", enum (filter (/= "page") numberingValues)),
+            ("mark-format", str),
+            ("mark-style", ref CharStyles),
+            ("body-mark-style", ref CharStyles),
+            ("body-style", ref ParaStyles),
+            ("heading-style", ref ParaStyles),
+            ("mark-shape", enum markShapeValues)
+          ]
+      ),
       ("sidenotes", NTable [("side", enum sideValues), ("width", dim), ("gap", dim), ("font", NRejected), ("size", NRejected), ("marker", enum markerValues), ("marker-style", ref CharStyles)]),
-      ("figures", NTable [("number", str), ("wrap-gap", dim)]),
+      ("figures", NTable [("number", str), ("wrap-gap", dim), ("color", str)]),
       ("tables", NTable [("number", str), ("caption-position", enum captionPositionValues)]),
       ("color", NTable [("intent", str), ("swatches", NNamed (Just Swatches) (NTable [("cmyk", NArray int)]))]),
       ("masters", NNamed (Just Masters) masterNode),
+      -- the text frames (root ADR 0438)
+      ("frames", NNamed (Just Frames) frameNode),
       ("verse", NRejected),
       ("printings", NTable [("format", str)]),
       ("toc", NTable [("leader", enum leaderValues)]),
@@ -4071,6 +4458,7 @@ styleSchema =
     gridNode =
       NTable
         [ ("font-size", dim),
+          ("character-advance", dim),
           ("characters", int),
           ("lines", int),
           ("line-pitch", dim),
@@ -4095,7 +4483,8 @@ styleSchema =
         ]
     compositionNode =
       NTable
-        [ ("kinsoku", enum kinsokuValues),
+        [ ("keep-parts", enum keepPartsValues),
+          ("kinsoku", enum kinsokuValues),
           ("hanging-punctuation", bool),
           ( "ruby",
             NTable
@@ -4140,7 +4529,23 @@ styleSchema =
         [ ( "running-head",
             NTable [("position", enum masterPositions), ("content", runningContent), ("even", runningContent), ("odd", runningContent), ("character-style", ref CharStyles)]
           ),
-          ("folio", NTable [("position", enum masterPositions), ("content", str), ("format", str), ("character-style", ref CharStyles)])
+          ("folio", NTable [("position", enum masterPositions), ("content", str), ("format", str), ("character-style", ref CharStyles)]),
+          ("frames", NArray (ref Frames))
+        ]
+    -- a text frame (root ADR 0438)
+    frameNode =
+      NTable
+        [ ("x", dim),
+          ("y", dim),
+          ("width", dim),
+          ("height", dim),
+          ("unit", enum ["mm", "pt", "Q"]),
+          ("path", str),
+          ("x-from", enum ["left", "inside", "outside"]),
+          ("paragraph-style", ref ParaStyles),
+          ("writing-mode", enum writingModeValues),
+          ("wrap", enum ["none", "around"]),
+          ("text", str)
         ]
     runningContent = NEither [str, NArray str]
     akiSetNode =
@@ -4204,6 +4609,7 @@ decorationNode =
       NTable
         [ ("weight", dim),
           ("offset", dim),
+          ("side", enum ["left", "right"]),
           ("style", enum (map fst ruleStyleNames)),
           ("dash", dim),
           ("gap", dim),

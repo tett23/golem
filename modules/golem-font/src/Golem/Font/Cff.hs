@@ -21,6 +21,7 @@ glyphs give the same answer on every build.
 module Golem.Font.Cff
   ( CffCheck (..),
     CffResult (..),
+    SeacError (..),
     sfntCffTable,
     checkCffTable,
     checkCffReferences,
@@ -51,6 +52,8 @@ data Stop
     Malformed
   | -- | the references of a glyph cannot all be checked (G08108, Golem ADR 0390)
     Unverifiable
+  | -- | the seac of a glyph is wrong (G08114 to G08117, root ADR 0420)
+    Seac !SeacError
   deriving stock (Eq, Show)
 
 type Check = Either Stop
@@ -75,7 +78,7 @@ sfntCffTable file = do
 is left to the checks that report it (G08003, G08018).
 -}
 checkCffReferences :: ByteString -> [Int] -> CffResult
-checkCffReferences file gids = maybe (CffResult CffInTable [] []) (`checkCffTable` gids) (sfntCffTable file)
+checkCffReferences file gids = maybe (CffResult CffInTable [] [] []) (`checkCffTable` gids) (sfntCffTable file)
 
 {- | The answer of the check of a CFF table for the glyphs used (Golem ADR
 0390): whether a reference leaves the table (G08107, one for the font), the
@@ -85,21 +88,36 @@ run random, in the order of their numbers.
 data CffResult = CffResult
   { cffCheck :: !CffCheck,
     cffUnverifiable :: ![Int],
-    cffRandom :: ![Int]
+    cffRandom :: ![Int],
+    -- | the glyphs whose seac is wrong, and how (G08114 to G08117, root ADR 0420)
+    cffSeac :: ![(Int, SeacError)]
   }
+  deriving stock (Eq, Show)
+
+-- | How the seac of a used glyph is wrong (root ADR 0420).
+data SeacError
+  = -- | G08114: other than 0 or 4 arguments besides the width, or a character code not an integer of 0 to 255
+    SeacArguments
+  | -- | G08115: no character of StandardEncoding at a code, or the charset has not its name
+    SeacMissingComponent
+  | -- | G08116: a component is a seac itself
+    SeacNested
+  | -- | G08117: a seac in a CID-keyed font
+    SeacCidKeyed
   deriving stock (Eq, Show)
 
 -- | Checks the references of a bare CFF table for the glyphs.
 checkCffTable :: ByteString -> [Int] -> CffResult
 checkCffTable t gids = case structure t of
-  Left OutOfTable -> CffResult CffOutOfTable [] []
-  Left _ -> CffResult CffInTable [] []
+  Left OutOfTable -> CffResult CffOutOfTable [] [] []
+  Left _ -> CffResult CffInTable [] [] []
   Right font ->
     let checked = [(g, glyph t font g) | g <- Set.toList (Set.fromList gids)]
      in CffResult
           (if any ((== Just OutOfTable) . fst . snd) checked then CffOutOfTable else CffInTable)
           [g | (g, (Just Unverifiable, _)) <- checked]
           [g | (g, (_, True)) <- checked]
+          [(g, e) | (g, (Just (Seac e), _)) <- checked]
 
 -- ------------------------------------------------------------------ reading
 
@@ -232,6 +250,10 @@ ints d op = Map.lookup op d >>= sequence
 data Font = Font
   { fCharStrings :: !Index,
     fGlobals :: !Index,
+    -- | whether the font is CID-keyed
+    fCid :: !Bool,
+    -- | the glyph of a SID by the charset (root ADR 0420)
+    fGlyphOfSid :: Int -> Maybe Int,
     -- | the local subroutines of a glyph (Nothing: the Private DICT has no Subrs)
     fLocals :: Int -> Check (Maybe Index)
   }
@@ -251,7 +273,9 @@ structure t = do
   charStrings <- indexAt t csOff
   let nGlyphs = ixCount charStrings
       cid = Map.member 1230 top
-  charset t nGlyphs (fromMaybe 0 (ints top 15 >>= single))
+      charsetOff = fromMaybe 0 (ints top 15 >>= single)
+  charset t nGlyphs charsetOff
+  let glyphOfSid = sidGlyph t nGlyphs charsetOff
   unless cid (encoding t (fromMaybe 0 (ints top 16 >>= single)))
   if cid
     then do
@@ -264,10 +288,10 @@ structure t = do
             fd <- select g
             unless (fd >= 0 && fd < length fdLocals) (Left OutOfTable)
             pure (fdLocals !! fd)
-      pure (Font charStrings globals locals)
+      pure (Font charStrings globals cid glyphOfSid locals)
     else do
       locals <- private t top
-      pure (Font charStrings globals (const (pure locals)))
+      pure (Font charStrings globals cid glyphOfSid (const (pure locals)))
   where
     single = \case
       [v] -> Just v
@@ -304,6 +328,37 @@ charset t nGlyphs off
           | otherwise = do
               left <- inTable (uN n t (p + 2))
               go (covered + left + 1) (p + 2 + n)
+
+{- | The glyph of a SID by the charset at an offset, the first that has it
+(root ADR 0420); the charset was checked by 'charset' first. The predefined
+charsets are those of the CFF specification (Technical Note 5176,
+Appendix C): ISOAdobe gives the glyph i the SID i up to 228, and of the
+Expert and ExpertSubset charsets only the SIDs StandardEncoding has (below
+150) are listed.
+-}
+sidGlyph :: ByteString -> Int -> Int -> Int -> Maybe Int
+sidGlyph t nGlyphs off = \sid -> if sid <= 0 then Nothing else Map.lookup sid table >>= inFont
+  where
+    inFont g = if g > 0 && g < nGlyphs then Just g else Nothing
+    table = Map.fromListWith (\_ first -> first) (zip sids [1 ..])
+    -- the SIDs of the glyphs 1, 2, ... in order
+    sids = case off of
+      0 -> [1 .. 228]
+      1 -> expanded [(1, 1), (12, 13), (13, 14), (14, 15), (15, 99), (26, 27), (27, 28), (46, 109), (47, 110)]
+      2 -> expanded [(1, 1), (8, 13), (9, 14), (10, 15), (11, 99), (22, 27), (23, 28), (41, 109), (42, 110)]
+      _ -> case uN 1 t off of
+        Just 0 -> [sid | g <- [1 .. nGlyphs - 1], Just sid <- [u16 t (off + 1 + 2 * (g - 1))]]
+        Just 1 -> ranges 1
+        Just 2 -> ranges 2
+        _ -> []
+    -- glyph and SID pairs as SIDs in glyph order, 0 (no name of StandardEncoding) between them
+    expanded :: [(Int, Int)] -> [Int]
+    expanded pairs = [fromMaybe 0 (lookup g pairs) | g <- [1 .. maximum (map fst pairs)]]
+    ranges n = take (nGlyphs - 1) (go (off + 1))
+      where
+        go p = case (u16 t p, uN n t (p + 2)) of
+          (Just first, Just left) -> [first .. first + left] <> go (p + 2 + n)
+          _ -> []
 
 -- | The Encoding of a name-keyed font (0 and 1 are the predefined ones).
 encoding :: ByteString -> Int -> Check ()
@@ -468,7 +523,7 @@ glyph :: ByteString -> Font -> Int -> (Maybe Stop, Bool)
 glyph t font g = case (,) <$> entry t (fCharStrings font) g <*> fLocals font g of
   Left OutOfTable -> (Just OutOfTable, False)
   Left _ -> (Nothing, False)
-  Right (cs, locals) -> case run t font locals 0 cs (Run [] 0 Map.empty) (Count 0 False) (\_ c -> Went c) of
+  Right (cs, locals) -> case run t font False locals 0 cs (Run [] 0 Map.empty) (Count 0 False) (\_ c -> Went c) of
     Went c -> (Nothing, cRandom c)
     Halted s c -> (Just s, cRandom c)
 
@@ -500,11 +555,12 @@ reading r c k = case r of
   Left Malformed -> Went c
   Left s -> Halted s c
 
-{- | Runs a CharString, at a call depth (the limit of Type 2 is 10), then
-the rest of the run.
+{- | Runs a CharString, of a glyph used or of a component of its seac (root
+ADR 0420), at a call depth (the limit of Type 2 is 10), then the rest of
+the run.
 -}
-run :: ByteString -> Font -> Maybe Index -> Int -> ByteString -> Run -> Count -> Back -> Out
-run t font locals depth code st0 c0 back = go code st0 c0
+run :: ByteString -> Font -> Bool -> Maybe Index -> Int -> ByteString -> Run -> Count -> Back -> Out
+run t font component locals depth code st0 c0 back = go code st0 c0
   where
     go b st c = case BS.uncons b of
       Nothing -> back st c
@@ -530,9 +586,44 @@ run t font locals depth code st0 c0 back = go code st0 c0
       | b0 == 10 = call locals rest st c
       | b0 == 29 = call (Just (fGlobals font)) rest st c
       | b0 == 11 = back st c
-      | b0 == 14 = Went c
+      | b0 == 14 = endchar st c
       | b0 == 12 = reading (inPart (BS.uncons rest)) c $ \(b1, rest') -> escape b1 rest' st c
       | otherwise = clear rest st c
+    {- endchar: the arguments besides the width (an odd one, the first
+    pushed) are none, or the four of a seac, adx ady bchar achar, as FreeType
+    reads them (root ADR 0420) -}
+    endchar st c =
+      let vs = rStack st
+          args = if odd (length vs) then take (length vs - 1) vs else vs
+       in case args of
+            [] -> Went c
+            [achar, bchar, _, _]
+              | component -> Halted (Seac SeacNested) c
+              | fCid font -> Halted (Seac SeacCidKeyed) c
+              | otherwise -> seac bchar achar c
+            _ -> Halted (Seac SeacArguments) c
+    {- the components of a seac, the base then the accent, each over every
+    code its value may take, checked as the glyphs used -}
+    seac bchar achar c = case (,) <$> codes bchar <*> codes achar of
+      Left s -> Halted s c
+      Right (bases, accents) -> case mapM glyphOf (bases <> accents) of
+        Nothing -> Halted (Seac SeacMissingComponent) c
+        Just gs -> branches (map follow (unique gs)) c
+    codes v = case v of
+      Pt x
+        | x >= 0 && x <= 255 && x == fromIntegral (toInt x) -> Right [toInt x]
+        | otherwise -> Left (Seac SeacArguments)
+      _
+        | infiniteEnd v -> Left Unverifiable
+        | otherwise ->
+            let (lo, hi) = integers v
+             in if lo < 0 || hi > 255 then Left (Seac SeacArguments) else Right [lo .. hi]
+    glyphOf k = case standardEncoding k of
+      0 -> Nothing
+      sid -> fGlyphOfSid font sid
+    unique = foldr (\g gs -> g : filter (/= g) gs) []
+    follow g cc = reading ((,) <$> entry t (fCharStrings font) g <*> fLocals font g) cc $ \(cs, locals') ->
+      run t font True locals' 0 cs (Run [] 0 Map.empty) cc (\_ c' -> Went c')
     -- the stem hints, two operands each; an odd one is the width
     stems st = st {rStems = rStems st + length (rStack st) `div` 2, rStack = []}
     {- a subroutine: a number of width 0 rounded toward 0; an interval of
@@ -549,7 +640,7 @@ run t font locals depth code st0 c0 back = go code st0 c0
                 | count < 33900 = 1131
                 | otherwise = 32768
               enter k cc = reading (entry t ix (k + bias)) cc $ \sub ->
-                if depth >= 10 then Went cc else run t font locals (depth + 1) sub st' cc (go rest)
+                if depth >= 10 then Went cc else run t font component locals (depth + 1) sub st' cc (go rest)
            in case v of
                 Pt x -> enter (toInt x) c
                 _
@@ -704,6 +795,25 @@ run t font locals depth code st0 c0 back = go code st0 c0
     safeAt k vs = case drop k vs of
       v : _ -> Just v
       [] -> Nothing
+
+{- | The SID of the character of a code of StandardEncoding (Technical Note
+5176, Appendix B), 0 where it has none.
+-}
+standardEncoding :: Int -> Int
+standardEncoding code
+  | code >= 32 && code <= 126 = code - 31
+  | code >= 161 && code <= 255 = fromMaybe 0 (lookup code high)
+  | otherwise = 0
+  where
+    high =
+      zip [161 .. 175] [96 .. 110]
+        <> zip [177 .. 180] [111 .. 114]
+        <> zip [182 .. 189] [115 .. 122]
+        <> [(191, 123)]
+        <> zip [193 .. 200] [124 .. 131]
+        <> [(202, 132), (203, 133), (205, 134), (206, 135), (207, 136), (208, 137)]
+        <> [(225, 138), (227, 139), (232, 140), (233, 141), (234, 142), (235, 143)]
+        <> [(241, 144), (245, 145), (248, 146), (249, 147), (250, 148), (251, 149)]
 
 -- | The operators a glyph may run, its subroutines included, before the check stops following it.
 stepLimit :: Int

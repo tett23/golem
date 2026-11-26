@@ -2,6 +2,7 @@ module Main (main) where
 
 import ExportSpec (exportTests)
 import FmtSpec (fmtTests)
+import GmFigureSpec (gmFigureTests)
 import Golem.Doc.IR qualified as D
 import Golem.Emet.IR qualified as IR
 import Golem.Syntax.Span (FileId (..), mkSpan)
@@ -40,6 +41,7 @@ tests =
       exportTests,
       lintTests,
       fmtTests,
+      gmFigureTests,
       ideTests,
       testCase "root ADR 0379 I1: Emet identity preserves both readings and formatting" $ do
         let sp = mkSpan (FileId 1) 0 1

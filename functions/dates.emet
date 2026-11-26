@@ -1,5 +1,5 @@
 -- 日付の書き方：和暦、西暦と和暦の併記、ISO 8601 の日付。
--- 原稿では `@import functions/dates.emet as dates` で取り込む。
+-- 原稿では `@import functions/dates.emet * as dates` で取り込む。
 -- 漢数字のために functions/numbers.emet を使う。
 
 import "functions/numbers.emet"

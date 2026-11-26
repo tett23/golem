@@ -56,20 +56,30 @@ libEmet :: Text
 libEmet = "pub twice :: Nat -> Nat\ntwice n = n * 2\n"
 
 chapter :: Text
-chapter = "@import fn/book.emet as book\n\n[book.tax-included 1000]\n\n@book.rule\n\n[= book.total([1])]\n"
+chapter = "@import fn/book.emet * as book\n\n[book.tax-included 1000]\n\n@book.rule\n\n[= book.total([1])]\n"
 
 manifestText :: Text
 manifestText = manifestToml testManifest {tmChapters = ["a.gm"]} <> "\n[functions.requires]\nfile = [\"w.tsv\"]\n\n[[filters]]\nfunction = \"fn/book.emet\"\nfilter = \"tidy\"\nfiles = [\"a.gm\"]\n"
 
 -- | A project of a.gm and the two .emet, the workspace opened on it.
 withFunctions :: (FilePath -> Workspace -> IO a) -> IO a
-withFunctions act = withSystemTempDirectory "golem-lsp-functions" $ \tmp0 -> do
+withFunctions = withFunctionsOf chapter
+
+-- | The chapter of names listed by @import (root ADR 0451), with the variables of v.gm.
+listedChapter :: Text
+listedChapter = "@import fn/book.emet { tax-included, rule, total }\n@import v.gm { price }\n\n[tax-included 1000]\n\n@rule\n\n[= total([1]) + price]\n"
+
+-- | The same project with a chapter of its own.
+withFunctionsOf :: Text -> (FilePath -> Workspace -> IO a) -> IO a
+withFunctionsOf chapterText act = withSystemTempDirectory "golem-lsp-functions" $ \tmp0 -> do
   tmp <- canonicalizePath tmp0
   let files =
         [ ("manifest.toml", TE.encodeUtf8 manifestText),
-          ("a.gm", TE.encodeUtf8 chapter),
+          ("a.gm", TE.encodeUtf8 chapterText),
+          ("v.gm", "@set price = 1\n"),
           ("fn/book.emet", TE.encodeUtf8 bookEmet),
           ("fn/lib.emet", TE.encodeUtf8 libEmet),
+          ("fn/over.emet", TE.encodeUtf8 overEmet),
           ("w.tsv", "w\n")
         ]
   forM_ files $ \(p, bytes) -> createDirectoryIfMissing True (takeDirectory (tmp </> p)) >> BS.writeFile (tmp </> p) bytes
@@ -132,6 +142,8 @@ functionsLspTests =
           ws' <- updateFile ws "fn/lib.emet" (libEmet <> "\n\n\n")
           formatting ws' "fn/lib.emet" @?= Just libEmet,
       renameTests,
+      listedTests,
+      overrideTests,
       testCase "hover: the type of a local name in a .emet (docs/adr/0170)" $
         withFunctions $ \_ ws -> do
           hover ws "fn/book.emet" (offsetIn bookEmet "twice n" 6) @?= Just "n :: Nat"
@@ -190,6 +202,88 @@ renameTests =
           ws' <- updateFile ws "fn/book.emet" broken
           edits <- either (assertFailure . show) pure (renameEmet ws' (Just manifestText) "fn/book.emet" (offsetIn broken "total ::" 0) "amount")
           lookup "a.gm" (applyAll edits [("a.gm", chapter)]) @?= Just (T.replace "book.total(" "book.amount(" chapter)
+    ]
+
+-- | fn/over.emet: a block command toc and an inline command strong, names of built-in commands (root ADR 0453).
+overEmet :: Text
+overEmet = "pub block toc :: Blocks\ntoc = Block.paragraph (Inline.text \"T\")\n\npub inline strong :: Inlines -> Inlines\nstrong xs = xs\n"
+
+-- | The chapter that overrides @toc and [strong] by the names it lists.
+overChapter :: Text
+overChapter = "@import fn/over.emet { toc, strong }\n\n@toc\n\n[strong: a]\n"
+
+-- | The names listed by @import over built-in commands (root ADR 0453): definition and completion.
+overrideTests :: TestTree
+overrideTests =
+  testGroup
+    "the names listed by @import over built-in commands (root ADR 0453)"
+    [ testCase "root ADR 0453 I1: the chapter that overrides built-in commands has no diagnostics" $
+        withFunctionsOf overChapter $
+          \_ ws -> codesOf ws "a.gm" @?= [],
+      testCase "root ADR 0453 I1: definition from an overridden name goes to the listed function" $
+        withFunctionsOf overChapter $ \_ ws -> do
+          map (\l -> (locPath l, locStart l)) (definition ws "a.gm" (offsetIn overChapter "@toc" 2)) @?= [("fn/over.emet", offsetIn overEmet "toc ::" 0)]
+          map (\l -> (locPath l, locStart l)) (definition ws "a.gm" (offsetIn overChapter "[strong" 2)) @?= [("fn/over.emet", offsetIn overEmet "strong ::" 0)],
+      testCase "root ADR 0453 I1: completion gives an overridden name once" $
+        withFunctionsOf overChapter $ \_ ws -> do
+          let at text = do
+                ws' <- updateFile ws "a.gm" text
+                pure (map cmpLabel (completions ws' "a.gm" (BS.length (TE.encodeUtf8 text))))
+          block <- at (overChapter <> "\n@")
+          length (filter (== "toc") block) @?= 1
+          inline <- at (overChapter <> "\n[")
+          length (filter (== "strong") inline) @?= 1
+    ]
+
+-- | The names listed by @import (root ADR 0451): completion, definition, references and renaming.
+listedTests :: TestTree
+listedTests =
+  testGroup
+    "the names listed by @import (root ADR 0451)"
+    [ testCase "root ADR 0451 I2: the project of listed names has no diagnostics" $
+        withFunctionsOf listedChapter $
+          \_ ws -> codesOf ws "a.gm" @?= [],
+      testCase "root ADR 0451 I2: completion in the list: the names the file gives" $
+        withFunctionsOf listedChapter $ \_ ws -> do
+          let at text = do
+                ws' <- updateFile ws "a.gm" text
+                pure (sortOn id (map cmpLabel (completions ws' "a.gm" (BS.length (TE.encodeUtf8 text)))))
+          at (listedChapter <> "\n@import fn/book.emet { ") >>= (@?= ["rule", "tax-included", "total"])
+          at (listedChapter <> "\n@import fn/book.emet { rule, t") >>= (@?= ["rule", "tax-included", "total"])
+          at (listedChapter <> "\n@import v.gm {") >>= (@?= ["price"]),
+      testCase "root ADR 0451 I2: completion of the listed names without a namespace" $
+        withFunctionsOf listedChapter $ \_ ws -> do
+          let at text = do
+                ws' <- updateFile ws "a.gm" text
+                pure (map cmpLabel (completions ws' "a.gm" (BS.length (TE.encodeUtf8 text))))
+          inline <- at (listedChapter <> "\n[")
+          assertBool "tax-included after [" ("tax-included" `elem` inline && "rule" `notElem` inline)
+          block <- at (listedChapter <> "\n@")
+          assertBool "rule after @" ("rule" `elem` block && "tax-included" `notElem` block)
+          expr <- at (listedChapter <> "\n[= ")
+          assertBool "total and price in an expression" ("total" `elem` expr && "price" `elem` expr),
+      testCase "root ADR 0451 I2: definition from a listed name and its uses" $
+        withFunctionsOf listedChapter $ \_ ws -> do
+          map locStart (definition ws "a.gm" (offsetIn listedChapter "tax-included 1000" 2)) @?= [offsetIn bookEmet "taxIncluded ::" 0]
+          map locPath (definition ws "a.gm" (offsetIn listedChapter "rule, total" 1)) @?= ["fn/book.emet"]
+          map locPath (definition ws "a.gm" (offsetIn listedChapter "@rule" 2)) @?= ["fn/book.emet"]
+          map locStart (definition ws "a.gm" (offsetIn listedChapter "total([1])" 1)) @?= [offsetIn bookEmet "total ::" 0]
+          map locPath (definition ws "a.gm" (offsetIn listedChapter "price]" 1)) @?= ["v.gm"],
+      testCase "root ADR 0451 I2: references of a function: its name in the list and its calls" $
+        withFunctionsOf listedChapter $ \_ ws ->
+          map locStart (references ws "fn/book.emet" (offsetIn bookEmet "taxIncluded ::" 1)) @?= [offsetIn listedChapter "tax-included" 0, offsetIn listedChapter "tax-included 1000" 0],
+      testCase "root ADR 0451 I2: renaming a pub fn rewrites the list and the calls" $
+        withFunctionsOf listedChapter $ \_ ws -> do
+          edits <- either (assertFailure . show) pure (renameEmet ws (Just manifestText) "fn/book.emet" (offsetIn bookEmet "total ::" 0) "amount")
+          lookup "a.gm" (applyAll edits [("a.gm", listedChapter)]) @?= Just (T.replace "total" "amount" listedChapter),
+      testCase "root ADR 0451 I2: renaming a pub block without a string name rewrites the list and @name" $
+        withFunctionsOf listedChapter $ \_ ws -> do
+          edits <- either (assertFailure . show) pure (renameEmet ws (Just manifestText) "fn/book.emet" (offsetIn bookEmet "rule ::" 0) "line")
+          lookup "a.gm" (applyAll edits [("a.gm", listedChapter)]) @?= Just (T.replace "rule" "line" listedChapter),
+      testCase "root ADR 0451 I2: renaming a pub inline with a string name keeps .gm" $
+        withFunctionsOf listedChapter $ \_ ws -> do
+          edits <- either (assertFailure . show) pure (renameEmet ws (Just manifestText) "fn/book.emet" (offsetIn bookEmet "taxIncluded ::" 0) "withTax")
+          map (locPath . fst) edits @?= ["fn/book.emet", "fn/book.emet"]
     ]
 
 tokenTests :: TestTree

@@ -86,6 +86,7 @@ PDF を作るには必須です。
 | [code: columns] | 段数です。省くと 1 段です。2 以上にすると段組みになり、傍注と図版の回り込みは使えなくなります。 |
 | [code: column-gap] | 段と段のあいだの空き（段間）です。[code: columns] が 2 以上なら必須です。 |
 | [code: line-pitch] | 版面の行送りです。文字の大きさ以上にします。 |
+| [code: character-advance] | 字形の大きさを保ったまま、和文の文字枠の送りを正の寸法で指定します。省くと、文字の大きさと同じ送りです。 |
 | [code: alignment] | [code: "grid"]（既定）は格子への配置、[code: "free"] は段落ごとの行送りと寸法のアキを使う配置です。 |
 | [code: position] | 版面の位置です。[code: { top = "22mm", gutter = "14mm" }] のように、天からの距離（[code: top]）とノドからの距離（[code: gutter]）を書きます。左右固定モードでは [code: gutter] の代わりに [code: left] または [code: right] のちょうど一方で、仕上がりの物理的な端から版面の同じ側の端までの距離を書きます。 |
 
@@ -99,6 +100,8 @@ PDF を作るには必須です。
 - [code: code]：コードの書体です。コードブロックと [code: \[code: ...\]] の文字を組みます。書かなければ本文の書体で組み、本にコードがあればお知らせ（G08008）を出します。
 
 フォントのファイルはプロジェクトの中に置き、プロジェクトのフォルダからの相対パスで書きます。
+絶対パス、URL、プロジェクトの外を指すパスやシンボリックリンクを書くと、どの出力でもエラー（G03279）になります。
+フォントのライセンスの文書のパス（[code: ja-license]、[code: latin-license]）も同じです。
 Golem は、コンピューターに入っているフォントを探しません。
 フォントのライセンスが PDF への埋め込みを禁じていれば、エラー（G08004）になります[note: OpenType の仕様の OS/2 の表（[code: fsType]）。[code: https://learn.microsoft.com/en-us/typography/opentype/spec/os2]]。
 CFF2 の輪郭のフォント（可変フォントの [code: .otf] の多く）は PDF に埋め込めないので、PDF が使う役割に書くとエラー（G08019）になります。
@@ -110,6 +113,9 @@ TrueType の輪郭の可変フォント（[code: .ttf]）は、[code: instance] 
 |:---|:---|
 | [code: ja] | 和文のフォントのファイルです。 |
 | [code: latin] | 欧文のフォントのファイルです。 |
+| [code: ja-license] | [code: ja] のフォントのライセンスの文書のファイルです。[code: fonts = "embed"] の HTML と EPUB が、フォントと一緒に [code: fonts/] に写します。同梱するフォントにこのキーを書かないと G03282、書いたファイルがないと G03283 になります。[code: --profile dev] では警告で、その文書なしで書き、[code: --profile prod] ではエラーで、その出力を書きません。別のフォルダにある同じ名前で中身の違うファイルとぶつかると、エラー（G03284）になります。拡張子が [code: .md] の文書は、EPUB の中で Markdown（[code: text/markdown]）、ほかは平文（[code: text/plain]）として扱います（「[ref-title web-fonts]」、[ref-page web-fonts] ページ）。 |
+| [code: latin-license] | [code: latin] のフォントのライセンスの文書のファイルです。扱いは [code: ja-license] と同じです。 |
+| [code: generic-family] | HTML と EPUB で使う総称の書体です。[code: "serif"]（明朝の系統）、[code: "sans-serif"]（ゴシックの系統）、[code: "monospace"]（等幅）のどれかです。ほかの値はエラー（G03281）になります。PDF は使いません（「[ref-title web-fonts]」、[ref-page web-fonts] ページ）。 |
 | [code: features] | OpenType の機能の名前の配列です。たとえば [code: \["palt"\]] で、和文の仮名などを詰めて組みます。PDF では、[code: punctuation-proportional] が [code: true] でなければ、括弧類、句読点、中点類には [code: palt] と [code: vpal] を当てません。省くと、フォントの標準の機能だけを使います[note: OpenType の機能のタグの一覧。[code: https://learn.microsoft.com/en-us/typography/opentype/spec/featurelist]]。 |
 | [code: punctuation-proportional] | 真偽値です。[code: true] にすると、PDF で括弧類、句読点、中点類にも、[code: features] や [code: proportional-metrics] で指定した [code: palt]（縦組みでは [code: vpal]）を当てます。当てた約物には、Golem が全角の字形の機能（[code: fwid]）を足しません。これだけでは機能を足しません。[code: kerning = "japanese-equal-width"] の文字は全角の送りのままです。既定は [code: false] です。 |
 | [code: instance] | 可変フォントの名前付きインスタンスの名前です。たとえば [code: "Bold"] で、フォントの Bold の太さで組みます。名前はフォントに書かれた英語の名前で、大文字と小文字を区別します。和文と欧文の両方のフォントに当たります。PDF だけが使います。 |
@@ -131,7 +137,7 @@ TrueType の輪郭の可変フォント（[code: .ttf]）は、[code: instance] 
 | [code: synthetic-bold] | [code: false] | [code: true] にすると、字形の輪郭を太らせて太字にします。 |
 | [code: synthetic-italic] | [code: false] | [code: true] にすると、字形を傾けて斜体にします。 |
 | [code: position] | 外側の値 | [code: "superscript"] で上付き、[code: "subscript"] で下付き、[code: "normal"] で通常の位置にします。 |
-| [code: underline] | 外側の値 | 下線です。[code: true] で既定の線、表で [code: weight]、[code: offset]、[code: style]、[code: dash]、[code: gap]、[code: color] を書いた線、[code: false] で線なしにします。縦組みでは文字の右に引きます。 |
+| [code: underline] | 外側の値 | 下線です。[code: true] で既定の線、表で [code: weight]、[code: offset]、[code: style]、[code: dash]、[code: gap]、[code: color]、[code: side] を書いた線、[code: false] で線なしにします。縦組みでは既定で文字の右に引き、[code: side = "left"] で左に引きます。 |
 | [code: strikethrough] | 外側の値 | 打ち消し線です。書き方は [code: underline] と同じです。 |
 | [code: features] | なし | OpenType の機能の配列です。[code: \["smcp", "-liga", "salt=2"\]] のように書きます。[code: based-on] で引き継いだ機能の後ろに足します。 |
 | [code: punctuation-width] | 外側の値 | [code: "full-width"] で括弧類、句読点、中点類を全角の字形で、[code: "font"] でフォントの字形のまま組みます。[code: body] の既定は [code: "full-width"] です（「[ref-title punctuation-width]」、[ref-page punctuation-width] ページ）。 |
@@ -234,9 +240,13 @@ space-after = 1
 
 [code: kind = "rule"] と [code: \[separators.scene.rule\]] を使えば、同じ原稿を罫線の区切りに替えられます。
 隣の段落スタイルの間隔は区切りの間隔へ足さず、明示した [code: @blank-line] が同じ境界にあれば大きい行数を使います。
-可視の区切りは後に続く本文の一行と一緒に段へ置きます。
+可視の区切りは、後に続くブロックの最初の部分と一緒に段へ置きます。
+段落の最初の部分は、[code: keep-first-lines] と [code: keep-last-lines] で段を分けたときに前の段に残す行です。
+[code: keep-all-lines] の段落と、二つの和より短い段落は分けられないので、全体を区切りと同じ段へ置きます。
 連続する可視の区切りは、後続の通常のブロックまでまとめて同じ段へ置きます。
-空の段へ送っても、区切りと後ろのアキ、後続の最初の行を同じ段に置けないときは、エラー（G07134）になり、PDF は書きません。
+空の段へ送っても、区切りと後ろのアキ、後続の最初の部分を同じ段に置けないときは、エラー（G07134）になり、PDF は書きません。
+区切りと後続のブロックの間に書いた [code: @need-lines] は、この保持に含めません。
+区切りから数えた行と合わせて段の行数を超える [code: @need-lines] は守れず、警告（G07037）になり、区切りは後続の最初の部分と同じ段に置きます。
 本の末尾や明示した改ページの直前では、区切りを残し、後ろのアキを捨てます。
 
 @nonumber
@@ -398,6 +408,7 @@ PDF では、表の行がセルの全体を収める最も少ない行を占め�
 | [code: expansion] | なし | 欧文の字の幅をわずかに伸び縮みさせて、語間のむらを減らします。[code: { limit = 20, step = 5 }] のように、限度と刻みを千分率で書きます（20 は 2%）。 |
 | [code: explicit-hyphen-penalty] | [code: 50] | 欧文の語に書かれたハイフンやダッシュの後ろで行を分けるときの、避けたさの度合いです。-9999 から 10000 までで、10000 にするとそこでは分けません。 |
 | [code: number-unit-penalty] | [code: 10000] | 数字とその後の仮名か漢字（[code: 100円]、[code: 3人]）のあいだで行を分けるときの、避けたさの度合いです。-9999 から 10000 までで、既定の 10000 ではそこで分けません。漢数字の後ろと、空白を挟む組には当てません。 |
+| [code: keep-parts] | [code: "column"] | 表、リスト項目、定義用語と最初の説明行、図版とキャプションを保つ単位です。[code: "column"] は段、[code: "page"] は物理ページ、[code: "spread"] は物理ページ2と3、4と5の見開きです。同じ単位の段の間では分けられます。空の単位にも収まらず分けると G07133 の notice を一度出します。図版とキャプションは従来どおり分けず、一段に置きます。 |
 | [code: hyphenation-exceptions] | なし | 本の欧文の語の分け方（分綴の例外）です。[code: \[composition.hyphenation-exceptions\]] の表に、[code: en = \["ta-ble", "pro-ject"\]] のように言語のタグごとに語の配列を書きます。語の分けてよい位置に [code: -] を書き、[code: -] のない語は分けません。PDF でだけ有効です。語と言語のタグの誤りは、原稿の [code: @hyphenation-exceptions] と同じエラー（G03126 から G03130）になります。 |
 
 @nonumber
@@ -500,6 +511,34 @@ HTML、EPUB、プレーンテキストには線を出しません。
 |:---|:---|
 | [code: number] | 図番号の書式です。既定は [code: "図{chapter}-{n}"] で、「図2-1」のように組みます。 |
 | [code: wrap-gap] | 回り込ませた図版と本文のあいだの空きです。既定は [code: "1zw"] です。 |
+| [code: color] | 単色図版に使うスウォッチの名前です。省くと元の色のままです。 |
+
+[code: color] は SVG、PNG、JPEG、取り込んだ PDF の単色図版に使います。
+白黒の濃淡で描いた図版では、白は白のまま、黒は指定色、灰色はその中間の濃度になります。
+RGB の三つの成分が同じ画素も、白黒の濃淡として扱います。
+一つの有彩色だけで描いた図版も指定色になりますが、写真などの多色の図版は元の色のままです。
+不透明度が 0 の画素は、色の判定に含めません。
+透過の度合いと図版の寸法は変えず、柱とノンブルの文字スタイルや罫線の色とは別に指定できます。
+HTML と EPUB ではスウォッチの CMYK を RGB に換算し、色を変えた JPEG は PNG として書きます。
+元のファイルは変更しません。
+変換できない画像には G08113 を出し、その図版を使う出力を作りません。
+JPEG の色変換は、8-bit の Huffman 符号化による baseline、extended sequential、progressive の DCT 方式を扱います。
+12-bit、lossless、arithmetic coding などの非対応方式を指定すると、G08113 のエラーになります。
+[code: color] を省くと、この復号方式の制限は適用しません。
+
+PDF 図版は、線、塗り、文字、画像、グラデーション、パターンの色を判定します。
+線、塗り、文字と画像の CalGray、CalRGB、Lab の色は、ほかの色に変換せず、成分の値のまま判定します。
+CalRGB は三つの成分が等しいとき、Lab は a* と b* がともに 0 のときだけ、白黒の濃淡として扱います。
+既定の Range の 8-bit の Lab の画像には a* と b* がちょうど 0 になるサンプルが無いので、濃淡になりません。
+関数やメッシュで決めるグラデーションと、パターンは、白黒の濃淡なら指定色の濃淡に、一色なら指定色にします。
+パターンは、描く色で判定します。
+タイリングのパターンは内容の色か [code: scn] で渡す色、シェーディングのパターンはそのグラデーションの色です。
+字形の中で自分の色を指定する Type 3 フォントの文字は、字形の中の色で判定し、字形の中の色を置き換えます。
+濃淡でも、黒のほかの版を使う灰色などは置き換えられず、G08113 になります。
+画像やマスクのデータが壊れていて復号できない PDF 図版にも、G08113 が出ます。
+通常のほかの描画モード（乗算など）、既定のほかの転送関数、OPM が 1 の設定のオーバープリントを使う PDF 図版には、[code: color] を使えず、G08113 になります。
+[code: color] を外すか、これらを使わない形に書き出し直してください。
+色を指定した SVG も、色の判定か置換ができなければ PDF、HTML、EPUB の対象媒体を作りません。
 
 @nonumber
 ## [code: \[tables\]]
@@ -568,7 +607,7 @@ string = "code-st"
 書式の文字と空白は、書いた順のまま段落に入ります。
 文字としての波括弧は [code: {{] と [code: }}] で書きます。
 ほかの書式と同じく、[code: \\{] と [code: \\}] とも書けます。
-表にない欄、空の [code: {}]、対にならない波括弧、誤ったバックスラッシュ（文字の [code: \\] は [code: \\\\] と書きます）、改行を書くと、エラー（G03006）になります。
+表にない欄、空の [code: {}]、対にならない波括弧、誤ったバックスラッシュ（文字の [code: \\] は [code: \\\\] と書きます）、改行を書くと、エラー（G03264 から G03271）になります（「[ref-title app-errors]」）。
 
 @nonumber
 ## [code: \[index\]]
@@ -688,14 +727,34 @@ PDF でだけ有効です。
 | [code: intent] | 印刷所から指定された印刷の色の条件のファイル（ICC プロファイル）です。書けば PDF に出力インテントとして埋め込みます[note: ICC.1:2022（ICC プロファイルの仕様）。[code: https://www.color.org/specification/ICC.1-2022-05.pdf]]。 |
 | [code: \[color.swatches\]] | 色に名前を付けます。[code: accent = { cmyk = \[0, 80, 100, 0\] }] のように、C、M、Y、K の網点の割合を 0 から 100 の整数で書きます。 |
 
-PDF の色は、プロセスカラー（CMYK）だけです。
+PDF の文字と罫線の指定色は、プロセスカラー（CMYK）だけです。
 特色の版は作らず、二色刷りのためのデータも作れません（今後の予定は付録H）。
 HTML と EPUB では、CMYK の値を RGB に近似して使います。
 
 @nonumber
+## [code: \[frames.名前\]]
+
+ページの好きな位置に置くテキストフレームです（第5章「テキストフレーム」）。
+PDF でだけ形と位置を使います。
+四角のキー（[code: x]、[code: y]、[code: width]、[code: height]）か [code: path] のどちらか一方を書きます。
+
+| キー | 意味 |
+|:---|:---|
+| [code: x]、[code: y] | 仕上がりの寸法の左上からの位置です。[code: y] は下へ向かって増えます。 |
+| [code: width]、[code: height] | 四角のフレームの幅と高さです。0 より大きい長さです。 |
+| [code: path] | 四角でないフレームの形です。SVG のパスの書き方の [code: M]、[code: L]、[code: C]、[code: Z] で書き、部分パスを [code: Z] で閉じます。 |
+| [code: unit] | [code: path] の座標の単位です。[code: "mm"]（書かないとき）、[code: "pt"]、[code: "Q"] のどれかです。 |
+| [code: x-from] | [code: x] を測る端です。[code: "left"]（書かないとき）、[code: "inside"]（ノド）、[code: "outside"]（小口）のどれかです。左右固定モードでは [code: "left"] だけです。 |
+| [code: paragraph-style] | 中の文字を組む段落スタイルです。書かなければ [code: body] です。 |
+| [code: writing-mode] | [code: "horizontal"] か [code: "vertical"] です。書かなければ [code: \[page\]] と同じです。 |
+| [code: wrap] | [code: "none"]（書かないとき）なら本文と重なり、[code: "around"] なら本文の行を短くしてフレームを避け、表、コードブロック、図版はフレームを越えた位置から置きます。[code: "around"] はマスターページに置くフレームだけで使えます。 |
+| [code: text] | マスターページに置くときにフレームに組む文字です。 |
+
+長さには [code: zw] も使え、フレームの段落スタイルの文字の大きさで測ります。
+
 ## [code: \[masters.名前\]]
 
-柱とノンブルを置くマスターページです。
+柱とノンブルとテキストフレームを置くマスターページです。
 PDF でだけ有効です。
 章は [code: body] という名前のマスターページを使い、[code: manifest.toml] の章の項目の [code: master] で別のものを選べます。
 
@@ -703,6 +762,7 @@ PDF でだけ有効です。
 |:---|:---|
 | [code: running-head] | 柱です。[code: { position = "top-outside", content = "heading.1.short" }] のように、位置と内容を書きます。左右のページで変えるときは、[code: content] の代わりに [code: even]（偶数ページ）と [code: odd]（奇数ページ）の両方を書きます。書かなければ柱を組みません。 |
 | [code: folio] | ノンブルです。[code: { position = "bottom-outside", format = "{n}" }] のように、位置と書式を書きます。書かなければノンブルを組みません。 |
+| [code: frames] | そのマスターページのすべてのページに置くテキストフレームの名前の配列です。[code: \["ornament"\]] のように書きます。名前は [code: \[frames.名前\]] にあるものです。 |
 | [code: character-style] | [code: running-head] と [code: folio] の中に書くキーです。柱、ノンブルの文字に当てる文字スタイルの名前を、[code: { position = "bottom-outside", format = "{n}", character-style = "folio" }] のように書きます。この例の [code: folio] は、[code: \[character-styles.folio\]] に定義した文字スタイルです。書かなければ、本文の書体と版面の文字の大きさで組みます。柱とノンブルには別々の文字スタイルを指定でき、左右のページの柱には同じ文字スタイルを当てます。 |
 
 位置には、[code: top-] または [code: bottom-] に [code: outside]、[code: inside]、[code: center]、[code: left]、[code: right] を続けた値を書きます。
@@ -731,7 +791,7 @@ PDF でだけ有効です。
 | [code: {heading.<階層>.number}] | 見出しの番号だけです。番号のない見出しでは値がありません。 |
 | [code: {meta.キー}] | [code: manifest.toml] の [code: \[metadata\]] の値です。キーは [code: title]、[code: title_reading]、[code: edition]、[code: publisher]、[code: date]、[code: language]、[code: id] です。 |
 | [code: {set.名前}] | そのページの章のファイルで [code: @set] した変数です。 |
-| [code: {set.名前空間.名前}] | その章のファイルが [code: @import ... as 名前空間] で取り込んだ変数です。 |
+| [code: {set.名前空間.名前}] | その章のファイルが [code: @import ... * as 名前空間] で取り込んだ変数です。 |
 
 見出しの差し込みの末尾には [code: .last] を付けられます。
 差し込みの値がない行は描きません。

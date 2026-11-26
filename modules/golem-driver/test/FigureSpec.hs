@@ -3,7 +3,7 @@ figures fitted to the column and turned onto a page of their own
 (golem-driver ADR 0034); SVG active content in HTML and EPUB (docs/adr
 ADR 0039).
 -}
-module FigureSpec (pdfFigureTests, svgFigureTests, fitFigureTests, figureWidthTests, turnedFigureTests, activeContentTests) where
+module FigureSpec (pdfFigureTests, svgFigureTests, fitFigureTests, figureWidthTests, turnedFigureTests, activeContentTests, zeroExtentFigureTests) where
 
 import Codec.Compression.Zlib qualified as Z
 import Control.Monad (forM_)
@@ -147,7 +147,50 @@ contentsPdf refs streams =
 
 pdfFigureTests :: [TestTree]
 pdfFigureTests =
-  [ testCase "a PDF figure whose content names a stream twice writes it once, as an inner Form (docs/adr ADR 0051)" $ do
+  [ testCase "root ADR 0425 I2: a PDF figure with a Separation colour is G08010, not G08113, when recolouring" $ do
+      let spot = streamPdf "<< /ColorSpace << /S [/Separation /Spot /DeviceCMYK 5 0 R] >> >>" "/S cs 1 scn 0 0 10 10 re f" [(5, "<< /FunctionType 2 /Domain [0 1] /C0 [0 0 0 0] /C1 [0 1 0 0] /N 1 >>")]
+      (codes, pdf, _) <- colorPdfWith "@figure images/f.pdf web=images/f.png alt=\"t\"\n" [("images/f.pdf", spot), ("images/f.png", png False)]
+      codes @?= [DiagnosticCode "G08010"]
+      pdf @?= Nothing,
+    testCase "root ADR 0425 A1: the CalRGB gray, the Lab gray and the FunctionType 2 gray gradient of a PDF figure are tones of the swatch in the PDF output" $ do
+      let figure =
+            streamPdf
+              "<< /ColorSpace << /CR [/CalRGB << /WhitePoint [0.9505 1 1.089] >>] /L [/Lab << /WhitePoint [0.9505 1 1.089] /Range [-100 100 -100 100] >>] >> /Shading << /Sh 5 0 R >> >>"
+              "/CR cs 0.5 0.5 0.5 scn 0 0 50 50 re f /L cs 25 0 0 scn 50 0 50 50 re f 0 0 200 100 re W n /Sh sh"
+              [(5, "<< /ShadingType 2 /ColorSpace /DeviceGray /Coords [0 0 200 0] /Function << /FunctionType 2 /Domain [0 1] /C0 [0] /C1 [1] /N 1 >> >>")]
+      (codes, pdf, _) <- colorPdfWith "@figure images/f.pdf web=images/f.png alt=\"t\"\n" [("images/f.pdf", figure), ("images/f.png", png False)]
+      codes @?= []
+      out <- maybe (assertFailure "no PDF") pure pdf
+      streams <- inflateAll out
+      let everything = BS.concat (out : streams)
+          has label needle = assertBool (label <> ": " <> show needle) (needle `BS.isInfixOf` everything)
+      -- the swatch is C0 M100 Y100 K0: gray g paints (0, 1 - g, 1 - g, 0)
+      has "CalRGB (0.5, 0.5, 0.5)" "0 0.5 0.5 0 k"
+      has "Lab (25, 0, 0)" "0 0.75 0.75 0 k"
+      has "the shading in DeviceCMYK" "/ColorSpace /DeviceCMYK"
+      has "C0 black is the swatch" "/C0 [0 1 1 0]"
+      has "C1 white is white" "/C1 [0 0 0 0]"
+      assertBool "the CalRGB and Lab colours are not painted as they are" (not ("0.5 0.5 0.5 scn" `BS.isInfixOf` everything || "25 0 0 scn" `BS.isInfixOf` everything))
+      qpdfCheck out,
+    testCase "root ADR 0403 A1: an SVG line drawing of white, gray and black is drawn in tones of the swatch in the PDF output" $ do
+      let svg =
+            "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"10\" height=\"10\">"
+              <> "<rect x=\"0\" y=\"0\" width=\"10\" height=\"10\" fill=\"#ffffff\"/>"
+              <> "<path d=\"M 1 1 L 9 1\" fill=\"none\" stroke=\"#808080\"/>"
+              <> "<path d=\"M 1 3 L 9 3 L 9 9 Z\" fill=\"#000000\"/></svg>"
+      (codes, pdf, _) <- colorPdfWith "@figure images/f.svg alt=\"t\"\n" [("images/f.svg", svg)]
+      codes @?= []
+      out <- maybe (assertFailure "no PDF") pure pdf
+      streams <- inflateAll out
+      let everything = BS.concat (out : streams)
+          has label needle = assertBool (label <> ": " <> show needle) (needle `BS.isInfixOf` everything)
+      -- the swatch is C0 M100 Y100 K0: gray g paints (0, 1 - g, 1 - g, 0)
+      has "white stays white" "0 0 0 0 k"
+      has "gray 128 is the tone 127/255 of the swatch" "0 0.49803922 0.49803922 0 K"
+      has "black is the swatch" "0 1 1 0 k"
+      assertBool "no RGB paint is left" (not (any (`BS.isInfixOf` everything) [" sc\n", " SC\n", " rg\n", " RG\n"]))
+      qpdfCheck out,
+    testCase "a PDF figure whose content names a stream twice writes it once, as an inner Form (docs/adr ADR 0051)" $ do
       let figPdf = contentsPdf "4 0 R 4 0 R" [("", "q 0 0 0 1 k 0 0 100 50 re f Q")]
       (codes, pdf, _) <- pdfWith Dev "@figure images/f.pdf web=images/f.png alt=\"t\"\n" [("images/f.pdf", figPdf), ("images/f.png", png False)]
       codes @?= []
@@ -303,6 +346,31 @@ numberedPdf objs =
     showB :: (Show a) => a -> BS.ByteString
     showB = TE.encodeUtf8 . T.pack . show
 
+{- | A PDF of one page of 200 by 100 pt whose Resources and content are
+given, with further numbered objects from 5.
+-}
+streamPdf :: BS.ByteString -> BS.ByteString -> [(Integer, BS.ByteString)] -> BS.ByteString
+streamPdf resources content extra =
+  numberedPdf
+    ( [ (1, "<< /Type /Catalog /Pages 2 0 R >>"),
+        (2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"),
+        (3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 100] /Resources " <> resources <> " /Contents 4 0 R >>"),
+        (4, "<< /Length " <> TE.encodeUtf8 (T.pack (show (BS.length content))) <> " >>\nstream\n" <> content <> "\nendstream")
+      ]
+        <> extra
+    )
+
+-- | 'pdfWith' in the developer profile with the figures drawn in the swatch C0 M100 Y100 K0 (root ADR 0403).
+colorPdfWith :: T.Text -> [(FilePath, BS.ByteString)] -> IO ([DiagnosticCode], Maybe BS.ByteString, [T.Text])
+colorPdfWith source files = withSystemTempDirectory "golem-figure-color" $ \tmp -> do
+  writeProject tmp (miniManifest <> "\n[targets.html]\n\n[targets.epub]\n") (figStyle horizontalStyle <> "color = \"accent\"\n[color.swatches.accent]\ncmyk = [0, 100, 100, 0]\n") source files
+  r <- build (defaultOptions tmp) {optTargets = Just [TargetPdf], optFonts = fakeProvider, optProfile = Dev}
+  pdf <- case filter (".pdf" `isSuffixOf`) (brWritten r) of
+    [p] -> Just <$> BS.readFile p
+    _ -> pure Nothing
+  let errs = filter isError (brDiagnostics r)
+  pure (map diagCode errs, pdf, map diagMessage errs)
+
 -- | The PDF of a one-chapter project with files, or the error codes.
 pdfWith :: Profile -> T.Text -> [(FilePath, BS.ByteString)] -> IO ([DiagnosticCode], Maybe BS.ByteString, [T.Text])
 pdfWith profile source files = withSystemTempDirectory "golem-svg" $ \tmp -> do
@@ -426,7 +494,7 @@ svgFigureTests =
       BS.writeFile (tmp </> "images/u.png") (png False)
       r <- build (defaultOptions tmp) {optTargets = Just [TargetHtml, TargetEpub]}
       brDiagnostics r @?= []
-      page <- BS.readFile (tmp </> "build/html/a.xhtml")
+      page <- BS.readFile (tmp </> "build/html/a.html")
       assertBool "t.svg" ("src=\"images/t.svg\"" `BS.isInfixOf` page)
       assertBool "u.png" ("src=\"images/u.png\"" `BS.isInfixOf` page)
   ]
@@ -954,8 +1022,20 @@ turnedFigureTests =
       let build' r = notifiedWith "\n[targets.html]\n\n[targets.epub]\n" (horizontal20 "left" 20) (fig "wide" r "キャプション。") (\o -> o {optTargets = Just [TargetHtml, TargetEpub]})
       turned <- build' " rotate=true"
       plain <- build' ""
-      map fst (nOutputs plain) @?= ["epub/book.epub", "html/a.xhtml", "html/fonts/b.otf", "html/images/wide.svg", "html/index.xhtml", "html/style.css"]
-      nOutputs turned @?= nOutputs plain
+      -- no font: HTML names generic families by default (docs/adr/0423)
+      map fst (nOutputs plain) @?= ["epub/book.epub", "html/a.html", "html/images/wide.svg", "html/index.html", "html/style.css"]
+      nOutputs turned @?= nOutputs plain,
+    testCase "golem-driver ADR 0034, root ADR 0397: in the free placement a turned figure waits after a waiting figure and takes a page of its own" $ do
+      let free = replaceIn "[page.grid]" "[page.grid]\nalignment = \"free\"" (pageStyle "horizontal" "left" 24 8 1 20 20)
+          source = "一。\n\n二。\n\n三。\n\n四。\n\n" <> fig "wide" "" "" <> fig "wide" " rotate=true" "" <> "後の本文。\n"
+      (_, pl) <- layoutOk free source boxes
+      let kinds slot = case slot of
+            SLine _ -> "line"
+            SFigure _ -> "figure"
+            SPageFigure _ -> "turned"
+            _ -> "other" :: T.Text
+      [(poNumber p, map (kinds . snd) (poSlots p)) | p <- plPages pl]
+        @?= [(1, ["line", "line", "line", "line", "line"]), (2, ["figure"]), (3, ["turned"])]
   ]
 
 {- | The rectangle of the image of the only turned figure and those of the
@@ -967,3 +1047,116 @@ turnedParts style source = do
   v <- viewOf style source boxes
   img <- single [ivRect i | pv <- vwPages v, i <- pvImages pv, ivTurned i]
   pure (img, [lvRect l | pv <- vwPages v, l <- pvLines pv, lvKind l == "キャプションの行"])
+
+-- ------------------------------------------------------------------ figures of zero extent across the lines (root ADR 0440)
+
+-- | A grey PNG of w by h pixels, 8 bits; readImage does not check the CRC.
+grayPng :: Int -> Int -> BS.ByteString
+grayPng w h =
+  BS.pack [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]
+    <> chunk "IHDR" (be32 w <> be32 h <> BS.pack [8, 0, 0, 0, 0])
+    <> chunk "IDAT" (BL.toStrict (Z.compress (BL.fromStrict (BS.pack (concat (replicate h (0 : replicate w 0)))))))
+    <> chunk "IEND" ""
+  where
+    be32 :: Int -> BS.ByteString
+    be32 n = BS.pack [fromIntegral (n `shiftR` s) | s <- [24, 16, 8, 0 :: Int]]
+    chunk name d = be32 (BS.length d) <> name <> d <> be32 0
+
+-- | The images of these tests: PNGs of w by h pixels at images/pWxH.png, and a long SVG.
+zeroImages :: [(FilePath, BS.ByteString)]
+zeroImages = [("images/p" <> show w <> "x" <> show h <> ".png", grayPng w h) | (w, h) <- pngSizes] <> [("images/long.svg", boxSvg 100000000 1)]
+
+pngSizes :: [(Int, Int)]
+pngSizes = [(1, 1), (1, 2), (2, 1), (1, 1000), (1000, 1)]
+
+-- | A figure of a PNG of 'zeroImages' with more arguments and a caption (none when empty), with no number unless asked.
+pngFig :: Bool -> (Int, Int) -> T.Text -> T.Text -> T.Text
+pngFig numbered (w, h) extra caption =
+  (if numbered then "" else "@nonumber\n") <> "@figure images/p" <> tshow w <> "x" <> tshow h <> ".png alt=\"t\"" <> extra <> "\n" <> (if T.null caption then "" else "  " <> caption <> "\n") <> "\n"
+
+-- | A page style laid out freely (root ADR 0397).
+freely :: BS.ByteString -> BS.ByteString
+freely = TE.encodeUtf8 . T.replace "[page.grid]\n" "[page.grid]\nalignment = \"free\"\n" . TE.decodeUtf8
+
+zeroMessage :: T.Text
+zeroMessage = "図版の行の方向の長さと画像の縦横の比から求めた、行の送りの方向の長さが 0 になります"
+
+-- | The rows a figure gives the pagination: those of its exclusion when it wraps, of its image and caption otherwise; none for a turned one.
+figureRows :: PlacedFigure -> Maybe Int
+figureRows pf
+  | isJust (pfTurn pf) = Nothing
+  | Just e <- pfExclusion pf = Just (exLines e)
+  | otherwise = Just (pfImageLines pf + pfCaptionSpan pf)
+
+-- | The layout errors as code and message, and whether a PDF build of the same source writes the PDF.
+zeroOutcome :: BS.ByteString -> T.Text -> IO ([(T.Text, T.Text)], Bool)
+zeroOutcome style source = do
+  r <- layoutMini style source zeroImages
+  pdf <- withSystemTempDirectory "golem-zero" $ \tmp -> do
+    writeProject tmp miniManifest style source zeroImages
+    b <- build (defaultOptions tmp) {optTargets = Just [TargetPdf], optFonts = fakeProvider}
+    w <- doesFileExist (tmp </> "build/a.pdf")
+    pure (w || any (".pdf" `isSuffixOf`) (brWritten b))
+  pure ([(c, m) | (c, m, _, _, _) <- layoutErrors r], pdf)
+
+zeroExtentFigureTests :: [TestTree]
+zeroExtentFigureTests =
+  [ testCase "root ADR 0440 I1: whatever the width and the pixels, a figure gives the pagination one row or more, or the layout fails" $
+      forM_ [(mode, wrap', width, size) | mode <- ["vertical", "horizontal"], wrap' <- ["", " wrap=start"], width <- ["0.00001pt", "0.00002pt", "0.0001pt", "1pt", "10zw"], size <- pngSizes] $ \(mode, wrap', width, size) -> do
+        let style = pageStyle mode "left" 24 20 1 20 20
+            source = "前の段落。\n\n" <> pngFig False size (wrap' <> " width=" <> width) "" <> "後の段落。\n"
+        r <- layoutMini style source zeroImages
+        case r of
+          Left ds -> assertBool ("an error: " <> show ds) (any isError ds)
+          Right (_, pl) -> forM_ (figuresIn pl) $ \(pf, _, _) ->
+            assertBool (show (mode, wrap', width, size, figureRows pf)) (maybe True (>= 1) (figureRows pf)),
+    testCase "root ADR 0440 I1, I2: vertical, a 1 by 2 PNG, no number, width=0.00001pt is the new error, with no PDF" $ do
+      (errs, pdf) <- zeroOutcome (vertical10 60) (pngFig False (1, 2) " width=0.00001pt" "")
+      errs @?= [("G07135", zeroMessage)]
+      pdf @?= False,
+    testCase "root ADR 0440 I1, I2: horizontal, a 2 by 1 PNG, no number, width=0.00001pt is the new error, with no PDF" $ do
+      (errs, pdf) <- zeroOutcome (horizontal20 "left" 20) (pngFig False (2, 1) " width=0.00001pt" "")
+      errs @?= [("G07135", zeroMessage)]
+      pdf @?= False,
+    testCase "root ADR 0440 I2: with a number and a caption, the same figure is the new error, at the figure" $ do
+      let source = "前の段落。\n\n" <> pngFig True (2, 1) " width=0.00001pt" "キャプション。"
+      r <- layoutMini (horizontal20 "left" 20) source zeroImages
+      [(c, f, s) | (c, _, f, s, _) <- layoutErrors r] @?= [("G07135", FileId 1, s) | s <- take 1 (figureOffsets source)]
+      (errs, pdf) <- zeroOutcome (horizontal20 "left" 20) (pngFig True (2, 1) " width=0.00001pt" "")
+      errs @?= [("G07135", zeroMessage)]
+      pdf @?= False,
+    testCase "root ADR 0440 I1, I2: a wrapped figure of zero extent across the lines is the new error" $ do
+      (errs, pdf) <- zeroOutcome (horizontal20 "left" 20) (pngFig False (2, 1) " wrap=start width=0.00001pt" "" <> "脇の段落。\n")
+      errs @?= [("G07135", zeroMessage)]
+      pdf @?= False,
+    testCase "root ADR 0440 I2: a turned figure whose frame line by its ratio is less than 1 sp is the new error" $ do
+      (errs, pdf) <- zeroOutcome (horizontal20 "left" 20) "@nonumber\n@figure images/long.svg alt=\"t\" rotate=true\n\n"
+      errs @?= [("G07135", zeroMessage)]
+      pdf @?= False,
+    testCase "root ADR 0440 I1, I2: laid out freely, a figure of zero extent across the lines is the new error" $ do
+      (errs, pdf) <- zeroOutcome (freely (horizontal20 "left" 20)) (pngFig False (2, 1) " width=0.00001pt" "")
+      errs @?= [("G07135", zeroMessage)]
+      pdf @?= False,
+    testCase "root ADR 0440 I1, I3: a figure exactly 1 sp across the lines takes one row, with no error" $
+      forM_ [vertical10 60, horizontal20 "left" 20] $ \style -> do
+        (_, pl) <- layoutOk style (pngFig False (1, 1) " width=0.00001pt" "") zeroImages
+        (pf, _, _) <- single (figuresIn pl)
+        pfAcross pf @?= 1
+        figureRows pf @?= Just 1,
+    testCase "root ADR 0440 I2: a figure whose caption fills the column is G07038 alone" $ do
+      r <- layoutMini (pageStyle "horizontal" "left" 24 2 1 20 20) ("前の段落。\n\n" <> pngFig True (2, 1) " width=0.00001pt" (T.replicate 70 "あ")) zeroImages
+      [c | (c, _, _, _, _) <- layoutErrors r] @?= ["G07038"],
+    testCase "root ADR 0440 I2: laid out freely on a column shorter than a pitch, a figure is G07131 alone" $ do
+      let style = TE.encodeUtf8 (T.replace "lines = 30" "lines = 1" (TE.decodeUtf8 (freely horizontalStyle)))
+      r <- layoutMini (figStyle style) (pngFig False (2, 1) " width=0.00001pt" "") zeroImages
+      [c | (c, _, _, _, _) <- layoutErrors r] @?= ["G07131"],
+    testCase "root ADR 0440 I4: golem check and the HTML build give no new error, and the HTML is written" $
+      withSystemTempDirectory "golem-zero" $ \tmp -> do
+        let source = pngFig False (2, 1) " width=0.00001pt" ""
+        writeProject tmp (miniManifest <> "\n[targets.html]\n") (horizontal20 "left" 20) source zeroImages
+        c <- build (defaultOptions tmp) {optTargets = Just [TargetPdf, TargetHtml], optFonts = fakeProvider, optCheckOnly = True}
+        [diagCode d | d <- brDiagnostics c, diagCode d == DiagnosticCode "G07135"] @?= []
+        h <- build (defaultOptions tmp) {optTargets = Just [TargetHtml], optFonts = fakeProvider}
+        [diagCode d | d <- brDiagnostics h, isError d] @?= []
+        assertBool (show (brWritten h)) (any (".html" `isSuffixOf`) (brWritten h))
+  ]

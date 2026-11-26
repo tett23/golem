@@ -135,6 +135,7 @@ noticeCodes =
       "G07123", -- a soft hyphen without a letter on either side, not a break (docs/adr ADR 0272)
       "G07124", -- a soft hyphen in or next to text that does not break, not a break (docs/adr ADR 0272, ADR 0297)
       "G07126", -- the ink of JLReq's punctuation reaches the character next to it (docs/adr/0302)
+      "G07133", -- a book part falls back after an empty retention unit fails (root ADR 0401)
       "G08008", -- code in the body role without [fonts.code] (golem-driver ADR 0017)
       "E02109" -- a binding of where of .emet that nothing uses (docs/adr/0160)
     ]
@@ -158,7 +159,8 @@ must agree with them (a golem-driver test).
 -}
 infoCodes :: [DiagnosticCode]
 infoCodes =
-  [ DiagnosticCode "G02254", -- a zero-line run of @blank-line (Golem ADR 0345)
+  [ DiagnosticCode "G01031", -- one block alone between ::: lines (root ADR 0459)
+    DiagnosticCode "G02254", -- a zero-line run of @blank-line (Golem ADR 0345)
     DiagnosticCode "G05100", -- missing space at a comment boundary (docs/adr/0339)
     DiagnosticCode "G07047", -- blank lines dropped at the top of a column (docs/adr ADR 0046)
     DiagnosticCode "E05108" -- a requirement of a signature of .emet that its body does not use (docs/adr/0161)
@@ -187,6 +189,8 @@ profileDependentCodes :: [DiagnosticCode]
 profileDependentCodes =
   [ DiagnosticCode "G05004", -- unreferenced label
     DiagnosticCode "G03010", -- a font missing from HTML and EPUB (golem-project ADR 0004)
+    DiagnosticCode "G03282", -- a font HTML and EPUB copy without the key of its license document (root ADR 0433)
+    DiagnosticCode "G03283", -- a license document of a font HTML and EPUB copy is missing (root ADR 0433)
     DiagnosticCode "G08100", -- a character the font of the PDF has not (docs/adr 0081)
     DiagnosticCode "G08103", -- an OpenType feature the font of the PDF has not (docs/adr/0268)
     DiagnosticCode "G07127", -- caption indents that leave no character (docs/adr/0389)

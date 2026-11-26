@@ -96,7 +96,8 @@ paragraph-separator = "blank-line"
 段落の途中で改行して折り返す書き方はありません。
 
 [code: @style verse] の段落では、[code: "line"] でも改行は行の区切りになり、連は空行で区切ります。
-属性の形で [code: @style verse] を付けると、直後の一行ではなく、次の空行までの行がまとめて一つの連になります。
+[code: @style verse] の次の行から書くと、直後の一行ではなく、次の空行までの行がまとめて一つの連になります。
+[code: @style] や [code: @lang] の次の行から続けて書いた行は、どの段落スタイルでも、すべてそのコマンドの本体の段落になります。
 
 章ごとに区切り方を変えるときは、[code: chapters] の項目に書きます。
 
@@ -246,7 +247,7 @@ format = "{date}  第{edition}版 第{printing}刷"
 書式の文字と空白は、書いた順のまま段落に入ります。
 数は算用数字で組み、縦組みでも漢数字にしません。
 文字としての波括弧は [code: {{] と [code: }}] で書きます。
-ほかの欄、空の [code: {}]、対にならない波括弧、誤ったバックスラッシュ（文字の [code: \\] は [code: \\\\] と書きます）、改行を書くと、エラー（G03006）になります（「[ref-title app-style]」）。
+ほかの欄、空の [code: {}]、対にならない波括弧、誤ったバックスラッシュ（文字の [code: \\] は [code: \\\\] と書きます）、改行を書くと、エラー（G03264 から G03271）になります（「[ref-title app-style]」、「[ref-title app-errors]」）。
 日本語でない本で [code: @printings] を使うには、この書式を書きます。
 書式を書かないと、日本語でない本の [code: @printings] はエラー（G02076）になります。
 
@@ -274,6 +275,7 @@ variants = ["horizontal"]
 - [code: \[targets.text\]] の [code: variants] で、プレーンテキストを縦書き用（[code: "vertical"]）と横書き用（[code: "horizontal"]）のどちらで作るかを選びます。省けば両方を作ります。
 
 [code: golem build] は、[code: --target] を指定しなければ、ここに書いていない形式も含めて四つの形式をすべて作ります。
+画面で読む PDF は、[code: --target pdf-screen] を指定したときだけ作ります（「[ref-title pdf-screen]」、[ref-page pdf-screen] ページ）。
 このマニュアルは PDF と HTML だけを使うので、[code: golem build --target pdf --target html] で組んでいます。
 
 ### PDF/A と PDF/UA
@@ -289,6 +291,9 @@ PDF は、どの本もタグ付き PDF になります。
 pdfa = "2a"
 pdfua = "1"
 ```
+
+画面で読む PDF に PDF/UA-1 を宣言するときは、[code: \[targets.pdf-screen\]] に [code: pdfua = "1"] を書きます。
+画面で読む PDF には出力インテントがないので、[code: pdfa] は書けません（G03001）。
 
 - [code: pdfa] に書ける値は [code: "2a"] だけ、[code: pdfua] に書ける値は [code: "1"] だけです。ほかの値はエラー（G03001）になります。
 - 二つは別々に書けます。PDF/A は印刷用の PDF/X-4 の上に作るので、[code: pdfa] を書くときは、[code: style.toml] の [code: \[color\]] に [code: intent] を書きます。ないとエラー（G03113）になります。[code: pdfua] だけなら [code: intent] は要りません。

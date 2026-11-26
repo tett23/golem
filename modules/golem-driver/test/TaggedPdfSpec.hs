@@ -239,7 +239,7 @@ structureTests =
     testCase "ADR 0393 I2: inv2_ruby_references_case_6: under PDF/X-4 a reference in a segment without a reading is a Reference of a Span, without an annotation" $ do
       p <- lastParagraph <$> miniStructureWith intentStyle (labelledRuby "[ruby: 前/[ref-title a]後|まえ/]") intentFiles
       p @?= [(0, "Ruby"), (1, "RB"), (2, "\"前\""), (1, "RT"), (2, "\"まえ\""), (0, "Reference"), (1, "Span"), (2, "\"一章\""), (0, "\"後。\"")],
-    testCase "a Note follows the Reference of its mark; their IDs are one each" $ do
+    testCase "a Note follows the lbl Reference of its mark; their IDs are one each" $ do
       t <- treeLines <$> miniStructure horizontalStyle "前[note: 一。]中[note: 二。]後。\n"
       let refs = [i | (i, l) <- zip [0 :: Int ..] t, l == "Reference"]
           notes = [i | (i, l) <- zip [0 :: Int ..] t, "Note" `T.isPrefixOf` l]
@@ -274,7 +274,7 @@ taggedPdfTests =
                    [(diagMessage x, spanStart (diagSpan x)) | x <- dDiagnostics d, diagCode x == DiagnosticCode "G03113"]
                      @?= [("PDF/A には [color] の intent が要ります", offsetOf "\"2a\"" (dManifest d))]
                    hasPdf d @?= False
-                   assertBool (show (dWritten d)) (any (".xhtml" `isSuffixOf`) (dWritten d))
+                   assertBool (show (dWritten d)) (any (".html" `isSuffixOf`) (dWritten d))
                    assertBool (show (dWritten d)) (any (".txt" `isSuffixOf`) (dWritten d))
                )
                [Dev, Prod],

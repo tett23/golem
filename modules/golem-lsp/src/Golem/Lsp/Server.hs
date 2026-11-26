@@ -41,14 +41,14 @@ import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
-import Golem.Driver.Explain (codeDescriptionUrl)
 import Golem.Emet.Outline (emetOutline)
 import Golem.Emet.Outline qualified as O
+import Golem.Evaluate.Explain (codeDescriptionUrl)
 import Golem.Lsp.Features qualified as F
 import Golem.Lsp.FileMove qualified as Move
 import Golem.Lsp.FileRename qualified as R
 import Golem.Lsp.Workspace
-import Golem.Project.Paths (normalizeRelative, resolveInRoot)
+import Golem.Project.Paths (findProjectRoot, normalizeRelative, resolveInRoot)
 import Golem.Syntax qualified as S
 import Language.LSP.Logging (defaultClientLogger)
 import Language.LSP.Protocol.Message
@@ -62,14 +62,11 @@ import System.IO (BufferMode (..), Handle, hFlush, hSetBuffering, hSetEncoding, 
 
 newtype State = State {stRoot :: FilePath}
 
--- | The nearest directory upwards that has manifest.toml.
+-- | The nearest directory upwards that has manifest.toml, or the directory itself when none has (root ADR 0417).
 findRoot :: FilePath -> IO FilePath
 findRoot dir0 = do
   dir <- makeAbsolute dir0
-  let go d = do
-        e <- doesFileExist (d </> "manifest.toml")
-        if e || takeDirectory d == d then pure (if e then d else dir) else go (takeDirectory d)
-  go dir
+  fromMaybe dir <$> findProjectRoot dir
 
 -- | Waits this long after the last change before evaluating (golem-lsp ADR 0005).
 debounceMicros :: Int
@@ -131,7 +128,7 @@ rewriteInitializeResponse lid enc bytes = do
   J.Object result <- KM.lookup "result" msg
   J.Object caps <- KM.lookup "capabilities" result
   let caps' =
-        KM.insert "experimental" (J.object ["golem" J..= J.object ["planFileMove" J..= (1 :: Int)]]) $
+        KM.insert "experimental" (J.object ["golem" J..= J.object ["planFileMove" J..= (1 :: Int), "planMovedReferences" J..= (1 :: Int)]]) $
           KM.insert "positionEncoding" (J.toJSON (F.encodingKind enc)) caps
       result' = KM.insert "capabilities" (J.Object caps') result
   pure (J.encode (J.Object (KM.insert "result" (J.Object result') msg)))
@@ -304,6 +301,11 @@ handlers encVar rootVar plotVar wikiVar moveWorkspace wsVar gen watchVar lock di
         registration <- liftIO (readTVarIO moveWorkspace)
         result <- liftIO (Move.planFileMove enc registration params)
         respond (either (Left . TResponseError (InR ErrorCodes_InvalidRequest) "Cannot plan file move" . Just) Right result),
+      requestHandler (SMethod_CustomMethod (Proxy @"golem/planMovedReferences")) $ \(TRequestMessage _ _ _ params) respond -> do
+        enc <- encoding
+        registration <- liftIO (readTVarIO moveWorkspace)
+        result <- liftIO (Move.planMovedReferences enc registration params)
+        respond (either (Left . TResponseError (InR ErrorCodes_InvalidRequest) "Cannot plan moved references" . Just) Right result),
       requestHandler SMethod_WorkspaceWillRenameFiles $ \(TRequestMessage _ _ _ (RenameFilesParams renames)) respond -> do
         st <- state
         enc <- encoding
@@ -394,11 +396,17 @@ handlers encVar rootVar plotVar wikiVar moveWorkspace wsVar gen watchVar lock di
               else
                 fmap
                   (toEditWith enc (layoutLines ws styleText))
-                  ( case styleText of
-                      Just t -> case F.renameLayoutValue ws t p off newName of
-                        Left F.NotALayoutValue | p /= "style.toml" -> F.renameLabel ws p off newName
-                        result -> result
-                      Nothing -> F.renameLabel ws p off newName
+                  ( let -- an alias of a list, then a variable of @set, after the layout values and before the labels (root ADR 0454, root ADR 0458)
+                        variableOrLabel = case F.renameAlias ws styleText p off newName of
+                          Left F.NotAnAlias -> case F.renameVariable ws styleText p off newName of
+                            Left F.NotAVariable -> F.renameLabel ws p off newName
+                            result -> result
+                          result -> result
+                     in case styleText of
+                          Just t -> case F.renameLayoutValue ws t p off newName of
+                            Left F.NotALayoutValue | p /= "style.toml" -> variableOrLabel
+                            result -> result
+                          Nothing -> variableOrLabel
                   )
         case r of
           Just (Right edit) -> respond (Right (InL edit))
@@ -450,7 +458,17 @@ handlers encVar rootVar plotVar wikiVar moveWorkspace wsVar gen watchVar lock di
                   ws <- mws
                   _ <- sourceOf ws p
                   pure (map (symbol enc (lineIndexOf ws p)) (F.outline ws p))
-        respond (Right (InR (InL syms)))
+        respond (Right (InR (InL syms))),
+      -- the bodies between ::: lines (root ADR 0459)
+      requestHandler SMethod_TextDocumentFoldingRange $ \(TRequestMessage _ _ _ (FoldingRangeParams _ _ (TextDocumentIdentifier docUri))) respond -> do
+        st <- state
+        mws <- liftIO (readTVarIO wsVar)
+        let ranges = fromMaybe [] $ do
+              p <- relPath st docUri
+              ws <- mws
+              src <- sourceOf ws p
+              pure [FoldingRange (fromIntegral a) Nothing (fromIntegral b) Nothing (Just FoldingRangeKind_Region) Nothing | (a, b) <- F.foldingRanges (srcText src)]
+        respond (Right (InL ranges))
     ]
   where
     state = do

@@ -43,6 +43,7 @@ InDesign の新規ドキュメントの設定と、レイアウトグリッド�
 - [code: characters]：一行の字数です。
 - [code: lines]：一ページの行数です。
 - [code: line-pitch]：版面の行送り（ある行から次の行までの距離）です。
+- [code: character-advance]：字形の大きさを保ったまま、和文の文字枠の送りを正の寸法で指定します。省くと、文字の大きさと同じ送りです。
 - [code: alignment]：省略時は [code: "grid"] で、本文を行の格子に載せます。[code: "free"] にすると、段落ごとに行送りと段落間の寸法を変えられます。
 - [code: position]：版面の位置です。[code: top] は天（ページの上端）から、[code: gutter] は見開きモードでノド（綴じる側の端）からの距離です。左右固定モードでは、[code: left] で仕上がりの左端から版面の左端まで、または [code: right] で右端から版面の右端までの距離を指定します。
 - [code: columns]：段数です。省略すると 1 段になります。
@@ -132,17 +133,32 @@ HTML と EPUB のレイアウトは変えません。
 ### フォントをプロジェクトの中に置く理由
 
 フォントのファイルは、プロジェクトのフォルダの中に置き、[code: style.toml] にはプロジェクトのフォルダからのパスを書きます。
-InDesign の Document Fonts フォルダー[index reading=どきゅめんとふぉんつふぉるだー: Document Fonts フォルダー]と同じ考え方です。
+InDesign の Document Fonts フォルダ[index reading=どきゅめんとふぉんつふぉるだ: Document Fonts フォルダ]と同じ考え方です。
 違いは、Golem がコンピューターにインストールされているフォントを一切探さないことです。
-InDesign は、Document Fonts フォルダーにないフォントをコンピューターに入っているフォントから探しますが、Golem では、プロジェクトの中にないフォントはエラー（G08002）になります。
+InDesign は、Document Fonts フォルダにないフォントをコンピューターに入っているフォントから探しますが、Golem では、プロジェクトの中にフォントのファイルがなければ、PDF ではエラー（G08002）になります。
+プロジェクトの外のフォントを指すパスは、どの出力でもエラー（G03279）になります。
 
 こうしているのは、コンピューターごとに入っているフォントとそのバージョンが違うと、同じ原稿から同じ紙面が得られなくなるからです。
 同じ名前のフォントでも、バージョンが違えば字形や字幅や詰めの情報が変わることがあります。
 フォントをプロジェクトに置けば、誰がどのコンピューターで組んでも、同じフォントのファイルで組まれます（「[ref-title same-output]」、[ref-page same-output] ページ）。
 
 その代わり、プロジェクトを人に渡すと、フォントのファイルも一緒に渡すことになります。
-HTML と EPUB にもフォントのファイルを同梱するので、それらを公開すればフォントを配ることになります。
+HTML と EPUB は、既定ではフォントのファイルを同梱しません（「[ref-title web-fonts]」、[ref-page web-fonts] ページ）。
+[code: fonts = "embed"] で同梱した HTML と EPUB を公開すると、フォントも配ることになります。
 フォントのライセンスが、この使い方を許しているかを確かめてください。
+同梱するフォントには、そのライセンスの文書を添えます。
+フォントの役割の [code: ja-license] と [code: latin-license] に、[code: ja] と [code: latin] のフォントのライセンスの文書のパスを書くと、Golem はフォントの隣の [code: fonts/] にその文書を写します。
+
+```toml
+[fonts.body]
+ja = "fonts/NotoSerifJP-Regular.otf"
+ja-license = "fonts/LICENSE-NotoSerifJP.txt"
+```
+
+同梱するフォントにライセンスの文書を書かないと G03282、書いた文書のファイルがないと G03283 になります。
+どちらも [code: --profile dev] では警告で、その文書なしで書き、[code: --profile prod] ではエラーで、その出力を書きません。
+配る出力に、ライセンスの文書が欠けないようにするためです。
+[code: golem new] で作ったプロジェクトの [code: style.toml] には、取ってきたフォントのライセンスの文書がはじめから書いてあります。
 このマニュアルで使っているフォントは、どれも SIL Open Font License 1.1 で配布されていて、文書への埋め込みと、ほかのソフトウェアと一緒に配ることを許しています [cite ofl][note: SIL Open Font License 1.1。[code: https://openfontlicense.org/]]。
 
 ### 埋め込みのライセンス
@@ -166,7 +182,7 @@ Golem はこの欄を仕様のとおりに読み、次のどれかに当たる�
 PDF の埋め込みフォントの形式は CFF2 の輪郭を受けないので、Golem は CFF2 の輪郭のフォントを PDF に埋め込めません。
 PDF が使う役割にこのフォントを書くと、エラー（G08019）になり、PDF を書きません。
 [code: golem check] と [code: golem preflight] も、このエラーを出します。
-HTML と EPUB は、フォントのファイルをそのまま同梱し、ブラウザーと読書環境が CFF2 を描くので、このエラーを出しません。
+HTML と EPUB は、フォントを同梱するときもファイルをそのまま同梱し、ブラウザーと読書環境が CFF2 を描くので、このエラーを出しません。
 
 G08019 が出たら、同じ書体の、CFF の輪郭の版（可変でない [code: .otf]）か TrueType の輪郭の版（[code: .ttf]）を使ってください。
 たとえば Source Serif 4 なら、[code: SourceSerif4Variable-Roman.otf] の代わりに、[code: SourceSerif4-Regular.otf] か [code: SourceSerif4Variable-Roman.ttf] を使います。
@@ -342,7 +358,11 @@ space-before = "2mm"
 
 罫線を持つ段落は、罫線とともに一つの段に置き、ページの境で分けません。
 一つの段に入らないほど長い段落だけは、前と後の罫線を省いて分けて組み、お知らせ（G07046）を出します。
+後の罫線を持つ段落か見出しのすぐ後に、前の罫線を持つ段落か見出しが同じ段で続くと、二つの罫線は一つの領域を分け合って並び、重なりません。
+後ろのほうが同じ段に入らなければ、前のほうの後の罫線をそれだけの罫線として段の終わりに引き、後ろのほうを次の段から組みます。
 ページの頭の罫線は段の中に収まりますが、[code: keep-in-column = false] と書くと天の余白に出ます。
+段の終わりの後の罫線も、[code: keep-in-column = false] と書き、その段に脚注がなければ、地の余白に出ることがあります。
+自由な配置で地の余白に出るのは、最後の行のすぐ後に引く罫線の位置が段の終わりに達するときで、その段はそこで終わります。
 [code: false] を書くと、引き継いだ罫線を引きません。
 見出しの [code: \[headings.階層\]] にも同じ二つのキーを書けます（付録C）。
 HTML と EPUB では、段落の前後の線として出ます。
@@ -778,8 +798,10 @@ offset = "0.05zw"
 線は行送りを変えず、行の改め方にも影響しません。
 
 縦組みの下線は、文字の右に引く傍線[index reading=ぼうせん: 傍線]になります。
-ルビや圏点がある範囲では、傍線をルビと圏点の外に引きます。
-左の傍線は、まだ引けません。
+ルビや圏点がある範囲では、右の傍線をルビと圏点の外に引きます。
+[code: underline = { side = "left" }] と書けば、左に引けます。
+左の傍線は、ルビと圏点で動かしません。
+[code: side = "right"] が既定で、横組みの下線には側の指定を使いません。
 
 PDF では、下線を文字の前に、打ち消し線を文字の後に描くので、下線は文字を隠さず、打ち消し線は文字に隠れません。
 HTML と EPUB では、CSS の [code: text-decoration] で表します。
@@ -977,7 +999,7 @@ content = ["{meta.title}", "{heading.1.short}"]
 - [code: {heading.<階層>.short}]、[code: {heading.<階層>.numbered}]：上の値と同じ、見出しの題と、番号と題です。末尾に [code: .last] を付けられます。
 - [code: {heading.<階層>.number}]：見出しの番号だけです（「第3章」など）。
 - [code: {meta.title}]：[code: manifest.toml] の書名です。[code: title] のほかに [code: title_reading]、[code: edition]、[code: publisher]、[code: date]、[code: language]、[code: id] を書けます。
-- [code: {set.名前}]：そのページの章のファイルで [code: @set] した変数です。[code: @import ... as 名前空間] で取り込んだ変数は [code: {set.名前空間.名前}] と書きます。
+- [code: {set.名前}]：そのページの章のファイルで [code: @set] した変数です。[code: @import ... * as 名前空間] で取り込んだ変数は [code: {set.名前空間.名前}] と書きます。
 - [code: {vars.名前}]：[code: manifest.toml] の [code: \[vars\]] の変数です。どの章のページにも同じ値が出ます。表の中の値は [code: {vars.author.short}] と書きます。[code: \[vars\]] にない名前は G03111、文字列でも数でもない値は G03112 です。
 
 値のない差し込みがあると、その行は描きません。
@@ -1041,9 +1063,94 @@ file = "chapters/02.gm"
 
 このマニュアルも、「はじめに」と目次をローマ数字の小文字で組んでいます。
 
-InDesign の親ページとの違いは、置けるものが柱とノンブルの二つだけであることです。
-親ページのように、罫線や画像やテキストフレームを置くことはできません。
+InDesign の親ページとの違いは、置けるものが柱とノンブルとテキストフレームの三つだけであることです。
+親ページのように、罫線や画像を置くことはできません。
 マスターページはページごとではなく章のファイルごとに選び、ページごとに親ページの項目を上書きすることもありません。
+
+## テキストフレーム
+
+ページの好きな位置に枠を置き、その中に文字を組めます。
+この枠をテキストフレーム[index reading=てきすとふれーむ: テキストフレーム]と呼びます。
+InDesign でページにテキストフレームを置くことに当たり、扉の飾りの文や、章の扉の引用に使います。
+
+テキストフレームの位置と形は、[code: style.toml] の [code: \[frames.名前\]] に書きます。
+名前は、スタイルの名前と同じく、英小文字で始め、英小文字、数字、[code: -] で書きます。
+
+```toml
+[frames.chapter-quote]
+x = "20mm"
+y = "30mm"
+width = "90mm"
+height = "25mm"
+x-from = "outside"
+paragraph-style = "quote"
+```
+
+[code: x] と [code: y] は、仕上がりの寸法の左上からの位置で、[code: y] は下へ向かって増えます。
+[code: x-from] は、[code: x] を測る端です。
+[code: "left"]（書かないときの値）は左の端、[code: "inside"] はノドの端、[code: "outside"] は小口の端から測り、[code: "inside"] と [code: "outside"] では左右のページで鏡に映した位置に置きます。
+左右固定モードでは、[code: "inside"] と [code: "outside"] を使えません（G03288）。
+長さには [code: zw] も使え、フレームの段落スタイルの文字の大きさで測ります。
+[code: paragraph-style] はフレームの中の文字を組む段落スタイルで、書かなければ [code: body] です。
+[code: writing-mode] に [code: "horizontal"] か [code: "vertical"] を書くと、版面と違う向きで組めます。
+
+四角でないフレームは、[code: x]、[code: y]、[code: width]、[code: height] の代わりに、[code: path] に形を書きます。
+形は SVG のパスの書き方の [code: M]、[code: L]、[code: C]、[code: Z] で、[code: unit] に座標の単位（[code: "mm"]、[code: "pt"]、[code: "Q"]）を書きます。
+この例はひし形です。
+曲線（[code: C]）を使えば円も書けます。
+円や星の形の中に、行の長さを変えながら文字を組みます。
+
+```toml
+[frames.round]
+path = "M 30 0 L 60 30 L 30 60 L 0 30 Z"
+unit = "mm"
+```
+
+四角のキーと [code: path] は、どちらか一方だけを書きます（両方かどちらも無ければ G03285、四角のキーが足りなければ G03286）。
+[code: path] の形は、[code: Z] で閉じます（G03287）。
+
+フレームを置く方法は二つあります。
+マスターページの [code: frames] に名前を挙げると、そのマスターページのすべてのページに置き、[code: text] に書いた文字を組みます。
+
+```toml
+[frames.ornament]
+x = "20mm"
+y = "180mm"
+width = "100mm"
+height = "10mm"
+text = "いつか、どこかで"
+
+[masters.body]
+frames = ["ornament"]
+```
+
+原稿に [code: @frame 名前] と書き、その下に字下げして段落を書くと、そのページにフレームを一つ置き、段落をフレームに組みます（第[ref-number markup]章）。
+置くページは、[code: @frame] の直前の段落の最後の行があるページです。
+[code: @frame] は本文の中で場所を取らないので、前後の段落は [code: @frame] が無いときと同じに組みます。
+
+フレームの中身がフレームに入りきらないと、エラー（G07139）になり、そのフレームには何も組みません。
+続きをほかのフレームに流すことはできないので、文を短くするか、フレームを大きくしてください。
+行の長さが段落スタイルの文字の大きさの 8 字に満たないフレームにも、文字を組めません。
+一つのページに同じ名前のフレームが二つ来ると、エラー（G07140）になります。
+
+フレームは、書かなければ本文と重なってもかまいません。
+マスターページに置くフレームに [code: wrap = "around"] を書くと、本文の行をフレームの分だけ短くして、フレームを避けて組みます。
+
+```toml
+[frames.side-note]
+x = "0mm"
+y = "60mm"
+width = "45mm"
+height = "40mm"
+x-from = "outside"
+wrap = "around"
+text = "小口の側の囲み"
+```
+
+避けられるのは、段の始まりか終わりの端にかかるフレームだけです（段の中ほどにかかれば G07136）。
+短くした行が文字 8 字に満たなくなるときは、エラー（G07138）になります。
+[code: @frame] で置くフレームには、[code: wrap = "around"] を使えません（G07137）。
+HTML と EPUB では、[code: @frame] の段落をその位置の囲みとして書き、マスターページのフレームの文字は書きません。
 
 @label notes-style
 ## 注と図の設定
@@ -1086,6 +1193,7 @@ leader = "dots"
 - [code: \[notes\]] の [code: heading-style]：章の終わりの注の一覧の見出しに当てる段落スタイルの名前です。省くと、2 の階層の見出しの書体と大きさで組みます。行取りは 2 の階層の見出しのままです。段落スタイルの大きさは本文の文字の大きさを超えられないので、見出しを大きくしたいときは [code: \[headings.2\]] の [code: size] を変えます。
 - [code: \[notes.footnote\]] の [code: body-style]：脚注本文だけに当てる段落スタイルです。共通の [code: \[notes\]] より優先します。
 - [code: \[notes.chapter-end\]] の [code: body-style] と [code: heading-style]：章末注の本文と一覧見出しだけに当てる段落スタイルです。省いた値には共通の [code: \[notes\]] の指定を使います。
+- [code: \[endnotes\]]：[code: \[endnote\]] で書いた注の番号と印の設定です。[code: numbering]、[code: mark-format]、[code: mark-style]、[code: body-mark-style]、[code: mark-shape]、[code: body-style]、[code: heading-style] を、[code: \[notes\]] と同じ意味で書けます。書かないキーは [code: \[notes\]] の値を引き継がず、[code: numbering] は [code: "chapter"]、[code: mark-format] は [code: "{n}"]、[code: mark-style] は [code: "note-mark"]、ほかはなしです。[code: numbering] に [code: "page"] を書くとエラー（G03278）になります。一覧の見出しは日本語の本では「後注」、ほかの言語の本では「Endnotes」で、変えられません。
 - [code: \[notes\]] の [code: mark-size]：以前の書き方で、エラー（G03253）になります。[code: mark-style] が指す文字スタイル（既定は [code: note-mark]）の [code: size] に書き換えてください。
 - [code: \[notes.rule\]]：PDF のページの下の脚注の前に引く区切り線です。[code: length] が線の長さ（必須）、[code: weight] が太さ（省くと [code: "0.3pt"]）、[code: space-before] が本文の最後の行と線のあいだの空き、[code: space-after] が線と脚注の一行目のあいだの空きです。[code: style] で線の種類を、[code: color] でスウォッチの名前の色を選べます。このテーブルがなければ線は引きません。
 - [code: \[sidenotes\]]：傍注の領域を設けます。見開きモードでは既定で小口側、左右固定モードでは明記した [code: side] の側の余白を使います。[code: width] が傍注の領域の幅、[code: gap] が版面とのあいだの空きです。[code: marker] で本文側の印を、番号（[code: "number"]）、「※」（[code: "symbol"]）、なし（[code: "none"]）から選べます。[code: marker-style] には、本文の中の「※」に当てる文字スタイルの名前を書きます。省くと、「※」は置いた位置の文字のまま組みます。この文字スタイルは、傍注の本文の先頭の「※」と番号の印には当たりません。
@@ -1182,6 +1290,9 @@ column-gap = "2zw"
 
 一段組みの版面では、[code: @index] の位置から、そのページの残りの行を段に分けて索引を組みます。
 [code: # 索引] のような見出しは、一段の幅のまま索引の段の上に置かれます。
+[code: @page-lines +N] で増やした行は、残りの行に数えません。
+[code: @page-lines -N] で減らしたページでは、索引の段は脚注の区切りの前で終わります。
+残りの行がなければ、次のページの最初から索引を組みます。
 二段以上の版面では、次のページの最初から索引を組みます。
 索引の後の内容は、次のページから版面の段組みに戻ります。
 HTML と EPUB は、索引を段組みにしません。

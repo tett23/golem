@@ -22,6 +22,7 @@ step	ubuntu-24.04	- name: The EPUB of epub-forms passes epubcheck (docs/adr/0232
 step	ubuntu-24.04	- name: The EPUB of several bibliographies passes epubcheck\n  working-directory: modules/golem-driver/test/fixtures/bibliographies\n  run: |\n    "$(cabal list-bin -v0 golem)" build --target epub\n    epubcheck build/epub/book.epub
 step	ubuntu-24.04	- name: The EPUB passes epubcheck\n  working-directory: modules/golem-driver/test/fixtures/sample\n  run: |\n    "$(cabal list-bin -v0 golem)" build --target epub\n    epubcheck build/epub/book.epub
 step	ubuntu-24.04	- name: The EPUB with languages passes epubcheck\n  working-directory: modules/golem-driver/test/fixtures/languages\n  run: |\n    "$(cabal list-bin -v0 golem)" build --target epub\n    epubcheck build/epub/book.epub
+step	ubuntu-24.04	- name: The EPUB with the license documents of its fonts passes epubcheck (docs/adr/0433)\n  working-directory: modules/golem-driver/test/fixtures/font-licenses\n  run: |\n    mkdir -p fonts\n    cp ../kanikosen/fonts/NotoSerifJP-Regular.otf fonts/ja.otf\n    cp ../kanikosen/fonts/LICENSE-NotoSerifJP.txt fonts/LICENSE-ja.txt\n    cp ../../../../golem-font/test/fonts/SourceSansPro-Regular.otf fonts/latin.otf\n    cp ../../../../golem-font/test/fonts/OFL.txt fonts/LICENSE-latin.md\n    "$(cabal list-bin -v0 golem)" build --profile prod --target epub\n    epubcheck build/epub/book.epub
 step	ubuntu-24.04	- name: The PDFs of the visual regression test (docs/adr/0095)\n  run: GOLEM="$(cabal list-bin -v0 golem)" sh scripts/visual/build.sh visual-pdfs
 step	ubuntu-24.04	- name: The PDFs that declare PDF/A-2a and PDF/UA-1 (docs/adr/0183)\n  run: GOLEM="$(cabal list-bin -v0 golem)" sh scripts/ci/conformance-pdfs.sh conformance-pdfs
 step	ubuntu-24.04	- name: The bars of the code of the developer manual (docs/adr/0233)\n  run: |\n    for pdf in manual-dev/build/pdf/*.pdf; do\n      sh scripts/ci/pdf-text.sh "$pdf" \\n        --has '次の行の最初が | 、' \\n        --has 'と ||' \\n        --has 'ガードの | の前' \\n        --has '] 、 | 、 [ は \ で' \\n        --lacks '\|'\n    done
@@ -67,6 +68,7 @@ suites	ubuntu-24.04	golem-fixtures:test:golem-fixtures-test
 suites	ubuntu-24.04	golem-fmt:test:golem-fmt-test
 suites	ubuntu-24.04	golem-font:test:golem-font-race-test
 suites	ubuntu-24.04	golem-font:test:golem-font-test
+suites	ubuntu-24.04	golem-geometry:test:golem-geometry-test
 suites	ubuntu-24.04	golem-html:test:golem-html-test
 suites	ubuntu-24.04	golem-layout-spec:test:golem-layout-spec-test
 suites	ubuntu-24.04	golem-layout:test:golem-layout-test
@@ -86,6 +88,7 @@ suites	ubuntu-24.04	golem-test-support:test:golem-test-support-par-test
 suites	ubuntu-24.04	golem-test-support:test:golem-test-support-test
 suites	ubuntu-24.04	golem-text:test:golem-text-test
 suites	ubuntu-24.04	golem-typeset:test:golem-typeset-test
+suites	ubuntu-24.04	golem-unicode:test:golem-unicode-test
 suites	ubuntu-24.04	golem-wasm:test:golem-wasm-test
 suites	ubuntu-24.04-arm	golem-assemble:test:golem-assemble-test
 suites	ubuntu-24.04-arm	golem-bibliography:test:golem-bibliography-test
@@ -102,6 +105,7 @@ suites	ubuntu-24.04-arm	golem-fixtures:test:golem-fixtures-test
 suites	ubuntu-24.04-arm	golem-fmt:test:golem-fmt-test
 suites	ubuntu-24.04-arm	golem-font:test:golem-font-race-test
 suites	ubuntu-24.04-arm	golem-font:test:golem-font-test
+suites	ubuntu-24.04-arm	golem-geometry:test:golem-geometry-test
 suites	ubuntu-24.04-arm	golem-html:test:golem-html-test
 suites	ubuntu-24.04-arm	golem-layout-spec:test:golem-layout-spec-test
 suites	ubuntu-24.04-arm	golem-layout:test:golem-layout-test
@@ -121,4 +125,5 @@ suites	ubuntu-24.04-arm	golem-test-support:test:golem-test-support-par-test
 suites	ubuntu-24.04-arm	golem-test-support:test:golem-test-support-test
 suites	ubuntu-24.04-arm	golem-text:test:golem-text-test
 suites	ubuntu-24.04-arm	golem-typeset:test:golem-typeset-test
+suites	ubuntu-24.04-arm	golem-unicode:test:golem-unicode-test
 suites	ubuntu-24.04-arm	golem-wasm:test:golem-wasm-test

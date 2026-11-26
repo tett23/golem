@@ -109,7 +109,7 @@ blockFunction hs p e = BlockFunction (paramsOf e) (not (null [() | ArgBody <- ex
           Left why -> Left [invalid sp e why]
           Right out ->
             let made = filter (`notElem` body) out
-             in case concatMap blockKind made <> validateCommandBlocks (const (Just maxBound)) (carriedDeferred carried) out of
+             in case concatMap madeKind made <> validateCommandBlocks (const (Just maxBound)) (carriedDeferred carried) out of
                   [] -> Right out
                   errs -> Left [invalid sp e (T.intercalate "、" errs)]
 
@@ -132,6 +132,7 @@ separatorFunction hs p e = BlockFunction (paramsOf e) False (exSignature e) $ \_
       OrderedList xs -> any (any hasSeparator . itemBlocks) xs
       DefList xs -> any (any (any hasSeparator) . dgDefs) xs
       FigureBlock f -> any hasSeparator (figCaption f)
+      FrameBlock _ bs -> any hasSeparator bs
       _ -> False
 
 exprFunction :: Handlers -> Program -> Export -> Maybe ExprFunction
@@ -154,9 +155,29 @@ gmResult = \case
   TC "List" [t] -> ArgList <$> gmResult t
   _ -> Nothing
 
+{- | A block a block command makes, at the top of its output: a figure
+whose image is an SVG in its source (root ADR 0439), or a block of the
+kinds of 'blockKind'.
+-}
+madeKind :: Block -> [Text]
+madeKind b@(Block _ _ _ body) = case body of
+  FigureBlock f -> dataFigure f
+  _ -> blockKind b
+
+{- | Why a figure a block command makes is refused (root ADR 0439): its
+source is an SVG after @data:image/svg+xml,@ (the evaluation puts it
+among the images of the plugins), and it has no web image. A figure of a
+file of the project is written with \@figure.
+-}
+dataFigure :: Figure -> [Text]
+dataFigure f =
+  ["ブロックコマンドが返す図版の src は data:image/svg+xml, で始まります: " <> T.take 40 (figSource f) | not (svgDataPrefix `T.isPrefixOf` figSource f)]
+    <> ["ブロックコマンドが返す図版は web を持てません" | Just _ <- [figWeb f]]
+
 {- | The kinds of blocks a block command makes, at any depth, as those of
 a plugin (docs/adr/0122): no heading, no list of a channel, no break and
-no blank lines; and no figure, whose image the evaluation has not read.
+no blank lines; and no figure below the top of the output, nor one of a
+separator, whose image the evaluation has not read.
 -}
 blockKind :: Block -> [Text]
 blockKind (Block _ _ _ body) = case body of
@@ -173,6 +194,8 @@ blockKind (Block _ _ _ body) = case body of
   PageControl _ -> refuse "改ページの制御"
   BlankLines _ -> refuse "行アキ"
   Separator _ -> []
+  -- a frame takes no room in the flow, and holds paragraphs (root ADR 0438)
+  FrameBlock _ bs -> concatMap blockKind bs
   where
     refuse k = ["ブロックコマンドが返せないブロックです: " <> k]
 
@@ -215,4 +238,5 @@ filterOf hs p path name = case [e | e <- Map.findWithDefault [] path (programExp
       OrderedList items -> concatMap itemBlocks items
       DefList gs -> concat (concatMap dgDefs gs)
       FigureBlock f -> figCaption f
+      FrameBlock _ bs -> bs
       _ -> []

@@ -1,0 +1,90 @@
+@label layout-engine
+# レイアウトエンジン
+
+レイアウトエンジンは、意味論 IR の段落と図版を、ページの上の位置と大きさに置く部分である。[index reading=れいあうとえんじん: レイアウトエンジン]
+行分け、禁則、改ページは golem-layout が、ページの幾何（版面、段、傍注の領域）は golem-layout-spec が、PDF の描画は golem-typeset が受け持つ（第[ref-number modules]章）。
+この章は、領域の形を表すパスと、文字を置く領域と避ける領域を表すボックスモデルを説明する。
+規則の全体は、仕様書にある。[note: [style url: https://github.com/tett23/golem/blob/main/docs/specifications.md#パスとボックスモデル]（仕様書の「パスとボックスモデル」の節）]
+
+## パス
+
+領域の形は、golem-geometry のパス（[code: Golem.Geometry]）で表す。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0437-paths-and-the-box-model.md]（root ADR 0437「パスとボックスモデルをレイアウトエンジンに入れる」）]
+パスは部分パスの並びであり、部分パスは始点と、線分（[code: LineTo]）と三次のベジェ曲線（[code: CurveTo]）の並びと、閉じているかの印を持つ。
+座標は整数の sp で、PDF と同じく左下を原点とする。
+塗りの規則は非ゼロの回転数を既定とし、偶奇も選べる。
+線は太さ、線端、角の形を持つ。
+
+パスを使うのは golem-layout、golem-pdf、golem-project などであり、golem-layout は golem-pdf に依存しない。
+そこで、パスの型を共通の下の層の golem-geometry に置いた。
+golem-geometry は base、text、golem-length だけに依存し、このことは [code: scripts/ci/test.sh] が確かめる。
+矩形（[code: Rect]）もここに置き、golem-pdf の [code: Golem.Pdf.Rect] と golem-layout-spec が export し直す。
+矩形は閉じたパスの特別な形であり、[code: rectPath] でパスに変えられる。
+ただし、ページの描画と行の配置は速さのために矩形のまま扱う。
+
+PDF に書く塗りと線の印（golem-pdf の [code: FilledPath] と [code: StrokedPath]）、段落スタイルの囲み、罫線の線種の形、コードの折り返しの印も、このパスで表す。
+書き換えの前後で PDF のバイト列が変わらないことは、golem-typeset のテスト（[code: modules/golem-typeset/test/PathMarksSpec.hs]）が保つ。
+このテストは、囲み、罫線、折り返しの印の多数の組み合わせの内容のストリームのハッシュを、書き換えの前の値と比べる。
+SVG の図版の表し方（golem-svg の [code: Segment] と golem-pdf の [code: PathSeg]）は、図版の座標系と書き出しの桁数を保つために別にした。
+
+## ボックスモデル
+
+レイアウトの内部では、文字を置く領域と文字を避ける領域を、ボックス（golem-layout の [code: Golem.Layout.BoxModel]）として表す。
+ボックスは形（閉じたパス）と塗りの規則を持ち、文字を置くボックスは、加えて書く向きと行の始まりの辺を持つ。
+版面、段、傍注の領域、テキストフレームは文字を置くボックスで、回り込みの除外の領域は文字を避けるボックスである。
+版面、段、傍注の領域は形が矩形のボックスにあたるが、今のコードは [code: Rect] のまま扱い、[code: LayoutBox] には変えていない。
+回り込みの除外の領域も、今の表し方（段の側、幅、行の数）のままである。
+
+この「ボックス」は、段落スタイルの囲み（[code: Golem.Typeset.Box]）とも、Knuth-Plass の行分けの箱（[code: Golem.Layout.KnuthPlass] の [code: Box]）とも、行ボックスとも別のものである。
+名前が重なるので、コードでは型を [code: LayoutBox] と呼ぶ。
+
+## 閉じたパスの内側に文字を置く
+
+形が矩形でないボックスでは、[code: lineSlots] が行ごとの区間を求め、[code: flowInBox] が段落をその区間の幅で行分けする。
+行の帯は文字の大きさの高さを持ち、外接矩形の行の始まりの辺から行送りずつ並ぶ。
+曲線は、有理数の de Casteljau の分割で、制御点と弦の距離が 1/4 sp 以下になるまで分けて折れ線にする（[code: Golem.Geometry.Polygon] の [code: flatPieces]）。
+各帯では、帯の全体にわたって折れ線の内側にある区間を [code: stripInside] が求め、文字の大きさの 8 倍以上の区間のうち書く向きで最初のものを使う。
+使える区間が無い帯は飛ばす。
+
+区間の求め方は、帯を頂点と辺の交点で細かい部分に分けてから、部分ごとに外側の隙間を除く。
+root ADR 0437 は、帯の両端の線と頂点を通る線のそれぞれで内側の区間を求めて共通部分を取ると書いているが、この方法は帯を斜めに横切る細い切れ込みを見落とす。
+たとえば、帯の下の端で x が 1 から 2、上の端で 3.5 から 4.5 にある切れ込みでは、どの線でも 2 から 3.5 は内側に見えるが、帯の中ほどでは切れ込みがそこを通る。
+部分ごとに除けば、帯の全体で内側にある区間という ADR の求めるものが正しく得られる。
+[code: stripInside] のテストに、この形を入れている。
+
+行分けの関数（[code: breakParagraph]）は変えていない。
+一つの行には一つの幅しか渡さないので、凹んだ形で一つの帯に区間が二つ以上あるときは、最初の区間にしか文字を置かない。
+計算は整数と有理数だけで行うので、ネイティブと wasm で同じ区間になる。
+
+中身がボックスに収まらないとき（行が足りない、区間より長い行がある、区間が一つも無い）、[code: flowInBox] は [code: BoxOverflow] を返し、文字を置かない。
+この流し方を使うのはテキストフレーム（root ADR 0438）であり、[code: BoxOverflow] は G07139 になる。
+
+## テキストフレーム
+
+テキストフレームは、[code: style.toml] の [code: \[frames.名前\]] の矩形か閉じたパスを形に持つ、文字を置くボックスである（root ADR 0438）。
+[code: Golem.Typeset.Flow] の [code: layoutFrames] が、ページを決め終えた後に、ページごとにフレームを集めて組む。
+マスターページの [code: frames] のフレームは、そのマスターページの各ページに置く。
+原稿の [code: @frame] のフレームは、同じファイルで前にある最も近い、行を持つブロックの最後の行のページに置く。
+行を持つブロックがどこにも無ければ、後の最も近いブロックの最初の行のページ、それも無ければそのファイルの最初のページである。
+行とブロックの対応は、[code: plLineSpans]（単位の最初の行からブロックの位置）で引く。
+
+フレームの形は、[code: frameOutline] が仕上がりの寸法の座標から PDF の座標（左下が原点）に直す。
+[code: x-from] の [code: inside] と [code: outside] は、[code: gutterSideFor] でノドの側を見て、鏡に映す。
+中身は、フレームの段落スタイルの [code: ComposeEnv] で組み、[code: flowInBox] で行の区間に流す。
+フレームの行は、柱と同じく、タグ付けしない内容（アーティファクト）として [code: drawPage] が描く。
+
+[code: wrap = "around"] のフレームは、本文の行を短くする。
+本文の行がどのページのどの段に来るかは、行分けとページ分けを終えるまで分からないので、ページ番号の参照と同じ不動点の繰り返し（[code: fixpoint]）に載せる。
+[code: Assumed] の [code: asCuts] は、単位と単位の中の行の番号ごとに、行の始まりと終わりから除く長さを持つ。
+組版の一回りは [code: asCuts] の分だけ短い行で単位を組み、ページ分けの後に [code: aroundCuts] が、フレームの外接矩形と仮想ボディが重なる行から、次の [code: asCuts] を求める。
+前の一回りと同じになれば止め、[code: maxIterations] の回数で定まらなければ G07141 にする。
+組み直しの再利用（docs/adr ADR 0251）は、[code: asCuts] の変わった単位を組み直す。
+短くするのは、単独で組む単位（段落、見出し、目次と索引の項目など）の行と、回り込む図版の脇の段落の行である（root ADR 0456）。
+脇の段落の行は、[code: composeBeside] が、行の各側で図版の除外とフレームの切る量の大きいほうを引いて組む。
+
+行を短くできない表、コードブロック、図版は、フレームを越えた位置に送る（root ADR 0456）。
+ページ分割（golem-layout）は、組版から、ページと段とブロックごとにフレームと重なる範囲を返す関数（[code: AvoidAt]）を受け取る。
+格子の版面では [code: avoidLines] が仮想ボディがフレームと重なる格子の行の範囲を、格子に揃えない版面では [code: avoidAcross] が sp の範囲を返す。
+ページ分割は、ブロックの最小の部分がその範囲と重なれば、範囲の終わりから置き、表とコードブロックは範囲の前で分ける。
+範囲は、ブロックのファイルのマスターページで求め、組んだ後のページのマスターページを [code: Assumed] の [code: asMasters] に持って、次の一回りの前提にする。
+置ける位置が空の段に一つも無いブロックは、[code: UnplacedBlock] として残し、G07142 にする。
+開いたパスの上に文字を置くこと、図版の輪郭、輪郭に沿う回り込みは、まだ無い。

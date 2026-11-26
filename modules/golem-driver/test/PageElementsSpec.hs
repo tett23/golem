@@ -1,4 +1,4 @@
-module PageElementsSpec (headingTests, emphasisTests, wrapTests, captionTests, sidenoteTests, footnoteTests, noteRuleTests, runningHeadTests) where
+module PageElementsSpec (headingTests, emphasisTests, wrapTests, captionTests, sidenoteTests, footnoteTests, noteRuleTests, runningHeadTests, runningHeadDecorationTests) where
 
 import Control.Monad (forM_)
 import Data.ByteString qualified as BS
@@ -36,7 +36,14 @@ import Test.Tasty.HUnit
 -- | Footnote marks, note bodies and note numbers (golem-driver ADR 0018).
 footnoteTests :: [TestTree]
 footnoteTests =
-  [ testCase "PDF: notes 1 of two files each set the body of their own file" $ do
+  [ testCase "root ADR 0444 I1: after page-lines +2, the rest of a continued note is drawn before the next note" $ do
+      let five = replaceIn "lines = 30" "lines = 5" horizontalStyle
+          source = "一[note: " <> T.replicate 55 "甲" <> "]\n\n@page-lines +2\n\n二[note: 乙。]\n"
+      content <- miniPdf fakeProvider True five source [] >>= fmap BS.concat . inflateAll
+      let drawn = [c | d <- drawnGlyphs content, c <- "甲乙", dGlyph d == fromEnum c]
+      assertBool (show drawn) ('甲' `elem` drawn && '乙' `elem` drawn)
+      dropWhile (/= '乙') drawn @?= "乙",
+    testCase "PDF: notes 1 of two files each set the body of their own file" $ do
       content <- projectPdf twoFiles (horizontalStyle <> "\n[notes]\nnumbering = \"file\"\n") [("a.gm", "一[note: 甲。]\n"), ("b.gm", "二[note: 乙。]\n")]
       let count c = length [() | d <- drawnGlyphs content, dGlyph d == fromEnum c]
       (count '甲', count '乙') @?= (1, 1),
@@ -124,7 +131,7 @@ footnoteTests =
           r <- build (defaultOptions tmp) {optTargets = Just targets, optFonts = fakeProvider}
           [(diagCode d, diagMessage d) | d <- brDiagnostics r, isError d] @?= [(DiagnosticCode "G07102", "注の番号 8 は、[notes] の mark-format {n:note-symbols} で表せません")]
           brWritten r @?= [],
-    testCase "PDF: horizontal, note-mark size 0.65zw sets the mark at that size, raised to the top of the em box (ADR 0344 I1)" $ do
+    testCase "ADR 0344 I1: PDF: horizontal, note-mark size 0.65zw sets the mark at that size, raised to the top of the em box" $ do
       content <- miniPdf fakeProvider True (horizontalStyle <> "\n[character-styles.note-mark]\nsize = \"0.65zw\"\n") "漢[note: 注。]字\n" [] >>= fmap BS.concat . inflateAll
       let ds = drawnGlyphs content
           s = 10 :: Rational
@@ -137,7 +144,7 @@ footnoteTests =
           assertBool (show (ys - yk)) (abs (ys - yk - (38 / 100 + 1 / 2) * (s - m)) < 1 / 100)
           assertBool (show (x1, xj)) (xj >= x1 + m / 2)
         other -> assertFailure (show other),
-    testCase "PDF: vertical, note-mark size 0.65zw keeps the right end of the mark column half the size right of the centre line (ADR 0344 I1)" $ do
+    testCase "ADR 0344 I1: PDF: vertical, note-mark size 0.65zw keeps the right end of the mark column half the size right of the centre line" $ do
       content <- miniPdf fakeProvider True (pdfStyle <> "\n[character-styles.note-mark]\nsize = \"0.65zw\"\n") "漢[note: 注。]字\n" [] >>= fmap BS.concat . inflateAll
       let ds = drawnGlyphs content
           sSp = maybe 0 (dimToSp 0) (parseDim "13Q")
@@ -161,7 +168,7 @@ footnoteTests =
             _ -> Nothing
       marks @?= ["1)"]
       map start firsts @?= [Just ("1)", "甲")],
-    testCase "PDF: note-mark size 0.65zw changes page contents (ADR 0344 I1)" $ do
+    testCase "ADR 0344 I1: PDF: note-mark size 0.65zw changes page contents" $ do
       let src = "漢[note: 注。]字\n"
       a <- miniPdf fakeProvider True (horizontalStyle <> "\n[character-styles.note-mark]\nsize = \"0.65zw\"\n") src [] >>= inflateAll
       c <- miniPdf fakeProvider True horizontalStyle src [] >>= inflateAll
@@ -181,7 +188,7 @@ footnoteTests =
         filter isError (brDiagnostics r) @?= []
         let written = brWritten r
             readAll suffix = mconcat <$> mapM TIO.readFile (filter (suffix `isSuffixOf`) written)
-        html <- readAll ".xhtml"
+        html <- readAll ".html"
         txt <- readAll ".txt"
         assertBool (T.unpack html) ("href=\"#note-2\"" `T.isInfixOf` html)
         assertBool (T.unpack txt) ("*2" `T.isInfixOf` txt)
@@ -496,7 +503,7 @@ runningHeadTests =
       (ds, srcs, _) <- buildHeads (headsStyle "content = [\"{set.revision}\"]") [("a.gm", "@set revision = true\n\n" <> twoChapters)] Nothing
       [(described d, fmap siPath (Map.lookup (spanFile (diagSpan d)) srcs)) | d <- ds, isError d] @?= [(("G02068", "柱に出せるのは文字列と数です: revision は 真偽値", FileId 1, 0, 0), Just "a.gm")],
     testCase "an imported variable (ADR 0022)" $ do
-      (heads, _) <- layoutHeads miniManifest (headsStyle "content = [\"{set.values.price}\"]") [("a.gm", "@import common/values.gm as values\n\n" <> twoChapters), ("common/values.gm", "@set price = 100\n")]
+      (heads, _) <- layoutHeads miniManifest (headsStyle "content = [\"{set.values.price}\"]") [("a.gm", "@import common/values.gm * as values\n\n" <> twoChapters), ("common/values.gm", "@set price = 100\n")]
       Map.lookup 2 heads @?= Just ["100"],
     testCase "no G02067 in a build without the PDF (ADR 0022)" $ do
       (ds, _, _) <- buildHeads (headsStyle "content = [\"{set.revision}\"]") [("a.gm", twoChapters)] (Just [TargetHtml])
@@ -820,7 +827,7 @@ emphasisTests =
       a @?= c
       qpdfCheck a,
     testCase "HTML: a bold role is declared bold and b names it before the body" $ withSystemTempDirectory "golem-mini" $ \tmp -> do
-      BS.writeFile (tmp </> "manifest.toml") (miniManifest <> "[targets.html]\n")
+      BS.writeFile (tmp </> "manifest.toml") (miniManifest <> "[targets.html]\nfonts = \"embed\"\n")
       BS.writeFile (tmp </> "style.toml") "[fonts.body]\nja = \"fonts/b.otf\"\n\n[fonts.gothic]\nja = \"fonts/h.otf\"\n\n[character-styles.bold]\nfont = \"gothic\"\n"
       BS.writeFile (tmp </> "a.gm") (TE.encodeUtf8 "[bold: 太い]\n")
       writeFiles tmp fakeFontFiles
@@ -926,6 +933,28 @@ wrapTests =
       case gridPages pl of
         (first : _) -> assertBool (show (poSlots first)) (all ((< 26) . fst) (poSlots first))
         [] -> assertFailure "no pages",
+    testCase "root ADR 0443 I2: a wrapped figure whose side lines and their note do not fit the rest of the page goes to the next page with them" $ do
+      img <- tinyImage
+      let note = "[note: " <> T.replicate 12 "脚注の本文は長く書く。" <> "]"
+          side = "脇の段落の一行目" <> note <> "。" <> T.replicate 30 "脇の段落は続く。" <> "\n\n"
+      (_, pl) <- layoutOk horizontal24 (fillers 20 <> wrapped "start" "4zw" <> side <> longPara 20) img
+      (_, pf, p, slot) <- theFigure pl
+      (poNumber p, slot) @?= (2, 0)
+      assertBool ("the note is on the page of the figure: " <> show (poFootnotes p)) (not (null (poFootnotes p)))
+      -- the side lines follow the figure on its page, from its top
+      take (maybe 0 exLines (pfExclusion pf)) [at | (at, SLine _) <- poSlots p] @?= take (maybe 0 exLines (pfExclusion pf)) [0 ..],
+    testCase "golem-driver ADR 0005, root ADR 0443 I4: side lines whose note is longer than a page take the next page from its top" $ do
+      img <- tinyImage
+      let note = "[note: " <> T.replicate 60 "脚注の本文は長く書く。" <> "]"
+          side = "脇の段落の一行目" <> note <> "。" <> T.replicate 30 "脇の段落は続く。" <> "\n\n"
+      (_, pl) <- layoutOk horizontal24 (fillers 20 <> wrapped "start" "4zw" <> side <> longPara 20) img
+      (_, _, p, at) <- theFigure pl
+      (poNumber p, at) @?= (2, 0)
+      let next = [q | q <- gridPages pl, poNumber q == poNumber p + 1]
+          slotsOf q = [slot | (slot, SLine _) <- poSlots q]
+      assertBool ("the note is on the page of the figure: " <> show (poFootnotes p)) (not (null (poFootnotes p)))
+      assertBool ("some side lines are sent on: " <> show (map slotsOf next)) (not (all (null . slotsOf) next))
+      map slotsOf next @?= map (\q -> take (length (slotsOf q)) [0 ..]) next,
     testCase "vertical: the image hangs from the top at its grid line; lines beside it are indented" $ do
       img <- tinyImage
       (geom, pl) <- layoutOk (figStyle pdfStyle) (wrapped "start" "4zw" <> longPara 30) img
@@ -1146,7 +1175,7 @@ captionTests =
       qpdfCheck pdf,
     testCase "HTML: figcaption takes the caption's font and size relative to the grid" $ do
       let css keys = withSystemTempDirectory "golem-mini" $ \tmp -> do
-            BS.writeFile (tmp </> "manifest.toml") (miniManifest <> "[targets.html]\n")
+            BS.writeFile (tmp </> "manifest.toml") (miniManifest <> "[targets.html]\nfonts = \"embed\"\n")
             BS.writeFile (tmp </> "style.toml") (horizontalStyle <> "\n[fonts.caption]\nlatin = \"fonts/c.otf\"\n\n[paragraph-styles.caption]\n" <> keys)
             BS.writeFile (tmp </> "a.gm") "x\n"
             createDirectoryIfMissing True (tmp </> "fonts")
@@ -1351,7 +1380,7 @@ sidenoteTests =
       qpdfCheck pdf,
     testCase "HTML: .sidenote takes the sidenote's font and size" $ do
       let css keys = withSystemTempDirectory "golem-mini" $ \tmp -> do
-            BS.writeFile (tmp </> "manifest.toml") (miniManifest <> "[targets.html]\n")
+            BS.writeFile (tmp </> "manifest.toml") (miniManifest <> "[targets.html]\nfonts = \"embed\"\n")
             BS.writeFile (tmp </> "style.toml") (horizontalStyle <> "\n[fonts.note]\nlatin = \"fonts/n.otf\"\n\n[paragraph-styles.sidenote]\n" <> keys)
             BS.writeFile (tmp </> "a.gm") "x\n"
             createDirectoryIfMissing True (tmp </> "fonts")
@@ -1366,3 +1395,162 @@ sidenoteTests =
       c <- css "font = \"note\"\n"
       assertBool (T.unpack c) (".sidenote { font-family: \"golem-note-latin\", serif; font-size: 0.85em; }" `T.isInfixOf` c)
   ]
+
+{- | The underline, the strikethrough and the background of the character
+styles of running heads and folios (docs/adr/0410).
+-}
+runningHeadDecorationTests :: [TestTree]
+runningHeadDecorationTests =
+  [ testCase "root ADR 0410 I1, I2: the 8 decorations in horizontal and vertical books, on odd and even pages, as a horizontal line of the body" $
+      forM_ [False, True] $ \vertical -> do
+        plainPages <- decoratedPages vertical (styled "p000") (styled "p000")
+        codePages <- decoratedPages vertical (styled "p001") (styled "p001")
+        forM_ decorationCombos $ \combo@(_, _, back) -> do
+          let name = comboName "d" combo
+              what = show (vertical, name)
+          reference <- referenceMarks name
+          pages <- decoratedPages vertical (styled name) (styled name)
+          length pages @?= 2
+          forM_ (zip3 [1 :: Int ..] pages (if back then codePages else plainPages)) $ \(n, page, bare) -> do
+            let marks = if odd n then "H1" else "E2"
+                drawn = decorationsOn marks page
+            -- I1: the same as the body line of the style and the text
+            forM_ marks $ \c -> assertEqual (what <> " page " <> show n <> " " <> [c]) (Map.findWithDefault [] c reference) (Map.findWithDefault [] c drawn)
+            assertEqual (what <> " drawn") (combo /= (False, False, False)) (not (all null (Map.elems drawn)))
+            -- I2: the glyphs where and as they are without the decorations
+            sort (drawnGlyphs page) @?= sort (drawnGlyphs bare),
+    testCase "root ADR 0410 I1, I3: an underline on the running head only; the folio as before" $ do
+      pages <- decoratedPages False (styled "d100") ""
+      before <- decoratedPages False "" ""
+      reference <- referenceMarks "d100"
+      forM_ (zip3 [1 :: Int ..] pages before) $ \(n, page, page0) -> do
+        let (h, f) = if odd n then ('H', '1') else ('E', '2')
+            drawn = decorationsOn [h, f] page
+        assertBool "an underline" (not (null (Map.findWithDefault [] h drawn)))
+        Map.lookup h drawn @?= Map.lookup h reference
+        Map.findWithDefault [] f drawn @?= []
+        folioGlyphs f page @?= folioGlyphs f page0,
+    testCase "root ADR 0410 I1, I3: a background on the folio only; the running head as before" $ do
+      pages <- decoratedPages False "" (styled "d001")
+      before <- decoratedPages False "" ""
+      reference <- referenceMarks "d001"
+      forM_ (zip3 [1 :: Int ..] pages before) $ \(n, page, page0) -> do
+        let (h, f) = if odd n then ('H', '1') else ('E', '2')
+            drawn = decorationsOn [h, f] page
+        assertBool "a background" (not (null (Map.findWithDefault [] f drawn)))
+        Map.lookup f drawn @?= Map.lookup f reference
+        Map.findWithDefault [] h drawn @?= []
+        folioGlyphs h page @?= folioGlyphs h page0,
+    testCase "root ADR 0410 I1, I2: a strikethrough and a background on the running head, an underline on the folio" $ do
+      pages <- decoratedPages False (styled "d011") (styled "d100")
+      bare <- decoratedPages False (styled "p001") (styled "p000")
+      heads <- referenceMarks "d011"
+      folios <- referenceMarks "d100"
+      forM_ (zip3 [1 :: Int ..] pages bare) $ \(n, page, page0) -> do
+        let (h, f) = if odd n then ('H', '1') else ('E', '2')
+            drawn = decorationsOn [h, f] page
+        length (Map.findWithDefault [] h drawn) @?= 2
+        Map.lookup h drawn @?= Map.lookup h heads
+        Map.lookup f drawn @?= Map.lookup f folios
+        sort (drawnGlyphs page) @?= sort (drawnGlyphs page0),
+    testCase "root ADR 0410 I3: a style of no decorations draws no rectangle" $ do
+      pages <- decoratedPages False (styled "p000") (styled "p001")
+      assertBool "no rectangle" (not (any (" re f" `BS.isInfixOf`) pages)),
+    testCase "root ADR 0410 I1: an empty running head draws nothing" $ do
+      content <- miniPdf fakeProvider True (decorationStyle False <> "\n[masters.body]\nrunning-head = { position = \"top-center\", content = \"heading.1.short\", character-style = \"d111\" }\n") "文。\n" fakeFontFiles
+      pages <- pageContents content
+      assertBool "no rectangle" (not (any (" re f" `BS.isInfixOf`) pages))
+  ]
+  where
+    styled n = ", character-style = \"" <> BC.pack n <> "\""
+    folioGlyphs c page = [d | d <- drawnGlyphs page, dGlyph d == fromEnum c]
+
+-- | Underline, strikethrough and background, each on or off.
+decorationCombos :: [(Bool, Bool, Bool)]
+decorationCombos = [(u, s, b) | u <- [False, True], s <- [False, True], b <- [False, True]]
+
+-- | The name of a style of a combination: the prefix and a digit for each of underline, strikethrough and background.
+comboName :: String -> (Bool, Bool, Bool) -> String
+comboName prefix (u, s, b) = prefix <> concatMap (\x -> if x then "1" else "0") [u, s, b]
+
+{- | A book of 10pt, horizontal or vertical, with a style dUSB for each
+combination and pUSB of the same base without the decorations: one with a
+background is based on code, here of the body role with padding.
+-}
+decorationStyle :: Bool -> BS.ByteString
+decorationStyle vertical =
+  page
+    <> fakeBody
+    <> "\n[color.swatches]\npale = { cmyk = [0, 0, 0, 10] }\nred = { cmyk = [0, 100, 100, 0] }\n\n[character-styles.code]\nfont = \"body\"\npadding = \"0.25zw\"\n"
+    <> BS.concat (map (TE.encodeUtf8 . T.pack . def) decorationCombos)
+  where
+    page
+      | vertical = "[page]\nsize = \"B6\"\nbinding = \"right\"\nwriting-mode = \"vertical\"\n\n[page.grid]\nfont-size = \"10pt\"\ncharacters = 30\nlines = 16\nline-pitch = \"15pt\"\ncolumns = 1\nposition = { top = \"18mm\", gutter = \"20mm\" }\n"
+      | otherwise = horizontalStyle
+    def combo@(u, s, b) =
+      let base = if b then "based-on = \"code\"\n" else ""
+       in "\n[character-styles."
+            <> comboName "d" combo
+            <> "]\n"
+            <> base
+            <> (if u then "underline = true\n" else "")
+            <> (if s then "strikethrough = { color = \"red\" }\n" else "")
+            <> (if b then "background = \"pale\"\n" else "")
+            <> "\n[character-styles."
+            <> comboName "p" combo
+            <> "]\n"
+            <> base
+
+{- | The pages of a two-page book whose running head is H on the odd page
+and E on the even one, and whose folio is the number, with the given keys.
+-}
+decoratedPages :: Bool -> BS.ByteString -> BS.ByteString -> IO [BS.ByteString]
+decoratedPages vertical headKeys folioKeys = do
+  let style =
+        decorationStyle vertical
+          <> "\n[masters.body]\nrunning-head = {position = \"top-center\", odd = [\"H\"], even = [\"E\"]"
+          <> headKeys
+          <> "}\nfolio = {position = \"bottom-center\", format = \"{n}\""
+          <> folioKeys
+          <> "}\n"
+  miniPdf fakeProvider True style "文。\n\n@page-break\n\n文。\n" fakeFontFiles >>= pageContents
+
+{- | The rectangles of H, E, 1 and 2 set in a style as lines of the body of
+a horizontal book of no master page.
+-}
+referenceMarks :: String -> IO (Map.Map Char [([Rational], Maybe [BS.ByteString])])
+referenceMarks name = do
+  let source = T.concat ["[style " <> T.pack name <> ": " <> T.singleton c <> "]\n\n" | c <- "HE12"]
+  pages <- miniPdf fakeProvider True (decorationStyle False) source fakeFontFiles >>= pageContents
+  pure (Map.unionsWith (<>) (map (decorationsOn "HE12") pages))
+
+{- | The filled rectangles of a page, each with the nearest of the given
+glyphs by its baseline, relative to the origin of the glyph, with its fill
+colour; sorted. The PDF writes each number to 1/10000pt, so a difference
+of two is rounded to 1/1000pt.
+-}
+decorationsOn :: String -> BS.ByteString -> Map.Map Char [([Rational], Maybe [BS.ByteString])]
+decorationsOn marks page =
+  let origins = [(c, (ptToRational (dX d), ptToRational (dY d))) | d <- drawnGlyphs page, c <- marks, dGlyph d == fromEnum c]
+      nearest y = fst <$> listToMaybe (sortOn (\(_, (_, gy)) -> abs (gy - y)) origins)
+      assigned = [(c, [(map milli [x - gx, y - gy, w, h], colour)]) | ([x, y, w, h], colour) <- colouredRects page, Just c <- [nearest (y + h / 2)], Just (gx, gy) <- [lookup c origins]]
+      milli v = round (v * 1000) % 1000
+   in Map.map sort (Map.fromListWith (<>) ([(c, []) | (c, _) <- origins] <> assigned))
+
+-- | The rectangles filled in a content stream, with the CMYK fill colour in effect: q and Q save and restore it.
+colouredRects :: BS.ByteString -> [([Rational], Maybe [BS.ByteString])]
+colouredRects content = go (Nothing, []) (BC.lines content)
+  where
+    go _ [] = []
+    go st (l : rest) =
+      let ws = BC.words l
+          (st', out) = foldl step (st, []) (zip [0 :: Int ..] ws)
+          step ((c, s), acc) (i, w) = case w of
+            "q" -> ((c, c : s), acc)
+            "Q" -> case s of
+              c' : s' -> ((c', s'), acc)
+              [] -> ((c, s), acc)
+            "k" -> ((Just (take 4 (drop (i - 4) ws)), s), acc)
+            "re" | take 1 (drop (i + 1) ws) == ["f"] -> ((c, s), acc <> [(map ptToRational (take 4 (drop (i - 4) ws)), c)])
+            _ -> ((c, s), acc)
+       in out <> go st' rest

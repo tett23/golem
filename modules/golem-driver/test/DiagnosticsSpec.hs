@@ -12,8 +12,8 @@ import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Text.IO qualified as TIO
 import Golem.Driver
-import Golem.Driver.Explain (Explanation (..), Status (..), catalog, codeDescriptionUrl, explainHint, lookupExplanation, parseCatalog)
-import Golem.Driver.Explain.Embedded (documentText)
+import Golem.Evaluate.Explain (Explanation (..), Status (..), catalog, codeDescriptionUrl, explainHint, lookupExplanation, parseCatalog)
+import Golem.Evaluate.Explain.Embedded (documentText)
 import Golem.Layout.Paginate (ColumnSetAt (..), PageOut, PageOutAt (..))
 import Golem.Project (ProjectFailure (..))
 import Golem.Syntax
@@ -31,7 +31,7 @@ import Test.Tasty.HUnit
 readingTests :: [TestTree]
 readingTests =
   [ testCase "an imported file with CRLF is shown at its path" $
-      withChapters "" [("a.gm", "@import y.gm as y\n\n一。\n")] [("y.gm", "a\r\nb\n")] $ \tmp -> do
+      withChapters "" [("a.gm", "@import y.gm * as y\n\n一。\n")] [("y.gm", "a\r\nb\n")] $ \tmp -> do
         (codes, out) <- checked tmp
         codes @?= [DiagnosticCode "G01003"]
         assertBool (T.unpack out) ("y.gm:1:2:" `T.isPrefixOf` out),
@@ -56,7 +56,7 @@ readingTests =
       withChapters "" [("a.gm", "[=]\n")] [] $ \tmp -> do
         (codes, _) <- checked tmp
         codes @?= [DiagnosticCode "G01020"],
-    testCase "ADR 0344 I2 I3: retired style forms stop every target even with --no-notices" $
+    testCase "ADR 0344 I2, I3: retired style forms stop every target even with --no-notices" $
       withChapters "[lists]\nnumbers = [\"{{{a}}}\"]\n[notes]\nmark-size = \"0.5zw\"\n[masters.book]\nrunning-head = { position = \"top-outside\", content = [\"{{x}}\"] }\n" [("a.gm", "一。\n")] [] $ \tmp ->
         forM_ [TargetPdf, TargetHtml, TargetEpub, TargetText] $ \target -> do
           r <- build (defaultOptions tmp) {optTargets = Just [target], optNoNotices = True}
@@ -134,16 +134,23 @@ the second builds the other three.
 everyNoticeProjects :: [BS.ByteString -> [(FilePath, BS.ByteString)]]
 everyNoticeProjects =
   [ \extra -> [("manifest.toml", noticeManifest extra), ("style.toml", withBodyFont style), ("a.gm", TE.encodeUtf8 source), ("code.hs", "main = pure ()\n"), ("images/tall.svg", tall), ("t.csv", "a\n1\n")] <> fakeFontFiles,
-    -- G03120 too: no [source] (docs/adr/0193)
-    \extra -> [("manifest.toml", replaceIn "\n[source]\nparagraph-separator = \"blank-line\"\n" "" (replaceIn "[targets.pdf]\n" "" (noticeManifest extra))), ("a.gm", "x\n")],
+    -- G03120 too: no [source] (docs/adr/0193); the info G01031 of one block between ::: lines (root ADR 0459)
+    \extra -> [("manifest.toml", replaceIn "\n[source]\nparagraph-separator = \"blank-line\"\n" "" (replaceIn "[targets.pdf]\n" "" (noticeManifest extra))), ("a.gm", "@style verse\n:::\nx\n:::\n")],
     -- the notice E02109 and the info E05108 of a .emet that a .gm calls (docs/adr/0162)
     \extra ->
       [ ("manifest.toml", replaceIn "[targets.pdf]\n" "" (noticeManifest extra) <> "\n[functions.requires]\nfile = [\"w.tsv\"]\n"),
         ("style.toml", horizontalStyle),
-        ("a.gm", "@import f.emet as f\n\n[f.x]\n"),
+        ("a.gm", "@import f.emet * as f\n\n[f.x]\n"),
         ("f.emet", "pub inline x :: <file \"w.tsv\"> Inlines\nx = Inline.text \"x\"\n  where {\n    unused = 1\n  }\n"),
         ("w.tsv", "w\n")
+      ],
+    -- root ADR 0401: a list item larger than the empty page (G07133).
+    \extra ->
+      [ ("manifest.toml", noticeManifest extra),
+        ("style.toml", withBodyFont (replaceIn "lines = 30" "lines = 5" horizontalStyle <> "\n[composition]\nkeep-parts = \"page\"\n")),
+        ("a.gm", TE.encodeUtf8 ("- " <> T.intercalate "\\\n  " (replicate 7 "x") <> "\n"))
       ]
+        <> fakeFontFiles
   ]
   where
     -- five lines of 12 characters, a paragraph style with rules, and a zero indent of table (G03100)
@@ -278,7 +285,7 @@ noticeTests =
         -- G05100 belongs to golem lint, while these projects exercise golem build.
         sort (nub (concatMap (\(_, i, _) -> i) raised)) @?= sort (filter (/= DiagnosticCode "G05100") infoCodes)
         let written = concatMap (\(_, _, w) -> w) raised
-        assertBool (show written) (all (\ext -> any (ext `isSuffixOf`) written) [".pdf", ".epub", ".xhtml", ".txt"]),
+        assertBool (show written) (all (\ext -> any (ext `isSuffixOf`) written) [".pdf", ".epub", ".html", ".txt"]),
       testCase "ADR 0341 I2: legacy listing path stops before reading its asset" $ do
         n <- buildNotified (noticeProject "" "@listing src=missing.hs\n") id
         codesOf (nDiagnostics n) @?= ["G02250"]
@@ -378,7 +385,7 @@ noticeTests =
         n <- buildNotified (separatorProject id "\n[diagnostics]\nsilence-notices = [\"G03120\"]\n") id
         codesOf (nDiagnostics n) @?= [],
       testCase "a paragraph of two lines is two paragraphs without paragraph-separator, one with blank-line (docs/adr/0193)" $ do
-        let paragraphs n = length [() | (p, o) <- nOutputs n, ".xhtml" `isSuffixOf` p, piece <- BC.split '<' o, "p>" `BS.isPrefixOf` piece || "p " `BS.isPrefixOf` piece, "line" `BS.isInfixOf` piece]
+        let paragraphs n = length [() | (p, o) <- nOutputs n, ".html" `isSuffixOf` p, piece <- BC.split '<' o, "p>" `BS.isPrefixOf` piece || "p " `BS.isPrefixOf` piece, "line" `BS.isInfixOf` piece]
         byDefault <- buildNotified (separatorProject id "") id
         blank <- buildNotified (separatorProject id "\n[source]\nparagraph-separator = \"blank-line\"\n") id
         (paragraphs byDefault, paragraphs blank) @?= (2, 1)
@@ -403,7 +410,7 @@ explainTests =
             -- modules/golem-driver/diagnostics.md links to docs/diagnostics.md
             file <- BS.readFile "diagnostics.md"
             assertBool
-              "Golem.Driver.Explain.Embedded differs from docs/diagnostics.md; run sh scripts/gen-embedded.sh"
+              "Golem.Evaluate.Explain.Embedded differs from docs/diagnostics.md; run sh scripts/gen-embedded.sh"
               (TE.encodeUtf8 documentText == file),
           testCase "documentText has the form of the catalog, with a section or more" $
             case parseCatalog documentText of
@@ -482,6 +489,53 @@ explainTests =
             [c | c <- ["G02096", "G02097", "G02098", "G02099"], c `notElem` used] @?= []
         ],
       testGroup
+        "root ADR 0430: golem explain writes フォルダ"
+        [ testCase "root ADR 0430 I2: no section golem explain shows has フォルダー" $
+            [c | (c, e) <- Map.toList catalog, any ("フォルダー" `T.isInfixOf`) [exTitle e, exBody e]] @?= [],
+          testCase "root ADR 0430 I2: golem explain G08102 and G08104 have no フォルダー" $ do
+            let bodies = [fmap exBody (lookupExplanation c) | c <- ["G08102", "G08104"]]
+            assertBool "G08102 or G08104 is missing" (all isJust bodies)
+            [b | Just b <- bodies, "フォルダー" `T.isInfixOf` b] @?= []
+        ],
+      testGroup
+        "root ADR 0428: the empty field of [printings] recommends {{ and }}"
+        [ testCase "root ADR 0428 I1: golem explain G03269 recommends {{ and }}, not \\{ and \\}" $ do
+            let causeAndFix = maybe [] (causeAndFixOf . exBody) (lookupExplanation "G03269")
+            causeAndFix
+              @?= [ "### 主な原因",
+                    "",
+                    "- 欄の名前を書き忘れた。",
+                    "- 文字の `{}` を `{{}}` と書かなかった。",
+                    "",
+                    "### 直し方",
+                    "",
+                    "欄の名前を書くか、文字の `{` と `}` を `{{` と `}}` と書く。"
+                  ]
+            [l | l <- causeAndFix, any (`T.isInfixOf` l) ["\\{", "\\}"]] @?= [],
+          testCase "root ADR 0428 I2: golem explain G03267 is as before" $
+            maybe [] (causeAndFixOf . exBody) (lookupExplanation "G03267")
+              @?= [ "### 主な原因",
+                    "",
+                    "- `{year` のように、欄の `}` を書き忘れた。",
+                    "- 文字の `{` を `{{` と書かなかった。",
+                    "",
+                    "### 直し方",
+                    "",
+                    "欄を `}` で閉じるか、文字の `{` を `{{` と書く。"
+                  ],
+          testCase "root ADR 0428 I2: golem explain G03268 is as before" $
+            maybe [] (causeAndFixOf . exBody) (lookupExplanation "G03268")
+              @?= [ "### 主な原因",
+                    "",
+                    "- `year}` のように、欄の `{` を書き忘れた。",
+                    "- 文字の `}` を `}}` と書かなかった。",
+                    "",
+                    "### 直し方",
+                    "",
+                    "欄の `{` を足すか、文字の `}` を `}}` と書く。"
+                  ]
+        ],
+      testGroup
         "the form of the document"
         [ testCase "two good sections give their titles, statuses and bodies" $
             case parseCatalog (T.unlines (preamble <> inUse "G01001" <> retired "G02044")) of
@@ -524,6 +578,8 @@ explainTests =
         ]
     ]
   where
+    -- The lines of 主な原因 and 直し方 of a body, without the blank lines at the end (root ADR 0428).
+    causeAndFixOf = reverse . dropWhile T.null . reverse . dropWhile (/= "### 主な原因") . T.lines
     preamble = ["# 診断のコード", "", "前書き。", "", "## 番号の区分", "", "表。", ""]
     inUse c = ["## " <> c, "", c <> " の題", "", "- 重大度: エラー", "- 状態: 使用中", "", "### 意味", "", "意味。", "", "### 主な原因", "", "- 原因。", "", "### 直し方", "", "直す。", ""]
     retired c = ["## " <> c, "", c <> " の題", "", "- 重大度: エラー", "- 状態: 廃止", "", "### 意味", "", "廃止した。", "", "### 直し方", "", "代わりに書く。", ""]
@@ -548,8 +604,9 @@ sourceCodes = do
   pure (sort (nub (concat codes)))
 
 {- | The folders of the sources of every package: src, and src-plugins and
-src-no-plugins of golem-driver, which its flag plugins chooses between
-(docs/adr/0199); and the app of golem-cli.
+src-no-plugins of golem-evaluate and golem-driver, which their flags
+plugins choose between (docs/adr/0199, root ADR 0434); and the app of
+golem-cli.
 -}
 sourceDirs :: IO [FilePath]
 sourceDirs = do
@@ -684,7 +741,7 @@ outputDiagnosticTests =
             modifyIORef' calls (+ 1)
             n <- readIORef calls
             pure (Right ((), pagesWith (if odd n then [["a", "b"], []] else [[], ["a", "b"]])))
-      r <- fixpoint Map.empty labelSpan (const "") (const flipping)
+      r <- fixpoint Map.empty labelSpan (const "") (\_ _ -> Map.empty) (const flipping)
       case r of
         Left [d] -> do
           diagCode d @?= DiagnosticCode "G07021"
@@ -702,7 +759,7 @@ outputDiagnosticTests =
               if n == 2
                 then Left [diagnostic "G07022" Error (mkSpan (FileId 1) 0 0) "x"]
                 else Right ((), pagesWith [["a"]])
-      r <- fixpoint Map.empty (const (mkSpan (FileId 0) 0 0)) (const "") (\_ a -> failing (a :: Assumed))
+      r <- fixpoint Map.empty (const (mkSpan (FileId 0) 0 0)) (const "") (\_ _ -> Map.empty) (\_ a -> failing (a :: Assumed))
       either (map diagCode) (const []) r @?= [DiagnosticCode "G07022"],
     testCase "G07025: an indent that leaves exactly 8 characters is not G07025; one character more is" $ do
       -- 12 characters of 10pt
@@ -799,7 +856,8 @@ outputDiagnosticTests =
       map diagCode (bErrors c) @?= [DiagnosticCode "G08019"]
       h <- buildMarksFiles (\o -> o {optFonts = golemFontProvider, optTargets = Just [TargetHtml]}) (Just style) files
       map diagCode (bErrors h) @?= []
-      length (bWritten h) @?= 4
+      -- the pages and the style sheet, without the font: HTML names generic families by default (docs/adr/0423)
+      length (bWritten h) @?= 3
       withSystemTempDirectory "golem-cff2" $ \tmp -> do
         BS.writeFile (tmp </> "manifest.toml") miniManifest
         BS.writeFile (tmp </> "style.toml") style

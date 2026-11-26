@@ -27,7 +27,7 @@ cat "$RUNNER_TEMP/time" >>"$RUNNER_TEMP/calls"
 case " $* " in *' --include '*) headers=yes;; *) headers=no;; esac
 page() {
   if [ "$headers" = yes ]; then printf 'HTTP/2.0 200 OK\r\n\r\n'; fi
-  printf '%s\tbuild\n' "$1"
+  printf '{"id":%s,"name":"build","status":"completed","conclusion":"success","steps":[{"number":1}]}\n' "$1"
 }
 case "$CASE" in
   empty) exit 0;;
@@ -80,9 +80,9 @@ check() {
     return 1
   fi
 }
-check 'I1 one job' one 0 0 100 1
-check 'I1 empty list' empty 0 1 100 ''
-check 'I2 I3 retry all pages and detect the warning on page two' recover 110 1 100,111 1,2
-check 'I3 I4 permission denied' denied 110 1 100 ''
-check 'I4 exact deadline' limited 3699 1 100 ''
-check 'I4 beyond deadline' limited 3700 1 100 ''
+check 'ADR 0349 I1: one job' one 0 0 100 1
+check 'ADR 0349 I1: empty list' empty 0 1 100 ''
+check 'ADR 0349 I2, I3: retry all pages and detect the warning on page two' recover 110 1 100,111 1,2
+check 'ADR 0349 I3, I4: permission denied' denied 110 1 100 ''
+check 'ADR 0349 I4: exact deadline' limited 3699 1 100 ''
+check 'ADR 0349 I4: beyond deadline' limited 3700 1 100 ''

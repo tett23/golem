@@ -1,4 +1,4 @@
-@import fn/numbers.emet as n
+@import fn/numbers.emet * as n
 
 # 数
 

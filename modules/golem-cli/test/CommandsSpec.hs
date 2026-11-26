@@ -119,12 +119,12 @@ replTests :: TestTree
 replTests =
   testGroup
     "Emet REPL (Golem ADR 0348)"
-    [ testCase "R1/R3/R4: a pipe prints each complete value, including the final unterminated line" $
+    [ testCase "root ADR 0348 I1, I3, I4: a pipe prints each complete value, including the final unterminated line" $
         runRepl "1 +\n2\n9" >>= (@?= (ExitSuccess, "3\n9\n", "")),
-      testCase "R1: both input and displayed string can exceed 4096 bytes" $ do
+      testCase "root ADR 0348 I1: both input and displayed string can exceed 4096 bytes" $ do
         let literal = "\"" <> replicate 4097 'a' <> "\""
         runRepl literal >>= (@?= (ExitSuccess, literal <> "\n", "")),
-      testCase "R5: 100000000 steps and 10000 frames succeed; one more fails and the next input gets a fresh budget" $ do
+      testCase "root ADR 0348 I5: 100000000 steps and 10000 frames succeed; one more fails and the next input gets a fresh budget" $ do
         (code, out, err) <-
           runRepl $
             unlines
@@ -144,7 +144,7 @@ replTests =
               ]
         (code, lines out) @?= (ExitFailure 1, ["7", "9999", "42"])
         map (take 6) (lines err) @?= ["E04100", "E04101"],
-      testCase "R6: a rejected import preserves public functions and does not expose private names" $
+      testCase "root ADR 0348 I6: a rejected import preserves public functions and does not expose private names" $
         withSystemTempDirectory "golem-repl" $ \dir -> do
           writeFiles dir [("double.emet", "pub twice :: Nat -> Nat\ntwice n = hidden n\nhidden :: Nat -> Nat\nhidden n = n + n\n")]
           (code, out, err) <-
@@ -154,10 +154,10 @@ replTests =
           (code, lines out) @?= (ExitFailure 1, ["6", "8"])
           length (lines err) @?= 2
           assertBool err ("G03003" `isInfixOf` err),
-      testCase "R6: failed replacement leaves the checked definition callable" $ do
+      testCase "root ADR 0348 I6: failed replacement leaves the checked definition callable" $ do
         (code, out, _) <- runRepl "twice :: Nat -> Nat\ntwice n = n + n\n\ntwice 3\ntwice :: Nat -> Nat\ntwice n = False\n\ntwice 4\n"
         (code, out) @?= (ExitFailure 1, "6\n8\n"),
-      testCase "R2: recover after a syntax error without consuming the next expression" $ do
+      testCase "root ADR 0348 I2: recover after a syntax error without consuming the next expression" $ do
         (code, out, err) <- runRepl "1 + )\n42\n"
         (code, out) @?= (ExitFailure 1, "42\n")
         assertBool err ("E01100" `isInfixOf` err)
@@ -259,7 +259,7 @@ headingLimitTests =
     two file = [expected file 23 29 5, expected file 46 49 9]
     one file = [expected file 23 29 5]
     firstHeading = T.unlines (take 5 (T.lines headingLimitSource))
-    importing = "@import shared.gm as common\n"
+    importing = "@import shared.gm * as common\n"
     scenarios =
       [ ("identical files", "[\"a.gm\", \"b.gm\"]", [("a.gm", firstHeading), ("b.gm", firstHeading)], one "a.gm" <> one "b.gm"),
         ("single", "[\"a.gm\"]", [("a.gm", headingLimitSource)], two "a.gm"),

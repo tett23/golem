@@ -20,6 +20,9 @@ git config core.hooksPath .githooks
 
 フックは [adr-guard](https://github.com/tett23/adr-guard) の v0.13.1 以降を呼び出すので、あらかじめインストールしておく（`cargo install --git https://github.com/tett23/adr-guard --tag v0.13.1`）。
 `.githooks/pre-push` は、仕様を変えたのにマニュアルを直していないブランチの push を止める（「ドキュメント」の節）。
+このフックは、ビルドがリンクする wasmtime が `scripts/fetch-wasmtime.sh` の固定した版と違うときも push を止める（[docs/adr/0418](./docs/adr/0418-stop-a-push-when-the-local-wasmtime-is-not-the-pinned-one.md)）。
+そのため、push の前に `scripts/fetch-wasmtime.sh` で wasmtime を取得しておく。
+照合の内容は、README の「Git フックの有効化」の節にある。
 この設定はリポジトリに保存されないため、クローンのたびに実行する。
 
 ## 変更の流れ
@@ -137,7 +140,7 @@ ADR のテスト設計に書いたテストを先に書き、失敗すること�
 これは golem-pdf、golem-svg、golem-driver の外のテストの規則である。
 golem-pdf と golem-svg のテストでは、時間の上限に `modules/golem-test-support` の `Golem.TestSupport.TimeLimit` にある `withinTimeLimits hangLimits` を使い、プロセスの CPU 時間の 60 秒と実時間の 300 秒の二つで止める。
 時間の上限を付けるテストの CPU 時間は、単独で走らせて 10 秒以内に収める（[docs/adr/0091](./docs/adr/0091-cpu-time-limits-in-pdf-and-svg-tests.md)）。
-golem-driver-test のテストでは、時間の上限に `modules/golem-driver/test/Support.hs` の `hangTimeout`（実時間の 300 秒）を使い、値をテストに書かない。
+golem-driver の `-threaded` のスイートのうち、プロセスの状態を変えないテストを置く四つ（golem-driver-pdf-test、golem-driver-page-test、golem-driver-output-test、golem-driver-cli-test）のテストでは、時間の上限に `modules/golem-driver/test/Support.hs` の `hangTimeout`（実時間の 300 秒）を使い、値をテストに書かない。
 テストは threaded の RTS で同時に走るので、CPU 時間では測らない（[docs/adr/0237](./docs/adr/0237-raise-the-hang-time-outs-of-golem-driver-test-to-300-seconds.md)）。
 `Support.hs` の外に `mkTimeout` があると、`scripts/ci/test.sh` が失敗する。
 
@@ -212,7 +215,7 @@ golem-layout のテストは `-threaded` で作り、入力をプロセッサの
 列挙のテストの予算は、範囲ごとに 10 秒、すべての範囲の和で 30 秒である（[ADR 0281](./docs/adr/0281-budgets-of-the-exhaustive-tests-and-what-moves-to-the-nightly-job.md)）。
 時間は、x86-64 のランナーで、範囲ごとにテストの実行ファイルを直接 `-p` で走らせた壁時計の時間で量る（[ADR 0286](./docs/adr/0286-leave-the-start-of-cabal-out-of-the-time-of-an-enumeration-area.md)）。
 `cabal test` が計画を立てて組み上げを確かめる時間は、範囲の重さによらないので含めない。
-`tests-rest` のログの tasty の時間は、ほかのテストスイートと同時に走った時間なので使わない。
+`tests-rest-a` と `tests-rest-b` のログの tasty の時間は、ほかのテストスイートと同時に走った時間なので使わない。
 `enum.yml` の範囲の段の前の段「The time of each area on the settings of pull requests」が、上限の変数を渡さずに範囲ごとに走らせ、時間と和の表をジョブの要約に書く（`scripts/ci/enum-timings.sh`）。
 予算を超えても、この段は落ちない。
 手元で量るときは、先に `cabal build golem-layout-test` を走らせてから `sh scripts/ci/enum-timings.sh` を走らせる。
@@ -282,7 +285,7 @@ ghcup を上げるときは、`scripts/release/build-linux.sh` の ghcup のバ�
 Haskell のコードは fourmolu 0.21.0.0 で整形し、hlint 3.10 の指摘をなくす。
 どちらも CI の `format` ジョブで検査する。
 生成したパーサー（`modules/golem-parser/src/Golem/Parser/Generated.hs`）と、ラベルを外した文法（`modules/golem-parser/test/StrippedGrammar.hs`）は対象外である。
-`scripts/gen-embedded.sh` が生成する golem-driver の二つのモジュール（`modules/golem-driver/src/Golem/Driver/Version/Embedded.hs` と `modules/golem-driver/src/Golem/Driver/Explain/Embedded.hs`）も対象外である。
+`scripts/gen-embedded.sh` が生成する golem-driver と golem-evaluate の二つのモジュール（`modules/golem-driver/src/Golem/Driver/Version/Embedded.hs` と `modules/golem-evaluate/src/Golem/Evaluate/Explain/Embedded.hs`）も対象外である。
 
 文法（`modules/golem-parser/grammar/Golem.hpeg`）を変えたら、`scripts/gen-parser.sh` で生成し直して、生成物もコミットする。
 このスクリプトは、ラベルを外した文法も生成する。
@@ -301,7 +304,7 @@ ADR で仕様が変わったら、同じプルリクエストで [docs/specifica
 仕様書から ADR を参照するときは、ADR のファイルへのリンクを付ける。
 新しい用語を導入したら、[docs/glossary.md](./docs/glossary.md) にも加える。
 
-[docs/diagnostics.md](./docs/diagnostics.md) を変えたら、同じ変更で `sh scripts/gen-embedded.sh` を走らせ、生成し直した `modules/golem-driver/src/Golem/Driver/Explain/Embedded.hs` もコミットする。
+[docs/diagnostics.md](./docs/diagnostics.md) を変えたら、同じ変更で `sh scripts/gen-embedded.sh` を走らせ、生成し直した `modules/golem-evaluate/src/Golem/Evaluate/Explain/Embedded.hs` もコミットする。
 golem-driver は、この生成したモジュールで文書を埋め込む（[docs/adr/0203](./docs/adr/0203-generated-modules-instead-of-template-haskell-in-golem-driver.md)）。
 生成し直すのを忘れると、golem-driver のテストと CI の `build` ジョブが失敗する。
 
@@ -344,7 +347,13 @@ tasty 1.5.4 も、capability がプロセッサより少ないと起動の時点
 `-threaded` のテストのスイートでは、tasty がテストを同時に走らせる。
 環境変数、ロケールの符号化、カレントディレクトリのようなプロセスの状態を変えるテストは、ほかのテストが途中の状態を読むので、`-threaded` のスイートに置かない。
 golem-driver では、そうしたテストを `-threaded` でない `golem-driver-global-test` に書く（[docs/adr/0146](./docs/adr/0146-threaded-golem-driver-test.md)）。
-`golem-driver-test` のモジュールが `withEnv`、`setEnv`、`setLocaleEncoding`、`setCurrentDirectory` などを使うと、CI の `scripts-linux` ジョブ（`scripts/ci/test.sh`）が失敗する。
+golem-driver の `-threaded` のスイートのうち golem-driver-parallel-test を除く四つのモジュールが `withEnv`、`setEnv`、`setLocaleEncoding`、`setCurrentDirectory` などを使うと、CI の `scripts-linux` ジョブ（`scripts/ci/test.sh`）が失敗する。
+
+golem-driver のプロセスの状態を変えないテストは、領域に合う一つのスイートに置く（[docs/adr/0416](./docs/adr/0416-shorten-the-build-of-the-pull-request-ci.md)）。
+PDF の構造、タグ、フォント、ほかのツールが書いた図版は `golem-driver-pdf-test` に、段落、見出し、注、図版とその配置、改ページは `golem-driver-page-test` に置く。
+HTML、EPUB、プレーンテキスト、参考文献、索引、相互参照は `golem-driver-output-test` に、diagnostic、関数、プラグイン、プロジェクト、CLI に近い検査は `golem-driver-cli-test` に置く。
+新しいモジュールは、そのスイートの `other-modules` と、`main-is` のモジュール（`PdfMain.hs` など）に挙げる。
+ほかのスイートのモジュールを読むモジュールは、読まれるモジュールもそのスイートの `other-modules` に挙げる。
 
 `-threaded` の `golem-driver-parallel-test` は、`modules/golem-test-support` の `Golem.TestSupport.Watchdog` にある `watchTests` で包む。
 Haskell のランタイムの外の POSIX のスレッドが実時間を測り、一つのテストが `GOLEM_RACE_TESTS` の値の 300 倍の秒数を超えるか、テストが終わってもプロセスが同じ秒数を超えて終わらないと、走っていたテストの名前とランタイムの心拍を標準エラー出力に書いて、プロセスを `abort()` で止める（[docs/adr/0117](./docs/adr/0117-watchdog-outside-the-runtime-for-threaded-tests.md)）。

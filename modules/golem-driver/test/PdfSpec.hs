@@ -15,6 +15,7 @@ import Data.Maybe (isJust, isNothing)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Text.IO qualified as TIO
+import Data.Word (Word8)
 import Golem.Doc.IR (defaultRubyOptions)
 import Golem.Driver
 #ifdef GOLEM_PLUGINS
@@ -80,7 +81,7 @@ pdfPipelineTests =
           map (\(sev, _, _, _) -> sev) (g08100 r) @?= replicate 8 Error
           pdfDir <- doesDirectoryExist (tmp </> "build/pdf")
           assertBool "no build/pdf" (not pdfDir)
-          html <- doesFileExist (tmp </> "build/html/index.xhtml")
+          html <- doesFileExist (tmp </> "build/html/index.html")
           assertBool "HTML written" html,
       testCase "G08100: the same diagnostics whether laid out in parallel or not (docs/adr 0081)" $
         withMissingGlyphs subsetJa $ \tmp -> do
@@ -217,6 +218,61 @@ pdfPipelineTests =
         map diagMessage (bErrors b)
           @?= ["CFF の参照を確かめきれません: fonts/a.otf のグリフ 29", "CFF の参照を確かめきれません: fonts/z.otf のグリフ 29"]
         bPdf b @?= Nothing,
+      testGroup
+        "the seac components of embedded CFF (root ADR 0420)"
+        [ testCase "root ADR 0420 I1, I3: a seac whose components are right gives the PDF" $ do
+            seacBuild (seacUsed (seacProgram 65 193)) >>= (@?= ([], True))
+            -- with the width before the arguments
+            seacBuild (seacUsed (seacNum 200 <> seacProgram 65 193)) >>= (@?= ([], True)),
+          testCase "root ADR 0420 I1: the CharString of the base component ends exactly at the end of the table, or one byte past it" $ do
+            seacBuild (seacCharStringEnd 45452 79245 . seacUsed (seacProgram 65 193)) >>= (@?= ([], True))
+            seacBuild (seacCharStringEnd 45452 79246 . seacUsed (seacProgram 65 193)) >>= (@?= ([DiagnosticCode "G08107"], False)),
+          testCase "root ADR 0420 I1: the base component calls the last local subroutine, or one past it" $ do
+            seacBuild (seacBase (seacCall 503) . seacUsed (seacProgram 65 193)) >>= (@?= ([], True))
+            -- FreeType cannot read b either: G08109 as well (Golem ADR 0390)
+            seacBuild (seacBase (seacCall 504) . seacUsed (seacProgram 65 193)) >>= (@?= ([DiagnosticCode "G08107", DiagnosticCode "G08109"], False)),
+          testCase "root ADR 0420 I1: the accent component calls the last local subroutine, or one past it" $ do
+            seacBuild (seacAccent (seacCall 503 <> [14]) . seacUsed (seacProgram 65 193)) >>= (@?= ([], True))
+            seacBuild (seacAccent (seacCall 504 <> [14]) . seacUsed (seacProgram 65 193)) >>= (@?= ([DiagnosticCode "G08107", DiagnosticCode "G08109"], False)),
+          testCase "root ADR 0420 I1: a subroutine of the accent component divides by an interval holding 0" $
+            -- the local subroutine 503: 1 random 0.5 sub div drop return
+            seacBuild (seacSubroutine503 [140, 12, 23, 255, 0, 0, 0x80, 0, 12, 11, 12, 12, 12, 18, 11] . seacAccent (seacCall 503 <> [14]) . seacUsed (seacProgram 65 193))
+              >>= (@?= ([DiagnosticCode "G08108"], False)),
+          testCase "root ADR 0420 I2: bchar 256 is G08114, in the build and in preflight" $ do
+            -- FreeType does not read the glyph either: G08109, independent of G08114
+            seacBuild (seacUsed (seacProgram 256 193)) >>= (@?= ([DiagnosticCode "G08109", DiagnosticCode "G08114"], False))
+            (sans, _) <- realLatinFonts
+            withSystemTempDirectory "golem-preflight" $ \tmp -> do
+              writeProject tmp miniManifest sansStyle "b\n" [("fonts/sans.otf", seacUsed (seacProgram 256 193) sans)]
+              p <- preflight (defaultPreflightOptions tmp) {poFonts = golemFontProvider}
+              [(diagCode d, diagMessage d) | d <- prDiagnostics p, diagCode d == DiagnosticCode "G08114"]
+                @?= [(DiagnosticCode "G08114", "CFF の seac の引数が誤っています: fonts/sans.otf のグリフ 29")],
+          testCase "root ADR 0420 I2: two arguments besides the width are G08114" $
+            seacBuild (seacUsed (seacNum 65 <> seacNum 193 <> [14])) >>= (@?= ([DiagnosticCode "G08109", DiagnosticCode "G08114"], False)),
+          testCase "root ADR 0420 I2: an achar whose character the charset has not is G08115" $
+            -- code 166 is florin (SID 101), which the font has not
+            seacBuild (seacUsed (seacProgram 65 166)) >>= (@?= ([DiagnosticCode "G08109", DiagnosticCode "G08115"], False)),
+          testCase "root ADR 0420 I2: bchar 0, a code of no character in StandardEncoding, is G08115" $
+            -- FreeType reads it, and the PDF would be written without the check
+            seacBuild (seacUsed (seacProgram 0 193)) >>= (@?= ([DiagnosticCode "G08115"], False)),
+          testCase "root ADR 0420 I2: a component that is a seac itself is G08116" $
+            seacBuild (seacAccent (seacProgram 65 66) . seacUsed (seacProgram 65 193)) >>= (@?= ([DiagnosticCode "G08109", DiagnosticCode "G08116"], False)),
+          testCase "root ADR 0420 I2: a seac in a CID-keyed font is G08117" $ do
+            han <- BS.readFile "../golem-font/test/fonts/SourceHanSans-Regular_subset.otf"
+            -- glyph 503 (あ), 151 bytes
+            BS.take 3 (BS.drop 153634 han) @?= BS.pack [75, 10, 248]
+            let style = horizontalStyle <> "\n[fonts.body]\nja = \"fonts/ja.otf\"\n"
+            b <- buildMarksFilesWith "あ\n" (\o -> o {optFonts = golemFontProvider}) (Just style) [("fonts/ja.otf", seacPatch 153634 151 14 (seacProgram 65 66) han)]
+            (map diagCode (bErrors b), isJust (bPdf b)) @?= ([DiagnosticCode "G08109", DiagnosticCode "G08117"], False)
+            [diagMessage d | d <- bErrors b, diagCode d == DiagnosticCode "G08117"] @?= ["CID-keyed の CFF で seac を使っています: fonts/ja.otf のグリフ 503"],
+          testCase "root ADR 0420 I1: a bchar from random whose components are all right is no seac error" $
+            -- 0 0 random 64 add 193 endchar: bchar in (64, 65], the codes 64 (at)
+            -- and 65 (A), all right; FreeType takes no number made by arithmetic
+            -- for bchar, so the glyph is G08109 alone (Golem ADR 0390)
+            seacBuild (seacUsed (seacNum 0 <> seacNum 0 <> [12, 23] <> seacNum 64 <> [12, 10] <> seacNum 193 <> [14])) >>= (@?= ([DiagnosticCode "G08109"], False)),
+          testCase "root ADR 0420 I3: a font without a seac gives the PDF as before" $
+            seacBuild id >>= (@?= ([], True))
+        ],
       testCase "ADR 0357 I1: used local subroutine endpoint exceeds the table" $ do
         (sans, _) <- realLatinFonts
         -- T calls local subroutine 270. Its end offset occupies two bytes.
@@ -797,7 +853,7 @@ marksTests =
          testCase "Japanese marks without bleed are not G07002 when PDF is not a target" $ do
            b <- buildMarks (\o -> o {optMarks = JapaneseMarks, optTargets = Just [TargetHtml]}) (Just horizontalStyle)
            map diagCode (bErrors b) @?= []
-           assertBool "HTML" (any (".xhtml" `isSuffixOf`) (bWritten b)),
+           assertBool "HTML" (any (".html" `isSuffixOf`) (bWritten b)),
          testCase "golem check with Japanese marks and no bleed is G07002 and writes nothing" $ do
            b <- buildMarks (\o -> o {optMarks = JapaneseMarks, optTargets = Nothing, optCheckOnly = True}) (Just horizontalStyle)
            map diagCode (bErrors b) @?= [DiagnosticCode "G07002"]
@@ -1220,7 +1276,7 @@ kentenTests =
       assertBool "the PDF" (any ((".pdf" `isSuffixOf`) . fst) (nOutputs n)),
     testCase "HTML: the class of the shape; no shape is sesame" $ do
       n <- buildNotified ([("manifest.toml", miniManifest <> "\n[targets.html]\n"), ("style.toml", withBodyFont horizontalStyle), ("a.gm", TE.encodeUtf8 "[kenten: 漢][kenten shape=open-triangle: 字]\n")] <> fakeFontFiles) id
-      case [b | (p, b) <- nOutputs n, ".xhtml" `isSuffixOf` p, "kenten" `BS.isInfixOf` b] of
+      case [b | (p, b) <- nOutputs n, ".html" `isSuffixOf` p, "kenten" `BS.isInfixOf` b] of
         [page] -> do
           assertBool "sesame" ("<span class=\"kenten kenten-sesame\">" `BS.isInfixOf` page)
           assertBool "open-triangle" ("<span class=\"kenten kenten-open-triangle\">" `BS.isInfixOf` page)
@@ -1826,14 +1882,15 @@ codeTests =
       assertBool (show texts) (T.concat texts == "あいうえおmodules/golem-driver/src/Golem/Driver/Pdf.hs")
       assertBool "no hyphen" (null [() | l <- ls, Penalty w _ (PatternHyphen _) <- take 1 (reverse l), w > 0])
     withCode style src k = withSystemTempDirectory "golem-code-html" $ \tmp -> do
-      BS.writeFile (tmp </> "manifest.toml") (miniManifest <> "\n[targets.html]\n")
+      -- the fonts embedded, so that the families of the roles are written (docs/adr/0423)
+      BS.writeFile (tmp </> "manifest.toml") (miniManifest <> "\n[targets.html]\nfonts = \"embed\"\n")
       BS.writeFile (tmp </> "style.toml") (withBodyFont style)
       writeFiles tmp fakeFontFiles
       BS.writeFile (tmp </> "a.gm") (TE.encodeUtf8 src)
       r <- build (defaultOptions tmp) {optTargets = Just [TargetHtml]}
       assertEqual "no errors" [] (map diagCode (filter isError (brDiagnostics r)))
       css <- TIO.readFile (tmp </> "build/html/style.css")
-      page <- TIO.readFile (tmp </> "build/html/a.xhtml")
+      page <- TIO.readFile (tmp </> "build/html/a.html")
       k css page
 
 -- ------------------------------------------------------------------ the background of inline code (golem-driver ADR 0029)
@@ -2006,7 +2063,7 @@ inlineCodeBackgroundTests =
       case concatMap filledRects contents of
         [[_, _, w, _]] -> approx w 15
         other -> assertFailure (show other),
-    testCase "golem-layout ADR 0048 D7: the HTML and the EPUB of code with spaces at its ends are as before" $
+    testCase "golem-layout ADR 0048 D7: the HTML and the EPUB of code with spaces at its ends are as before, the HTML in the syntax of root ADR 0432" $
       withSystemTempDirectory "golem-code-padding" $ \tmp -> do
         BS.writeFile (tmp </> "manifest.toml") (miniManifest <> "\n[targets.html]\n")
         BS.writeFile (tmp </> "style.toml") (withBodyFont (horizontalStyle <> cbg))
@@ -2016,8 +2073,8 @@ inlineCodeBackgroundTests =
         files <- (<>) <$> filesUnder (tmp </> "build/html") <*> filesUnder (tmp </> "build/epub")
         bytes <- mapM BS.readFile files
         let digest = hex (sha256 (BS.concat [BC.pack (drop (length tmp) f) <> "\0" <> b <> "\0" | (f, b) <- zip files bytes]))
-        -- the digest from the build before golem-layout ADR 0048
-        digest @?= "4d6d61f539c0f7c524bc676b377f0147b3fd8dfec3d7ad3053b8c13faec36788",
+        -- the digest from the build before golem-layout ADR 0048, with the HTML of root ADR 0432
+        digest @?= "7e9cd5342b8fd31dc6c083ed4f5f4c30a3cf637bbdf9e0420616fb0bc0db2a3f",
     testCase "HTML: the background and the padding of code" $
       withCodeHtml (horizontalStyle <> cbg) "[code: y]\n" $ \css ->
         rulesOf "code" css @?= ["code { background-color: rgb(235, 235, 235); padding-inline: 0.25em; }"]
@@ -2087,7 +2144,7 @@ codeBlockRubyTests =
       lineOverhang False (10 * pt) (const 0) (lineOf [rubyBox KindRuby "漢|" []]) @?= 0,
     testCase "a kenten box overhangs only when its look has a mark" $ do
       let central = const (baselineRatio - 1 / 2)
-          kenten shape = Box (10 * pt) (BoxContent "漢" False 0 0 (fromEnum KindKenten) (plainLook "body" (10 * pt)) {lkKenten = shape} 0 0 [] 0 0 noBoxSource Nothing noLeaf 0)
+          kenten shape = Box (10 * pt) (BoxContent "漢" False 0 0 (fromEnum KindKenten) (plainLook "body" (10 * pt)) {lkKenten = shape} 0 0 [] 0 0 noBoxSource Nothing noLeaf 0 Nothing)
       lineOverhang False (10 * pt) central (lineOf [kenten (Just KentenSesame)]) @?= 5 * pt
       lineOverhang False (10 * pt) central (lineOf [kenten Nothing]) @?= 0,
     testCase "the overhang of a line is that of its highest box" $
@@ -2143,7 +2200,7 @@ codeBlockRubyTests =
     plainLine = Line [] 0 0 0 (0, 0) 0 (0, 0) Nothing AdjustUniform
     lineOf items = Line items 0 0 0 (0, 0) 0 (0, 0) Nothing AdjustUniform
     -- a ruby box of the kind set at 10pt, its reading at half that; its base characters at 10pt unless given
-    rubyBox kind text bases = Box (10 * pt) (BoxContent text False 0 0 (fromEnum kind) (plainLook "body" (10 * pt)) 0 0 bases 0 0 noBoxSource Nothing noLeaf 0)
+    rubyBox kind text bases = Box (10 * pt) (BoxContent text False 0 0 (fromEnum kind) (plainLook "body" (10 * pt)) 0 0 bases 0 0 noBoxSource Nothing noLeaf 0 Nothing)
     firstPage pl = take 1 (gridPages pl)
     -- the grid line after the code block of the first page
     codeEnd pl = sum (take 1 [s + n | p <- firstPage pl, (s, SCode _ _ n) <- poSlots p])
@@ -2421,3 +2478,54 @@ englishTemplateTests =
 #else
 englishTemplateTests = []
 #endif
+
+{- | Builds b with Source Sans Pro rewritten (root ADR 0420): the errors and
+whether the PDF was written.
+-}
+seacBuild :: (BS.ByteString -> BS.ByteString) -> IO ([DiagnosticCode], Bool)
+seacBuild rewrite = do
+  (sans, _) <- realLatinFonts
+  b <- buildMarksFilesWith "b\n" (\o -> o {optFonts = golemFontProvider}) (Just sansStyle') [("fonts/sans.otf", rewrite sans)]
+  pure (map diagCode (bErrors b), isJust (bPdf b))
+  where
+    sansStyle' = horizontalStyle <> "\n[fonts.body]\nlatin = \"fonts/sans.otf\"\n"
+
+{- | The CharStrings of Source Sans Pro rewritten in place (root ADR 0420):
+the glyph b (29, 56 bytes), its seacBase A (code 65, glyph 2), its seacAccent grave
+(code 193, glyph 1804) and the local subroutine 503, the last of the 611.
+-}
+seacUsed, seacBase, seacAccent, seacSubroutine503 :: [Word8] -> BS.ByteString -> BS.ByteString
+seacUsed program f = seacExpect 51650 [134, 248, 81] f (seacPatch 51650 56 14 program f)
+seacBase program f = seacExpect 51363 [97, 29, 14] f (seacPatch 51363 3 14 program f)
+seacAccent program f = seacExpect 116734 [123, 248, 49] f (seacPatch 116734 15 14 program f)
+seacSubroutine503 program f = seacExpect 130482 [57, 251, 118] f (seacPatch 130482 34 11 program f)
+
+-- | The rewritten bytes, if the bytes at an offset are those expected.
+seacExpect :: Int -> [Word8] -> BS.ByteString -> BS.ByteString -> BS.ByteString
+seacExpect at bytes f patched = if BS.unpack (BS.take (length bytes) (BS.drop at f)) == bytes then patched else error ("not the bytes at " <> show at)
+
+-- | The three-byte end offset of a CharString in the CharStrings INDEX of Source Sans Pro.
+seacCharStringEnd :: Int -> Int -> BS.ByteString -> BS.ByteString
+seacCharStringEnd at v f = BS.take at f <> BS.pack [fromIntegral (v `div` 65536), fromIntegral (v `div` 256), fromIntegral v] <> BS.drop (at + 3) f
+
+-- | The bytes of a font file from an offset replaced by a program, the rest of the length filled.
+seacPatch :: Int -> Int -> Word8 -> [Word8] -> BS.ByteString -> BS.ByteString
+seacPatch at len fill program f
+  | length program > len = error ("a program longer than " <> show len)
+  | otherwise = BS.take at f <> BS.pack program <> BS.replicate (len - length program) fill <> BS.drop (at + len) f
+
+-- | adx ady bchar achar endchar, the offsets 0.
+seacProgram :: Int -> Int -> [Word8]
+seacProgram b a = seacNum 0 <> seacNum 0 <> seacNum b <> seacNum a <> [14]
+
+-- | callsubr of a number.
+seacCall :: Int -> [Word8]
+seacCall k = seacNum k <> [10]
+
+-- | A number of a Type 2 CharString.
+seacNum :: Int -> [Word8]
+seacNum v
+  | v >= -107 && v <= 107 = [fromIntegral (v + 139)]
+  | v >= 108 && v <= 1131 = let w = v - 108 in [fromIntegral (247 + w `div` 256), fromIntegral (w `mod` 256)]
+  | v <= -108 && v >= -1131 = let w = negate v - 108 in [fromIntegral (251 + w `div` 256), fromIntegral (w `mod` 256)]
+  | otherwise = [28, fromIntegral (v `div` 256), fromIntegral v]

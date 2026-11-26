@@ -105,7 +105,7 @@ Golem の構成は、IO を処理の両端に寄せ、そのあいだを純粋�
 @figure images/purity.svg alt="左に読む側の IO のエッジ（原稿と manifest.toml、プラグインの配布物、図版と書誌と CSV と TSV、フォント）、中央に純粋なカーネル（構文解析、S0 の evalFile、S1 の assemble、S2 の行分割と改ページ、直列化）、右に書く側の IO のエッジ（build/ の下の出力）を置いた図。中央には、wasmtime と HarfBuzz と FreeType を純粋な関数として包んだ箱が点線で描かれ、下の帯に、時計、乱数、環境変数、ロケール、タイムゾーン、ディレクトリの列挙、ネットワーク、システムのフォントを出力に影響させないことが書かれている"
   純粋なカーネルと、読む側と書く側の IO のエッジ。
 
-IO を持つのは、golem-driver の [code: evaluateProjectWith] と [code: buildCore]、golem-typeset の PDF を組む [code: renderPdf] と [code: renderPdfView]、golem-project の [code: loadProjectWith] と [code: resolveInRoot]、golem-font のフォントを開く [code: loadFont] とサブセットを作る [code: subsetFont]、golem-plugin のプラグインを読み込む [code: loadPlugin] と [code: Golem.Plugin.Lock] のキャッシュの読み書き、golem-epub の [code: writeEpub]、それに golem-cli と golem-lsp である。
+IO を持つのは、golem-evaluate の [code: evaluateProjectWith]、golem-driver の [code: buildCore]、golem-typeset の PDF を組む [code: renderPdf] と [code: renderPdfView]、golem-project の [code: loadProjectWith] と [code: resolveInRoot]、golem-font のフォントを開く [code: loadFont] とサブセットを作る [code: subsetFont]、golem-plugin のプラグインを読み込む [code: loadPlugin] と [code: Golem.Plugin.Lock] のキャッシュの読み書き、golem-epub の [code: writeEpub]、それに golem-cli と golem-lsp である。
 開発用の golem-fixtures と golem-test-support を除き、ほかのライブラリのモジュールは、公開する関数の型に [code: IO] を持たない。
 処理の各段階は、読み込みの済んだ値を受け取る純粋な関数として書いてある。
 主な関数の型は次のとおりである。
@@ -153,7 +153,7 @@ S0 の結果から S1 を組み直す [code: evReassemble] も、同じ形の純
 
 ### 読むファイルは原稿の記述で決まる
 
-図版、取り込むコード、CSV と TSV は、golem-driver の [code: loadAssets] が、各ファイルの AST から [code: assetRefs] で集めたパスだけを読む。
+図版、取り込むコード、CSV と TSV は、golem-evaluate の [code: loadAssets] が、各ファイルの AST から [code: assetRefs] で集めたパスだけを読む。
 パスは golem-project の [code: normalizeRelative] で字句の上で正規化し、[code: resolveInRoot] でプロジェクトルートの外を指していないことを確かめる。
 PDF の経路は、図版のファイル（PNG、JPEG、PDF、SVG）を、golem-typeset の [code: loadFigures] が S1 の結果の図版のブロックから集めたパスとページの組だけ読む。
 ディレクトリを列挙する [code: listDirectory] は、[code: golem new] が作る先のディレクトリが空かどうかを見る箇所と、LSP がワークスペースを探す箇所にしか現れない。
@@ -229,6 +229,29 @@ HarfBuzz のオブジェクト（blob、face、font）は開いた後は読む�
 呼び出しごとにインスタンスを作り直すのも同じ考えによる。
 状態を持ち越すと、呼び出しの順で結果が変わり、[code: callCommand] は関数ではなくなる。
 
+C の関数を呼ぶ [code: foreign import] は、[code: safe] か [code: unsafe] のどちらかを必ず書く。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0435-call-long-ffi-functions-safely.md]（docs/adr の ADR 0435「長くかかりうる FFI の呼び出しを safe で呼び、unsafe の呼び出しを一覧で管理する」）]
+二つの違いは、呼び出しのあいだ capability を手放すかどうかにある。
+[code: unsafe] の呼び出しは費用が小さいが、終わるまで capability を手放さない。
+そのあいだに GC の同期が起きると、ほかのすべての capability が、その呼び出しが終わるまで待たされる。
+[code: safe] の呼び出しは、capability を手放してから C の関数に入るので、ほかのスレッドは止まらない。
+[code: golem] は [code: -threaded -N] で動き、LSP も同じ実行ファイルの中で動くので、長い [code: unsafe] の呼び出しは、LSP の応答や並べて組む段落をまとめて遅らせる。
+そこで、プラグインのコンパイル（[code: golem_plugin_load]）、WAT から wasm への変換（[code: golem_wat2wasm]）、フォントを開くこと（[code: golem_font_open]）、サブセットを作ること（[code: golem_font_subset]）は、[code: safe] で呼ぶ。
+どれもプラグインかフォントの数だけしか呼ばないので、[code: safe] の費用は無視できる。
+
+[code: unsafe] で呼んでよいのは、次の三つのどれかに当たる呼び出しだけである。
+
++ 呼び出しの時間が入力の大きさによらず短く、ロックを待たない呼び出し（値の読み出し、領域の解放など）。
++ 呼び出しの数が多く、[code: safe] の費用が無視できないので、理由を書いて [code: unsafe] のまま残す呼び出し。語ごとに呼ぶシェイピングの [code: golem_font_shape] は、これに当たる。
++ capability を手放さないことそのものが目的の呼び出し。golem-test-support のテストの [code: sleep] は、非 threaded のランタイムの唯一の OS のスレッドを止めるために、わざと [code: unsafe] で呼ぶ。
+
+[code: unsafe] の呼び出しは、[code: scripts/ci/unsafe-ffi.tsv] に一行ずつ書く。
+一行は、モジュールのパス、C の関数の名前、上の理由の番号、理由の文を、タブで区切ったものである。
+[code: scripts/ci/test.sh] は、[code: modules] の下の Haskell のソースから注釈を除いて [code: foreign import] を探し、[code: unsafe] の宣言の（モジュールのパス、C の関数の名前）の集合が一覧と等しいことを確かめる。
+C の関数の名前は、引用符の中の文字列の最後の語である。
+[code: &] で始まる名前は関数のアドレスを取るだけの import で、呼び出しではないので数えない。
+一覧に無い [code: unsafe] の呼び出しも、ソースから消えた一覧の行も、[code: safe] も [code: unsafe] も書かない [code: foreign import] も、検査を落とす。
+GHC は安全さの指定を省いた呼び出しを [code: safe] とするが、どちらかを書かせるのは、[code: unsafe] の呼び出しが一覧の検査をすり抜けないようにするためである。
+
 ### メモ化
 
 golem-typeset の [code: Golem.Typeset.FontProvider] は、字の送りと二字のカーニングの計算、単語とランのシェイピングを、[code: Golem.Typeset.Memo] の [code: memoWith] でメモ化している。
@@ -255,9 +278,9 @@ PDF の経路の [code: buildFlow]（[code: Golem.Driver.Pdf]）は IO の関数
 このため、どのスレッドが先に終わっても、組版の結果のリストは同じになる。
 golem-driver のテストは、並列と逐次で組んだ PDF のバイト列が一致することを、機能ごとに確かめている（[code: PdfSpec] の「the features in parallel and in sequence give the same bytes」など）。
 
-golem-driver-test は [code: -threaded] と [code: -with-rtsopts=-N] でビルドし、マシンのすべてのプロセッサを capability（GHC のランタイムが Haskell のコードを実行する OS のスレッドの枠）にする。
+golem-driver のテストのスイートのうち、プロセスの状態を変えないテストを置く四つ（golem-driver-pdf-test、golem-driver-page-test、golem-driver-output-test、golem-driver-cli-test）は [code: -threaded] と [code: -with-rtsopts=-N] でビルドし、マシンのすべてのプロセッサを capability（GHC のランタイムが Haskell のコードを実行する OS のスレッドの枠）にする。
 [code: mapConcurrently] のスレッドは別々のプロセッサで同時に動き、C の関数の呼び出しも重なりうる。
-tasty もこのスイートのテストを同時に走らせるので、環境変数やロケールの符号化のようなプロセスの状態を変えるテストは、[code: -threaded] でない別のスイート [code: golem-driver-global-test] に置く。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0146-threaded-golem-driver-test.md]（docs/adr の ADR 0146「golem-driver-test を threaded の RTS で並べて走らせ、プロセスの状態を変えるテストを別のスイートに分ける」）]
+tasty もこれらのスイートのテストを同時に走らせるので、環境変数やロケールの符号化のようなプロセスの状態を変えるテストは、[code: -threaded] でない別のスイート [code: golem-driver-global-test] に置く。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0146-threaded-golem-driver-test.md]（docs/adr の ADR 0146「golem-driver-test を threaded の RTS で並べて走らせ、プロセスの状態を変えるテストを別のスイートに分ける」）]
 並列に組む回数を増やして競合を探すのは、同じく [code: -threaded] でビルドするテストのスイート [code: golem-driver-parallel-test] である。
 生成した原稿と [code: tempest]、[code: kanikosen] の見本を並列と逐次で組み、バイト列と diagnostics が一致することを確かめる。
 [code: golem] の実行ファイルも [code: -with-rtsopts=-N] でリンクし、マシンのすべてのプロセッサを capability にする。
@@ -275,7 +298,7 @@ Template Haskell の [code: runIO] は、コンパイルの時点でファイル
 golem-layout の [code: Golem.Layout.Hyphenation.EnUs] は、この方法で hyph-utf8 のパターンを埋め込んでいる。
 [code: addDependentFile] によって、ファイルが変わればモジュールがコンパイルし直される。
 
-golem-driver の [code: Golem.Driver.Version] はリポジトリの [code: VERSION] を、[code: Golem.Driver.Explain] は diagnostic のコードの説明を埋め込んでいる。
+golem-driver の [code: Golem.Driver.Version] はリポジトリの [code: VERSION] を、golem-evaluate の [code: Golem.Evaluate.Explain] は diagnostic のコードの説明を埋め込んでいる。
 この二つは Template Haskell を使わず、[code: scripts/gen-embedded.sh] がファイルから生成してコミットしたモジュールを読む（第[ref-number build-test]章）。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0203-generated-modules-instead-of-template-haskell-in-golem-driver.md]（docs/adr の ADR 0203「golem-driver の Template Haskell を、生成してコミットしたモジュールにする」）]
 ファイルが変わったのに生成し直していなければ、golem-driver のテストと CI が止める。
 
@@ -427,7 +450,7 @@ ADR 0002 の各規則が、どこで、どの仕組みで守られているか�
 | 時計を読まない | golem-pdf、golem-epub | 日時は [code: metadata.date] から作り、zip の時刻には 0 を渡す |
 | 乱数を使わない | golem-cli | [code: golem new] の id だけ。ライブラリには引数で渡す |
 | 環境変数、ロケール | golem-project、golem-plugin | 原稿はバイト列で読む。[code: XDG_CACHE_HOME] は場所だけを決める |
-| ディレクトリを列挙しない | golem-driver | 読むファイルは [code: assetRefs] が原稿から集める |
+| ディレクトリを列挙しない | golem-evaluate | 読むファイルは [code: assetRefs] が原稿から集める |
 | 走査の順を固定する | すべて | [code: Data.Map]。freeze のフラグ |
 | 並列の結果の順 | golem-typeset | [code: mapConcurrently] は入力の順で返す |
 | 浮動小数点数 | golem-eval、golem-layout、golem-font | 超越関数を持たない。sp と有理数。[code: -ffp-contract=off] |

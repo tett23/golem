@@ -17,10 +17,11 @@ import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Text.IO qualified as TIO
 import FmtTableSpec (fmtTableTests)
-import Golem.Driver.Explain (catalog)
 import Golem.Driver.Version (golemVersion)
+import Golem.Evaluate.Explain (catalog)
 import Golem.Syntax.Sha256 (sha256)
 import Golem.TestSupport.Manifest (TestManifest (..), manifestToml, testManifest)
+import KinsokuSpec (kinsokuTests)
 import LocaleSpec (localeTests)
 import RtsSpec (rtsTests)
 import System.Directory (createDirectoryIfMissing, doesDirectoryExist, doesFileExist)
@@ -188,6 +189,7 @@ tests =
       tomlMessageTests,
       noticeTests,
       commandsTests,
+      kinsokuTests,
       cffRandomTests,
       localeTests,
       rtsTests,
@@ -236,10 +238,10 @@ fmtCrTests =
         lookup "a.gm" files' @?= Just "一。\n二。\n"
         lookup "b.gm" files' @?= Just "三。\n",
       testCase "a file read only by @import is fixed too" $ do
-        ([(code, _, err)], files') <- golemSteps [("manifest.toml", crManifest ["a.gm"]), ("a.gm", "@import c.gm as c\n\n本文。\n"), ("c.gm", "一。\r\n")] [["fmt"]]
+        ([(code, _, err)], files') <- golemSteps [("manifest.toml", crManifest ["a.gm"]), ("a.gm", "@import c.gm * as c\n\n本文。\n"), ("c.gm", "一。\r\n")] [["fmt"]]
         assertEqual err ExitSuccess code
         lookup "c.gm" files' @?= Just "一。\n"
-        lookup "a.gm" files' @?= Just "@import c.gm as c\n\n本文。\n",
+        lookup "a.gm" files' @?= Just "@import c.gm * as c\n\n本文。\n",
       testCase "a CR in manifest.toml is G01003, and nothing is rewritten" $ do
         let files = [("manifest.toml", T.unpack (T.replace "\n" "\r\n" (T.pack (crManifest ["a.gm"])))), ("a.gm", "本文。\r\n")]
         ([(code, _, err)], files') <- golemSteps files [["fmt"]]
@@ -258,7 +260,7 @@ fmtCrTests =
         ([(code, _, err)], files') <- golemSteps [("f.emet", messy)] [["fmt", "f.emet"]]
         assertEqual err ExitSuccess code
         lookup "f.emet" files' @?= Just tidy
-        ([(code', _, err'), (lcode, _, lerr)], files'') <- golemSteps [("manifest.toml", crManifest ["a.gm"]), ("a.gm", "@import f.emet as f\n\n[f.f]\n"), ("f.emet", messy)] [["fmt"], ["lint"]]
+        ([(code', _, err'), (lcode, _, lerr)], files'') <- golemSteps [("manifest.toml", crManifest ["a.gm"]), ("a.gm", "@import f.emet * as f\n\n[f.f]\n"), ("f.emet", messy)] [["fmt"], ["lint"]]
         assertEqual err' ExitSuccess code'
         lookup "f.emet" files'' @?= Just tidy
         -- the lint of .emet: helper is not used
@@ -276,7 +278,8 @@ fmtCrTests =
 inMissingProject :: [String] -> IO (ExitCode, String)
 inMissingProject args = withSystemTempDirectory "golem-cli" $ \tmp -> do
   createDirectoryIfMissing True (tmp </> "chapters")
-  TIO.writeFile (tmp </> "manifest.toml") (manifestToml testManifest {tmChapters = ["chapters/01.gm"]})
+  -- HTML embeds the fonts, so that it looks for their files (docs/adr/0423)
+  TIO.writeFile (tmp </> "manifest.toml") (manifestToml testManifest {tmChapters = ["chapters/01.gm"]} <> "fonts = \"embed\"\n")
   TIO.writeFile (tmp </> "style.toml") "[page]\nsize = \"A5\"\nbinding = \"left\"\nwriting-mode = \"horizontal\"\n\n[page.grid]\nfont-size = \"10pt\"\ncharacters = 12\nlines = 30\nline-pitch = \"15pt\"\ncolumns = 1\nposition = { top = \"18mm\", gutter = \"20mm\" }\n\n[fonts.body]\nja = \"fonts/missing.otf\"\n"
   TIO.writeFile (tmp </> "chapters/01.gm") "# はじめに\n\n本文。\n"
   (code, _, err) <- readCreateProcessWithExitCode (proc "golem" args) {cwd = Just tmp} ""
@@ -315,8 +318,8 @@ golemIn files args = withSystemTempDirectory "golem-cli" $ \tmp -> do
 shortFootnoteTests :: TestTree
 shortFootnoteTests =
   testGroup
-    "Golem ADR 0353 I1/I2: short columns with PDF footnotes"
-    [ testCase "capacities 1 and 2 report G07125 at the note and write no PDF" $
+    "Golem ADR 0353 I1, I2: short columns with PDF footnotes"
+    [ testCase "Golem ADR 0353 I1, I2: capacities 1 and 2 report G07125 at the note and write no PDF" $
         forM_ ([1, 2] :: [Int]) $ \capacity -> withSystemTempDirectory "golem-short-note" $ \tmp -> do
           createDirectoryIfMissing True (tmp </> "fonts")
           BS.readFile "../golem-font/test/fonts/SourceSansPro-Regular.otf" >>= BS.writeFile (tmp </> "fonts/latin.otf")
@@ -619,7 +622,7 @@ golemOutputs :: [(FilePath, String)] -> [String] -> IO (ExitCode, String, [(File
 golemOutputs files args = withSystemTempDirectory "golem-cli" $ \tmp -> do
   mapM_ (\(p, c) -> BL.writeFile (tmp </> p) (BL.fromStrict (TE.encodeUtf8 (T.pack c)))) files
   (code, _, err) <- readCreateProcessWithExitCode (proc "golem" args) {cwd = Just tmp} ""
-  outs <- mapM (\p -> (p,) <$> BL.readFile (tmp </> "build" </> p)) ["html/a.xhtml", "text/vertical/a.txt", "text/horizontal/a.txt"]
+  outs <- mapM (\p -> (p,) <$> BL.readFile (tmp </> "build" </> p)) ["html/a.html", "text/vertical/a.txt", "text/horizontal/a.txt"]
   pure (code, err, outs)
 
 -- | The notices (golem-syntax ADR 0002).
@@ -675,7 +678,7 @@ noticeTests =
         let files =
               [ (p, if p == "manifest.toml" then c <> "\n[functions.requires]\nfile = [\"w.tsv\"]\n" else c) | (p, c) <- noticeFiles, p /= "a.gm"
               ]
-                <> [ ("a.gm", "@import f.emet as f\n\n[f.x]\n"),
+                <> [ ("a.gm", "@import f.emet * as f\n\n[f.x]\n"),
                      ("f.emet", "pub inline x :: <file \"w.tsv\"> Inlines\nx = Inline.text \"x\"\n"),
                      ("w.tsv", "w\n")
                    ]

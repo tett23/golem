@@ -20,8 +20,8 @@ import Golem.Doc.IR
 import Golem.Epub
 import Golem.Html
 import Golem.Syntax.Span
-import System.Directory (setModificationTime)
-import System.FilePath ((</>))
+import System.Directory (createDirectoryIfMissing, setModificationTime)
+import System.FilePath (takeDirectory, (</>))
 import System.IO.Temp (withSystemTempDirectory)
 import Test.Tasty
 import Test.Tasty.HUnit
@@ -46,7 +46,8 @@ cfg0 =
       epPublisher = Just "出版社",
       epCreators = [EpubCreator "著者" (Just "ちょしゃ") "aut"],
       epContributors = [],
-      epVertical = False
+      epVertical = False,
+      epPageList = []
     }
 
 -- | The lines of a document that start with a prefix.
@@ -88,7 +89,7 @@ entry l fid anchor title = TocEntry l Nothing [Text (mkSpan fid 0 1) title] anch
 
 htmlConfig :: HtmlConfig
 htmlConfig =
-  HtmlConfig "書名" "ja" False Nothing "kanji" Map.empty Map.empty Map.empty Map.empty Map.empty noFace noFace Map.empty False True Map.empty False "center" "space-between" "center" Nothing Set.empty False Nothing (HtmlCode Nothing Nothing Nothing "0.5em" Nothing "0.25pt" False Nothing Nothing Nothing Nothing Map.empty) Map.empty arabic
+  HtmlConfig "書名" "ja" False Nothing "kanji" Map.empty Map.empty Map.empty Map.empty Map.empty noFace noFace Map.empty False True Map.empty False "center" "space-between" "center" Nothing Set.empty False Nothing (HtmlCode Nothing Nothing Nothing "0.5em" Nothing "0.25pt" False Nothing Nothing Nothing Nothing Map.empty) Map.empty arabic arabic True [] Map.empty Nothing
 
 -- | The archive writeEpub writes for a book of two empty files.
 written :: IO Archive
@@ -101,7 +102,7 @@ written = withSystemTempDirectory "golem-epub" $ \tmp -> do
 {- | Builds the same book in a fresh project root (a new temporary
 directory each call), with the given modification time on the assets
 and the assets in the given order, as an asset producer may list them.
-Returns the root and the bytes of the EPUB (Golem ADR 0361).
+Returns the root and the bytes of the EPUB (root ADR 0421).
 -}
 archiveBytes :: Integer -> [FilePath] -> IO (FilePath, BS.ByteString)
 archiveBytes epoch names = withSystemTempDirectory "epub-project" $ \root -> do
@@ -126,8 +127,8 @@ withoutRoot (root, bytes) =
 determinism :: TestTree
 determinism =
   testGroup
-    "Golem ADR 0361"
-    [ testCase "ADR 0361 I1: inv1_epub_byte_determinism_property: the same book in other roots, at other times, with the assets in any order, is the same bytes" $ do
+    "root ADR 0421 (formerly Golem ADR 0361)"
+    [ testCase "root ADR 0421 I1: inv1_epub_byte_determinism_property: the same book in other roots, at other times, with the assets in any order, is the same bytes" $ do
         let names = ["a.png", "b.png", "c.png"]
         expected <- archiveBytes 1000000000 names
         withoutRoot expected
@@ -138,20 +139,81 @@ determinism =
               snd actual @?= snd expected
           )
           (permutations names),
-      testCase "ADR 0361 I1: inv1_epub_byte_determinism_case_1: the same book built in another directory is the same bytes" $ do
+      testCase "root ADR 0421 I1: inv1_epub_byte_determinism_case_1: the same book built in another directory is the same bytes" $ do
         expected <- archiveBytes 1000000000 ["a.png"]
         actual <- archiveBytes 1700000000 ["a.png"]
         assertBool "the roots differ" (fst actual /= fst expected)
         snd actual @?= snd expected,
-      testCase "ADR 0361 I1: inv1_epub_byte_determinism_case_2: only the order the assets are listed in differs, and the bytes are the same" $ do
+      testCase "root ADR 0421 I1: inv1_epub_byte_determinism_case_2: only the order the assets are listed in differs, and the bytes are the same" $ do
         expected <- archiveBytes 1000000000 ["a.png", "b.png"]
         actual <- archiveBytes 1000000000 ["b.png", "a.png"]
         snd actual @?= snd expected
     ]
 
+{- | A site that names generic families (root ADR 0423 I1): no font file
+in the EPUB and none in its manifest, though the role has one; with
+fonts = "embed" the font is packaged as before (I5).
+-}
+genericFonts :: TestTree
+genericFonts =
+  testGroup
+    "root ADR 0423"
+    [ testCase "root ADR 0423 I1: a site of generic families puts no font in the EPUB" $ do
+        (names, packageDoc, css) <- epubOf False
+        (filter (T.isInfixOf "fonts/" . T.pack) names, T.isInfixOf "font/otf" packageDoc, T.isInfixOf "@font-face" css) @?= ([], False, False),
+      testCase "root ADR 0423 I5: a site that embeds the fonts packages them in the EPUB" $ do
+        (names, packageDoc, css) <- epubOf True
+        (filter (T.isInfixOf "fonts/" . T.pack) names, T.isInfixOf "font/otf" packageDoc, T.isInfixOf "@font-face" css) @?= (["OEBPS/fonts/b.otf"], True, True)
+    ]
+  where
+    epubOf embed = withSystemTempDirectory "golem-epub" $ \root -> do
+      BS.writeFile (root </> "b.otf") "fake"
+      let site = renderXhtml htmlConfig {hcFonts = Map.singleton "body" (Just "b.otf", Nothing), hcEmbedFonts = embed} ft emptyBook
+      writeEpub root (root </> "book.epub") cfg0 ft emptyBook site
+      archive <- toArchive . BL.fromStrict <$> BS.readFile (root </> "book.epub")
+      let textOf path = maybe "" (T.pack . map (toEnum . fromEnum) . BL.unpack . fromEntry) (findEntryByPath path archive)
+      pure (map eRelativePath (zEntries archive), textOf "OEBPS/package.opf", textOf "OEBPS/style.css")
+
+-- | The license documents of the fonts in the EPUB (root ADR 0433).
+fontLicenses :: TestTree
+fontLicenses =
+  testGroup
+    "root ADR 0433"
+    [ testCase "root ADR 0433 I2: the license documents are in OEBPS/fonts/ and in the manifest, .md as text/markdown and the others as text/plain" $ do
+        (names, packageDoc) <- epubOf True ["OFL.md", "lic/OFL.txt", "LICENSE"]
+        filter (T.isPrefixOf "OEBPS/fonts/" . T.pack) names @?= ["OEBPS/fonts/LICENSE", "OEBPS/fonts/OFL.md", "OEBPS/fonts/OFL.txt", "OEBPS/fonts/b.otf"]
+        [snd (T.breakOn "href=" l) | l <- T.lines packageDoc, "href=\"fonts/" `T.isInfixOf` l]
+          @?= [ "href=\"fonts/LICENSE\" media-type=\"text/plain\"/>",
+                "href=\"fonts/OFL.md\" media-type=\"text/markdown\"/>",
+                "href=\"fonts/OFL.txt\" media-type=\"text/plain\"/>",
+                "href=\"fonts/b.otf\" media-type=\"font/otf\"/>"
+              ],
+      testCase "root ADR 0433 I2: the media type of a license document is not that of its extension" $
+        filter (T.isInfixOf "<item id=\"item") (T.lines (packageDocumentWithLicenses cfg0 ["fonts/LICENSE.css", "fonts/OFL.MD"] [] ["fonts/LICENSE.css", "fonts/OFL.MD", "fonts/x.otf", "fonts/y.css"]))
+          @?= [ "<item id=\"item1\" href=\"fonts/LICENSE.css\" media-type=\"text/plain\"/>",
+                "<item id=\"item2\" href=\"fonts/OFL.MD\" media-type=\"text/markdown\"/>",
+                "<item id=\"item3\" href=\"fonts/x.otf\" media-type=\"font/otf\"/>",
+                "<item id=\"item4\" href=\"fonts/y.css\" media-type=\"text/css\"/>"
+              ],
+      testCase "root ADR 0433 I5: a site of generic families puts no license document in the EPUB" $ do
+        (names, packageDoc) <- epubOf False ["OFL.md"]
+        (filter (T.isInfixOf "fonts/" . T.pack) names, T.isInfixOf "text/markdown" packageDoc) @?= ([], False)
+    ]
+  where
+    epubOf embed licenses = withSystemTempDirectory "golem-epub" $ \root -> do
+      BS.writeFile (root </> "b.otf") "fake"
+      mapM_ (\l -> createDirectoryIfMissing True (takeDirectory (root </> l)) >> BS.writeFile (root </> l) "license") licenses
+      let site = renderXhtml htmlConfig {hcFonts = Map.singleton "body" (Just "b.otf", Nothing), hcEmbedFonts = embed, hcFontLicenses = licenses} ft emptyBook
+      writeEpub root (root </> "book.epub") cfg0 ft emptyBook site
+      archive <- toArchive . BL.fromStrict <$> BS.readFile (root </> "book.epub")
+      let textOf path = maybe "" (T.pack . map (toEnum . fromEnum) . BL.unpack . fromEntry) (findEntryByPath path archive)
+      pure (map eRelativePath (zEntries archive), textOf "OEBPS/package.opf")
+
 tests :: [TestTree]
 tests =
   [ determinism,
+    genericFonts,
+    fontLicenses,
     testGroup
       "package document"
       [ testCase "the identifier is the given ISBN" $
@@ -248,6 +310,12 @@ tests =
           assertBool "no URL in the navigation document" (not ("example.com" `T.isInfixOf` nav)),
         testCase "the nav element is the toc" $
           linesWith "<nav" (navDocument cfg0 ft emptyBook) @?= ["<nav epub:type=\"toc\" id=\"toc\">"],
+        testCase "root ADR 0386 I1: no page map preserves the navigation bytes" $
+          assertBool "no extra navigation element or blank line" ("</nav>\n</body>" `T.isInfixOf` navDocument cfg0 ft emptyBook),
+        testCase "root ADR 0386 I1: a mapped page is a page-list link" $ do
+          let nav = navDocument cfg0 {epPageList = [("xii", "a.xhtml", "page-12")]} ft emptyBook
+          assertBool "page-list navigation" ("epub:type=\"page-list\"" `T.isInfixOf` nav)
+          assertBool "the actual body anchor" ("href=\"a.xhtml#page-12\">xii</a>" `T.isInfixOf` nav),
         -- golem-epub ADR 0002
         testCase "@toc depth=1: only the headings of level 1, no nested ol" $
           linesWith "<ol>" (navDocument cfg0 ft (threeLevels (Just 1)))

@@ -32,10 +32,10 @@ localeTests =
           ref <- withEncoding "UTF-8" builtOutputs
           euc <- withEncoding "EUC-JP" builtOutputs
           map fst ref
-            @?= [ "html/chapters/01.xhtml",
-                  "html/chapters/02.xhtml",
-                  "html/front.xhtml",
-                  "html/index.xhtml",
+            @?= [ "html/chapters/01.html",
+                  "html/chapters/02.html",
+                  "html/front.html",
+                  "html/index.html",
                   "html/style.css",
                   "text/horizontal/chapters/01.txt",
                   "text/horizontal/chapters/02.txt",
@@ -47,7 +47,7 @@ localeTests =
           map fst euc @?= map fst ref
           forM_ (zip ref euc) $ \((p, a), (_, b)) -> assertEqual p a b
           -- the fixture's heading, in UTF-8
-          case lookup "html/chapters/01.xhtml" ref of
+          case lookup "html/chapters/01.html" ref of
             Nothing -> assertFailure (show (map fst ref))
             Just b -> assertBool "はじめに in UTF-8" (TE.encodeUtf8 "はじめに" `BS.isInfixOf` b)
       ]

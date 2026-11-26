@@ -75,7 +75,13 @@ varsTests :: TestTree
 varsTests =
   testGroup
     "[vars] (docs/adr/0185)"
-    [ testCase "{vars.product} of a running head shows the value, numbers and tables too" $ do
+    [ testCase "root ADR 0458 I1: {set.<alias>} shows the variable imported under the alias" $ do
+        let files = [("a.gm", "@import common/values.gm { price as cost }\n\n" <> twoChapters), ("common/values.gm", "@set price = \"P\"\n")]
+        (heads, _) <- layoutHeads miniManifest (headsStyle "content = [\"{set.cost}\"]") files
+        Map.lookup 2 heads @?= Just ["P"]
+        (plain, _) <- layoutHeads miniManifest (headsStyle "content = [\"x{set.price?}\"]") files
+        Map.lookup 2 plain @?= Just ["x"],
+      testCase "{vars.product} of a running head shows the value, numbers and tables too" $ do
         (heads, _) <- layoutHeads pdfManifest (headsStyle "content = [\"{vars.product} {vars.count} {vars.author.short}\"]") [("a.gm", twoChapters)]
         Map.lookup 2 heads @?= Just ["Golem 3 tett23"],
       testCase "a running head shows the texts of [vars] given in the PdfInput (docs/adr/0196)" $ do
@@ -112,11 +118,11 @@ varsTests =
             src = [("a.gm", "[= vars.product] [= vars.count]\n")]
         (ds, _, dev) <- buildWith (defaultOptions ".") {optProfile = Dev} manifest horizontalStyle src
         [diagMessage d | d <- ds, isError d] @?= []
-        assertBool (show (map fst dev)) (any ((".xhtml" `isSuffixOf`) . fst) dev)
+        assertBool (show (map fst dev)) (any ((".html" `isSuffixOf`) . fst) dev)
         (_, _, prod) <- buildWith (defaultOptions ".") {optProfile = Prod} manifest horizontalStyle src
-        let html = [b | (p, b) <- dev, ".xhtml" `isSuffixOf` p]
+        let html = [b | (p, b) <- dev, ".html" `isSuffixOf` p]
         assertBool "the value in the HTML" (any ("Golem 3" `BS.isInfixOf`) html)
-        [b | (p, b) <- prod, ".xhtml" `isSuffixOf` p] @?= html,
+        [b | (p, b) <- prod, ".html" `isSuffixOf` p] @?= html,
       testCase "the same input gives the same bytes" $ do
         let style = headsStyle "content = [\"{vars.product}\"]"
             src = [("a.gm", "[= vars.author.short]\n\n" <> twoChapters)]

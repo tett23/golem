@@ -5,7 +5,9 @@ name: Enum
 # the days main has changed since the last successful run of this
 # workflow, and whenever it is started by hand. One step for each area,
 # with its depth and the inputs it draws past the depth; all the steps
-# together within 60 minutes (docs/adr/0208, its section 4). The first
+# together within 60 minutes (docs/adr/0208, its section 4), which the
+# last step judges on every run from the times that each step records
+# through scripts/ci/enum-budget.sh (root ADR 0415). The first
 # step of the areas times each on the settings of pull requests, and each
 # area runs whatever the steps before it gave, unless the run is
 # cancelled (docs/adr ADR 0281). Started by hand with timings, it runs
@@ -137,6 +139,7 @@ jobs:
       # to the log, which gh can read
       - name: The time of each area on the settings of pull requests (docs/adr ADR 0281)
         if: ${{ !cancelled() && steps.needed.outputs.run == 'true' }}
+        shell: sh scripts/ci/enum-budget.sh step {0}
         run: |
           status=0
           sh scripts/ci/enum-timings.sh > "$RUNNER_TEMP/enum-timings.md" || status=$?
@@ -157,6 +160,7 @@ jobs:
       # depth of PaginateInvariantsSpec.prDepth and draw none
       - name: The pagination invariants on every small input (docs/adr/0204, docs/adr/0208)
         if: ${{ !cancelled() && steps.needed.outputs.run == 'true' && !inputs.timings }}
+        shell: sh scripts/ci/enum-budget.sh step {0}
         env:
           GOLEM_ENUM_DEPTH: "5"
           GOLEM_ENUM_PAGINATION_SAMPLES: "5000000"
@@ -168,6 +172,7 @@ jobs:
       # and draw none (docs/adr ADR 0304)
       - name: The keep options on every small input (docs/adr/0261, docs/adr ADR 0304)
         if: ${{ !cancelled() && steps.needed.outputs.run == 'true' && !inputs.timings }}
+        shell: sh scripts/ci/enum-budget.sh step {0}
         env:
           GOLEM_ENUM_KEEP_DEPTH: "4"
           GOLEM_ENUM_KEEP_SAMPLES: "5000000"
@@ -178,6 +183,7 @@ jobs:
       # lines of up to 4 em and draw none
       - name: The line breaking invariants on every small input (docs/adr/0209)
         if: ${{ !cancelled() && steps.needed.outputs.run == 'true' && !inputs.timings }}
+        shell: sh scripts/ci/enum-budget.sh step {0}
         env:
           GOLEM_ENUM_LINES_DEPTH: "3"
           GOLEM_ENUM_LINES_SAMPLES: "5000000"
@@ -187,6 +193,7 @@ jobs:
       # check the default order alone in lines of up to 4 em (docs/adr/0278)
       - name: The order of line adjustment on every small input (docs/adr/0278)
         if: ${{ !cancelled() && steps.needed.outputs.run == 'true' && !inputs.timings }}
+        shell: sh scripts/ci/enum-budget.sh step {0}
         env:
           GOLEM_ENUM_LINES_DEPTH: "3"
         run: cabal test golem-layout-test --test-option=-p --test-option='/order of JLReq/&&/every small input/'
@@ -195,6 +202,7 @@ jobs:
       # (docs/adr ADR 0272)
       - name: The ranges that do not break on every small input (docs/adr ADR 0272)
         if: ${{ !cancelled() && steps.needed.outputs.run == 'true' && !inputs.timings }}
+        shell: sh scripts/ci/enum-budget.sh step {0}
         env:
           GOLEM_ENUM_NOBREAK_DEPTH: "3"
         run: cabal test golem-layout-test --test-option=-p --test-option='/ranges that do not break on every small input/'
@@ -203,6 +211,7 @@ jobs:
       # up to 2 (docs/adr/0277, docs/adr ADR 0280)
       - name: The marks of citations on every small input (docs/adr/0277, docs/adr ADR 0280)
         if: ${{ !cancelled() && steps.needed.outputs.run == 'true' && !inputs.timings }}
+        shell: sh scripts/ci/enum-budget.sh step {0}
         env:
           GOLEM_ENUM_CITE_DEPTH: "3"
         run: cabal test golem-layout-test --test-option=-p --test-option='/GOLEM_ENUM_CITE_DEPTH/'
@@ -211,6 +220,7 @@ jobs:
       # (docs/adr ADR 0280)
       - name: The boundaries inside Latin words on every small input (docs/adr ADR 0280)
         if: ${{ !cancelled() && steps.needed.outputs.run == 'true' && !inputs.timings }}
+        shell: sh scripts/ci/enum-budget.sh step {0}
         env:
           GOLEM_ENUM_JOINED_DEPTH: "3"
         run: cabal test golem-layout-test --test-option=-p --test-option='/GOLEM_ENUM_JOINED_DEPTH/'
@@ -220,9 +230,17 @@ jobs:
       # 4 and 3, and 3 and 3 (docs/adr ADR 0295)
       - name: The widths of the columns of a table on every small input (docs/adr ADR 0295)
         if: ${{ !cancelled() && steps.needed.outputs.run == 'true' && !inputs.timings }}
+        shell: sh scripts/ci/enum-budget.sh step {0}
         env:
           GOLEM_ENUM_TABLE_DEPTH: "5"
         run: cabal test golem-layout-test --test-option=-p --test-option='/GOLEM_ENUM_TABLE_DEPTH/'
+      # the sum of the times of the step that times the areas and of the
+      # steps of the areas, which enum-budget.sh step recorded: over 60
+      # minutes fails the job, on every run (root ADR 0415). It runs
+      # whatever the steps before it gave, as they do, and reads no API
+      - name: The sum of the times of the areas within 60 minutes (root ADR 0415)
+        if: ${{ !cancelled() }}
+        run: sh scripts/ci/enum-budget.sh judge "$RUNNER_TEMP/enum-steps.tsv"
 
   # the medians of the tables of the four jobs, judged against the budgets
   # of 10 seconds an area and 30 in all, into the summary of the run; a

@@ -1,6 +1,6 @@
 # ADR 0099: visual ジョブを build と同時に始め、成果物 visual-pdfs だけを待つ
 
-Status: accepted
+Status: superseded [{"part":"待った後の取り寄せの手順","by":["docs/adr/0442-download-the-waited-artifacts-with-retries-checked-by-digest.md"],"kind":"replace"}]
 
 ## 文脈
 

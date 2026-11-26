@@ -29,8 +29,8 @@ library
     , containers    >=0.6  && <0.8
     , directory     >=1.3  && <1.4
     , filepath      >=1.4  && <1.6
-    , golem-driver
     , golem-emet
+    , golem-evaluate
     , golem-eval
     , golem-fmt
     , golem-lint
@@ -53,7 +53,7 @@ test-suite golem-lsp-test
   type:             exitcode-stdio-1.0
   hs-source-dirs:   test
   main-is:          Main.hs
-  other-modules:    EditingSpec FileMoveSpec FileRenameSpec FunctionsLspSpec PositionEnumSpec PublishSpec SemanticTokensSpec StaleS1Spec Support TableWatchSpec TomlSpec
+  other-modules:    AliasLspSpec EditingSpec FileMoveSpec FileRenameSpec FunctionsLspSpec MovedReferencesSpec PositionEnumSpec PublishSpec SemanticTokensSpec SetRenameSpec StaleS1Spec Support TableWatchSpec TomlSpec
   -- -N: one capability per processor from the start, so that the count
   -- never changes while the suite runs (scripts/ci/rts-capabilities.sh)
   ghc-options:      -threaded "-with-rtsopts=-N"
@@ -66,6 +66,7 @@ test-suite golem-lsp-test
     , filepath
     , golem-driver
     , golem-eval
+    , golem-evaluate
     , golem-lsp
     , golem-plugin
     , golem-syntax

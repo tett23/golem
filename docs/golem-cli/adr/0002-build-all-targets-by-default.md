@@ -1,6 +1,6 @@
 # ADR 0002: --target を省いた golem build はすべてのターゲットを作る
 
-Status: accepted
+Status: superseded [{"part":"既定のターゲット","by":["docs/adr/0431-plain-pdf-1-7-target.md"],"kind":"supplement"}]
 
 ## 文脈
 

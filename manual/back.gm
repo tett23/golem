@@ -1,4 +1,4 @@
-@import common/build-info.gm as build
+@import common/build-info.gm * as build
 
 @nonumber
 # 参考文献

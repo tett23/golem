@@ -10,6 +10,7 @@ chapters = [
   "part1/06-ir.gm",
   "part2/00-part.gm",
   "part2/07-modules.gm",
+  "part2/07-layout-engine.gm",
   "part2/07-emet.gm",
   "part2/08-build-test.gm",
   "part2/09-adr.gm",
@@ -39,6 +40,7 @@ role = "author"
 [targets.pdf]
 
 [targets.html]
+fonts = "embed"
 
 [source]
 paragraph-separator = "blank-line"

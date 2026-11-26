@@ -1,0 +1,72 @@
+{- | @golem lint@ (golem-lint ADR 0001): parse, evaluate to S1, apply the
+rules. Syntax and evaluation errors are reported as well.
+-}
+module Golem.Evaluate.Lint
+  ( lintProject,
+    lintEvaluated,
+  )
+where
+
+import Data.Map.Strict (Map)
+import Data.Map.Strict qualified as Map
+import Data.Set qualified as Set
+import Golem.Assemble (Book (..), LabelTarget (..))
+import Golem.Emet.Lint (lintProgram)
+import Golem.Eval.File (EvalResult (..))
+import Golem.Evaluate
+import Golem.Lint
+import Golem.Parser (commentBoundaryInfos)
+import Golem.Project
+import Golem.Syntax
+
+{- | The diagnostics of golem lint; with @noNotices@ (--no-notices) no
+notice, and otherwise none of the codes of silence-notices (golem-syntax
+ADR 0002); with @verbose@ (--verbose) the infos but those of silence-info,
+and otherwise no info (docs/adr 0104).
+-}
+lintProject :: Profile -> Bool -> Bool -> FilePath -> IO (Map FileId SourceInfo, [Diagnostic])
+lintProject profile noNotices verbose root = do
+  ev <- evaluateProject profile root
+  pure $ case ev of
+    Left f -> (pfSources f, finish Set.empty Set.empty (pfDiagnostics f))
+    Right e ->
+      let m = projectManifest (evProject e)
+          boundaryInfos = concat [commentBoundaryInfos fid (sfCst sf) | (fid, sf) <- Map.toList (projectSources (evProject e))]
+          regular = finish (manifestSilencedNotices m) (manifestSilencedInfo m) (evDiagnostics e <> lintEvaluated e)
+          visible = silenceInfo (manifestSilencedInfo m) boundaryInfos
+       in (withEvaluatedSources e (sourceInfos (evProject e)), sortDiagnostics (regular <> visible))
+  where
+    finish silenced silencedInfo =
+      finishDiagnostics profile (if noNotices then Nothing else Just silenced) silencedInfo verbose
+
+{- | The rules on an evaluated project. G05001 of a file that defines styles
+uses the paragraph styles that keep their lines in that file (docs/adr
+ADR 0005, 0014). The rules of .emet (E07100 to E07102) apply to the .emet
+the project uses, when they load (docs/adr/0162).
+-}
+lintEvaluated :: Evaluated -> [Diagnostic]
+lintEvaluated e = lintGm e <> maybe [] lintProgram (evFunctions e)
+
+lintGm :: Evaluated -> [Diagnostic]
+lintGm e =
+  let project = evProject e
+      sources = Map.toList (projectSources project)
+      keep = keepStyles (evStyle e)
+      locals = localStylesOf e
+      -- how each file was read, @manifest included (docs/adr ADR 0013, 0014)
+      sourceOf fid = maybe (sourceSettingsOf project fid) erSource (Map.lookup fid (evResults e))
+      files =
+        [ FileLint fid (sfPath sf) (sfCst sf) (erSource r) (erUsage r)
+        | (fid, sf) <- sources,
+          Just r <- [Map.lookup fid (evResults e)]
+        ]
+      -- G05001 again for the files with styles of their own
+      perFile ds =
+        [d | d <- ds, not (diagCode d == DiagnosticCode "G05001" && Map.member (spanFile (diagSpan d)) locals)]
+          <> concat [latinJoinedByNewline (sourceOf fid) (keepStyles (docStyles e fid)) fid (sfCst sf) | (fid, sf) <- sources, Map.member fid locals]
+   in case evBook e of
+        Just b -> perFile (lint (LintInput files (Map.map ltSpan (bookLabels b)) (bookReferenced b) keep))
+        -- evaluation stopped: only the rules that need no evaluation
+        Nothing
+          | null files -> concat [latinJoinedByNewline (sourceOf fid) keep fid (sfCst sf) | (fid, sf) <- sources]
+          | otherwise -> perFile (lint (LintInput files Map.empty Set.empty keep))

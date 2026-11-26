@@ -5,6 +5,11 @@ deterministic evaluation order.
 -}
 module Golem.Project.Imports
   ( ImportSite (..),
+    ImportForm (..),
+    ListedName (..),
+    listedName,
+    importNamespace,
+    importNames,
     ImportGraph (..),
     importsOf,
     importSite,
@@ -13,22 +18,61 @@ module Golem.Project.Imports
   )
 where
 
+import Data.ByteString qualified as BS
 import Data.List (sort)
 import Data.List.NonEmpty (NonEmpty, prependList)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Set qualified as Set
 import Data.Text (Text)
+import Data.Text qualified as T
+import Data.Text.Encoding qualified as TE
 import Golem.Parser.AST
 import Golem.Syntax
 
--- | One @\@import path as ns@ line.
+-- | One @\@import@ line: its path, its form and the span of the line.
 data ImportSite = ImportSite
   { isPath :: !Text,
-    isNamespace :: !Text,
+    isForm :: !ImportForm,
     isSpan :: !SrcSpan
   }
   deriving stock (Eq, Show)
+
+{- | The two forms of @\@import@ (root ADR 0451): @path * as ns@, with the
+namespace and its span, and @path { a, b as c }@, with each item.
+-}
+data ImportForm
+  = ImportAll !Text !SrcSpan
+  | ImportNames ![ListedName]
+  deriving stock (Eq, Show)
+
+{- | An item of a list of names (root ADR 0458): the original name the
+source gives and its span, and the alias the file uses and its span. An
+item without @as@ has its original name and span as its alias.
+-}
+data ListedName = ListedName
+  { lnName :: !Text,
+    lnNameSpan :: !SrcSpan,
+    lnAlias :: !Text,
+    lnAliasSpan :: !SrcSpan
+  }
+  deriving stock (Eq, Show)
+
+-- | An item without an alias.
+listedName :: Text -> SrcSpan -> ListedName
+listedName n sp = ListedName n sp n sp
+
+-- | The namespace of an import of the form @* as ns@.
+importNamespace :: ImportSite -> Maybe Text
+importNamespace s = case isForm s of
+  ImportAll ns _ -> Just ns
+  ImportNames _ -> Nothing
+
+-- | The items an import of the form @{ … }@ lists.
+importNames :: ImportSite -> [ListedName]
+importNames s = case isForm s of
+  ImportAll _ _ -> []
+  ImportNames ns -> ns
 
 -- | Edges from each file to the files it imports, in source order.
 newtype ImportGraph = ImportGraph (Map FileId [(FileId, ImportSite)])
@@ -41,19 +85,70 @@ importsOf :: File -> [Either Diagnostic ImportSite]
 importsOf (File _ bs) = concatMap fromBlock bs
   where
     fromBlock (Located sp b) = case b of
-      BlockCommand (Located _ "import") args _ -> [importSite sp (map locValue args)]
+      BlockCommand (Located _ "import") args _ -> [importSite sp args]
       Attributed cmds _ -> concatMap fromBlock cmds
       _ -> []
 
-{- | The arguments of one \@import: a word or a string, the word @as@ and a
-word (G03009 otherwise). Shared by the project and the evaluation of a
-file outside it (golem-project ADR 0006).
+{- | The arguments of one \@import (root ADR 0451): a word or a string for
+the path, then @* as ns@ or names in braces separated by commas. The form
+without @*@ is G03295, any other G03009. Shared by the project and the
+evaluation of a file outside it (golem-project ADR 0006).
 -}
-importSite :: SrcSpan -> [Argument] -> Either Diagnostic ImportSite
-importSite sp = \case
-  [Positional (Word p), Positional (Word "as"), Positional (Word ns)] -> Right (ImportSite p ns sp)
-  [Positional (StringLit p), Positional (Word "as"), Positional (Word ns)] -> Right (ImportSite p ns sp)
-  _ -> Left (diagnostic "G03009" Error sp "@import は「@import パス as 名前空間」の形で書きます")
+importSite :: SrcSpan -> [Located Argument] -> Either Diagnostic ImportSite
+importSite sp args = case args of
+  (Located _ pathArg : rest) | Just p <- pathOf pathArg -> case rest of
+    [Located _ (Positional (Word "*")), Located _ (Positional (Word "as")), Located nssp (Positional (Word ns))] -> Right (ImportSite p (ImportAll ns nssp) sp)
+    [Located _ (Positional (Word "as")), Located _ (Positional (Word ns))] ->
+      Left (diagnostic "G03295" Error sp ("「@import パス as 名前空間」の形は使えません。「@import " <> written pathArg <> " * as " <> ns <> "」と書きます"))
+    _ | Just names <- listedNames rest -> Right (ImportSite p (ImportNames names) sp)
+    _ -> malformed
+  _ -> malformed
+  where
+    malformed = Left (diagnostic "G03009" Error sp "@import は「@import パス * as 名前空間」か「@import パス { 名前, 名前 as 別名, … }」の形で書きます")
+    pathOf = \case
+      Positional (Word p) -> Just p
+      Positional (StringLit p) -> Just p
+      _ -> Nothing
+    written = \case
+      Positional (StringLit p) -> "\"" <> p <> "\""
+      Positional (Word p) -> p
+      _ -> ""
+
+{- | The items of a list in braces (root ADR 0451, root ADR 0458): the
+words split at @{@, @}@ and @,@ must be @{@, an item, then @,@ and an item
+any times, and @}@. An item is read by place: its first piece is the
+original name, even @as@; a second piece @as@ marks the alias, which is
+the third piece, even @as@; then @,@ or @}@ must come. A name's span is
+its place in its word.
+-}
+listedNames :: [Located Argument] -> Maybe [ListedName]
+listedNames args = traverse word args >>= open . concatMap pieces
+  where
+    word = \case
+      Located wsp (Positional (Word w)) -> Just (w, wsp)
+      _ -> Nothing
+    pieces (w, wsp) = go (spanStart wsp) w
+      where
+        go off t = case T.uncons t of
+          Nothing -> []
+          Just (c, rest)
+            | isMark c -> Left c : go (off + 1) rest
+            | otherwise ->
+                let (n, rest') = T.break isMark t
+                    len = BS.length (TE.encodeUtf8 n)
+                 in Right (n, mkSpan (spanFile wsp) off (off + len)) : go (off + len) rest'
+    isMark c = c == '{' || c == '}' || c == ','
+    open = \case
+      Left '{' : rest -> item rest
+      _ -> Nothing
+    item = \case
+      Right (n, nsp) : Right ("as", _) : Right (a, asp) : rest -> (ListedName n nsp a asp :) <$> more rest
+      Right (n, nsp) : rest -> (listedName n nsp :) <$> more rest
+      _ -> Nothing
+    more = \case
+      [Left '}'] -> Just []
+      Left ',' : rest -> item rest
+      _ -> Nothing
 
 {- | Cycles found by a depth-first search over files and edges in order,
 each as the import sites along it. A self-import is a cycle of length 1.

@@ -11,6 +11,7 @@ import Data.Char (toUpper)
 import Data.List (find, sort)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (fromMaybe)
+import Data.Ratio ((%))
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
@@ -100,7 +101,8 @@ documentWith tinyJpeg ps =
       docPdfUa = Nothing,
       docStructure = structElem SDocument [KidLeaf (LeafId [0])],
       docPageLabels = [],
-      docOutline = []
+      docOutline = [],
+      docScreen = False
     }
 
 -- | A fixed Producer, so that the goldens do not change with the version (ADR 0005).
@@ -278,6 +280,45 @@ verifyTests tinyJpeg =
     mapStreamKey k f (kvs, b) = (mapKey k f kvs, b)
     cut piece (kvs, b) = let (pre, post) = BS.breakSubstring piece b in (kvs, pre <> BS.drop (BS.length piece) post)
 
+{- | The PDF for the screen (root ADR 0431): version 1.7, the trimmed page
+alone, and the swatches in the sRGB of golem-html's cmykToRgb.
+-}
+screenTests :: ByteString -> [TestTree]
+screenTests tinyJpeg =
+  [ testCase "root ADR 0431 I1: the PDF for the screen is version 1.7, the PDF for print 1.6" $ do
+      assertBool "1.7" ("%PDF-1.7" `BS.isPrefixOf` writePdf (screen [ruleIn (Swatch 0 0 0 100)]))
+      assertBool "1.6" ("%PDF-1.6" `BS.isPrefixOf` writePdf (printed [ruleIn (Swatch 0 0 0 100)])),
+    testCase "root ADR 0431 I2: the pages of the PDF for the screen have a MediaBox and neither a TrimBox nor a BleedBox" $ do
+      let pdf = writePdf (screen [ruleIn (Swatch 0 0 0 100)])
+      assertBool "MediaBox" ("/MediaBox [0 0 595 842]" `BS.isInfixOf` pdf)
+      assertBool "no TrimBox" (not ("/TrimBox" `BS.isInfixOf` pdf))
+      assertBool "no BleedBox" (not ("/BleedBox" `BS.isInfixOf` pdf))
+      assertBool "the PDF for print keeps them" (all (`BS.isInfixOf` writePdf (printed [ruleIn (Swatch 0 0 0 100)])) ["/TrimBox", "/BleedBox"]),
+    testCase "root ADR 0431 I4: a swatch of the PDF for the screen is the sRGB of cmykToRgb, in the digits of the numbers of the PDF" $
+      forM_ [(0, 0, 0, 0), (100, 100, 100, 100), (0, 100, 100, 0), (15, 30, 45, 60), (1, 2, 3, 99)] $ \cmyk@(c, m, y, k) -> do
+        let content = contentOf (screen [ruleIn (Swatch c m y k)])
+            (r, g, b) = cmykToRgb cmyk
+            vs = BS.concat [TE.encodeUtf8 (showRational4 (toInteger v % 255)) <> " " | v <- [r, g, b]]
+        assertBool (show (cmyk, content)) (("/GolemSRGB cs " <> vs <> "sc /GolemSRGB CS " <> vs <> "SC") `BS.isInfixOf` content)
+        assertBool "no CMYK" (not (" k " `BS.isInfixOf` content)),
+    testCase "root ADR 0431 I4: the both ends of cmykToRgb" $ do
+      cmykToRgb (0, 0, 0, 0) @?= (255, 255, 255)
+      cmykToRgb (100, 100, 100, 100) @?= (0, 0, 0),
+    testCase "root ADR 0431 I4: GolemSRGB of the pages is the ICCBased space of the document's sRGB profile" $ do
+      let pdf = writePdf (screen [ruleIn (Swatch 0 100 0 0)])
+      assertBool "the colour space" ("/ColorSpace << /GolemSRGB [/ICCBased " `BS.isInfixOf` pdf)
+      assertBool "the profile" ("/N 3" `BS.isInfixOf` pdf)
+  ]
+  where
+    ruleIn sw = [SetColor sw, Rule (Rect 0 0 65536 65536)]
+    printed ms = documentWith tinyJpeg [page (concat ms)]
+    screen ms = (printed ms) {docScreen = True}
+    contentOf doc =
+      let PdfObjects _ objs _ = documentObjects doc
+       in case drop 3 objs of
+            OStream _ body : _ -> BL.toStrict (Z.decompress (BL.fromStrict body))
+            _ -> ""
+
 marksTests :: ByteString -> [TestTree]
 marksTests tinyJpeg =
   let (w, h) = trimSize
@@ -326,15 +367,25 @@ marksTests tinyJpeg =
           contentStream Map.empty Map.empty [Disc (10 * 65536) (10 * 65536) (2 * 65536)]
             @?= "12 10 m\n12 11.1046 11.1046 12 10 12 c\n8.8954 12 8 11.1046 8 10 c\n8 8.8954 8.8954 8 10 8 c\n11.1046 8 12 8.8954 12 10 c\nf\n",
         testCase "a filled closed curve is m, the curves, h and f (golem-driver ADR 0028)" $
-          contentStream Map.empty Map.empty [CurveFill (0, 0) [((65536, 65536), (131072, 65536), (196608, 0)), ((131072, -65536), (65536, -65536), (0, 0))]]
+          contentStream Map.empty Map.empty [FilledPath NonZero (Path [SubPath (0, 0) [CurveTo (65536, 65536) (131072, 65536) (196608, 0), CurveTo (131072, -65536) (65536, -65536) (0, 0)] True])]
             @?= "0 0 m\n1 1 2 1 3 0 c\n2 -1 1 -1 0 0 c\nh f\n",
         testCase "a stroked path sets its width, its dash and round caps; closed, it ends with h S (docs/adr/0271)" $ do
-          contentStream Map.empty Map.empty [StrokedPath (LineStroke 32768 [] False) (0, 0) [LineTo (65536, 0)] False]
+          contentStream Map.empty Map.empty [StrokedPath (LineStroke (solidStroke 32768) []) (Path [SubPath (0, 0) [LineTo (65536, 0)] False])]
             @?= "0.5 w\n0 0 m\n1 0 l\nS\n"
-          contentStream Map.empty Map.empty [StrokedPath (LineStroke 65536 [196608, 131072] False) (0, 0) [LineTo (65536, 0), LineTo (65536, 65536)] True]
+          contentStream Map.empty Map.empty [StrokedPath (LineStroke (solidStroke 65536) [196608, 131072]) (Path [SubPath (0, 0) [LineTo (65536, 0), LineTo (65536, 65536)] True])]
             @?= "1 w [3 2] 0 d\n0 0 m\n1 0 l\n1 1 l\nh S\n"
-          contentStream Map.empty Map.empty [StrokedPath (LineStroke 65536 [0, 196608] True) (0, 0) [LineTo (65536, 0)] False]
+          contentStream Map.empty Map.empty [StrokedPath (LineStroke (Stroke 65536 RoundCap MiterJoin) [0, 196608]) (Path [SubPath (0, 0) [LineTo (65536, 0)] False])]
             @?= "1 w 1 J [0 3] 0 d\n0 0 m\n1 0 l\nS\n",
+        testCase "root ADR 0437: a path of two subpaths is filled by even-odd with f*, each closed by h" $
+          contentStream Map.empty Map.empty [FilledPath EvenOdd (Path [SubPath (0, 0) [LineTo (65536, 0), LineTo (0, 65536)] True, SubPath (0, 0) [LineTo (65536, 65536)] False])]
+            @?= "0 0 m\n1 0 l\n0 1 l\nh\n0 0 m\n1 1 l\nf*\n",
+        testCase "root ADR 0437: square ends and round and bevelled corners are J and j; an empty path draws nothing" $ do
+          contentStream Map.empty Map.empty [StrokedPath (LineStroke (Stroke 65536 SquareCap RoundJoin) []) (Path [SubPath (0, 0) [LineTo (65536, 0)] False])]
+            @?= "1 w 2 J 1 j\n0 0 m\n1 0 l\nS\n"
+          contentStream Map.empty Map.empty [StrokedPath (LineStroke (Stroke 65536 ButtCap BevelJoin) []) (Path [SubPath (0, 0) [LineTo (65536, 0)] False])]
+            @?= "1 w 2 j\n0 0 m\n1 0 l\nS\n"
+          contentStream Map.empty Map.empty [FilledPath NonZero (Path []), StrokedPath (LineStroke (solidStroke 65536) []) (Path [])]
+            @?= "",
         -- golem-driver ADR 0030
         testCase "ActualText wraps its marks in /Span with the replacement text, BDC to EMC" $ do
           let cs = contentStream (Map.fromList [(FontRef 7, 1)]) Map.empty [ActualText "ffi" [GlyphRun (FontRef 7) (10 * 65536) [(3, 0, 0)]]]
@@ -473,7 +524,7 @@ linkTests tinyJpeg =
           framed = framePageWith (Just Japanese) b (100 * 65536, 100 * 65536) [] [LinkAnnotation (Rect 0 0 65536 65536) (UriAction "https://example.com/") Nothing Nothing]
           m = b + 2415027
       pageAnnots framed @?= [LinkAnnotation (Rect m m 65536 65536) (UriAction "https://example.com/") Nothing Nothing],
-    testCase "X1/X2/X3/X4: print links retain text and outline destinations without page annotations (Golem ADR 0350)" $ do
+    testCase "root ADR 0350 I1, I2, I3, I4: print links retain text and outline destinations without page annotations" $ do
       let aid = AnnotId [1]
           leaf = LeafId [2]
           frame = (annotated "https://example.com/") {pageContent = [Tagged leaf [GlyphRun (FontRef 7) 65536 [(1, 0, 0)]]]}
@@ -1046,6 +1097,7 @@ tests tinyJpeg =
         ],
       testGroup "PDF/A-2a and PDF/UA-1 (docs/adr ADR 0183)" (conformanceTests tinyJpeg),
       testGroup "page labels (docs/adr/0260)" (pageLabelTests tinyJpeg),
+      testGroup "the PDF for the screen (root ADR 0431)" (screenTests tinyJpeg),
       goldenVsString "XMP packet of PDF/A-2a and PDF/UA-1 (docs/adr ADR 0183)" "test/golden/xmp-pdfa-pdfua.xml" $
         pure (BL.fromStrict (xmpPacket (Just (PdfX "" "JC200103" ["山田 太郎"] [] (Just PdfA2a))) (Just PdfUa1) "見本 & <題>" testProducer (2026, 10, 11) (documentId "urn:uuid:11111111-2222-4333-8444-555555555555") (instanceId ["a"]))),
       goldenVsString "XMP packet of PDF/A-2a (docs/adr ADR 0183)" "test/golden/xmp-pdfa.xml" $

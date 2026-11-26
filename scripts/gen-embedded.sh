@@ -1,10 +1,11 @@
 #!/bin/sh
-# Generates the two modules of golem-driver that embed files of the
-# repository (docs/adr/0203), in place of Template Haskell, which the build
-# for wasm cannot run in a package that depends on golem-font:
+# Generates the two modules that embed files of the repository
+# (docs/adr/0203), in place of Template Haskell, which the build for wasm
+# cannot run in a package that depends on golem-font: that of golem-driver,
+# and that of golem-evaluate (root ADR 0434):
 #
-#   modules/golem-driver/src/Golem/Driver/Version/Embedded.hs   VERSION
-#   modules/golem-driver/src/Golem/Driver/Explain/Embedded.hs   docs/diagnostics.md
+#   modules/golem-driver/src/Golem/Driver/Version/Embedded.hs       VERSION
+#   modules/golem-evaluate/src/Golem/Evaluate/Explain/Embedded.hs   docs/diagnostics.md
 #
 #   sh scripts/gen-embedded.sh
 #
@@ -20,7 +21,8 @@ if [ "$#" -ne 0 ]; then
   exit 2
 fi
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
-SRC=$ROOT/modules/golem-driver/src/Golem/Driver
+DSRC=$ROOT/modules/golem-driver/src/Golem/Driver
+ESRC=$ROOT/modules/golem-evaluate/src/Golem/Evaluate
 
 # gen FILE MODULE NAME USER OUT: the module MODULE at OUT with the constant
 # NAME, the content of FILE (relative to the root), which USER embeds
@@ -78,11 +80,11 @@ END {
 ' >"$5.tmp"
 }
 
-VOUT=$SRC/Version/Embedded.hs
-EOUT=$SRC/Explain/Embedded.hs
-mkdir -p "$SRC/Version" "$SRC/Explain"
+VOUT=$DSRC/Version/Embedded.hs
+EOUT=$ESRC/Explain/Embedded.hs
+mkdir -p "$DSRC/Version" "$ESRC/Explain"
 if gen VERSION Golem.Driver.Version.Embedded versionText Golem.Driver.Version "$VOUT" &&
-  gen docs/diagnostics.md Golem.Driver.Explain.Embedded documentText Golem.Driver.Explain "$EOUT"; then
+  gen docs/diagnostics.md Golem.Evaluate.Explain.Embedded documentText Golem.Evaluate.Explain "$EOUT"; then
   mv "$VOUT.tmp" "$VOUT"
   mv "$EOUT.tmp" "$EOUT"
 else

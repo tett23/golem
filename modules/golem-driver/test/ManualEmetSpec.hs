@@ -17,7 +17,7 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Golem.Driver
-import Golem.Driver.Functions (formatFunctionFile)
+import Golem.Evaluate.Functions (formatFunctionFile)
 import Support (codesOf)
 import System.Directory (createDirectoryIfMissing, doesDirectoryExist, doesFileExist, listDirectory)
 import System.FilePath (replaceExtension, takeExtension, takeFileName, (</>))
@@ -62,7 +62,7 @@ mistakeCodes f = withSystemTempDirectory "golem-manual-emet" $ \tmp -> do
   let gm = replaceExtension f "gm"
   hasGm <- doesFileExist gm
   calls <- if hasGm then readText gm else pure ""
-  BS.writeFile (tmp </> "example.gm") (TE.encodeUtf8 ("@import functions/ex.emet as ex\n\n" <> calls))
+  BS.writeFile (tmp </> "example.gm") (TE.encodeUtf8 ("@import functions/ex.emet * as ex\n\n" <> calls))
   BS.writeFile (tmp </> "manifest.toml") (TE.encodeUtf8 projectManifest)
   BS.writeFile (tmp </> "style.toml") "[paragraph-styles.example]\nindent = \"1zw\"\n"
   r <- build (defaultOptions tmp)
