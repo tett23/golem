@@ -306,7 +306,8 @@ echo "every run of a figure places the lines of runLines in the $causalInputs ma
 
 # The values of the evaluation of Golem.Layout.KnuthPlass (badness,
 # fitness, line demerits, cumulative widths, the demerits of the chosen
-# breaks and the ratio and overflow of each line) on Pagination.lean's
+# breaks and the ratio, overflow, glyph expansion and target of each line,
+# with lines of different widths and glyphs that expand) on Pagination.lean's
 # definitions, and the pass, the breaks and the demerits of captionCompared,
 # the breaker of Pagination.lean on that evaluation, against golem-layout's
 # breaker (root ADR 0352, condition 2).
@@ -322,7 +323,7 @@ sed -n 's/^out //p' "$tmp/caption-values" > "$tmp/caption-haskell"
 LEAN_PATH="$tmp" "$lean" --run "$values" "$tmp/caption-values" | sed -n 's/^out //p' > "$tmp/caption-lean"
 diff -u "$tmp/caption-haskell" "$tmp/caption-lean"
 captions=$(grep -c '^in obs' "$tmp/caption-values")
-echo "the evaluation and the breaks of $captions captions are the same in Pagination.lean and golem-layout"
+echo "the evaluation and the breaks of $captions inputs are the same in Pagination.lean and golem-layout"
 
 # The caption rows of the table of boundary inputs, in the advances of
 # two real fonts (CaptionFonts.hs): the breaks of captionCompared, the

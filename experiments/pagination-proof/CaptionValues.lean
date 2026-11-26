@@ -10,16 +10,17 @@
      formulas `badness`, `fitnessOf` and `lineDemerits` against
      `captionBadness`, `captionFitness` and `captionLineDemerits`, on
      boundary values;
-   * `obs ...`: a caption the breaker broke, with its items, its
-     parameters, its line width and the breaks the breaker chose.  The
-     lines run from `captionLineRanges`, their natural widths are
-     differences of the cumulative `captionSum`, and `evaluate` of
-     KnuthPlass.hs is `captionWidthEvaluation` and `captionPathCost` on
-     them.  It prints the demerits of the path (but in the overfull pass,
-     whose rescued and pushed-out lines the breaks do not tell apart) and,
-     for each line, the adjustment ratio and the overflow of `mkLine`.  The
-     glyphs are not expanded (`pExpansion` is `Nothing`), so the
-     compression of `captionWidthEvaluation` is 0;
+   * `obs ...`: an input the breaker broke, with its items, its
+     parameters, the widths of its lines (line i takes the i-th, the lines
+     after them the last), the expansion of its glyphs (`pExpansion`, or
+     `-`) and the breaks the breaker chose.  The lines run from
+     `captionLineRanges`, their natural widths are differences of the
+     cumulative `captionSum`, and `evaluate` of KnuthPlass.hs is
+     `captionLineEvaluationFrom` and `captionPathCost` on them.  It prints
+     the demerits of the path (but in the overfull pass, whose rescued and
+     pushed-out lines the breaks do not tell apart) and, for each line, the
+     adjustment ratio, the overflow, the expansion of the glyphs
+     (`captionExpansionStep`) and the target of `mkLine`;
    * after `|`, the pass, the breaks and the demerits of `captionCompared`,
      the breaker of Pagination.lean on the same items, against those of
      `breakParagraph`;
@@ -56,19 +57,16 @@ def penaltyAt := captionPenaltyAt
     not tell apart. -/
 def pathDemerits (ps : Params) (items : List Item) (breaks : List Nat) : Int :=
   let kinds := items.map (·.kind)
-  let step := fun (acc : Int × Int × Bool) (r : Nat × Nat) =>
-    let (total, previousFitness, previousFlagged) := acc
+  let step := fun (acc : Int × Int × Bool × Nat) (r : Nat × Nat) =>
+    let (total, previousFitness, previousFlagged, line) := acc
     let (s, b) := r
-    let (natural, stretch, shrink) := lineSums ps items s b
     let q := ps.params
-    let (bad, shrinking, _) :=
-      captionWidthEvaluation (q.width - natural) (stretch + captionPassEmergency q ps.pass + q.endStretch) shrink 0
-        q.pullInFirst
+    let (bad, shrinking, _) := captionLineEvaluationFrom q items ps.pass line s b
     let flagged := (items.getD b default).flagged
     (captionPathCost total previousFitness q.linePenalty (penaltyAt items b) q.doubleHyphen
       q.adjDemerits previousFlagged flagged shrinking bad,
-      captionFitness shrinking bad, flagged)
-  ((captionLineRanges kinds 0 breaks).foldl step (0, 2, false)).1
+      captionFitness shrinking bad, flagged, line + 1)
+  ((captionLineRanges kinds 0 breaks).foldl step (0, 2, false, 0)).1
 
 /-- A rational as Haskell's `numerator` and `denominator` show it. -/
 def ratioText (n d : Int) : String :=
@@ -76,16 +74,26 @@ def ratioText (n d : Int) : String :=
   let (n, d) := if d < 0 then (-n, -d) else (n, d)
   if g = 0 then "0/1" else s!"{n / g}/{d / g}"
 
-/-- The ratio and the overflow of `mkLine`. -/
-def lineText (ps : Params) (items : List Item) (r : Nat × Nat) : String :=
-  let (natural, stretch, shrink) := lineSums ps items r.1 r.2
-  let shortfall := ps.params.width - natural
-  let ratio :=
-    if 0 < shortfall ∧ 0 < stretch then ratioText shortfall stretch
+/-- The ratio, the overflow, the expansion and the target of `mkLine` for
+    the line `line` from `s` to `b`.  Its stretch and shrink are those of
+    the glue and the glyphs, without the emergency and the end stretch. -/
+def lineText (ps : Params) (items : List Item) (line : Nat) (r : Nat × Nat) : String :=
+  let (natural, glueStretch, glueShrink) := lineSums ps items r.1 r.2
+  let e := captionCumulative captionExpandableWidth items r.2 - captionCumulative captionExpandableWidth items r.1
+  let (ey, ez) := captionExpansionOf ps.params e
+  let stretch := glueStretch + ey
+  let shrink := glueShrink + ez
+  let target := ps.params.lineWidth line
+  let shortfall := target - natural
+  let (n, d) : Int × Int :=
+    if 0 < shortfall ∧ 0 < stretch then (shortfall, stretch)
     else if shortfall < 0 ∧ 0 < shrink then
-      (if shortfall < -shrink then "-1/1" else ratioText shortfall shrink)
-    else "0/1"
-  s!"{ratio}:{max 0 (natural - shrink - ps.params.width)}"
+      (if shortfall < -shrink then (-1, 1) else (shortfall, shrink))
+    else (0, 1)
+  let expansion := match ps.params.expansion with
+    | some (limit, step) => if 0 < e then captionExpansionStep limit step n d else 0
+    | none => 0
+  s!"{ratioText n d}:{max 0 (natural - shrink - target)}:{expansion}:{target}"
 
 /-! ## Reading the input -/
 
@@ -97,6 +105,9 @@ def item (token : String) : Item :=
   | ["b", w, ps, pe, es, ee] =>
     { kind := .box, width := int! w, protrudeStart := int! ps, protrudeEnd := int! pe,
       edgeStart := int! es, edgeEnd := int! ee }
+  | ["b", w, ps, pe, es, ee, x] =>
+    { kind := .box, width := int! w, protrudeStart := int! ps, protrudeEnd := int! pe,
+      edgeStart := int! es, edgeEnd := int! ee, expandable := x == "1" }
   | ["g", w, y, z] => { kind := .glue, width := int! w, stretch := int! y, shrink := int! z }
   | ["p", w, p, f, h] =>
     { kind := .penalty (int! p) false, width := int! w, flagged := f == "1",
@@ -108,10 +119,17 @@ def answer (line : String) : String :=
   | ["in", "bad", t, s] => toString (captionBadness (nat! t) (int! s))
   | ["in", "fit", sh, b] => toString (captionFitness (sh == "1") (nat! b))
   | ["in", "dem", lp, b, p] => toString (captionLineDemerits (int! lp) (nat! b) (int! p))
-  | "in" :: "obs" :: pass :: lp :: adj :: dbl :: endStretch :: emergency :: pull :: prot :: pretol :: tol :: width :: rest =>
+  | "in" :: "obs" :: pass :: lp :: adj :: dbl :: endStretch :: emergency :: pull :: prot :: pretol :: tol ::
+      widths :: expansion :: rest =>
+    let widths := (widths.splitOn ",").map int!
     let params : CaptionParams :=
-      ⟨int! pretol, int! tol, int! lp, int! adj, int! dbl, int! endStretch, int! emergency,
-        pull == "1", prot == "1", int! width⟩
+      { pretolerance := int! pretol, tolerance := int! tol, linePenalty := int! lp, adjDemerits := int! adj,
+        doubleHyphen := int! dbl, endStretch := int! endStretch, emergency := int! emergency,
+        pullInFirst := pull == "1", protrusion := prot == "1",
+        lineWidth := fun i => widths.getD (min i (widths.length - 1)) 0,
+        expansion := match expansion.splitOn "," with
+          | [limit, step] => some (int! limit, int! step)
+          | _ => none }
     let ps : Params := ⟨nat! pass, params⟩
     let items := (rest.takeWhile (· != "|")).map item
     let breaks := ((rest.dropWhile (· != "|")).drop 1).map nat!
@@ -121,15 +139,17 @@ def answer (line : String) : String :=
       | some (pass, node) =>
         s!"{pass} " ++ ",".intercalate ((captionComparedBreaks node).map toString) ++ s!" {node.demerits}"
       | none => "none"
+    let lines := (List.range ranges.length).zip ranges
     " ".intercalate ((if ps.pass < 4 then toString (pathDemerits ps items breaks) else "-")
-      :: ranges.map (lineText ps items)) ++ " | " ++ compared
+      :: lines.map (fun (line, r) => lineText ps items line r)) ++ " | " ++ compared
   | "in" :: "fig" :: capacity :: body :: pitch :: size :: along :: num :: den :: _ :: lp :: adj :: dbl ::
       endStretch :: emergency :: pull :: prot :: pretol :: tol :: width :: rest =>
     -- a caption of CaptionFonts.hs in real fonts: the breaks of
     -- `captionCompared`, the grid lines of its lines and the figure
     let params : CaptionParams :=
-      ⟨int! pretol, int! tol, int! lp, int! adj, int! dbl, int! endStretch, int! emergency,
-        pull == "1", prot == "1", int! width⟩
+      { pretolerance := int! pretol, tolerance := int! tol, linePenalty := int! lp, adjDemerits := int! adj,
+        doubleHyphen := int! dbl, endStretch := int! endStretch, emergency := int! emergency,
+        pullInFirst := pull == "1", protrusion := prot == "1", lineWidth := fun _ => int! width }
     let items := rest.map item
     match captionCompared params items with
     | none => "none"

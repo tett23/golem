@@ -20487,11 +20487,13 @@ end Alloy
 
 The scan above takes the evaluation of a line as an argument
 (`CaptionScanContext`).  This section gives it the evaluation of
-`breakParagraph` of `Golem.Layout.KnuthPlass` for a line width that does
-not change from line to line, as a caption has, and no expansion of the
-glyphs.  CaptionValues.lean runs `captionCompared` on the captions of
-CheckCaptionAssembly.hs and check.sh compares the pass, the breaks, the
-demerits and each line's ratio and overflow with golem-layout.  The
+`breakParagraph` of `Golem.Layout.KnuthPlass`, with the target length of
+each line (`lineWidth`, L*(i)) and the expansion of the glyphs
+(`pExpansion`).  A caption has one line width and expands no glyph; the
+other paragraphs need both.  CaptionValues.lean runs `captionCompared` on
+the inputs of CheckCaptionAssembly.hs and check.sh compares the pass, the
+breaks, the demerits and each line's ratio, overflow, expansion and
+target with golem-layout.  The
 theorems at the end state invariants 1 and 2 of root ADR 0352 for the
 captions on this evaluation. -/
 
@@ -20509,6 +20511,8 @@ structure CaptionItem where
   /-- The protrusion of the hyphen drawn at a break of the patterns or at
       a soft hyphen. -/
   hyphenEnd : Option Int := none
+  /-- `bcExpandable`: whether the glyphs of the box expand. -/
+  expandable : Bool := false
 
 instance : Inhabited CaptionItem := ⟨{ kind := .glue, width := 0 }⟩
 
@@ -20516,8 +20520,8 @@ def CaptionItem.measured (i : CaptionItem) : MeasuredCaptionItem := ⟨i.kind, i
 
 def CaptionItem.isBox (i : CaptionItem) : Bool := match i.kind with | .box => true | _ => false
 
-/-- The parameters of `breakParagraph` that a caption sets, and its line
-    width. -/
+/-- The parameters of `breakParagraph` that the breaks read, and the
+    target length of each line, from 0 (`lineWidth` of `breakParagraph`). -/
 structure CaptionParams where
   pretolerance : Int
   tolerance : Int
@@ -20528,7 +20532,10 @@ structure CaptionParams where
   emergency : Int
   pullInFirst : Bool
   protrusion : Bool
-  width : Int
+  lineWidth : Nat → Int
+  /-- `pExpansion`: the limit and the step of the glyph expansion, in
+      permille. -/
+  expansion : Option (Int × Int) := none
 
 /-- `tW` of the items before `i`: the cumulative width. -/
 def captionCumulativeWidth (items : List CaptionItem) (i : Nat) : Int :=
@@ -20540,6 +20547,43 @@ def captionCumulative (f : CaptionItem → Int) (items : List CaptionItem) (i : 
   (items.take i).foldl (fun acc item => acc + f item) 0
 
 def captionGlueStretch (i : CaptionItem) : Int := match i.kind with | .glue => i.stretch | _ => 0
+
+/-- `tE` of the items before `i`: the cumulative width of the boxes whose
+    glyphs expand. -/
+def captionExpandableWidth (i : CaptionItem) : Int :=
+  match i.kind with | .box => if i.expandable then i.width else 0 | _ => 0
+
+/-- `reachedLimit` of KnuthPlass.hs: the limit rounded down to a multiple
+    of the step; 0 when the step is not positive, or the limit is not
+    positive. -/
+def captionReachedLimit (limit step : Int) : Int :=
+  if step ≤ 0 ∨ limit ≤ 0 then 0 else limit / step * step
+
+/-- `expansionOf` of `breakParagraph`: the stretch and the shrink that the
+    expansion of the glyphs adds to a line whose expandable boxes are `e`
+    wide.  Haskell's `div` rounds towards minus infinity, as `Int.fdiv`;
+    `e` is negative for a break skipped after the break before it. -/
+def captionExpansionOf (ps : CaptionParams) (e : Int) : Int × Int :=
+  match ps.expansion with
+  | some (limit, step) =>
+    let q := Int.fdiv (e * captionReachedLimit limit step) 1000
+    (q, q)
+  | none => (0, 0)
+
+/-- `expansionStep` of KnuthPlass.hs for the ratio `n / d` with `0 < d`:
+    the ratio times the reached limit, clamped to it, rounded to a multiple
+    of the step towards minus infinity.  Haskell rounds a negative value
+    with `floor` and a nonnegative one with `truncate`, which agree with the
+    floor there. -/
+def captionExpansionStep (limit step n d : Int) : Int :=
+  let m := captionReachedLimit limit step
+  if m ≤ 0 then 0
+  else
+    let (cn, cd) :=
+      if m * d < n * m then (m, (1 : Int))
+      else if n * m < -(m * d) then (-m, 1)
+      else (n * m, d)
+    Int.fdiv cn (cd * step) * step
 def captionGlueShrink (i : CaptionItem) : Int := match i.kind with | .glue => i.shrink | _ => 0
 
 /-- The values `evaluate` and `mkLine` share for the line from `s` to the
@@ -20580,15 +20624,23 @@ def captionPassEmergency (ps : CaptionParams) (pass : Nat) : Int :=
 /-- The badness, whether the line shrinks, whether it overflows, its
     shortfall, and its shrink, of `evaluate` for the line from the node
     `prior` (its position encoded as in `CaptionActiveNode`) to `b`. -/
+def captionLineEvaluationFrom (ps : CaptionParams) (items : List CaptionItem) (pass : Nat)
+    (line s b : Nat) : Nat × Bool × Bool × Int × Int :=
+  let (natural, stretch, glueShrink) := captionLineSums ps items s b
+  let (ey, ez) := captionExpansionOf ps
+    (captionCumulative captionExpandableWidth items b - captionCumulative captionExpandableWidth items s)
+  let shortfall := ps.lineWidth line - natural
+  let (bad, shrinking, overfull) :=
+    captionWidthEvaluation shortfall (stretch + captionPassEmergency ps pass + ey + ps.endStretch)
+      glueShrink ez ps.pullInFirst
+  (bad, shrinking, overfull, shortfall, glueShrink + ez)
+
+/-- The line from the node `prior` is the line `prior.lineCount` (`nLine`
+    of the node), so its target is `lineWidth prior.lineCount`. -/
 def captionLineEvaluation (ps : CaptionParams) (items : List CaptionItem) (pass : Nat)
     (b : Nat) (prior : CaptionActiveNode) : Nat × Bool × Bool × Int × Int :=
-  let s := captionAfterEncoded (items.map (·.kind)) prior.position
-  let (natural, stretch, shrink) := captionLineSums ps items s b
-  let shortfall := ps.width - natural
-  let (bad, shrinking, overfull) :=
-    captionWidthEvaluation shortfall (stretch + captionPassEmergency ps pass + ps.endStretch) shrink 0
-      ps.pullInFirst
-  (bad, shrinking, overfull, shortfall, shrink)
+  captionLineEvaluationFrom ps items pass prior.lineCount
+    (captionAfterEncoded (items.map (·.kind)) prior.position) b
 
 /-- `evaluate` of `breakParagraph` as the scan reads it: the fitness, the
     demerits the line adds, whether the line is feasible in the pass, and
@@ -20615,7 +20667,8 @@ def captionContext (ps : CaptionParams) (items : List CaptionItem) (pass : Nat) 
   finite := fun prior b => !(captionLineEvaluation ps items pass b prior).2.2.1
   overflow := fun b prior =>
     captionCumulativeWidth items b
-      - captionCumulativeWidth items (captionAfterEncoded (items.map (·.kind)) prior.position) - ps.width
+      - captionCumulativeWidth items (captionAfterEncoded (items.map (·.kind)) prior.position)
+      - ps.lineWidth prior.lineCount
   allowOverfull := pass == 4
 
 def captionStart (context : CaptionScanContext) : CaptionScanState :=

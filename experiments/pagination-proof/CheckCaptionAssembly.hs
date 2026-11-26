@@ -72,7 +72,10 @@ leanExample (items, result) =
 -- lines "out ..." what it must print for them: the formulas of badness,
 -- fitness and line demerits on boundary values, then, for every caption
 -- the breaker breaks, its demerits (but in the overfull pass) and, for each
--- line, its adjustment ratio and its overflow.
+-- line, its adjustment ratio, its overflow, the expansion of its glyphs and
+-- its target. Besides the captions, which have one line width and expand
+-- no glyph, the inputs have lines of different widths, and glyphs that
+-- expand (pExpansion).
 
 -- A box that protrudes and has edges, and a soft hyphen, for the inputs
 -- with protrusion.
@@ -82,20 +85,52 @@ protrudingBox =
   where
     look = ceLook (defaultComposeEnv (10 * 65536))
 
-valueObservations :: [(Params, Sp, [Item], Breaks)]
+-- A box whose glyphs expand, for the inputs with pExpansion. Its width
+-- times the limits below is not a multiple of 1000, so expansionOf rounds.
+expandableBox :: Item
+expandableBox =
+  Box 201 (BoxContent "e" True 0 0 0 look 0 0 [] 0 0 noBoxSource Nothing noLeaf 0 Nothing)
+  where
+    look = ceLook (defaultComposeEnv (10 * 65536))
+
+-- | The target of line i: the widths in order, the last one for the lines
+-- after them.
+widthAt :: [Sp] -> Int -> Sp
+widthAt widths i = widths !! min i (length widths - 1)
+
+valueObservations :: [(Params, [Sp], [Item], Breaks)]
 valueObservations =
-  [ (params, width, items, breakParagraph params (const width) items)
-  | (params, size, atoms) <- plain <> extended,
+  [ (params, widths, items, breakParagraph params (widthAt widths) items)
+  | (params, size, atoms, widthsList) <- plain <> extended <> varying <> expanding,
     items <- [zipWith identify [0 ..] chosen <> finish | chosen <- concatMap (`replicateM` atoms) [0 .. size]],
-    width <- [10, 30, 60]
+    widths <- widthsList
   ]
   where
+    constant = [[10], [30], [60]]
     plainAtoms = [box 0 10, box 0 40, glue 5 20 3, Penalty 0 0 NoHyphen, Penalty 9 0 ExplicitHyphen, Penalty 0 (-infPenalty) NoHyphen, Penalty 0 (-100) NoHyphen]
-    plain = [(p, 4, plainAtoms) | p <- [defaultParams, defaultParams {pEndStretch = 100}]]
+    plain = [(p, 4, plainAtoms, constant) | p <- [defaultParams, defaultParams {pEndStretch = 100}]]
     extended =
-      [ (p, 3, plainAtoms <> [protrudingBox, Penalty 6 50 (SoftHyphen 2)])
+      [ (p, 3, plainAtoms <> [protrudingBox, Penalty 6 50 (SoftHyphen 2)], constant)
       | p <- [defaultParams {pProtrusion = True}, defaultParams {pPullInFirst = True}, defaultParams {pEmergencyStretch = 10}]
       ]
+    -- lines of different widths (L*(i)): longer, shorter, and back
+    varying =
+      [ (p, 3, plainAtoms, [[10, 60], [60, 10], [30, 10, 60]])
+      | p <- [defaultParams, defaultParams {pEndStretch = 100}]
+      ]
+    -- glyphs that expand: a step that reaches the limit, one that does not,
+    -- one larger than the limit (no expansion), and with protrusion, pull
+    -- in first and the emergency stretch
+    expanding =
+      [ (p, 3, expAtoms, [[205], [230], [190], [200, 240], [240, 200, 215]])
+      | p <-
+          [ defaultParams {pExpansion = Just (100, 25)},
+            defaultParams {pExpansion = Just (100, 30)},
+            defaultParams {pExpansion = Just (10, 50)},
+            defaultParams {pExpansion = Just (100, 25), pProtrusion = True, pPullInFirst = True, pEmergencyStretch = 10}
+          ]
+      ]
+    expAtoms = [expandableBox, box 0 10, glue 5 20 3, Penalty 0 0 NoHyphen, Penalty 9 0 ExplicitHyphen, Penalty 0 (-infPenalty) NoHyphen, Penalty 6 50 (SoftHyphen 2)]
     identify ident (Box width content) = Box width content {bcTag = ident}
     identify _ item = item
 
@@ -104,7 +139,7 @@ flag b = if b then "1" else "0"
 
 itemToken :: Item -> String
 itemToken = \case
-  Box w c -> intercalate ":" ["b", sp w, sp (bcProtrudeStart c), sp (bcProtrudeEnd c), sp (bcEdgeStart c), sp (bcEdgeEnd c)]
+  Box w c -> intercalate ":" ["b", sp w, sp (bcProtrudeStart c), sp (bcProtrudeEnd c), sp (bcEdgeStart c), sp (bcEdgeEnd c), flag (bcExpandable c)]
   Glue w y z _ _ -> intercalate ":" ["g", sp w, sp y, sp z]
   Penalty w p h -> intercalate ":" ["p", sp w, show p, flag (flagged h), hyphenEnd h]
   where
@@ -133,18 +168,22 @@ valueLines =
     <> map observation valueObservations
   where
     spans = [0, 1, 296, 297, 1290, 1291, 65536, 1663496, 1663497, 7230584, 7230585, 2 ^ (50 :: Int)]
-    observation (params, width, items, result) =
+    observation (params, widths, items, result) =
       ( unwords
           ( ["obs", show (brPass result), show (pLinePenalty params), show (pAdjDemerits params), show (pDoubleHyphenDemerits params)]
               <> [sp (pEndStretch params), sp (pEmergencyStretch params), flag (pPullInFirst params), flag (pProtrusion params)]
-              <> [show (pPretolerance params), show (pTolerance params), sp width]
+              <> [show (pPretolerance params), show (pTolerance params), intercalate "," (map sp widths)]
+              <> [maybe "-" (\(limit, stp) -> show limit <> "," <> show stp) (pExpansion params)]
               <> map itemToken items
               <> ["|"]
               <> map show (brPositions result)
           ),
         unwords
           ( (if brPass result < 4 then show (brDemerits result) else "-")
-              : [show (numerator r) <> "/" <> show (denominator r) <> ":" <> sp (lineOverflow l) | l <- brLines result, let r = lineRatio l]
+              : [ intercalate ":" [show (numerator r) <> "/" <> show (denominator r), sp (lineOverflow l), show (lineExpansion l), sp (lineTarget l)]
+                | l <- brLines result,
+                  let r = lineRatio l
+                ]
           )
           -- the pass, the breaks and the demerits, for the breaker of Pagination.lean
           <> " | "
