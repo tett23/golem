@@ -1495,9 +1495,9 @@ variableOccurrencesNamed ws extra var@(f, _) =
     | s <- allSources ws,
       (sp, occ) <- occurrences (srcAst s),
       isVariableOccurrence occ,
-      Just written <- [occurrenceName occ],
       variableAt ws extra s sp occ == Just var,
-      let nsp = nameSpan sp occ
+      let nsp = nameSpan sp occ,
+      Just written <- [occurrenceName occ]
     ]
   where
     -- the name of ns.name, after the namespace
