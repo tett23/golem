@@ -372,6 +372,16 @@ LEAN_PATH="$tmp" "$lean" "$retryPrefix"
   experiments/pagination-proof/RetryPrefixChecks.hs)
 echo "root ADR 0352 I4: all modeled retry entries have positive cutoffs and a decreasing complete-front retry rank"
 
+# Side-job unit keys remain ordered and separate at a hard barrier.
+besideOwnership=$root/experiments/pagination-proof/BesideOwnership.lean
+if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|implemented_by|extern|native_decide)([^A-Za-z_]|$)' "$besideOwnership"; then
+  echo "unproved or unchecked Lean declaration in $besideOwnership" >&2
+  exit 1
+fi
+"$lean" "$besideOwnership"
+echo "root ADR 0352 I5: modeled side-job keys are unique, ordered, and separate across figure barriers"
+
+
 
 
 
