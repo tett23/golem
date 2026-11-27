@@ -9305,9 +9305,16 @@ CSL-JSON は、文献管理ソフトが書き出せる標準の形式である�
 
 - 位置引数のすべてを、書いた順に書誌データのキーとして読む。キーは名前か文字列で書き、`[= ...]` の値が文字列でもよい。`*[式]` で配列を展開してもよい。
 - `page` は引用した文献の頁である。値は 0 以上の整数（`page=5`）、0 以上の端を持つ範囲（`page=5...7`）、空でない文字列（`page=xii`、`page="5f."`）のいずれかである。
-- `page` は、キーが一つの引用にだけ書ける。文献ごとに頁が要るときは、`[cite a page=5][cite b page=7]` と書く。
+- `page` は、キーが一つの引用にだけ書ける。文献ごとに頁が要るときは、`[cites: [cite a page=5]|[cite b page=7]]` で一つの印にまとめられる。
 - 散文スロットは取らない（[G02038](diagnostics.md#g02038)）。
 - 書誌データにないキー（[G02021](diagnostics.md#g02021)）、一つの引用に二度書いたキー（[G02147](diagnostics.md#g02147)）、頁として読めない `page`（[G02148](diagnostics.md#g02148)）、キーが二つ以上の引用の `page`（[G02149](diagnostics.md#g02149)）、キーとして読めない位置引数（[G02150](diagnostics.md#g02150)）、キーのない `[cite]`（[G02151](diagnostics.md#g02151)）はエラーとする。一つの `[cite]` に原因が二つ以上あれば、それぞれを書いた順に報告し、引用を作らない。
+
+`[cites: …]` は、スロットごとの単一キーの `cite` を一つの引用にまとめる（[root ADR 0385](adr/0385-bibliography-and-citation-styles.md)、[root ADR 0470](adr/0470-bibliography-styles-by-name-and-by-declaration.md)）。
+引数は取らず、各スロットの前後の空白は無視する。
+スロットのない呼び出しや、単一キーの `cite` が一つでないスロットは G02038 とする。
+キーが重複したときは、二度目以降のキーの位置で G02147 とする。
+子の `cite` のエラーと重複するキーは、書いた順に報告する。
+エラーが一つでもあれば、外側の引用を作らない。
 
 引用された文献だけがチャネルに送られ、`@bibliography` の位置に一覧として出る。
 
@@ -9325,7 +9332,7 @@ CSL-JSON は、文献管理ソフトが書き出せる標準の形式である�
 PDF とプレーンテキストの文字列は、組の文言と値を U+0020 でつなぐ。
 
 1. 位置を持つ件が一つもなければ、番号を昇順に並べ、三つ以上連続する番号を `a–b`（U+2013 EN DASH）にまとめ、残りを `, ` で区切る。`[1, 2]`、`[1–3]`、`[1, 3–5, 7]` になる。
-2. 位置を持つ件があれば、件を書いた順に並べ、`; ` で区切る。位置は番号の後に `, ` をはさんで置く。記法から作れるのは `[1, p. 5]` のような一件の引用だけである。
+2. 位置を持つ件があれば、件を書いた順に並べ、`; ` で区切る。位置は番号の後に `, ` をはさんで置く。`[cites: [cite a page=5]|[cite b page=7]]` は `[1, p. 5; 2, p. 7]` のように組む。
 3. `page` の位置は、数と文字列を `p. 5`、`p. xii`、範囲を `pp. 5–7` と組む。両端の等しい範囲は `p. 5` と組む。
 4. 番号を引けない件は、PDF ではキーを組み（1 では番号の後に書いた順で並べる）、HTML とプレーンテキストでは印の全体を出さない。
 
@@ -9891,7 +9898,7 @@ ABI のバージョンと、ABI を変えるときの規則は、下の「シリ
 
 | 使う場所 | 上書きできる | 上書きできない |
 | --- | --- | --- |
-| インライン | すべての組み込みのコマンド（`strong`、`bold`、`italic`、`code`、`ruby`、`kenten`、`color`、`style`、`warichu`、`upright`、`tcy`、`number-text`、`ref-number`、`ref-title`、`ref-page`、`note`、`sidenote`、`endnote`、`index`、`cite`、`aki`、`link`、`lang`、`shy` の二十四） | なし |
+| インライン | すべての組み込みのコマンド（`strong`、`bold`、`italic`、`code`、`ruby`、`kenten`、`color`、`style`、`warichu`、`upright`、`tcy`、`number-text`、`ref-number`、`ref-title`、`ref-page`、`note`、`sidenote`、`endnote`、`index`、`cite`、`cites`、`aki`、`link`、`lang`、`shy` の二十五） | なし |
 | ブロック | `toc`、`index`、`bibliography`、`printings`、`separator`、改ページと行の指定（`page-break`、`column-break`、`no-page-break`、`need-lines`、`page-lines`、`blank-line`）、図表とコード（`figure`、`table`、`listing`）、`style`、`lang`、注（`note`、`endnote`）の十八 | Golem の仕組みを決めるもの（`import`、`set`、`channel`、`manifest`、`style-def`、`hyphenation-exceptions` と、属性の `label`、`toc-title`、`number`、`nonumber`、`notoc`、`caption`、`column-widths`）と、`frame` の十四 |
 
 上書きできないコマンドは、二つの種類に限る。
