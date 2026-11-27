@@ -1,6 +1,6 @@
 # ADR 0478: number-text で有理数を受け付け、小数を含む糖衣構文を追加する
 
-Status: proposed
+Status: accepted-pending
 
 ## 文脈
 
