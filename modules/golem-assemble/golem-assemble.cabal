@@ -19,6 +19,7 @@ library
     Golem.Assemble
     Golem.Assemble.CitationFormats
     Golem.Assemble.BibliographyRanges
+    Golem.Assemble.BibliographyRecords
     Golem.Assemble.BibliographySort
     Golem.Assemble.BibliographyNames
     Golem.Assemble.BibliographyFormats

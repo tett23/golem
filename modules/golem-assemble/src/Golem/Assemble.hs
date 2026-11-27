@@ -22,6 +22,10 @@ module Golem.Assemble
     citeNumber,
     tocWithinDepth,
     bibliographyAt,
+    bibliographyEntriesFor,
+    citationPiecesFor,
+    resolvedCitationPieces,
+    bookCitationItems,
     indexAt,
     channelAt,
     indexGroups,
@@ -37,7 +41,7 @@ module Golem.Assemble
 where
 
 import Control.Applicative ((<|>))
-import Control.Monad (unless, when, zipWithM)
+import Control.Monad (unless, void, when, zipWithM)
 import Control.Monad.State.Strict
 import Data.Bifunctor (first)
 import Data.ByteString (ByteString)
@@ -53,6 +57,8 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Golem.Assemble.Collation
 import Golem.Assemble.Numbering (TitlePiece)
+import Golem.Bibliography (EntryPart)
+import Golem.Doc.Citation (CitePiece, citationPieces)
 import Golem.Doc.IR
 import Golem.Numerals.Format (Unwritable (..), formatNumber, formatUsesChapter)
 import Golem.Syntax
@@ -213,6 +219,10 @@ data Book = Book
     in document order; without @bibliography, one list without a place over
     the whole book (golem-doc ADR 0008)
     -} bookBibliographies :: ![(Maybe ListAt, [(Text, Int)])],
+    -- | Declared entry parts for each list and citation key.
+    bookBibliographyEntries :: !(Map (Maybe ListAt, Text) [EntryPart]),
+    -- | Prepared marks, retaining distinct items that share a plugin source span.
+    bookCitationPieces :: !(Map SrcSpan [([CiteItem ()], [CitePiece])]),
     -- | the list and the number of each citation mark, by its file and span
     bookCiteMarks :: !(Map (FileId, SrcSpan) (Maybe ListAt, Int)),
     bookLabels :: !(Map Text LabelTarget),
@@ -241,6 +251,22 @@ data Book = Book
 (golem-doc ADR 0008).
 -}
 type ListAt = (FileId, SrcSpan)
+
+-- | All citation marks, in document order, including those in notes.
+bookCitationItems :: Book -> [(SrcSpan, [CiteItem ()])]
+bookCitationItems book = [(sp, items) | Document _ blocks <- bookDocs book, Block _ _ _ body <- allBlocks blocks, Cite sp items <- bodyInlines body]
+
+-- | A prepared mark, or the legacy numeric representation.
+citationPiecesFor :: Book -> SrcSpan -> [(CiteItem r, Maybe Int)] -> [CitePiece]
+citationPiecesFor book sp items = fromMaybe (citationPieces items) (resolvedCitationPieces book sp (map fst items))
+
+-- | A span is not a unique identity for plugin-generated marks.
+resolvedCitationPieces :: Book -> SrcSpan -> [CiteItem r] -> Maybe [CitePiece]
+resolvedCitationPieces book sp items = Map.lookup sp (bookCitationPieces book) >>= lookup (map void items)
+
+-- | The entries resolved for this list, with legacy entries as fallback.
+bibliographyEntriesFor :: Book -> Maybe ListAt -> Map Text [EntryPart] -> Map Text [EntryPart]
+bibliographyEntriesFor book at = Map.union (Map.fromList [(key, parts) | ((place, key), parts) <- Map.toList (bookBibliographyEntries book), place == at])
 
 {- | The number of a citation mark: its number in the list it belongs to
 (golem-doc ADR 0008). The key decides it, so two marks a plugin puts out
@@ -510,6 +536,8 @@ assemble cfg evalDeferred docs0 =
               [] -> Nothing,
             bookIndexes = indexes,
             bookBibliographies = bibliographies,
+            bookBibliographyEntries = Map.empty,
+            bookCitationPieces = Map.empty,
             bookCiteMarks = citeMarks,
             bookLabels = labels,
             bookReferenced = refd,

@@ -36,7 +36,25 @@ tests :: TestTree
 tests =
   testGroup
     "citations (docs/adr/0266)"
-    [ testCase "root ADR 0475 I6: citation affixes are literal text, including markup and empty strings" $
+    [ testCase "root ADR 0385 I1: source accepts every declared locator kind" $
+        forM_ [minBound .. maxBound] $ \label ->
+          citesOf ("[cite a " <> locatorLabelName label <> "=2]\n") @?= ([[CiteItem "a" (Just (Locator label (LocNumber 2))) [] []]], []),
+      testCase "root ADR 0385 I1: source rejects conflicting and repeated locator kinds" $ do
+        forM_ [minBound .. maxBound] $ \first -> do
+          let name = locatorLabelName first
+          codes ("[cite a " <> name <> "=1 " <> name <> "=2]\n") @?= ["G02077", "G02296"]
+          forM_ [second | second <- [minBound .. maxBound], second /= first] $ \second ->
+            codes ("[cite a " <> name <> "=1 " <> locatorLabelName second <> "=2]\n") @?= ["G02295"],
+      testCase "root ADR 0385 I1: source rejects unknown keywords and invalid non-page values" $ do
+        codes "[cite a pages=1]\n" @?= ["G02297"]
+        codes "[cite a chapter=-1]\n" @?= ["G02298"]
+        codes "[cite a chapter=[= nil]]\n" @?= ["G02298"]
+        codes "[cite a b chapter=2]\n" @?= ["G02300"],
+      testCase "root ADR 0385 I1: locator errors retain keyword and value spans" $
+        forM_ [("[cite a pages=1]\n", "G02297", (8, 13)), ("[cite a chapter=-1]\n", "G02298", (16, 18)), ("[cite a page=1 chapter=2]\n", "G02295", (15, 22))] $ \(source, code, site) ->
+          let (ds, _) = evalSource ctx source
+           in [(diagCodeText d, (spanStart (diagSpan d), spanEnd (diagSpan d))) | d <- ds] @?= [(code, site)],
+      testCase "root ADR 0475 I6: citation affixes are literal text, including markup and empty strings" $
         forM_ ["", "<a>&[cite x]", "参照: {year}"] $ \literal ->
           let source = "[cite a prefix=" <> ("\"" <> literal <> "\"") <> " suffix=" <> ("\"" <> literal <> "\"") <> "]\n"
               (items, ds) = citesOf source

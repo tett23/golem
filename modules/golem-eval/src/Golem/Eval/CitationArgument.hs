@@ -7,6 +7,8 @@ module Golem.Eval.CitationArgument
     decodeCitationArgument,
     CitationKeyword (..),
     validateCitationLocatorArguments,
+    validateCitationLocatorNames,
+    validateCitationLocatorValue,
   )
 where
 
@@ -51,24 +53,32 @@ data CitationKeyword = CitationKeyword
   deriving stock (Eq, Show)
 
 {- | Validate locator keywords in input order, leaving affix/form policy to the caller.
-This API does not enable a new citation output path.
+The source evaluator uses the same name and value checks.
 -}
 validateCitationLocatorArguments :: [CitationKeyword] -> [Diagnostic]
-validateCitationLocatorArguments = go Set.empty
+validateCitationLocatorArguments keywords = concat (zipWith (\names keyword -> names <> validateCitationLocatorValue keyword) (validateCitationLocatorNames [(ckNameSpan k, ckName k) | k <- keywords]) keywords)
+
+{- | One list per input keyword, so evaluation errors can be interleaved
+without fabricating values for arguments whose evaluation failed.
+-}
+validateCitationLocatorNames :: [(SrcSpan, Text)] -> [[Diagnostic]]
+validateCitationLocatorNames = go Set.empty
   where
     go _ [] = []
-    go seen (keyword : rest)
-      | ckName keyword `elem` ["prefix", "suffix", "form"] = go seen rest
-      | Just label <- locatorLabelNamed (ckName keyword) =
-          conflicts seen label keyword <> invalid keyword <> go (Set.insert label seen) rest
-      | otherwise =
-          diagnostic "G02297" Error (ckNameSpan keyword) ("cite の名前付き引数に書けない名前です: " <> ckName keyword)
-            : go seen rest
-    conflicts seen label keyword
-      | Set.member label seen = [diagnostic "G02296" Error (ckNameSpan keyword) ("cite に同じ位置の種類を二度書いています: " <> ckName keyword)]
-      | not (Set.null seen) = [diagnostic "G02295" Error (ckNameSpan keyword) ("cite には位置の種類を一つだけ書きます: " <> ckName keyword)]
-      | otherwise = []
-    invalid keyword = case ckValue keyword of
+    go seen ((at, name) : rest)
+      | name `elem` ["prefix", "suffix", "form"] = [] : go seen rest
+      | Just label <- locatorLabelNamed name =
+          let problems
+                | Set.member label seen = [diagnostic "G02296" Error at ("cite に同じ位置の種類を二度書いています: " <> name)]
+                | not (Set.null seen) = [diagnostic "G02295" Error at ("cite には位置の種類を一つだけ書きます: " <> name)]
+                | otherwise = []
+           in problems : go (Set.insert label seen) rest
+      | otherwise = [diagnostic "G02297" Error at ("cite の名前付き引数に書けない名前です: " <> name)] : go seen rest
+
+validateCitationLocatorValue :: CitationKeyword -> [Diagnostic]
+validateCitationLocatorValue keyword
+  | Nothing <- locatorLabelNamed (ckName keyword) = []
+  | otherwise = case ckValue keyword of
       VRange a b | a < 0 || b < 0 -> badValue keyword
       -- root ADR 0113 rejects reversed ranges before constructing VRange.
       -- Defend the same invariant for direct callers without a new constraint.
@@ -78,9 +88,10 @@ validateCitationLocatorArguments = go Set.empty
       value -> case decodeCitationArgument (ckName keyword) value of
         Just (CitationLocator _) -> []
         _ -> badValue keyword
-    badValue keyword =
+  where
+    badValue badKeyword =
       let (code, message) =
-            if ckName keyword == "page"
+            if ckName badKeyword == "page"
               then ("G02148", "page には頁の数、範囲、文字列を書きます: ")
-              else ("G02298", ckName keyword <> " には位置の数、範囲、文字列を書きます: ")
-       in [diagnostic code Error (ckValueSpan keyword) (message <> valueText (ckValue keyword))]
+              else ("G02298", ckName badKeyword <> " には位置の数、範囲、文字列を書きます: ")
+       in [diagnostic code Error (ckValueSpan badKeyword) (message <> valueText (ckValue badKeyword))]

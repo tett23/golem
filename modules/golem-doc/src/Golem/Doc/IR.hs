@@ -1,3 +1,4 @@
+{-# LANGUAGE DeriveFunctor #-}
 {-# LANGUAGE PatternSynonyms #-}
 
 {- | The semantic IR (golem-doc ADR 0001): evaluated content with no
@@ -441,7 +442,7 @@ data InlineF r
     Lang !SrcSpan !Text [InlineF r]
   | -- | [ref-number] and [ref-title] after S1: the kind, the label and the inlines they resolve to (docs/adr/0215)
     Resolved !SrcSpan !RefKind !Text [InlineF r]
-  deriving stock (Eq, Show)
+  deriving stock (Eq, Show, Functor)
 
 -- | The amount of an [aki]: in zw (the size of the type there), or absolute in sp.
 data AkiAmount = AkiZw !Rational | AkiAbs !Sp
@@ -578,7 +579,7 @@ data CiteItem r = CiteItem
     citPrefix :: ![InlineF r],
     citSuffix :: ![InlineF r]
   }
-  deriving stock (Eq, Show)
+  deriving stock (Eq, Show, Functor)
 
 -- | An item of a key alone: no locator, no prefix, no suffix.
 citeItem :: Text -> CiteItem r

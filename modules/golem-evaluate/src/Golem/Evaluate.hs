@@ -10,6 +10,7 @@ module Golem.Evaluate
     hostContext,
     functionPaths,
     loadBibliography,
+    loadBibliographyRecords,
     metadataValues,
     localStylesOf,
     docStyles,
@@ -35,7 +36,7 @@ import Data.Bifunctor (first)
 import Data.ByteString qualified as BS
 import Data.ByteString.Lazy qualified as BL
 import Data.Either (fromRight, lefts, rights)
-import Data.List (nub, sort)
+import Data.List (nub, sort, sortOn)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (fromMaybe, isNothing, listToMaybe)
@@ -46,8 +47,12 @@ import Data.Text.Encoding qualified as TE
 import Data.Text.Unsafe (lengthWord8)
 import Data.Time.Calendar (showGregorian, toGregorian)
 import Golem.Assemble
-import Golem.Bibliography (CslEntry (..), EntryPart, formatEntry)
-import Golem.Bibliography.Csl (CslJsonError (..), decodeCslJson)
+import Golem.Assemble.BibliographyRecords (formatBibliographyCitationWith, formatBibliographyRecord)
+import Golem.Assemble.BibliographyStyle qualified as Bib
+import Golem.Assemble.CitationFormats (joinBibliographyCitations)
+import Golem.Bibliography (CslDate (..), CslEntry (..), EntryPart, formatEntry)
+import Golem.Bibliography.Csl (CslJsonError (..), CslRecord, decodeCslRecords, recordDate, recordEntry, recordText)
+import Golem.Doc.Citation (CitePiece (..))
 import Golem.Doc.IR
 import Golem.Emet (Export (..), Handlers (..), Kind (..), Program, programExports)
 import Golem.Emet.Gm (filterOf, functionNamespaces, separatorFunction)
@@ -220,16 +225,56 @@ evaluateProjectWith files overlay profile root = do
               loaded <- loadAssets files overlay table hook project
               let assets = laAssets loaded
               -- G03026 and G03003 of the bibliography, for every target (golem-doc ADR 0004)
-              (bibDiags, citeKeys, _) <- loadBibliography files manifest
+              (bibDiags, citeKeys, records) <- loadBibliographyRecords files manifest
               let results = evalAll profile project style assets citeKeys hook table
                   s0Diags = concatMap erDiagnostics (Map.elems results)
                   -- the syntax diagnostics short of errors: the info G01031 (root ADR 0459)
                   syntaxInfos = concatMap sfSyntaxDiagnostics (Map.elems (projectSources project))
                   projectDiags = defaultStyleNotice <> defaultSeparatorNotice <> styleNoticeDiags <> syntaxInfos <> masterDiags <> runningVarDiags <> pluginDiags <> laDiagnostics loaded <> bibDiags
-                  reassemble = assembleResults (phChannels hook) handlers (lfProgram functions) style styleFid (fromMaybe "" styleText) manifest project projectDiags
+                  reassemble values =
+                    let (assembled, diagnostics) = assembleResults (phChannels hook) handlers (lfProgram functions) style styleFid (fromMaybe "" styleText) manifest project projectDiags values
+                     in case assembled of
+                          Nothing -> (Nothing, diagnostics)
+                          Just b -> let (resolved, extra) = resolveBibliographyRecords style styleFid manifest records b in (Just resolved, diagnostics <> extra)
                   (book, s1Diags) = reassemble results
                   again = reeval profile project style assets citeKeys hook table results
               pure (Right (Evaluated project style styleFid (fromMaybe "" styleText) lockText results book (projectDiags <> s0Diags <> s1Diags) (laSources loaded <> pluginSources <> lfSources functions) (laTableFiles loaded <> pluginDataFiles manifest0 <> requiredFileSet manifest0 <> contextFiles <> functionFiles) projectDiags s1Diags reassemble again pluginCommands (lfProgram functions) (lfSources functions)))
+
+-- | Resolve list entries once, before any output (root ADR 0470).
+resolveBibliographyRecords :: Style -> FileId -> Manifest -> Map Text CslRecord -> Book -> (Book, [Diagnostic])
+resolveBibliographyRecords style fid manifest records book = case Map.lookup (Bib.bibSelected declarations) (Bib.bibStyles declarations) of
+  Nothing ->
+    let missing = Map.fromListWith (\_ earlier -> earlier) [(locatorLabelName label, sp) | (sp, items) <- bookCitationItems book, item <- items, Just (Locator label _) <- [citLocator item], label /= LocatorPage]
+     in (book, [diagnostic "G03006" Error sp ("引用の位置 " <> label <> " のラベルがありません。参考文献のスタイルを宣言して指定します") | (label, sp) <- Map.toList missing])
+  Just declaration ->
+    let language = mdLanguage (manifestMetadata manifest)
+        entry at (key, number) = do
+          record <- maybe (Left "文献キーがありません") Right (Map.lookup key records)
+          effective <- either (Left . T.intercalate ", ") Right (Bib.bibliographyForLanguages language (fromMaybe language (recordText "language" record)) declaration)
+          parts <- formatBibliographyRecord effective number record
+          pure ((at, key), parts)
+        mark (sp, items) = do
+          global <- either (Left . T.intercalate ", ") Right (Bib.bibliographyForLanguage language declaration)
+          let ordered = case Bib.bsCitationSort global of
+                Just "year" -> sortOn citationYear items
+                _ -> items
+          values <- traverse (citation sp) ordered
+          pure (sp, [(items, joinBibliographyCitations (fromMaybe "" (Bib.bsCitationPrefix global)) (fromMaybe "" (Bib.bsCitationSuffix global)) (fromMaybe "" (Bib.bsCitationDelimiter global)) values)])
+        citationYear item = case Map.lookup (citKey item) records >>= recordDate "issued" of
+          Just (DateParts year _ _) -> Just year
+          _ -> Nothing
+        citation sp item = do
+          record <- maybe (Left "文献キーがありません") Right (Map.lookup (citKey item) records)
+          number <- maybe (Left "引用番号がありません") Right (citeNumber book sp (citKey item))
+          effective <- either (Left . T.intercalate ", ") Right (Bib.bibliographyForLanguages language (fromMaybe language (recordText "language" record)) declaration)
+          pieces <- formatBibliographyCitationWith effective number (citLocator item) record
+          let literal inlines = [CiteText text | let text = foldMap inlineText inlines, not (T.null text)]
+          pure (literal (citPrefix item) <> pieces <> literal (citSuffix item))
+        marks = map mark (bookCitationItems book)
+        results = [entry at pair | (at@(Just _), entries) <- bookBibliographies book, pair <- entries]
+     in (book {bookBibliographyEntries = Map.fromList (rights results), bookCitationPieces = Map.fromListWith (<>) (rights marks)}, [diagnostic "G03006" Error (mkSpan fid 0 0) message | message <- lefts results <> lefts marks])
+  where
+    declarations = stBibliography style
 
 {- | The files the plugins take as data (docs/adr/0105) and the .wasm of
 the plugins of the project (docs/adr/0109), which the LSP watches with
@@ -757,6 +802,15 @@ FileId 0, as G03002 does, because the manifest keeps no positions.
 -}
 loadBibliography :: Files -> Manifest -> IO ([Diagnostic], Set.Set Text, Map Text [EntryPart])
 loadBibliography files manifest = do
+  (diagnostics, keys, records) <- loadBibliographyRecords files manifest
+  pure (diagnostics, keys, Map.map (formatEntry . recordEntry) records)
+
+{- | The same file and character checks as 'loadBibliography', retaining
+all eligible CSL fields for the declared formatter (root ADR 0470).
+Duplicate IDs retain the last record, as the legacy entry map does.
+-}
+loadBibliographyRecords :: Files -> Manifest -> IO ([Diagnostic], Set.Set Text, Map Text CslRecord)
+loadBibliographyRecords files manifest = do
   results <- forM (manifestBibliography manifest) $ \p -> do
     res <- filesResolve files p
     case res of
@@ -764,7 +818,7 @@ loadBibliography files manifest = do
       Left e -> pure (Left (diagnostic "G03003" Error manifestHead (T.pack (pathErrorMessage e <> ": " <> p))))
       Right rel -> do
         r <- try (BL.fromStrict <$> filesRead files rel) :: IO (Either SomeException BL.ByteString)
-        pure $ case decodeCslJson <$> r of
+        pure $ case decodeCslRecords <$> r of
           Left _ -> Left (unreadable ("参考文献のファイルがありません: " <> T.pack p))
           Right (Left (CslNotJson err)) -> Left (unreadable ("参考文献のファイルを JSON として読めません: " <> T.pack p <> "（" <> T.pack err <> "）"))
           Right (Left CslNotArray) -> Left (unreadable ("参考文献のファイルは CSL-JSON の配列で書きます: " <> T.pack p))
@@ -781,7 +835,7 @@ loadBibliography files manifest = do
                     <> (if more == 0 then "" else "、ほか " <> T.pack (show more) <> " 件")
               )
           Right (Right es) -> Right es
-  let m = Map.fromList [(ceId c, formatEntry c) | c <- concat (rights results)]
+  let m = Map.fromList [(ceId (recordEntry c), c) | c <- concat (rights results)]
   pure (lefts results, Map.keysSet m, m)
   where
     manifestHead = mkSpan (FileId 0) 0 0

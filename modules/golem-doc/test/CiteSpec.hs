@@ -159,6 +159,13 @@ tests =
         citationPieces (itemsOf [2, 1]) @?= [CiteText "[", CiteNumber "k1" 1, CiteText ", ", CiteNumber "k2" 2, CiteText "]"],
       testCase "an item without a number stands as its key, after the numbers" $
         citationText (citationPieces [(citeItem "z", Nothing), (citeItem "a", Just 2)]) @?= "[2, z]",
+      testCase "root ADR 0385: default numeric citations preserve literal affixes without losing their keys" $ do
+        let item key pre post = CiteItem key Nothing [Text sp pre] [Text sp post]
+        citationText (citationPieces [(item "a" "<a>&[cite x]" "?", Just 1)]) @?= "[<a>&[cite x]1?]"
+        citationText (citationPieces [(item "c" "C" "c", Just 3), (item "a" "A" "a", Just 1), (item "b" "B" "b", Just 2)]) @?= "[A1a, B2b, C3c]"
+        citationText (citationPieces [(item "a" "" "", Just 1), (item "b" "" "", Just 2), (item "c" "" "", Just 3)]) @?= "[1\x2013\&3]",
+      testCase "root ADR 0385: default numeric locators keep affixes with the written item" $
+        citationText (citationPieces [(CiteItem "c" (page (LocNumber 9)) [Text sp "see "] [Text sp "!"], Just 3), (citeItem "a", Just 1)]) @?= "[see 3, p. 9!; 1]",
       testCase "I7: citations of every locator, a prefix and a suffix survive the CBOR round trip" $
         forM_ [minBound .. maxBound] $ \label ->
           forM_ [LocNumber 0, LocNumber 5, LocRange 5 7, LocText "xii"] $ \v -> do
@@ -174,15 +181,16 @@ tests =
         inl (TList [TInt 15, spT, TString "a"]) @?= Left "スキーマに合いません: インラインの種類"
         inl (TList [TInt 25, spT, TList [item "a" (TList [TString "pages", TList [TInt 0, TInt 5]])]]) @?= Left "スキーマに合いません: 位置の種類"
         inl (TList [TInt 25, spT, TList [item "a" (TList [TString "page", TList [TInt 0, TInt (-1)]])]]) @?= Left "スキーマに合いません: 自然数",
-      testCase "I7: Validate rejects no item, a key twice, a kind other than page, a prefix or a suffix, and a bad value" $ do
+      testCase "root ADR 0385: Validate accepts declared locator kinds and literal affixes, while rejecting malformed values" $ do
         let errs is = validateDocument size [] (docOf is)
             loc v = CiteItem "a" (page v) [] []
         errs [Cite sp [citeItem "a", citeItem "b"]] @?= []
         errs [Cite sp []] @?= ["引用は一つ以上の文献を持ちます"]
         errs [Cite sp [citeItem "a", citeItem "a", citeItem "a"]] @?= ["引用に同じキーが二度あります: a"]
-        errs [Cite sp [CiteItem "a" (Just (Locator LocatorChapter (LocNumber 2))) [] []]] @?= ["まだ組めない引用の値です: 位置の種類 chapter"]
-        errs [Cite sp [CiteItem "a" Nothing [Text sp "前"] []]] @?= ["まだ組めない引用の値です: 前置きと後置き"]
-        errs [Cite sp [CiteItem "a" Nothing [] [Text sp "後"]]] @?= ["まだ組めない引用の値です: 前置きと後置き"]
+        forM_ [minBound .. maxBound] $ \label -> errs [Cite sp [CiteItem "a" (Just (Locator label (LocNumber 2))) [] []]] @?= []
+        errs [Cite sp [CiteItem "a" Nothing [Text sp "前"] []]] @?= []
+        errs [Cite sp [CiteItem "a" Nothing [] [Text sp "後"]]] @?= []
+        errs [Cite sp [CiteItem "a" Nothing [CharStyle sp "strong" [Text sp "前"]] []]] @?= ["まだ組めない引用の値です: 前置きと後置き"]
         errs [Cite sp [loc (LocNumber 0)], Cite sp [loc (LocRange 5 5)], Cite sp [loc (LocText "xii")]] @?= []
         errs [Cite sp [loc (LocNumber (-1))]] @?= ["引用の位置の数が負です"]
         errs [Cite sp [loc (LocRange 7 5)]] @?= ["引用の位置の範囲が負か逆向きです"]

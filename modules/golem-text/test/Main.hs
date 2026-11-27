@@ -42,6 +42,8 @@ renderBlocks bib cites listings bodies =
             bookIndexes = [],
             -- the bibliography is the block at offset 0 (golem-doc ADR 0008)
             bookBibliographies = [(Just (fid, mkSpan fid 0 1), cites)],
+            bookBibliographyEntries = Map.empty,
+            bookCitationPieces = Map.empty,
             bookCiteMarks = Map.empty,
             bookLabels = Map.empty,
             bookReferenced = Set.empty,

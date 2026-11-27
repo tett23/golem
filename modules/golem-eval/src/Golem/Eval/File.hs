@@ -63,7 +63,7 @@ import Golem.Doc.Url (UrlProblem (..), checkUrl, linkElements, urlProblemMessage
 import Golem.Doc.Validate (langTagMessage)
 import Golem.Eval.Analysis (analyse)
 import Golem.Eval.Builtin
-import Golem.Eval.CitationArgument (CitationArgument (..), decodeCitationArgument)
+import Golem.Eval.CitationArgument (CitationArgument (..), CitationKeyword (..), decodeCitationArgument, validateCitationLocatorNames, validateCitationLocatorValue)
 import Golem.Eval.Expr
 import Golem.Eval.Functions
 import Golem.Eval.Number (exactText)
@@ -3840,41 +3840,45 @@ cite ctx sp args = do
           | k `elem` ks -> (ks, es <> [Right ("G02147", "一つの引用に同じキーを二度書いています: " <> k)])
           | not (Set.member k (ctxCiteKeys ctx)) -> (ks <> [k], es <> [Right ("G02021", "書誌データにないキーです: " <> k)])
           | otherwise -> (ks <> [k], es)
-  affixes <- mapM affix [(name, asp, value) | A.Located asp (A.Keyword (A.Located _ name) value) <- args, name `elem` ["prefix", "suffix"]]
-  pageValue <- traverse (\(A.Located asp v) -> argValue ctx asp v) (keywordAt "page" args)
-  let (locator, pageErrors) = case pageValue of
-        Nothing -> (Nothing, [])
-        Just (Left d) -> (Nothing, [Left d])
-        Just (Right v) -> case pageOf v of
-          Just l -> (Just (Locator LocatorPage l), [])
-          Nothing -> (Nothing, [Right ("G02148", "page には頁の数、範囲、文字列を書きます: " <> valueText v)])
-      manyKeys = [Right ("G02149", "page は文献を一つだけ引く cite に書きます") | isJust pageValue, length keys >= 2]
+  let namedArgs = [(asp, nameAt, name, value) | A.Located asp (A.Keyword (A.Located nameAt name) value) <- args]
+  namedValues <- mapM namedValue namedArgs
+  let successful = [keyword | Just (Right keyword) <- namedValues]
+      valueProblems = [case result of Nothing -> []; Just (Left d) -> [d]; Just (Right keyword) -> validateCitationLocatorValue keyword <> affixProblems keyword | result <- namedValues]
+      nameProblems = validateCitationLocatorNames [(nameAt, name) | (_, nameAt, name, _) <- namedArgs]
+      keywordProblems = concat (zipWith (<>) nameProblems valueProblems)
+      locator = listToMaybe [value | keyword <- successful, Just (CitationLocator value) <- [decodeCitationArgument (ckName keyword) (ckValue keyword)]]
+      hasPage = any (\(_, _, name, _) -> name == "page") namedArgs
+      otherLocators = [nameAt | (_, nameAt, name, _) <- namedArgs, name /= "page", isJust (locatorLabelNamed name)]
+      manyKeys
+        | length keys < 2 = []
+        | hasPage = [Right ("G02149", "page は文献を一つだけ引く cite に書きます")]
+        | at : _ <- otherLocators = [Left (diagnostic "G02300" Error at "位置を指定する cite には文献を一つだけ書きます")]
+        | otherwise = []
       noKey = [Right ("G02151", "cite には書誌データのキーを書きます") | null positional]
-      affixErrors = [Left d | Left d <- affixes]
-      prefix = concat [text | Right ("prefix", text) <- affixes]
-      suffix = concat [text | Right ("suffix", text) <- affixes]
-      problems = keyErrors <> pageErrors <> affixErrors <> manyKeys <> noKey
+      prefix = [Text (ckValueSpan keyword) text | keyword <- successful, ckName keyword == "prefix", VString text <- [ckValue keyword]]
+      suffix = [Text (ckValueSpan keyword) text | keyword <- successful, ckName keyword == "suffix", VString text <- [ckValue keyword]]
+      problems = keyErrors <> map Left keywordProblems <> manyKeys <> noKey
   mapM_ (either report (\(code, msg) -> err code sp msg)) problems
   pure [Cite sp [CiteItem k locator prefix suffix | k <- keys] | null problems]
   where
-    -- Affixes are literal text, never source to parse again (root ADR 0475).
-    affix (name, asp, value) = do
-      result <- argValue ctx asp value
-      let at = case value of
-            A.ExprArg (A.Located valueAt _) -> valueAt
-            A.CommandArg (A.Located valueAt _) -> valueAt
-            A.Word word -> mkSpan (spanFile asp) (max (spanStart asp) (spanEnd asp - T.length word)) (spanEnd asp)
-            A.StringLit _ -> asp
-      pure $ case result of
-        Left d -> Left d
-        Right (VString text) -> Right (name, [Text at text])
-        Right _ -> Left (diagnostic "G02299" Error at ("cite の " <> name <> " には文字列を書きます"))
+    namedValue (asp, nameAt, name, value)
+      | isNothing (locatorLabelNamed name), name `notElem` ["prefix", "suffix", "form"] = pure Nothing
+      | otherwise = do
+          result <- argValue ctx asp value
+          pure (Just (CitationKeyword nameAt (valueSite asp value) name <$> result))
+    valueSite asp = \case
+      A.ExprArg (A.Located valueAt _) -> valueAt
+      A.CommandArg (A.Located valueAt _) -> valueAt
+      A.Word word -> mkSpan (spanFile asp) (max (spanStart asp) (spanEnd asp - T.length word)) (spanEnd asp)
+      A.StringLit _ -> asp
+    affixProblems keyword
+      | ckName keyword `elem` ["prefix", "suffix"] = case ckValue keyword of
+          VString _ -> []
+          _ -> [diagnostic "G02299" Error (ckValueSpan keyword) ("cite の " <> ckName keyword <> " には文字列を書きます")]
+      | otherwise = []
     keyValue asp v = fmap keyOf <$> argValue ctx asp v
     keyOf = \case
       VString k -> Just k
-      _ -> Nothing
-    pageOf value = case decodeCitationArgument "page" value of
-      Just (CitationLocator (Locator LocatorPage location)) -> Just location
       _ -> Nothing
 
 {- | Each cites slot contains one single-key cite (root ADR 0385).

@@ -1,0 +1,125 @@
+-- | Resolve a CSL record through an explicit declaration (root ADR 0470).
+module Golem.Assemble.BibliographyRecords (formatBibliographyRecord, formatBibliographyCitation, formatBibliographyCitationWith) where
+
+import Control.Applicative ((<|>))
+import Data.Map.Strict qualified as Map
+import Data.Maybe (fromMaybe)
+import Data.Text (Text)
+import Data.Text qualified as T
+import Data.Text.Read qualified as TR
+import Golem.Assemble.BibliographyFormats
+import Golem.Assemble.BibliographyNames qualified as Names
+import Golem.Assemble.BibliographyRanges
+import Golem.Assemble.BibliographyStyle
+import Golem.Bibliography (CslDate (..), CslEntry (ceId), CslName (..), EntryPart)
+import Golem.Bibliography.Csl
+import Golem.Doc.Citation (CitePiece (..))
+import Golem.Doc.IR (Locator (..), LocatorLabel (..), LocatorValue (..), locatorLabelName)
+
+formatBibliographyRecord :: BibliographyStyle d -> Int -> CslRecord -> Either Text [EntryPart]
+formatBibliographyRecord style number record = do
+  entry <- maybe (Left "文献種別の書式がありません") Right (bibliographyTypeFor (fromMaybe "" (recordText "type" record)) style)
+  sources <- maybe (Left "文献種別の pieces がありません") Right (btPieces entry)
+  fragments <- recordFragments False style number Nothing record sources
+  pure (bibliographyEntryParts (btCharStyles entry) fragments)
+
+formatBibliographyCitation :: BibliographyStyle d -> Int -> CslRecord -> Either Text [CitePiece]
+formatBibliographyCitation style number = formatBibliographyCitationWith style number Nothing
+
+formatBibliographyCitationWith :: BibliographyStyle d -> Int -> Maybe Locator -> CslRecord -> Either Text [CitePiece]
+formatBibliographyCitationWith style number location record = do
+  sources <- maybe (Left "citation がありません") Right (bsCitation style)
+  fragments <- recordFragments (bsCitationMode style `elem` [Just "numeric", Just "author-year"]) style number location record sources
+  pure
+    [ case fragment of
+        BibliographyField "number" value | value == T.pack (show number) -> CiteNumber (ceId (recordEntry record)) number
+        BibliographyField "number" value -> CiteReference (ceId (recordEntry record)) value
+        BibliographyField "locator" value | Just label <- citationLocatorLabel style location, not (T.null label) -> CiteLocator label value
+        BibliographyField _ value -> CiteText value
+        BibliographyLiteral value -> CiteText value
+    | fragment <- fragments
+    ]
+
+recordFragments :: Bool -> BibliographyStyle d -> Int -> Maybe Locator -> CslRecord -> [Text] -> Either Text [BibliographyFragment]
+recordFragments shortAuthor style number location record sources = do
+  pieces <- traverse (parseBibliographyPiece bibliographyFields) sources
+  let fields = concatMap bibliographyPieceFields pieces
+  located <- case location of
+    Just at | "locator" `elem` fields -> do
+      _ <- maybe (Left ("locator-labels." <> locatorLabelName (locLabel at) <> " がありません")) Right (citationLocatorLabel style location)
+      Just <$> locatorValueText style at
+    _ -> pure Nothing
+  author <- names fields "author"
+  editor <- names fields "editor"
+  let editorLabel = do
+        options <- Map.lookup "editor" (bsNames style)
+        labels <- bnLabel options
+        Names.bibliographyEditorLabel labels (people "editor")
+      derived = Map.fromList [("author", author), ("editor", editor), ("editor-label", editorLabel), ("number", Just (tshow number)), ("year", year), ("month", month), ("day", day), ("page", page), ("locator", located)]
+      value key notation
+        | key == "month", Just _ <- notation = numericMonth
+        | otherwise = fromMaybe (recordText key record) (Map.lookup key derived)
+  renderBibliographyFragmentsWith value pieces
+  where
+    people key = [case name of PersonalName family given -> Names.PersonalName family given; LiteralName literal -> Names.LiteralName literal | CslPerson name _ <- recordNames key record]
+    names fields key
+      | key `notElem` fields || null (people key) = Right Nothing
+      | otherwise = do
+          let role = if shortAuthor && key == "author" then "short" else key
+          options <- maybe (Left ("名前の書式がありません: " <> role)) Right (Map.lookup role (bsNames style))
+          text <-
+            if role == "short"
+              then do
+                (format, extras) <- Names.resolveBibliographyShortNames options
+                pure (Names.formatShortNamesWith extras format (people key))
+              else do
+                (format, extras) <- Names.resolveBibliographyNames options
+                pure (Names.formatBibliographyNamesWith extras format (people key))
+          pure (Just text)
+    (year, numericMonth, day) = case recordDate "issued" record of
+      Just (DateParts y m d) -> (Just (tshow y), tshow <$> m, tshow <$> d)
+      _ -> (Nothing, Nothing, Nothing)
+    month = case recordDate "issued" record of
+      Just (DateParts _ (Just n) _) -> (bsMonths style >>= lookup n . zip [1 ..]) <|> Just (tshow n)
+      _ -> Nothing
+    page = fmap range (recordText "page" record)
+    range source = case (bsPageRange style, bsRangeDelimiter style, endpoints source) of
+      (Just mode, Just delimiter, Just (a, b)) -> formatBibliographyRange (if mode == "minimal" then MinimalPageRange else FullPageRange) delimiter a b
+      _ -> source
+    endpoints source = case T.splitOn "-" source of
+      [a, b] -> (,) <$> natural a <*> natural b
+      _ -> Nothing
+    natural source = case TR.decimal source of
+      Right (n, rest) | T.null rest -> Just n
+      _ -> Nothing
+    tshow :: (Show a) => a -> Text
+    tshow = T.pack . show
+
+-- | Singular/plural depends on the typed interval, never on a guessed string.
+citationLocatorLabel :: BibliographyStyle d -> Maybe Locator -> Maybe Text
+citationLocatorLabel style location = do
+  Locator label value <- location
+  labels <- Map.lookup (locatorLabelName label) (bsLocatorLabels style)
+  pure $ case value of
+    LocRange a b | a /= b -> snd labels
+    _ -> fst labels
+
+locatorValueText :: BibliographyStyle d -> Locator -> Either Text Text
+locatorValueText style (Locator label value) = case value of
+  LocNumber n | n >= 0 -> Right (T.pack (show n))
+  LocNumber _ -> Left "引用の位置の数が負です"
+  LocRange a b
+    | a < 0 || b < a -> Left "引用の位置の範囲が負か逆向きです"
+    | a == b -> Right (T.pack (show a))
+    | otherwise -> do
+        delimiter <- maybe (Left "range-delimiter がありません") Right (bsRangeDelimiter style)
+        mode <-
+          if label /= LocatorPage
+            then Right FullPageRange
+            else case bsPageRange style of
+              Just "full" -> Right FullPageRange
+              Just "minimal" -> Right MinimalPageRange
+              _ -> Left "page-range がありません"
+        pure (formatBibliographyRange mode delimiter (fromInteger a) (fromInteger b))
+  LocText text | T.null text -> Left "引用の位置の文字列が空です"
+  LocText text -> Right text

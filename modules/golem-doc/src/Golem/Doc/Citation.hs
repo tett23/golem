@@ -21,6 +21,7 @@ break between and the HTML joins with U+00A0.
 -}
 data CitePiece
   = CiteNumber !Text !Int -- a number and the key it stands for
+  | CiteReference !Text !Text -- a key and its explicitly formatted number
   | CiteText !Text -- text: brackets, separators, an unnumbered key
   | CiteLocator !Text !Text -- the label of a locator and its value: "pp." "5–7"
   deriving stock (Eq, Show)
@@ -36,8 +37,9 @@ numbers, in the order written:
    ends is @p. 5@.
 
 An item without a number stands as its key, after the numbers in rule 1;
-the PDF sets it so, the HTML and the plain text leave the mark out. The
-prefix and the suffix, which no output sets yet, are not in the pieces.
+the PDF sets it so, the HTML and the plain text leave the mark out. Literal
+prefixes and suffixes stay with their item (root ADR 0385). A visible
+affix prevents a run from hiding individual numbers; empty affixes do not.
 -}
 citationPieces :: [(CiteItem r, Maybe Int)] -> [CitePiece]
 citationPieces items =
@@ -45,13 +47,19 @@ citationPieces items =
   where
     body
       | any (isJust . citLocator . fst) items = joinWith "; " (map located items)
+      | any (hasAffix . fst) items =
+          joinWith ", " (map located (sortOn snd [(i, Just n) | (i, Just n) <- items] <> [(i, Nothing) | (i, Nothing) <- items]))
       | otherwise =
           let numbered = sortOn snd [(citKey i, n) | (i, Just n) <- items]
               unnumbered = [[CiteText (citKey i)] | (i, Nothing) <- items]
            in joinWith ", " (map runPieces (runs numbered) <> unnumbered)
+    hasAffix item = not (all T.null [text | Text _ text <- citPrefix item <> citSuffix item])
+    affix inlines = [CiteText text | Text _ text <- inlines, not (T.null text)]
     located (i, n) =
-      maybe (CiteText (citKey i)) (CiteNumber (citKey i)) n
-        : maybe [] (\l -> [CiteText ", ", locatorPiece l]) (citLocator i)
+      affix (citPrefix i)
+        <> [maybe (CiteText (citKey i)) (CiteNumber (citKey i)) n]
+        <> maybe [] (\l -> [CiteText ", ", locatorPiece l]) (citLocator i)
+        <> affix (citSuffix i)
     runPieces = \case
       [(k, n)] -> [CiteNumber k n]
       run@((k, n) : _ : _ : _) | (k', n') <- last run -> [CiteNumber k n, CiteText "\x2013", CiteNumber k' n']
@@ -90,5 +98,6 @@ citationText = T.concat . map piece
   where
     piece = \case
       CiteNumber _ n -> T.pack (show n)
+      CiteReference _ t -> t
       CiteText t -> t
       CiteLocator l v -> l <> " " <> v

@@ -172,6 +172,7 @@ data ComposeEnv = ComposeEnv
     ceSidenoteMarkStyle :: !(Maybe Text),
     -- | the number of a cited work (golem-driver ADR 0007)
     ceCiteNumber :: SrcSpan -> Text -> Maybe Int,
+    ceCitePieces :: SrcSpan -> [CiteItem ()] -> Maybe [CitePiece],
     {- | the penalty of a break after a hyphen or dash in a Latin word;
     10000 or more means no such break (golem-layout ADR 0008)
     -} ceExplicitHyphenPenalty :: !Int,
@@ -273,6 +274,7 @@ defaultComposeEnv fs =
       ceSidenoteMarker = MarkerNumber,
       ceSidenoteMarkStyle = Nothing,
       ceCiteNumber = \_ _ -> Nothing,
+      ceCitePieces = \_ _ -> Nothing,
       ceExplicitHyphenPenalty = 50,
       ceNumberUnitPenalty = 10000,
       ceAkiSet = defaultAkiSet,
@@ -598,7 +600,7 @@ edgeOf fromEnd env inl = case inl of
   Resolved _ _ _ xs -> inner env xs
   Kenten _ sh xs -> inner env {ceLook = lk {lkKenten = Just (fromMaybe KentenSesame (sh >>= kentenShapeFromName))}} xs
   -- a citation mark: the characters of its text, read as text (docs/adr ADR 0298)
-  Cite sp is -> textEdge (citationText (citationPieces [(i, ceCiteNumber env sp (citKey i)) | i <- is]))
+  Cite sp is -> textEdge (citationText (fromMaybe (citationPieces [(i, ceCiteNumber env sp (citKey i)) | i <- is]) (ceCitePieces env sp is)))
   IndexMark {} -> Nothing
   ChannelItem {} -> Nothing
   ProofComment {} -> Nothing
@@ -699,16 +701,21 @@ walk env st@(LeafState next cur seen) inl = case inl of
   Cite sp is
     | isNothing (lkLink lk),
       any isJust [ceCiteLink env sp (citKey i) | i <- is] ->
-        let pieces = citationPieces [(i, ceCiteNumber env sp (citKey i)) | i <- is]
+        let pieces = fromMaybe (citationPieces [(i, ceCiteNumber env sp (citKey i)) | i <- is]) (ceCitePieces env sp is)
+            reference = \case
+              CiteNumber key n -> Just (key, T.pack (show n))
+              CiteReference key text -> Just (key, text)
+              _ -> Nothing
             go s = \case
               [] -> (s, [], [])
-              CiteNumber key n : rest
-                | Just t <- ceCiteLink env sp key ->
+              piece : rest
+                | Just (key, text) <- reference piece,
+                  Just t <- ceCiteLink env sp key ->
                     let LeafState m c sn = s
                         (s', after) = freshLeaf (LeafState (m + 1) c sn)
-                        here = [(m, src, p) | (src, p) <- at sp (textPieces lk {lkLink = Just t} (T.pack (show n)))]
+                        here = [(m, src, p) | (src, p) <- at sp (textPieces lk {lkLink = Just t} text)]
                         (s'', ns, ps) = go s' rest
-                     in (s'', NodeLink t [Text sp (T.pack (show n))] [NodeLeaf m] : after : ns, here <> ps)
+                     in (s'', NodeLink t [Text sp text] [NodeLeaf m] : after : ns, here <> ps)
               piece : rest ->
                 let (s', ns, ps) = go s rest
                  in (s', ns, [(leafOf s, src, p) | (src, p) <- at sp (citeTextPieces lk [piece])] <> ps)
@@ -978,7 +985,7 @@ piecesOf env inl = case inl of
   -- nothing shows; its page is followed like that of an index mark (golem-doc ADR 0007)
   ChannelItem sp _ -> at sp [PAnchor (\i -> AnchorIndex i sp (IndexEntry [] [] IndexPoint))]
   -- the mark of the default style; a key whose number is not known as itself (docs/adr/0266)
-  Cite sp is -> at sp (citeTextPieces lk (citationPieces [(i, ceCiteNumber env sp (citKey i)) | i <- is]))
+  Cite sp is -> at sp (citeTextPieces lk (fromMaybe (citationPieces [(i, ceCiteNumber env sp (citKey i)) | i <- is]) (ceCitePieces env sp is)))
   ProofComment {} -> []
   -- the lines of a keep style are split before they are composed (docs/adr
   -- ADR 0005); what reaches here is a hard break (docs/adr ADR 0016)
