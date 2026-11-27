@@ -372,6 +372,20 @@ LEAN_PATH="$tmp" "$lean" "$retryPrefix"
   experiments/pagination-proof/RetryPrefixChecks.hs)
 echo "root ADR 0352 I4: all modeled retry entries have positive cutoffs and a decreasing complete-front retry rank"
 
+# Keep the last-part retry counterexample explicit; do not assume h6 always holds.
+lastRetryCounter=$root/experiments/pagination-proof/RetryLastCounter.lean
+if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|implemented_by|extern|native_decide)([^A-Za-z_]|$)' "$lastRetryCounter"; then
+  echo "unproved or unchecked Lean declaration in $lastRetryCounter" >&2
+  exit 1
+fi
+LEAN_PATH="$tmp" "$lean" "$lastRetryCounter"
+(cd "$root" && cabal exec -v0 -- "$runghc" -f "$ghc" -hide-all-packages -package=base -package=containers -package=text \
+  -package-id=golem-layout-0.1.0-inplace -package-id=golem-syntax-0.1.0-inplace \
+  -package-id=golem-length-0.1.0-inplace -package-id=golem-doc-0.1.0-inplace \
+  -package-id=golem-project-0.1.0-inplace \
+  experiments/pagination-proof/RetryLastCounter.hs)
+echo "root ADR 0352 I4: the last-part retry counterexample is checked by the kernel, not assumed away"
+
 # Side-job unit keys remain ordered and separate at a hard barrier.
 besideOwnership=$root/experiments/pagination-proof/BesideOwnership.lean
 if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|implemented_by|extern|native_decide)([^A-Za-z_]|$)' "$besideOwnership"; then
