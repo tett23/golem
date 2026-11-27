@@ -6,6 +6,7 @@ module Golem.Assemble
     NoteNumbering (..),
     DocValues (..),
     Book (..),
+    BibliographyHangingIndent (..),
     SeparatorAppearance (..),
     SeparatorStroke (..),
     HeadingInfo (..),
@@ -203,6 +204,10 @@ data SeparatorStroke
   | StrokeWavy
   deriving stock (Eq, Show)
 
+-- | A declared hanging indent: keep font-relative values until output.
+data BibliographyHangingIndent = BibliographyIndentSp !Integer | BibliographyIndentZw !Rational
+  deriving stock (Eq, Show)
+
 data Book = Book
   { bookDocs :: ![Document],
     -- | The visible separators after style resolution, keyed also by name because Emet may assign one span to multiple results.
@@ -226,8 +231,8 @@ data Book = Book
     bookBibliographyEntries :: !(Map (Maybe ListAt, Text) [EntryPart]),
     -- | Resolved labels, including empty labels, for declared list styles.
     bookBibliographyLabels :: !(Map (Maybe ListAt, Text) Text),
-    -- | Declared hanging indent in scaled points; Nothing retains legacy output.
-    bookBibliographyHangingIndent :: !(Maybe Integer),
+    -- | Declared hanging indent; Nothing retains legacy output.
+    bookBibliographyHangingIndent :: !(Maybe BibliographyHangingIndent),
     -- | Prepared marks, retaining distinct items that share a plugin source span.
     bookCitationPieces :: !(Map SrcSpan [([CiteItem ()], [CitePiece])]),
     -- | the list and the number of each citation mark, by its file and span

@@ -9430,6 +9430,8 @@ HTML と EPUB の引用の印は、`<span class="cite">` の中に、括弧、�
 一覧は、本の言語で選んだ `sort` のキーの順に並べ、同順位では引用された順を保つ。
 項目の頭は文献の言語で選んだ `label` の書式で組み、省略か空文字列なら頭を付けない。
 PDF、HTML、EPUB は、本の言語で選んだ `hanging-indent` を項目の二行目以降に当てる。
+絶対寸法はその大きさを保ち、`zw` の寸法は出力する項目のフォントの大きさで解決する。
+HTML と EPUB は `zw` を `em` へ写すので、PDF の版面を指定しない本でも相対的な字下げを保つ。
 HTML と EPUB は宣言の頭とは別の自動番号を付けず、テキストは一項目を一行に出す。
 
 種類の表と言語別の宣言の選択には、CSL の文字列の `type` と `language` を使い、それ以外は指定なしとして扱う。
@@ -9479,10 +9481,15 @@ DOI と URL なら `pieces = ["https://doi.org/{DOI}", "{!DOI}{URL}"]` と書き
 前置きと後置きは差し込みやマークアップとして読み直さず、HTML と EPUB では文字をエスケープする。
 漢数字などで組んだ番号も、対応する一覧へのリンクを保つ。
 一覧を置かない本では、一覧の文献種別の書式を要しない。
-注の引用、一覧の並べ替えとラベルとぶら下げ字下げ、同梱のスタイルは実装途中である。
-IEEE、Vancouver、SIST 02、Unified Style Sheet for Linguistics の同梱宣言のファイルは `modules/golem-project/data/bibliography/` にある。
-`ieee`、`vancouver`、`sist02`、`unified-linguistics` を選ぶと、埋め込んだ宣言を自作の宣言と同じ読み手で読み、別名に写した宣言と同じ文字列を組む。
+注の引用、二つの Chicago の同梱宣言、見本の論文三冊は実装途中である。
+IEEE、Vancouver、SIST 02、Unified Style Sheet for Linguistics、APA の同梱宣言のファイルは `modules/golem-project/data/bibliography/` にある。
+`ieee`、`vancouver`、`sist02`、`unified-linguistics`、`apa` を選ぶと、埋め込んだ宣言を自作の宣言と同じ読み手で読み、別名に写した宣言と同じ文字列を組む。
 IEEE の書籍と論文と章の三つの一次資料例と、ほかの三つのスタイルの一例ずつ、IEEE の著者名の六人と七人の境界を照合している。
+APA の三例は、[研究文書](research/bibliography-styles.md) に記録した二次資料の書誌例と照合する。
+著者二十人までは全員を書き、二十一人以上は先頭十九人、省略記号、最後の一人を書く。
+省略記号は `, . . . ` とし、最後の著者の前にアンパサンドを付けない。
+誌名と巻数を斜体にし、その間のコンマ、号数、ページは斜体にしない。
+これらと 0.5 インチの字下げは、[APA の参考文献の公式資料](https://apastyle.apa.org/instructional-aids/creating-reference-list.pdf) と [第七版の変更の公式資料](https://apastyle.apa.org/instructional-aids/whats-new-7e-guide.pdf) で確認した範囲である。
 この照合は、同梱スタイル全体の投稿規定への適合を終えたものではない。
 
 宣言を扱うライブラリ API は golem-assemble にある（[root ADR 0470](adr/0470-bibliography-styles-by-name-and-by-declaration.md)）。

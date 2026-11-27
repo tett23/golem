@@ -3220,7 +3220,10 @@ unitsOf lang book geom indexSet styleOf pageOf bib sections = concat (snd (mapAc
                in (n + 1, inFrame (frame n FChannel) [(unit (UPara (if null ctx then ind else noIndent)) Nothing is face (paraSizeSource style st)) {uParaStyle = st} | is <- channelLines (pgVertical geom) pageOf locators (channelAt book sp)])
             ChannelOutput BibliographyOutput ->
               let at = Just (spanFile sp, sp)
-                  hanging = Sp (fromMaybe 0 (bookBibliographyHangingIndent book))
+                  hanging = case bookBibliographyHangingIndent book of
+                    Nothing -> 0
+                    Just (BibliographyIndentSp amount) -> Sp amount
+                    Just (BibliographyIndentZw ratio) -> L.zwToSp (pgFontSize geom) ratio
                   indent = noIndent {inStart = hanging, inFirst = -hanging}
                in (n + 1, inFrame (frame n FBibliography) [plainUnit (UPara indent) Nothing is | is <- bibliographyLinesWithLabels (bibliographyLabelFor book at) (bibliographyEntriesFor book at bib) (bibliographyAt book sp)])
             ForcedBreak k -> (n, [plainUnit (UBreak k) Nothing []])

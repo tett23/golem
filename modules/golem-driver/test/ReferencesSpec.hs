@@ -267,6 +267,18 @@ bibliographyFormatTests =
           result <- build (defaultOptions tmp) {optTargets = Just [TargetText]}
           assertEqual "no errors" [] (filter isError (brDiagnostics result))
           length [() | d <- brDiagnostics result, diagCode d == DiagnosticCode "G03306"] @?= if listed then 1 else 0,
+    testCase "root ADR 0470 I2: relative hanging indent retains font units without a PDF grid" $
+      withBibProject "bibliography = [\"refs.json\"]" "[cite a]\n\n@bibliography\n" [("refs.json", abcJson)] $ \tmp -> do
+        let declaration = T.replace ".types.book]" ".types.default]" (T.replace "pieces=['DOI {DOI}.']" "pieces=['{title}']" (T.replace "hanging-indent='0pt'" "hanging-indent='1.5zw'" customBibliographyDeclaration))
+        TIO.writeFile (tmp </> "style.toml") declaration
+        TIO.appendFile (tmp </> "manifest.toml") "[targets.text]\n[targets.epub]\n"
+        result <- build (defaultOptions tmp) {optTargets = Just [TargetHtml, TargetText, TargetEpub]}
+        assertEqual "HTML-only dimensions need no PDF grid" [] (filter isError (brDiagnostics result))
+        html <- TIO.readFile (tmp </> "build/html/a.html")
+        archive <- toArchive <$> BL.readFile (tmp </> "build/epub/book.epub")
+        let xhtml = maybe "" (TE.decodeUtf8 . BL.toStrict . fromEntry) (findEntryByPath "OEBPS/a.xhtml" archive)
+        forM_ [html, xhtml] $ \output ->
+          assertBool (T.unpack output) ("padding-inline-start: 1.5em; text-indent: -1.5em" `T.isInfixOf` output),
     testCase "root ADR 0470 I2: hanging indent offsets only continuation lines in both writing directions" $
       forM_ [False, True] $ \vertical -> do
         let declaration = T.replace ".types.book]" ".types.default]" (T.replace "pieces=['DOI {DOI}.']" "pieces=['{title}']" (T.replace "hanging-indent='0pt'" "hanging-indent='20pt'" customBibliographyDeclaration))

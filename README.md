@@ -616,9 +616,10 @@ cabal test all
 種類ごとの `citation` と `citation-year` で通常の引用と年だけの引用を上書きできる。
 選んだ種類の表で項目を省くと全体の書式を使い、明示した空配列ではその書式の片を出力しない。
 片には、欄が無い場合だけ組む `{!DOI}{URL}` などの条件と、数の文字列を英語の序数にする `{edition:ordinal-en}` を書ける。
-注の引用、一覧の並べ替えとぶら下げ字下げ、同梱のスタイルは実装途中である。
-IEEE、Vancouver、SIST 02、Unified Style Sheet for Linguistics の同梱宣言は `modules/golem-project/data/bibliography/` にあり、同じ読み手を使って選び、別名に写した宣言と同じ文字列を組む。
+注の引用、二つの Chicago の同梱宣言、見本の論文三冊は実装途中である。
+IEEE、Vancouver、SIST 02、Unified Style Sheet for Linguistics、APA の同梱宣言は `modules/golem-project/data/bibliography/` にあり、同じ読み手を使って選び、別名に写した宣言と同じ文字列を組む。
 IEEE の三つの一次資料例とほかの三つのスタイルの一例ずつ、IEEE の著者名の六人と七人の境界を照合している。
+APA の三例は研究文書に記録した二次資料の文字列と照合し、名前の二十人と二十一人の境界、斜体の範囲、0.5 インチの字下げは APA の公式資料で確かめている。
 差し込み片の `renderBibliographyFragments` は、欄の値と句読点を分け、値の欄名を保持する。
 `renderBibliographyFragmentsWith` は値を引く関数に数の表記も渡し、月名と数の月を選べるようにする。
 `bibliographyEntryParts` が欄ごとの文字スタイルを付け、HTML、EPUB、PDF はスタイルを、テキストはその中の文字を出す。

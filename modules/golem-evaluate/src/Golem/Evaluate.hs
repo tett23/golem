@@ -304,7 +304,7 @@ resolveBibliographyRecords style fid manifest records book = case selected of
         labels = [label at pair | (at@(Just _), entries) <- bookBibliographies book, pair <- entries]
         indent = do
           controls <- listControls
-          pure (unSp . dimToSp (maybe 0 (dimToSp 0 . gridFontSize) (stPage style >>= pageGrid)) <$> Bib.bsHangingIndent controls)
+          pure ((\case Abs amount -> BibliographyIndentSp (unSp amount); Zw ratio -> BibliographyIndentZw ratio) <$> Bib.bsHangingIndent controls)
         warnings =
           [ diagnostic "G03306" Warning (mkSpan fid 0 0) ("著者名 " <> name <> " に並べ替えのキー（golem-sort-key）がありません。符号位置の順で並べます")
           | name <-

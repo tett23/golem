@@ -694,6 +694,16 @@ breakName = \case
   BreakVerso -> Just "verso"
   BreakColumn -> Nothing
 
+-- | Relative indents use the output paragraph's font, including without a PDF grid.
+bibliographyHangingStyle :: BibliographyHangingIndent -> Maybe Text
+bibliographyHangingStyle = \case
+  BibliographyIndentSp 0 -> Nothing
+  BibliographyIndentSp amount -> style (L.ptText (L.Sp amount) <> "pt") (L.ptText (L.Sp (-amount)) <> "pt")
+  BibliographyIndentZw 0 -> Nothing
+  BibliographyIndentZw ratio -> style (L.emText ratio <> "em") (L.emText (-ratio) <> "em")
+  where
+    style width first = Just ("padding-inline-start: " <> width <> "; text-indent: " <> first)
+
 {- | A block. A block with a language has it on its outermost element
 (docs/adr ADR 0187).
 -}
@@ -851,7 +861,7 @@ blockHtml c (Block sp lbl blang body) = case body of
         ([("class", "bibliography")] <> [("style", "list-style: none; padding-inline-start: 0") | Just _ <- [bookBibliographyHangingIndent (cBook c)]])
         ( nl
             : concat
-              [ [el "li" ([("id", citeId c (Just (spanFile sp, sp)) k)] <> [("style", "padding-inline-start: " <> L.ptText (L.Sp indent) <> "pt; text-indent: " <> L.ptText (L.Sp (-indent)) <> "pt") | Just indent <- [bookBibliographyHangingIndent (cBook c)], indent /= 0]) ([textOf (bibliographyLabelFor (cBook c) (Just (spanFile sp, sp)) k number) | Just _ <- [bookBibliographyHangingIndent (cBook c)]] <> maybe [textOf k] (concatMap entryPart) (Map.lookup k (bibliographyEntriesFor (cBook c) (Just (spanFile sp, sp)) (hcBibliography (cCfg c))))), nl]
+              [ [el "li" ([("id", citeId c (Just (spanFile sp, sp)) k)] <> [("style", style) | Just indent <- [bookBibliographyHangingIndent (cBook c)], Just style <- [bibliographyHangingStyle indent]]) ([textOf (bibliographyLabelFor (cBook c) (Just (spanFile sp, sp)) k number) | Just _ <- [bookBibliographyHangingIndent (cBook c)]] <> maybe [textOf k] (concatMap entryPart) (Map.lookup k (bibliographyEntriesFor (cBook c) (Just (spanFile sp, sp)) (hcBibliography (cCfg c))))), nl]
               | (k, number) <- bibliographyAt (cBook c) sp
               ]
         ),

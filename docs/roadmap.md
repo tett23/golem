@@ -80,7 +80,7 @@ v1.0.0 のリリースまでに、次の項目を扱う。
 ### 本の部品の拡張
 
 - **図版とキャプションの拡張（未実装）**：複数のページに分ける、見開きに置くといった扱い、ページの端や塗り足しの領域まで伸ばす図版、キャプションの位置（画像の上、横）と揃え、画像とキャプションのあいだの空き、図番号とキャプションの本文で書体や大きさを変えること（[golem-driver ADR 0010](golem-driver/adr/0010-caption-style.md)、[golem-driver ADR 0005](golem-driver/adr/0005-pdf-wrapped-figures.md)、[golem-pdf ADR 0004](golem-pdf/adr/0004-crop-marks-and-bleed.md)、[golem-layout ADR 0004](golem-layout/adr/0004-wrapped-figures.md)）。 [Golem ADR 0382](adr/0382-figure-extent-and-captions.md)。
-- **参考文献のスタイル（未実装）**：自作の宣言による引用と一覧の出力を基に、注の引用、一覧の並べ替えとラベルとぶら下げ字下げ、七つの同梱スタイル、見本の論文三冊と CI を完成させる。種類別の二度目以降の注の書式を実際の注番号へ接続し、JSON の巨大整数と非整数の欄も英語序数の書式へ渡す。投稿規定との照合とメンテナーの目視を残す。 [root ADR 0385](adr/0385-bibliography-and-citation-styles.md)、[root ADR 0470](adr/0470-bibliography-styles-by-name-and-by-declaration.md)、[root ADR 0475](adr/0475-complete-bibliography-declarations-and-citation-delimiters.md)、[root ADR 0480](adr/0480-complete-bibliography-sorting-and-conditional-formats.md)。
+- **参考文献のスタイル（未実装）**：自作の宣言による引用と一覧の出力を基に、注の引用、残る二つの Chicago の同梱宣言、見本の論文三冊と CI を完成させる。種類別の二度目以降の注の書式を実際の注番号へ接続し、JSON の巨大整数と非整数の欄も英語序数の書式へ渡す。投稿規定との照合とメンテナーの目視を残す。 [root ADR 0385](adr/0385-bibliography-and-citation-styles.md)、[root ADR 0470](adr/0470-bibliography-styles-by-name-and-by-declaration.md)、[root ADR 0475](adr/0475-complete-bibliography-declarations-and-citation-delimiters.md)、[root ADR 0480](adr/0480-complete-bibliography-sorting-and-conditional-formats.md)。
 
 ### マニュアル
 
@@ -238,6 +238,8 @@ v1 より後のバージョンのための事項には、そのバージョン�
 - **換算ページ数と実際の折り返し**：換算に使う 1 行文字数と 1 ページ行数を任意に指定できること、本文をマスターフレームに限定することは決まった。換算時に実際の版面の折り返しを引き継ぐかは未決である。現案は段落と明示改行を保ち、指定した字数で折り返し直す。[Golem ADR 0355](adr/0355-manuscript-statistics.md)
 
 ### その他の未決事項
+
+- **参考文献を並べ替えた後の番号**：一覧の `sort` を著者順などにしたとき、引用順で振った番号を保持するか、並べ替えた一覧の順に振り直すかを明文化する。現在の実装は、引用順の番号を保って並べ替える。[golem-doc ADR 0008](golem-doc/adr/0008-multiple-index-and-bibliography.md) と [root ADR 0470](adr/0470-bibliography-styles-by-name-and-by-declaration.md) の対応を確認する。
 
 - **PDF のルビ内の注の配置**：親文字の中の注の印を置く位置と、読みの範囲や幅との関係が未決である。印をルビの外へ移すか、ルビを分割するかも決めていない。[root ADR 0482](adr/0482-fix-note-loss-as-a-default-output-compatibility-exception.md) の対象から分け、後の ADR で決める。
 - **テキストフレームの実装で ADR に無かった判断**：[root ADR 0438](adr/0438-place-text-frames-anywhere-on-a-page.md) の実装で、ADR に書いていない次の扱いを決めた。メンテナーが、そのまま認めるか、ADR で直すかを決める。
