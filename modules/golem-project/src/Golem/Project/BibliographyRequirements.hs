@@ -25,7 +25,7 @@ bibliographyRequiredChecks :: Text -> BibliographyUse -> BibliographyStyle d -> 
 bibliographyRequiredChecks name use style =
   [("G03006", name, map ScopeKey (["bibliography", "styles", name] <> path), "参考文献のスタイル " <> name <> " の " <> T.intercalate "." path <> ": " <> reason) | (path, reason) <- issues]
   where
-    issues = common <> conditional <> typeIssues <> usedTypes <> nameIssues <> editorLabel <> locatorLabels
+    issues = common <> conditional <> authorSortIssues <> typeIssues <> usedTypes <> nameIssues <> editorLabel <> locatorLabels
     missing path = [(path, "必須項目がありません")]
     require path present = if present then [] else missing path
     common =
@@ -37,6 +37,11 @@ bibliographyRequiredChecks name use style =
     conditional =
       (if bsCitationMode style == Just "author-year" then require ["citation-year"] (isJust (bsCitationYear style)) else [])
         <> (if "language" `elem` fromMaybe [] (bsSort style) then require ["language-order"] (isJust (bsLanguageOrder style)) else [])
+    needsAuthorKey = "author" `elem` fromMaybe [] (bsSort style) || bsCitationSort style == Just "author-year"
+    authorSortIssues =
+      if needsAuthorKey
+        then require ["names", "author", "part-delimiter"] (maybe False (isJust . bnPartDelimiter) (Map.lookup "author" (bsNames style)))
+        else []
     typeIssues = concat [require ["types", kind, "pieces"] (isJust (btPieces value)) | (kind, value) <- Map.toList (bsTypes style)]
     usedTypes = concat [require ["types", kind] (isJust (bibliographyTypeFor kind style)) | kind <- fromMaybe [] (buListTypes use)]
     fields texts = concat [either (const []) bibliographyPieceFields (parseBibliographyPiece bibliographyFields text) | text <- texts]
@@ -56,7 +61,7 @@ bibliographyRequiredChecks name use style =
                    else
                      require (at "order") (isJust (bnOrder names))
                        <> require (at "initials") (isJust (bnInitials names))
-                       <> (if bnOrder names `elem` [Just "family-given", Just "first-family-given"] then require (at "part-delimiter") (isJust (bnPartDelimiter names)) else [])
+                       <> (if bnOrder names `elem` [Just "family-given", Just "first-family-given"] && not (role == "author" && needsAuthorKey) then require (at "part-delimiter") (isJust (bnPartDelimiter names)) else [])
                        <> (if bnInitials names == Just True then require (at "initial-format") (isJust (bnInitialFormat names)) <> require (at "initial-delimiter") (isJust (bnInitialDelimiter names)) else [])
                )
     countIssues role names = [(["names", role, key], reason) | (key, reason) <- nameListProblems names]

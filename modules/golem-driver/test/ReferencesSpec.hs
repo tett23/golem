@@ -344,6 +344,19 @@ bibliographyFormatTests =
         assertBool (T.unpack output) ("[<a>&[cite x]1?]" `T.isInfixOf` output)
         html <- TIO.readFile (tmp </> "build/html/a.html")
         assertBool (T.unpack html) ("&lt;a&gt;&amp;[cite x]" `T.isInfixOf` html),
+    testCase "root ADR 0480 I1: final record language controls the required sort separator" $
+      forM_ ["en", "ja"] $ \language ->
+        withBibProject "bibliography = [\"refs.json\"]" "本文[cite a]。\n" [("refs.json", TE.encodeUtf8 ("[{\"id\":\"a\",\"language\":\"" <> language <> "\",\"author\":[{\"family\":\"Smith\",\"given\":\"John\",\"golem-sort-key\":\"Smith\"}]}]"))] $ \tmp -> do
+          let base = fst (T.breakOn "[bibliography.styles.custom.types.book]" customBibliographyDeclaration)
+          TIO.appendFile (tmp </> "style.toml") (base <> "\n[bibliography.styles.custom.languages.ja]\nsort=['author']\n[bibliography.styles.custom.languages.ja.names.author]\npart-delimiter=''\n")
+          TIO.appendFile (tmp </> "manifest.toml") "[targets.text]\n"
+          result <- build (defaultOptions tmp) {optTargets = Just [TargetText]}
+          let errors = filter isError (brDiagnostics result)
+          if language == "en"
+            then do
+              map diagCode errors @?= [DiagnosticCode "G03006"]
+              assertBool (show errors) (all (T.isInfixOf "names.author.part-delimiter" . diagMessage) errors)
+            else assertEqual "explicit empty Japanese separator" [] errors,
     testCase "root ADR 0475 I1: no list needs no entry type declaration" $
       withBibProject "bibliography = [\"refs.json\"]" "本文[cite a]。\n" [("refs.json", abcJson)] $ \tmp -> do
         TIO.appendFile (tmp </> "style.toml") (fst (T.breakOn "[bibliography.styles.custom.types.book]" customBibliographyDeclaration))

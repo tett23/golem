@@ -696,6 +696,9 @@ HTML と EPUB は欄の文字スタイルを `cs-` のクラスにし、PDF は 
 宣言の必須キーと名前の省略の検査は `Golem.Project.BibliographyRequirements` が行う（[root ADR 0475](adr/0475-complete-bibliography-declarations-and-citation-delimiters.md)）。
 `parseStyle` は、未選択の宣言と基礎の宣言も検査し、必須キーの不足を G03006 にする。
 書いた文献種別の差し込みが名前を参照するときは、一覧の有無によらず、その名前の書式も検査する。
+必須キーを検査する API は、`sort` が `author` を含む宣言と `citation-sort = "author-year"` の型付きの宣言について、名前の表示や書誌データの明示したキーによらず、`names.author.part-delimiter` を必須にする（[root ADR 0480](adr/0480-complete-bibliography-sorting-and-conditional-formats.md)）。
+ソートだけのために名前の表示用の設定を要求せず、区切りの空文字列も保持する。
+通常の CLI は、実際に使う文献について本の言語の並べ方と文献の言語の名前の設定を合成した後にも必須キーを検査する。
 実際に一覧で使う文献種別と位置ラベルの検査は、`bibliographyRequiredChecks` に使用状況を渡す API である。
 通常の CLI は、実際に使う文献種別と位置ラベルの不足も検査し、自作の宣言による引用と一覧を組む。
 

@@ -605,6 +605,8 @@ cabal test all
 スタイル宣言の型は `Golem.Assemble.BibliographyStyle`、TOML の読み取りと書式の検査は `Golem.Project.Bibliography` にある。
 宣言のテストは `cabal test golem-project-test --test-options='-p /0470/'` で実行する。
 `parseStyle` は、未選択の宣言も含めて必須キーを検査する（[root ADR 0475](docs/adr/0475-complete-bibliography-declarations-and-citation-delimiters.md)）。
+著者のキーで並べる宣言では、名前を表示しなくても `names.author.part-delimiter` が必要になる（[root ADR 0480](docs/adr/0480-complete-bibliography-sorting-and-conditional-formats.md)）。
+本と言語別の宣言を合成した後にも不足を検査し、明示した空文字列は有効な区切りとして扱う。
 名前の先頭と末尾の保持、二人のときの区切り、言語別の上書き、引用全体の囲みを扱う API もある。
 通常の CLI は、選んだ自作の宣言から引用と一覧の共通の出力を作る。
 名前の書式、文献ごとの言語、引用全体の囲み、引用の年順と同著者同年の接尾辞、位置の英語ラベル、前置きと後置きを扱い、PDF、HTML、EPUB、テキストで使う。
