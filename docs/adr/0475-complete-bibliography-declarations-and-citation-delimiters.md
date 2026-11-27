@@ -1,6 +1,6 @@
 # ADR 0475: 文献宣言の必須項目と名前の省略と引用の区切りを定める
 
-Status: accepted-pending
+Status: superseded-pending [{"part":"著者順での part-delimiter の必須条件","by":["docs/adr/0480-complete-bibliography-sorting-and-conditional-formats.md"],"kind":"supplement"}]
 
 ## 文脈
 
