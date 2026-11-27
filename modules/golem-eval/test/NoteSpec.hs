@@ -47,7 +47,7 @@ tests =
         [(n, [T.concat [t | Text _ t <- is'] | Block _ _ _ (Paragraph Nothing is') <- body]) | Paragraph _ is <- resultBodies r, Endnote _ n _ body <- is] @?= [(1, ["後一"]), (2, ["後二"])]
         [n | Paragraph _ is <- resultBodies r, Note _ n _ _ <- is] @?= [1],
       testCase "root ADR 0412 I2: [endnote name] takes the body of @endnote name of more than one paragraph" $ do
-        let (ds, r) = evalSource ctx "本文[endnote k]。\n\n@endnote k\n  一つめ。\n\n  二つめ。\n"
+        let (ds, r) = evalSource ctx "本文[endnote k]。\n\n@endnote k\n:::\n一つめ。\n\n二つめ。\n:::\n"
         map diagCodeText ds @?= []
         [length body | Paragraph _ is <- resultBodies r, Endnote _ _ _ body <- is] @?= [2],
       testCase "root ADR 0422: label= gives a note, a sidenote and an endnote a label; the name of @note is none" $ do
@@ -79,9 +79,9 @@ tests =
         map diagCodeText ds @?= []
         [length body | Paragraph _ is <- resultBodies r, Sidenote _ _ _ body <- is] @?= [1],
       testCase "the blank-line style: a paragraph for each run of lines between blank lines" $
-        notesOf ctx "本文[note k]。\n\n@note k\n  一つめの\n  段落。\n\n  二つめ。\n" @?= ([[(Nothing, "一つめの段落。"), (Nothing, "二つめ。")]], []),
+        notesOf ctx "本文[note k]。\n\n@note k\n:::\n一つめの\n段落。\n\n二つめ。\n:::\n" @?= ([[(Nothing, "一つめの段落。"), (Nothing, "二つめ。")]], []),
       testCase "the line style: a paragraph for each line" $
-        notesOf lineCtx "本文[note k]。\n@note k\n  一つめ。\n  二つめ。\n  三つめ。\n" @?= ([[(Nothing, "一つめ。"), (Nothing, "二つめ。"), (Nothing, "三つめ。")]], []),
+        notesOf lineCtx "本文[note k]。\n@note k\n:::\n一つめ。\n二つめ。\n三つめ。\n:::\n" @?= ([[(Nothing, "一つめ。"), (Nothing, "二つめ。"), (Nothing, "三つめ。")]], []),
       testCase "I3: [note name] takes the body of @note name before or after it, and in a list item" $ do
         notesOf ctx "@note k\n  前。\n\n本文[note k]。\n" @?= ([[(Nothing, "前。")]], [])
         notesOf ctx "- 項目[note k]。\n\n@note k\n  後。\n" @?= ([[(Nothing, "後。")]], [])
@@ -106,8 +106,8 @@ tests =
         let (ds, _) = evalSource ctx "本文[note k: 注]。\n\n@note k\n  注。\n"
         [(diagCodeText d, diagMessage d) | d <- ds] @?= [("G02038", "note は名前を書くと散文スロットを取りません"), ("G02138", "使われない注の本文です: k")],
       testCase "G02141 at each block of the body that is not a paragraph, which is dropped" $ do
-        notesOf ctx "本文[note k]。\n\n@note k\n  一。\n\n  - 項目\n\n  二。\n" @?= ([[(Nothing, "一。"), (Nothing, "二。")]], ["G02141"])
-        notesOf ctx "本文[note k]。\n\n@note k\n  一。\n\n  @note j\n    中。\n" @?= ([[(Nothing, "一。")]], ["G02141"]),
+        notesOf ctx "本文[note k]。\n\n@note k\n:::\n一。\n\n- 項目\n\n二。\n:::\n" @?= ([[(Nothing, "一。"), (Nothing, "二。")]], ["G02141"])
+        notesOf ctx "本文[note k]。\n\n@note k\n:::\n一。\n\n@note j\n  中。\n:::\n" @?= ([[(Nothing, "一。")]], ["G02141"]),
       testCase "G02143 for no body; not when G02141 leaves no paragraph; [note] of such a body puts out nothing" $ do
         notesOf ctx "本文[note k]。\n\n@note k\n" @?= ([], ["G02143"])
         notesOf ctx "本文[note k]。\n\n@note k\n  - 項目\n" @?= ([], ["G02141"]),

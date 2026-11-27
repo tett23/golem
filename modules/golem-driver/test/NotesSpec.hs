@@ -22,7 +22,7 @@ import Test.Tasty.HUnit
 
 -- | A note of three paragraphs, each short enough for one line.
 three :: T.Text
-three = "本文[note k]。\n\n@note k\n  一の段。\n\n  二の段。\n\n  三の段。\n"
+three = "本文[note k]。\n\n@note k\n:::\n一の段。\n\n二の段。\n\n三の段。\n:::\n"
 
 lineText :: Line -> T.Text
 lineText l = T.concat [bcText c | Box _ c <- lineItems l]
@@ -52,11 +52,11 @@ notesTests =
           assertBool (show ls) (not ("一の段。" `T.isPrefixOf` a))
         other -> assertFailure (show other),
     testCase "I4: a paragraph of two lines in a footnote: the lines of each paragraph added up" $ do
-      pl <- layout horizontalStyle "本文[note k]。\n\n@note k\n  一二三四五六七八九十一二三四五。\n\n  末。\n"
+      pl <- layout horizontalStyle "本文[note k]。\n\n@note k\n:::\n一二三四五六七八九十一二三四五。\n\n末。\n:::\n"
       map length (footnotes pl) @?= [3],
     testCase "I6: a footnote too long for a page goes on to the next, at a line between or inside its paragraphs" $ do
-      let paras = T.concat ["  段" <> T.pack (show i) <> "。\n\n" | i <- [1 .. 6 :: Int]]
-      pl <- layout fiveLines ("本文[note k]。\n\n@note k\n" <> paras)
+      let paras = T.concat ["段" <> T.pack (show i) <> "。\n\n" | i <- [1 .. 6 :: Int]]
+      pl <- layout fiveLines ("本文[note k]。\n\n@note k\n:::\n" <> paras <> ":::\n")
       let pages = [(poNumber p, n) | p <- gridPages pl, (_, _, n) <- poFootnotes p]
       assertBool (show pages) (length pages >= 2)
       sum (map snd pages) @?= 6,
@@ -74,10 +74,10 @@ notesTests =
       assertBool (T.unpack html) ("<p><a href=\"#noteref-1\">1</a> 注。</p></aside>" `T.isInfixOf` html),
     testCase "I2: @note before the mark, after it and in a list item give the same HTML, EPUB and plain text, and the same drawing of the PDF" $ do
       let at pre post = pre <> "本文[note k]。\n\n- 項目\n" <> post
-          body = "@note k\n  一の段。\n\n  二の段。\n\n"
+          body = "@note k\n:::\n一の段。\n\n二の段。\n:::\n\n"
       a <- buildAll horizontalStyle (at body "")
       b <- buildAll horizontalStyle (at "" ("\n" <> body))
-      c <- buildAll horizontalStyle (at "" "\n  @note k\n    一の段。\n\n    二の段。\n")
+      c <- buildAll horizontalStyle (at "" "\n  @note k\n  :::\n  一の段。\n\n  二の段。\n  :::\n")
       let outputs fs = [(p, bs) | (p, bs) <- fs, not (".json" `isSuffixOf` p)]
           -- the PDF follows the places of the text in the source (its structure), not only the text
           notPdf = filter (not . (".pdf" `isSuffixOf`) . fst) . outputs

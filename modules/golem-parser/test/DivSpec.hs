@@ -80,10 +80,9 @@ tests =
         let src = "@a\n  @b\n  :::\n  一\n\n後\n"
         codes src @?= ["G01030"]
         length (top src) @?= 2,
-      testCase "root ADR 0459 I1: one block between ::: lines is G01031, an info" $ do
-        codes "@x\n:::\n一\n:::\n" @?= ["G01031"]
-        [diagSeverity d | d <- snd (parse fid "@x\n:::\n一\n:::\n")] @?= [Info]
-        sitesOf "G01031" "@x\n:::\n一\n:::\n" @?= [(3, 6)],
+      testCase "root ADR 0473 I5: parsing preserves a fence without deciding G01031" $ do
+        codes "@style body\n:::\nAlpha\n:::\n" @?= []
+        codes "@not-a-command\n:::\nAlpha\n:::\n" @?= [],
       testCase "root ADR 0459 I5: ::: that neither opens nor closes is text" $ do
         mapM_
           (\src -> assertBool (T.unpack src) (textLeft src && null (codes src)))

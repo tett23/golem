@@ -717,7 +717,7 @@ assetRefsWith overrides (A.File _ bs) = concatMap blk bs
     blk (A.Located sp b) = case b of
       A.BlockCommand (A.Located _ name) args body -> [r | callsBuiltin overrides BlockSpace name (spanStart sp), r <- cmd name args] <> concatMap blk body
       A.Attributed cs t -> concatMap blk cs <> maybe [] blk t
-      A.Fenced inner -> concatMap blk inner
+      A.Fenced _ inner -> concatMap blk inner
       A.BulletList items -> concatMap (concatMap blk) items
       A.OrderedList items -> concatMap (concatMap blk) items
       A.DefList gs -> concatMap (concatMap (concatMap blk) . A.dgDefs) gs

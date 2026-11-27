@@ -440,7 +440,7 @@ sourceTests =
           (inContents toNote, inContents back) @?= (Just "1", Just "1")
         other -> assertFailure (show other),
     testCase "I3 a note of two paragraphs goes to its first line" $ do
-      let src = "本文[note k]の後。\n\n@note k\n  一つめの段落。\n  二つめの段落。\n"
+      let src = "本文[note k]の後。\n\n@note k\n:::\n一つめの段落。\n二つめの段落。\n:::\n"
       pdf <- pdfOf horizontalStyle src []
       pages <- pageGlyphs pdf
       case (insides pdf, glyphsOf '一' pages) of

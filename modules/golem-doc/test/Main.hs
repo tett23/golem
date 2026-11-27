@@ -214,6 +214,17 @@ cbor =
         mapM_
           (\t -> decodeInlines (toStrictByteString (encodeTerm (TList [TList [TInt t, spT, TList [text]]]))) @?= Left "スキーマに合いません: インラインの種類")
           [1, 2, 3],
+      testCase "root ADR 0473 I1, I3: separate paragraph blocks retain all fields through CBOR" $ do
+        let site = mkSpan (FileId 0)
+            first = Block (site 0 5) (Just "first") (Just "en") (Paragraph Nothing [Text (site 0 5) "Alpha"])
+            second = Block (site 6 10) Nothing Nothing (Paragraph (Just "lead") [Text (site 6 10) "Beta"])
+            input = Document (FileId 0) [first, second]
+        decodeDocument (encodeDocument input) @?= Right input
+        map blockSpan (docBlocks input) @?= [site 0 5, site 6 10],
+      testCase "root ADR 0473 I1: a hard line break stays inside its paragraph through CBOR" $ do
+        let input = Document (FileId 0) [Block sp Nothing Nothing (Paragraph Nothing [Text sp "Alpha", LineBreak sp, Text sp "Beta"]), Block sp Nothing Nothing (Paragraph Nothing [Text sp "Gamma"])]
+        decodeDocument (encodeDocument input) @?= Right input
+        validateDocument (const (Just 100)) [] input @?= [],
       testCase "line breaks only between inlines at the top of a paragraph (docs/adr ADR 0005)" $ do
         let size (FileId 0) = Just 10
             size _ = Nothing

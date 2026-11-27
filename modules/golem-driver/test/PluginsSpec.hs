@@ -306,6 +306,18 @@ blockCommandTests =
       -- grid.wat reads no body: both forms pass the paragraph to it, and both fail alike
       next @?= indented
       assertBool "no G02011" (DiagnosticCode "G02011" `notElem` map fst (snd next)),
+    testCase "root ADR 0473 I1, A2: a Wasm plugin receives only the next line-mode paragraph" $
+      withBlockProject [("echo", "block-body-echo.wat", "")] "@manifest paragraph-separator=line\n\n@body-one\nAlpha\nBeta\n" $ \tmp -> do
+        (bs, ds) <- blocksOf tmp
+        ds @?= []
+        [(blockLabel b, blockLang b, st, [t | Text _ t <- is]) | b@(Block _ _ _ (Paragraph st is)) <- bs] @?= [(Nothing, Nothing, Nothing, ["Alpha"]), (Nothing, Nothing, Nothing, ["Beta"])]
+        length bs @?= 2,
+    testCase "root ADR 0473 I3, A2: a Wasm plugin receives both fenced line-mode paragraphs" $
+      withBlockProject [("echo", "block-body-echo.wat", "")] "@manifest paragraph-separator=line\n\n@body-two\n:::\nAlpha\nBeta\n:::\n" $ \tmp -> do
+        (bs, ds) <- blocksOf tmp
+        ds @?= []
+        [(blockLabel b, blockLang b, st, [t | Text _ t <- is]) | b@(Block _ _ _ (Paragraph st is)) <- bs] @?= [(Nothing, Nothing, Nothing, ["Alpha"]), (Nothing, Nothing, Nothing, ["Beta"])]
+        length bs @?= 2,
     testCase "root ADR 0461 I4, I5: a block command left unknown after a plugin failed to load is G02282, and G02011 as for a command that puts out blocks" $
       withBlockProject [("gr", "grid.wat", "data = { table = \"none.tsv\" }\n")] "@grid\n\n@nope\n本文\n" $ \tmp -> do
         r <- build (defaultOptions tmp)

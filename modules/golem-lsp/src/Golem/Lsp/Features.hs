@@ -199,7 +199,7 @@ occurrencesWith overrides file@(File _ bs) = concatMap block bs
       SetVar (Located vsp v) e -> (vsp, OccVar Nothing v) : expr e
       BlockCommand (Located nsp name) args body -> [(nsp, OccCommand False name) | called BlockSpace name nsp] <> blockCommand sp name args <> concatMap block body
       Attributed cs t -> concatMap block cs <> maybe [] block t
-      Fenced fbs -> concatMap block fbs
+      Fenced _ fbs -> concatMap block fbs
       _ -> []
     blockCommand importSp name args = case (name, args) of
       ("import", Located asp (Positional (Word p)) : _) -> (asp, OccImport p) : listedIn importSp p args
@@ -726,7 +726,7 @@ codeBlockAt off (File _ blocks) = any inside blocks
       CodeBlock {} -> spanStart sp <= off && off < spanEnd sp
       BlockCommand _ _ body -> any inside body
       Attributed commands body -> any inside commands || maybe False inside body
-      Fenced fbs -> any inside fbs
+      Fenced _ fbs -> any inside fbs
       BulletList items -> any (any inside) items
       OrderedList items -> any (any inside) items
       DefList groups -> any (any (any inside) . dgDefs) groups
@@ -1238,7 +1238,7 @@ outline ws path = case sourceOf ws path of
     h (Located sp b) = case b of
       Heading l is -> [(sp, l, is)]
       Attributed _ (Just t) -> h t
-      Fenced fbs -> concatMap h fbs
+      Fenced _ fbs -> concatMap h fbs
       _ -> []
     title src is = T.strip (T.concat (map (piece src) is))
     piece src (Located sp i) = case i of
@@ -1468,7 +1468,7 @@ setSites (File _ bs) = concatMap go bs
       DefList gs -> concatMap (concatMap (concatMap go) . dgDefs) gs
       BlockCommand _ _ body -> concatMap go body
       Attributed cs t -> concatMap go cs <> maybe [] go t
-      Fenced fbs -> concatMap go fbs
+      Fenced _ fbs -> concatMap go fbs
       _ -> []
 
 setNamesOf :: Source -> [Text]

@@ -125,8 +125,8 @@ tests =
         map blockLabel (resultBlocks r) @?= [Just "x", Nothing]
         codes blockOnly (listed "note" "@label x\n@note\n段落\n") @?= [],
       testCase "root ADR 0471 I2: { note } inside the body of @style s: s on the paragraphs of the function's output" $ do
-        [st | Paragraph st _ <- resultBodies (evalResult blockOnly (listed "note" "@style s\n@note\n段落\n"))] @?= [Just "s", Just "s"]
-        codes blockOnly (listed "note" "@style s\n@note\n段落\n") @?= [],
+        [st | Paragraph st _ <- resultBodies (evalResult blockOnly (listed "note" "@style s\n:::\n@note\n段落\n:::\n"))] @?= [Just "s", Just "s"]
+        codes blockOnly (listed "note" "@style s\n:::\n@note\n段落\n:::\n") @?= [],
       testCase "root ADR 0471 I2: { note } of an inline command and [note 本文]: the function's output, no G02270" $ do
         texts inlineOnly (listed "note" "[note: 本文]\n") @?= ["F:note本文"]
         codes inlineOnly (listed "note" "[note: 本文]\n") @?= [],
@@ -141,8 +141,8 @@ tests =
       testCase "root ADR 0471 I2: { listing } and src twice: the call reaches the function, whose signature has no src" $
         codes blockOnly (listed "listing" "@listing src=a src=b\n") @?= ["G02077", "G02119", "G02119"],
       testCase "root ADR 0471 I2: { lang } and @lang twice: the functions, no G02012" $ do
-        texts blockOnly (listed "lang" "@lang en\n@lang ja\n段落\n") @?= ["F:lang", "F:lang", "段落"]
-        codes blockOnly (listed "lang" "@lang en\n@lang ja\n段落\n") @?= [],
+        texts blockOnly (listed "lang" "@lang en\n:::\n@lang ja\n段落\n:::\n") @?= ["F:lang", "F:lang", "段落"]
+        codes blockOnly (listed "lang" "@lang en\n:::\n@lang ja\n段落\n:::\n") @?= [],
       testCase "root ADR 0471 I2: { toc as note } and @note with a paragraph: the output of toc" $ do
         texts blockOnly "@import functions/all.emet { toc as note }\n\n@note\n段落\n" @?= ["F:toc", "段落"]
         codes blockOnly "@import functions/all.emet { toc as note }\n\n@note\n段落\n" @?= [],

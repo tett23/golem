@@ -18,14 +18,16 @@ He said nothing, and the silence was the answer. “東京” is set as English 
 - Merci.
 
 @lang en
-  The first paragraph of a long quotation.
+:::
+The first paragraph of a long quotation.
 
-  The second paragraph of the quotation.
+The second paragraph of the quotation.
 
-  - A list inside it.
+- A list inside it.
 
-  @lang de
-  Ein Absatz auf Deutsch.
+@lang de
+Ein Absatz auf Deutsch.
+:::
 
 # 分綴
 

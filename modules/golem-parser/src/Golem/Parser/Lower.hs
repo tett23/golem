@@ -153,7 +153,7 @@ attributed :: P -> [Located Block]
 attributed (PN _ sp cs) =
   let cmds = [c | c@(PN NBlockCommand _ _) <- cs]
       target = case [c | c <- cs, (isBlockNode c && pkind c /= NBlockCommand) || pkind c == NDiv] of
-        (PN NDiv dsp dcs : _) -> Just (Located dsp (Fenced (blocks dcs)))
+        (PN NDiv dsp dcs : _) -> Just (Located dsp (Fenced (length [() | PT KDivMark _ _ <- dcs] == 2) (blocks dcs)))
         (b : _) -> block b
         [] -> Nothing
       groups = segments cmds

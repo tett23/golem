@@ -125,9 +125,21 @@ aozoraProseCases =
 
 aozoraVerseCases :: [(String, Text, Text)]
 aozoraVerseCases =
-  [ ( "stanzas, indents of full-width spaces, headings and breaks",
+  [ ( "root ADR 0473 I1: empty verse has no stanza",
+      aozora "",
+      "@nonumber\n# 底本と作成者\n\n底本：「本」\n"
+    ),
+    ( "root ADR 0473 I1: a one-line stanza needs no hard break",
+      aozora "架空の一行\n",
+      "@style verse\n  架空の一行\n\n@nonumber\n# 底本と作成者\n\n底本：「本」\n"
+    ),
+    ( "root ADR 0473 I1: a two-line stanza uses one hard break and keeps its spaces",
+      aozora "架空の一行\n　架空の二行\n",
+      "@style verse\n  架空の一行\\\n  　架空の二行\n\n@nonumber\n# 底本と作成者\n\n底本：「本」\n"
+    ),
+    ( "stanzas, indents of full-width spaces, headings and breaks",
       aozora "［＃ページの左右中央］\n　　心象スケツチ［＃「心象スケツチ」は１段階小さな文字］\n　　春と修羅\n［＃改丁］\n\n［＃２字下げ］序［＃「序」は大見出し］\n\nわたくしといふ現象は\n［＃２字下げ］仮定された\n［＃ここから３字下げ］\n有機交流電燈の\nひとつの\n［＃ここで字下げ終わり］\n\n東海《とうかい》の小島\n［＃地付き］（一九二二、一、六）\n#行頭\n",
-      "@style verse\n  　　心象スケツチ\n  　　春と修羅\n\n@page-break recto\n\n@nonumber\n# 序\n\n@style verse\n  わたくしといふ現象は\n  　　仮定された\n  　　　有機交流電燈の\n  　　　ひとつの\n\n@style verse\n  [ruby: 東海|とうかい]の小島\n  （一九二二、一、六）\n  \\#行頭\n\n@nonumber\n# 底本と作成者\n\n底本：「本」\n"
+      "@style verse\n  　　心象スケツチ\\\n  　　春と修羅\n\n@page-break recto\n\n@nonumber\n# 序\n\n@style verse\n  わたくしといふ現象は\\\n  　　仮定された\\\n  　　　有機交流電燈の\\\n  　　　ひとつの\n\n@style verse\n  [ruby: 東海|とうかい]の小島\\\n  （一九二二、一、六）\\\n  \\#行頭\n\n@nonumber\n# 底本と作成者\n\n底本：「本」\n"
     )
   ]
 

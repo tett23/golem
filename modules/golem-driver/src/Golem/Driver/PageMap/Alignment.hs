@@ -119,7 +119,7 @@ astParts (A.File _ blocks) = concatMap block blocks
       A.Table _ header rows -> concatMap (concatMap inline) (header <> concat rows)
       A.BlockCommand _ _ bs -> concatMap block bs
       A.Attributed bs body' -> concatMap block bs <> maybe [] block body'
-      A.Fenced bs -> concatMap block bs
+      A.Fenced _ bs -> concatMap block bs
       _ -> []
     inline (A.Located sp body) = case body of
       A.Text text -> [Part sp (Just text)]
