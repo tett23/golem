@@ -5496,7 +5496,8 @@ golem-pdf:test:golem-pdf-test"
 run split_rest "$HERE" "$HERE/../../modules"
 expect "root ADR 0457 I2: test-suites: rest-a and rest-b of modules/ are rest, split in two" 0
 run test_suites rest-a
-expect "root ADR 0457 I1: tests-rest-a runs golem-emet-test and golem-typeset-test" 0 "golem-emet:test:golem-emet-test
+expect "root ADR 0457 I1: tests-rest-a runs golem-emet-test, golem-geometry-test and golem-typeset-test" 0 "golem-emet:test:golem-emet-test
+golem-geometry:test:golem-geometry-test
 golem-typeset:test:golem-typeset-test"
 # I3: a new suite that REST_A does not list is in rest-b
 printf '\ntest-suite golem-pdf-new-test\n  type: exitcode-stdio-1.0\n' >>"$R57/golem-pdf/golem-pdf.cabal"
