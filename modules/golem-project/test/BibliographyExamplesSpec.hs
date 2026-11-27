@@ -32,23 +32,8 @@ tests =
   testGroup
     "primary bibliography examples"
     ( [example name | name <- ["ieee", "vancouver", "sist02", "unified-linguistics"]]
-        <> [ testCase "root ADR 0470 I2, I6: bundled IEEE is its source file and equals a writer copy" $ do
-               source <- TIO.readFile "data/bibliography/ieee.toml"
-               bundledBibliographySource "ieee" @?= Just source
-               declaration <- either (failure . show) pure (bundledBibliographyDeclaration (FileId 0) "ieee") >>= require "bundled IEEE declaration"
-               let copy = T.replace "[bibliography.styles.ieee" "[bibliography.styles.writer-copy" (T.replace "style = 'ieee'" "style = 'writer-copy'" source)
-               copied <- either (failure . show) pure (parseStyle (FileId 0) copy)
-               Map.lookup "writer-copy" (Decl.bibStyles (stBibliography copied)) @?= Just declaration
-               forM_ ["ieee", "ieee-book", "ieee-chapter"] $ \exampleName -> do
-                 let fixture extension = "test/fixtures/bibliography/" <> exampleName <> extension
-                 records <- BL.readFile (fixture ".json") >>= either (failure . show) pure . Json.decodeCslRecords
-                 case records of
-                   [record] -> do
-                     parts <- either (failure . T.unpack) pure (formatBibliographyRecord declaration 1 record)
-                     expected <- T.stripEnd <$> TIO.readFile (fixture ".txt")
-                     Csl.entryText parts @?= expected
-                   _ -> failure "exactly one primary IEEE example required",
-             testCase "root ADR 0470: bundled IEEE lists six names and abbreviates seven to the first" $ do
+        <> [bundledExample name | name <- ["ieee", "vancouver", "sist02", "unified-linguistics"]]
+        <> [ testCase "root ADR 0470: bundled IEEE lists six names and abbreviates seven to the first" $ do
                declaration <- either (failure . show) pure (bundledBibliographyDeclaration (FileId 0) "ieee") >>= require "bundled IEEE declaration"
                options <- require "IEEE author options" (Map.lookup "author" (Decl.bsNames declaration))
                (format, extras) <- either (failure . T.unpack) pure (Names.resolveBibliographyNames options)
@@ -64,6 +49,25 @@ tests =
 
 example :: String -> TestTree
 example name = testCase ("root ADR 0470 I6: explicit " <> name <> " declaration matches its primary-source example") (verifyExample name id id)
+
+bundledExample :: String -> TestTree
+bundledExample name = testCase ("root ADR 0470 I2, I6: bundled " <> name <> " equals its file, writer copy and primary examples") $ do
+  source <- TIO.readFile ("data/bibliography/" <> name <> ".toml")
+  let styleName = T.pack name
+  bundledBibliographySource styleName @?= Just source
+  declaration <- either (failure . show) pure (bundledBibliographyDeclaration (FileId 0) styleName) >>= require "bundled declaration"
+  let copy = T.replace ("[bibliography.styles." <> styleName) "[bibliography.styles.writer-copy" (T.replace ("style = '" <> styleName <> "'") "style = 'writer-copy'" source)
+  copied <- either (failure . show) pure (parseStyle (FileId 0) copy)
+  Map.lookup "writer-copy" (Decl.bibStyles (stBibliography copied)) @?= Just declaration
+  forM_ (if name == "ieee" then [name, "ieee-book", "ieee-chapter"] else [name]) $ \exampleName -> do
+    let fixture extension = "test/fixtures/bibliography/" <> exampleName <> extension
+    records <- BL.readFile (fixture ".json") >>= either (failure . show) pure . Json.decodeCslRecords
+    case records of
+      [record] -> do
+        parts <- either (failure . T.unpack) pure (formatBibliographyRecord declaration 1 record)
+        expected <- T.stripEnd <$> TIO.readFile (fixture ".txt")
+        Csl.entryText parts @?= expected
+      _ -> failure "exactly one primary example required"
 
 verifyExample :: String -> (Text -> Text) -> (Text -> Text) -> Assertion
 verifyExample name changeDeclaration changeExpected = do

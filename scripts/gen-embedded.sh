@@ -8,6 +8,9 @@
 #   modules/golem-driver/src/Golem/Driver/Version/Embedded.hs       VERSION
 #   modules/golem-evaluate/src/Golem/Evaluate/Explain/Embedded.hs   docs/diagnostics.md
 #   modules/golem-project/src/Golem/Project/Bibliography/Builtin/IEEE.hs  modules/golem-project/data/bibliography/ieee.toml
+#   modules/golem-project/src/Golem/Project/Bibliography/Builtin/Vancouver.hs  modules/golem-project/data/bibliography/vancouver.toml
+#   modules/golem-project/src/Golem/Project/Bibliography/Builtin/Sist02.hs  modules/golem-project/data/bibliography/sist02.toml
+#   modules/golem-project/src/Golem/Project/Bibliography/Builtin/UnifiedLinguistics.hs  modules/golem-project/data/bibliography/unified-linguistics.toml
 #
 #   sh scripts/gen-embedded.sh
 #
@@ -90,14 +93,23 @@ END {
 VOUT=$DSRC/Version/Embedded.hs
 EOUT=$ESRC/Explain/Embedded.hs
 POUT=$PSRC/IEEE.hs
+PVOUT=$PSRC/Vancouver.hs
+PSOUT=$PSRC/Sist02.hs
+PUOUT=$PSRC/UnifiedLinguistics.hs
 mkdir -p "$DSRC/Version" "$ESRC/Explain" "$PSRC"
 if gen VERSION Golem.Driver.Version.Embedded versionText Golem.Driver.Version "$VOUT" &&
   gen docs/diagnostics.md Golem.Evaluate.Explain.Embedded documentText Golem.Evaluate.Explain "$EOUT" &&
-  gen modules/golem-project/data/bibliography/ieee.toml Golem.Project.Bibliography.Builtin.IEEE sourceText Golem.Project.Bibliography.Builtin "$POUT"; then
+  gen modules/golem-project/data/bibliography/ieee.toml Golem.Project.Bibliography.Builtin.IEEE sourceText Golem.Project.Bibliography.Builtin "$POUT" &&
+  gen modules/golem-project/data/bibliography/vancouver.toml Golem.Project.Bibliography.Builtin.Vancouver sourceText Golem.Project.Bibliography.Builtin "$PVOUT" &&
+  gen modules/golem-project/data/bibliography/sist02.toml Golem.Project.Bibliography.Builtin.Sist02 sourceText Golem.Project.Bibliography.Builtin "$PSOUT" &&
+  gen modules/golem-project/data/bibliography/unified-linguistics.toml Golem.Project.Bibliography.Builtin.UnifiedLinguistics sourceText Golem.Project.Bibliography.Builtin "$PUOUT"; then
   mv "$VOUT.tmp" "$VOUT"
   mv "$EOUT.tmp" "$EOUT"
   mv "$POUT.tmp" "$POUT"
+  mv "$PVOUT.tmp" "$PVOUT"
+  mv "$PSOUT.tmp" "$PSOUT"
+  mv "$PUOUT.tmp" "$PUOUT"
 else
-  rm -f "$VOUT.tmp" "$EOUT.tmp" "$POUT.tmp"
+  rm -f "$VOUT.tmp" "$EOUT.tmp" "$POUT.tmp" "$PVOUT.tmp" "$PSOUT.tmp" "$PUOUT.tmp"
   exit 1
 fi

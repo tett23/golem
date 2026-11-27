@@ -6,12 +6,18 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Golem.Assemble.BibliographyStyle
 import Golem.Project.Bibliography.Builtin.IEEE qualified as IEEE
+import Golem.Project.Bibliography.Builtin.Sist02 qualified as Sist02
+import Golem.Project.Bibliography.Builtin.UnifiedLinguistics qualified as UnifiedLinguistics
+import Golem.Project.Bibliography.Builtin.Vancouver qualified as Vancouver
 import Golem.Project.Style (Dim, parseStyle, stBibliography)
 import Golem.Syntax.Diagnostic (Diagnostic, Severity (Error), diagnostic)
 import Golem.Syntax.Span (FileId, mkSpan)
 
 bundledBibliographySource :: Text -> Maybe Text
 bundledBibliographySource "ieee" = Just IEEE.sourceText
+bundledBibliographySource "vancouver" = Just Vancouver.sourceText
+bundledBibliographySource "sist02" = Just Sist02.sourceText
+bundledBibliographySource "unified-linguistics" = Just UnifiedLinguistics.sourceText
 bundledBibliographySource _ = Nothing
 
 {- | The reserved name is renamed only inside trusted embedded data. The

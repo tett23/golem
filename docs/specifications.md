@@ -9378,9 +9378,9 @@ HTML と EPUB の引用の印は、`<span class="cite">` の中に、括弧、�
 漢数字などで組んだ番号も、対応する一覧へのリンクを保つ。
 一覧を置かない本では、一覧の文献種別の書式を要しない。
 注の引用、年だけの引用、一覧の並べ替えとラベルとぶら下げ字下げ、同梱のスタイルは実装途中である。
-IEEE の同梱宣言のファイルは `modules/golem-project/data/bibliography/ieee.toml` である。
-`ieee` を選ぶと、埋め込んだ宣言を自作の宣言と同じ読み手で読み、別名に写した宣言と同じ文字列を組む。
-書籍と論文と章の三つの一次資料例と、著者名の六人と七人の境界を照合している。
+IEEE、Vancouver、SIST 02、Unified Style Sheet for Linguistics の同梱宣言のファイルは `modules/golem-project/data/bibliography/` にある。
+`ieee`、`vancouver`、`sist02`、`unified-linguistics` を選ぶと、埋め込んだ宣言を自作の宣言と同じ読み手で読み、別名に写した宣言と同じ文字列を組む。
+IEEE の書籍と論文と章の三つの一次資料例と、ほかの三つのスタイルの一例ずつ、IEEE の著者名の六人と七人の境界を照合している。
 この照合は、同梱スタイル全体の投稿規定への適合を終えたものではない。
 
 宣言を扱うライブラリ API は golem-assemble にある（[root ADR 0470](adr/0470-bibliography-styles-by-name-and-by-declaration.md)）。

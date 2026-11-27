@@ -35,6 +35,9 @@ library
     Golem.Project.TomlMessage
     Golem.Project.TomlSchema
   other-modules: Golem.Project.Bibliography.Builtin.IEEE
+                 Golem.Project.Bibliography.Builtin.Vancouver
+                 Golem.Project.Bibliography.Builtin.Sist02
+                 Golem.Project.Bibliography.Builtin.UnifiedLinguistics
   build-depends:
     , base          >=4.20 && <4.21
     , bytestring    >=0.11 && <0.13
