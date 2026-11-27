@@ -66,6 +66,37 @@ if grep -En '(^|[^A-Za-z])(sorry|admit|axiom)([^A-Za-z]|$)' "$proof"; then
 fi
 
 lean=${LEAN:-lean}
+# Match the compiler that built the project instead of the system default.
+# CABAL_PLAN and RUNGHC follow the parser proof exporter's overrides.
+plan=${CABAL_PLAN:-$root/dist-newstyle/cache/plan.json}
+compiler=$(jq -er '."compiler-id" | select(startswith("ghc-"))' "$plan")
+runghc=${RUNGHC:-runghc-${compiler#ghc-}}
+ghc=$(command -v "$compiler") || {
+  echo "missing Cabal compiler $compiler" >&2
+  exit 1
+}
+command -v "$runghc" >/dev/null || {
+  echo "missing $runghc for Cabal compiler $compiler" >&2
+  exit 1
+}
+echo "checking pagination with $compiler and $runghc"
+
+# Support.hs imports libraries directly.  Cabal's project environment
+# can register them as hidden, so expose the in-place package IDs just
+# as the standalone layout checks below do.  This also prevents picking
+# an installed copy of a library from another checkout.
+driverCheck() {
+  cabal exec -v0 -- "$runghc" -f "$ghc" --ghc-arg=-XGHC2021 --ghc-arg=-XLambdaCase \
+    --ghc-arg=-XOverloadedStrings --ghc-arg=-XDerivingStrategies --ghc-arg=-imodules/golem-driver/test \
+    -package-id=golem-assemble-0.1.0-inplace -package-id=golem-bibliography-0.1.0-inplace \
+    -package-id=golem-doc-0.1.0-inplace -package-id=golem-driver-0.1.0-inplace \
+    -package-id=golem-layout-0.1.0-inplace -package-id=golem-layout-spec-0.1.0-inplace \
+    -package-id=golem-length-0.1.0-inplace -package-id=golem-pdf-0.1.0-inplace \
+    -package-id=golem-project-0.1.0-inplace -package-id=golem-syntax-0.1.0-inplace \
+    -package-id=golem-test-support-0.1.0-inplace -package-id=golem-typeset-0.1.0-inplace \
+    -package-id=golem-unicode-0.1.0-inplace "$@"
+}
+
 "$lean" -o "$tmp/Pagination.olean" "$proof"
 
 # The free placement of root ADR 0397 (Paginate/Physical.hs): every
@@ -141,11 +172,13 @@ if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|implemented_by|exte
 fi
 (cd "$root" && LEAN_PATH="$tmp" "$lean" "$wholeSlots")
 echo "the slots the text leaves out hold ids of the manuscript in the grid mode"
-# The manuscripts in the eight modes of SeparatorBoundary.hs: the grid and
+# The manuscripts in the ten modes of SeparatorBoundary.hs: the grid and
 # the free placement, without and with boxes, ruled blocks and items of
 # lists, with a no-break after the paragraph a separator is held with, and
-# with code blocks, whose slots print the ids of their rows.
-modes='grid free blocks blocks-free holds holds-free code code-free'
+# with code blocks, whose slots print the ids of their rows, and with
+# one-line paragraph keeps that distinguish a one-line separator hold
+# from an incorrect two-line hold.
+modes='grid free blocks blocks-free holds holds-free code code-free split split-free'
 separatorPids=
 for mode in $modes; do
   case $mode in
@@ -157,11 +190,11 @@ for mode in $modes; do
     holds-free) args='holds free' ;;
     code) args=code ;;
     code-free) args='code free' ;;
+    split) args=split ;;
+    split-free) args='split free' ;;
   esac
   # shellcheck disable=SC2086
-  (cd "$root" && cabal exec -v0 -- runghc --ghc-arg=-XGHC2021 --ghc-arg=-XLambdaCase \
-    --ghc-arg=-XOverloadedStrings --ghc-arg=-XDerivingStrategies --ghc-arg=-imodules/golem-driver/test \
-    experiments/pagination-proof/SeparatorBoundary.hs $args) > "$tmp/separator-haskell-$mode" &
+  (cd "$root" && driverCheck experiments/pagination-proof/SeparatorBoundary.hs $args) > "$tmp/separator-haskell-$mode" &
   separatorPids="$separatorPids $!"
 done
 
@@ -192,7 +225,7 @@ while [ "$part" -lt "$parts" ]; do
   cat "$tmp/boundary-lean.$part" >> "$tmp/boundary-lean"
   part=$((part + 1))
 done
-(cd "$root" && cabal exec -v0 -- runghc -hide-all-packages -package=base \
+(cd "$root" && cabal exec -v0 -- "$runghc" -f "$ghc" -hide-all-packages -package=base \
   -package-id=golem-layout-0.1.0-inplace -package-id=golem-syntax-0.1.0-inplace -package-id=golem-length-0.1.0-inplace \
   experiments/pagination-proof/Boundary.hs) > "$tmp/boundary-haskell"
 diff -u "$tmp/boundary-haskell" "$tmp/boundary-lean"
@@ -258,6 +291,36 @@ fi
 LEAN_PATH="$tmp" "$lean" "$physicalDrain"
 echo "drainOk holds at the last drainCarry of the free placement"
 
+# The exclusion is created at the cursor and remains behind it.  In
+# particular, trialWrapRest_putLine's next-column premise is derived
+# from the cursor position, not assumed as a conclusion.
+wrapPosition=$root/experiments/pagination-proof/WrapPosition.lean
+if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|implemented_by|extern|native_decide)([^A-Za-z_]|$)' "$wrapPosition"; then
+  echo "unproved or unchecked Lean declaration in $wrapPosition" >&2
+  exit 1
+fi
+LEAN_PATH="$tmp" "$lean" -o "$tmp/WrapPosition.olean" "$wrapPosition"
+echo "a wrap is outside the next column after beginWrap and successful forward parts"
+
+wrapCalls=$root/experiments/pagination-proof/WrapCalls.lean
+if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|implemented_by|extern|native_decide)([^A-Za-z_]|$)' "$wrapCalls"; then
+  echo "unproved or unchecked Lean declaration in $wrapCalls" >&2
+  exit 1
+fi
+sh "$root/experiments/pagination-proof/check-wrap-call-shape.sh"
+LEAN_PATH="$tmp" "$lean" "$wrapCalls"
+echo "every recursive parts entry preserves its wrap position and nonempty active column"
+
+# Only the arithmetic component of the retry's first-ID premise is
+# proved here; the connection to the complete rebuild/parts model remains.
+causalFirstIds=$root/experiments/pagination-proof/CausalFirstIds.lean
+if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|implemented_by|extern|native_decide)([^A-Za-z_]|$)' "$causalFirstIds"; then
+  echo "unproved or unchecked Lean declaration in $causalFirstIds" >&2
+  exit 1
+fi
+"$lean" "$causalFirstIds"
+echo "the arithmetic first-ID scan preserves the current unit's ID under rebreaking"
+
 # The boundary inputs of PhysicalBoundary.hs on Physical.lean's paginate,
 # against golem-layout's paginatePhysical (root ADR 0352).
 pboundary=$root/experiments/pagination-proof/PhysicalBoundary.lean
@@ -265,7 +328,7 @@ if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|native_decide|implemented_by|exter
   echo "unchecked Lean declaration in $pboundary" >&2
   exit 1
 fi
-(cd "$root" && cabal exec -v0 -- runghc -hide-all-packages -package=base -package=containers -package=text \
+(cd "$root" && cabal exec -v0 -- "$runghc" -f "$ghc" -hide-all-packages -package=base -package=containers -package=text \
   -package-id=golem-layout-0.1.0-inplace -package-id=golem-syntax-0.1.0-inplace \
   -package-id=golem-length-0.1.0-inplace -package-id=golem-doc-0.1.0-inplace \
   -package-id=golem-project-0.1.0-inplace \
@@ -289,9 +352,7 @@ if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|native_decide|implemented_by|exter
   echo "unchecked Lean declaration in $cboundary" >&2
   exit 1
 fi
-(cd "$root" && cabal exec -v0 -- runghc --ghc-arg=-XGHC2021 --ghc-arg=-XLambdaCase \
-  --ghc-arg=-XOverloadedStrings --ghc-arg=-XDerivingStrategies --ghc-arg=-imodules/golem-driver/test \
-  experiments/pagination-proof/CausalBoundary.hs) > "$tmp/causal-haskell"
+(cd "$root" && driverCheck experiments/pagination-proof/CausalBoundary.hs) > "$tmp/causal-haskell"
 LEAN_PATH="$tmp" "$lean" --run "$cboundary" > "$tmp/causal-lean"
 diff -u "$tmp/causal-haskell" "$tmp/causal-lean"
 causalInputs=$(grep -c '^[0-9]' "$tmp/causal-lean")
@@ -316,7 +377,7 @@ if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|native_decide|imple
   echo "unchecked Lean declaration in $values" >&2
   exit 1
 fi
-(cd "$root" && cabal exec -v0 -- runghc -hide-all-packages -package=base -package=text \
+(cd "$root" && cabal exec -v0 -- "$runghc" -f "$ghc" -hide-all-packages -package=base -package=text \
   -package-id=golem-layout-0.1.0-inplace \
   experiments/pagination-proof/CheckCaptionAssembly.hs --values) > "$tmp/caption-values"
 sed -n 's/^out //p' "$tmp/caption-values" > "$tmp/caption-haskell"
@@ -329,9 +390,7 @@ echo "the evaluation and the breaks of $captions inputs are the same in Paginati
 # two real fonts (CaptionFonts.hs): the breaks of captionCompared, the
 # grid lines of the caption and the figure of fitCaptionedFigure, or
 # G07038, against golem-typeset (root ADR 0352, invariants 1 and 2).
-(cd "$root" && cabal exec -v0 -- runghc --ghc-arg=-XGHC2021 --ghc-arg=-XLambdaCase \
-  --ghc-arg=-XOverloadedStrings --ghc-arg=-XDerivingStrategies --ghc-arg=-imodules/golem-driver/test \
-  experiments/pagination-proof/CaptionFonts.hs) > "$tmp/caption-fonts"
+(cd "$root" && driverCheck experiments/pagination-proof/CaptionFonts.hs) > "$tmp/caption-fonts"
 sed -n 's/^out //p' "$tmp/caption-fonts" > "$tmp/caption-fonts-haskell"
 LEAN_PATH="$tmp" "$lean" --run "$values" "$tmp/caption-fonts" | sed -n 's/^out //p' > "$tmp/caption-fonts-lean"
 diff -u "$tmp/caption-fonts-haskell" "$tmp/caption-fonts-lean"

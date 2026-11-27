@@ -20,19 +20,20 @@ import Golem.Typeset (PdfLayout (..))
 import Support (horizontalStyle, layoutMini, replaceIn)
 import System.Environment (getArgs)
 
--- | A paragraph of so many lines, the separators default and scene, the
+-- | A paragraph of so many lines (U uses keeps of one line), the separators default and scene, the
 -- separator gap of kind blank, a blank line, a page break, a need-lines
 -- of two lines, and, in the manuscripts with blocks, a paragraph of one
 -- line in a box, a paragraph of one line with rules before and after,
 -- and an item of a list of one line, a book part (markBookParts); in
 -- the manuscripts of the holds, a no-break; in the manuscripts with code,
 -- a code block of so many rows.
-data Item = P Int | S | T | G | B | E | N | X | R | L | K | C Int
+data Item = P Int | U Int | S | T | G | B | E | N | X | R | L | K | C Int
   deriving stock (Eq)
 
 name :: Item -> String
 name = \case
   P k -> "P" <> show k
+  U k -> "U" <> show k
   S -> "S"
   T -> "T"
   G -> "G"
@@ -48,6 +49,7 @@ name = \case
 source :: Item -> T.Text
 source = \case
   P k -> T.replicate (12 * k) (T.singleton '\12354')
+  U k -> "@style loose\n" <> T.replicate (12 * k) (T.singleton '\12354')
   S -> "---"
   T -> "@separator scene"
   G -> "@separator gap"
@@ -65,6 +67,7 @@ source = \case
 linesOf :: Item -> Int
 linesOf = \case
   P k -> k
+  U k -> k
   S -> 1
   T -> 1
   X -> 1
@@ -120,6 +123,18 @@ holdManuscripts =
 
 holdInputs :: [(Int, Int, [Item])]
 holdInputs = [(c, capacity, items) | c <- [0 .. length combos - 1], capacity <- [2, 3, 4, 5], items <- holdManuscripts]
+
+-- | A first part of one line is legal here.  Unlike the default keeps
+-- of two lines, these inputs distinguish a separator's keep of one
+-- line from an incorrect keep of two lines.
+splitInputs :: [(Int, Int, [Item])]
+splitInputs =
+  [(c, capacity, lead <> [s, U k])
+  | c <- [0 .. length combos - 1], capacity <- [1 .. 6],
+    lead <- [[], [P 1], [P 2]], s <- [S, T], k <- [2 .. 5]]
+
+splitStyle :: BS.ByteString
+splitStyle = "\n[paragraph-styles.loose]\nkeep-first-lines = 1\nkeep-last-lines = 1\n"
 
 -- | The styles of the box, of the rules and of the swatch of the box: a
 -- padding of 1zw takes a grid line before and after the box
@@ -197,6 +212,7 @@ main = do
         "blocks" : _ -> (blockInputs, blockStyle)
         "holds" : _ -> (holdInputs, "")
         "code" : _ -> (codeInputs, "")
+        "split" : _ -> (splitInputs, splitStyle)
         _ -> (inputs, "")
   forM_ set (run (drop 1 args == ["free"] || args == ["free"]) extra)
 
