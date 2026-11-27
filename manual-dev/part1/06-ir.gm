@@ -320,7 +320,7 @@ S0 の時点では、一覧の中身は決まらない。
 | 目次 | 見出し（[code: @notoc] のないもの） | 見出しのブロック（タグ 1） | [code: bookToc]：文書の順 | [code: @toc] |
 | 脚注 | [code: \[note: ...\]] | 脚注（タグ 12） | 番号を振り直す | 出力が決める |
 | 索引 | [code: \[index reading=...: ...\]] | 索引の印（タグ 14） | [code: bookIndexes]：一覧ごとに読みの順 | [code: @index] |
-| 参考文献 | [code: \[cite キー\]] | 引用（タグ 15） | [code: bookBibliographies]：一覧ごとに最初に引用した順 | [code: @bibliography] |
+| 参考文献 | [code: \[cite キー\]] | 引用（タグ 15） | [code: bookBibliographies]：宣言の並び順（既定は引用順） | [code: @bibliography] |
 
 脚注だけは、出す位置をブロックコマンドで指定しない。
 PDF は [code: style.toml] の [code: \[notes\]] の [code: placement] に従い、ページの下（[code: "page-foot"]、既定）か、マニフェストの章の終わり（[code: "chapter-end"]）に置く。
@@ -353,6 +353,9 @@ data ChannelBlock = TocOutput !Int | IndexOutput | BibliographyOutput
 
 集めた結果は、S1 の結果の [code: Doc.Book] のフィールドに入る。
 [code: bookToc] は目次の項目（階層、番号の文字列、題、リンクの先、見出しの位置）の列、[code: bookIndexes] は [code: @index] ごとの、語ごとにまとめた索引の項目（語、読み、出現位置の列）の列、[code: bookBibliographies] は [code: @bibliography] ごとの、文献のキーと番号の組の列である。
+スタイルの宣言を選んだ本では、golem-evaluate がこの後に一覧を [code: sort] で並べ替え、[code: bookBibliographyLabels] に項目の頭の文字列を、[code: bookBibliographyHangingIndent] にぶら下げ字下げの寸法を保持する。
+各出力はこの共通の一覧と頭の文字列を使い、PDF、HTML、EPUB は二行目以降に字下げを当てる。
+
 [code: @bibliography] がなければ、[code: bookBibliographies] は位置のない一つの一覧を持ち、文書の全体で番号を振る。
 [code: bookCiteMarks] は、引用の印ごとに、載る一覧と番号を持つ。[note: [style url: https://github.com/tett23/golem/blob/main/docs/golem-doc/adr/0008-multiple-index-and-bibliography.md]（golem-doc ADR 0008「複数の [code: @index] と [code: @bibliography]」）]
 脚注は別のフィールドを持たず、[code: bookDocs] の中の脚注のインラインの番号を、その場で振り直す。

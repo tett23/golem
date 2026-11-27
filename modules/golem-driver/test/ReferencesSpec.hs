@@ -30,7 +30,7 @@ import Golem.Project (Project (..), ProjectFailure (..))
 import Golem.Project.Files (diskFiles)
 import Golem.Project.Style (parseStyle)
 import Golem.Syntax
-import Golem.Typeset (IndexLine (..), PdfLayout (..), SetLine (..), TocGeometry (..), TocPage (..), bibliographyLines, indexLineInlines, indexLines, tocPage)
+import Golem.Typeset (IndexLine (..), PdfLayout (..), SetLine (..), TocGeometry (..), TocPage (..), bibliographyLines, indexLineInlines, indexLines, layoutPdf, tocPage)
 import Support
 import System.Directory (createDirectoryIfMissing, doesDirectoryExist)
 import System.FilePath ((</>))
@@ -241,7 +241,46 @@ jaRefsJson = TE.encodeUtf8 "[{\"id\": \"jisx4061\", \"title\": \"JIS X 4061:1996
 
 bibliographyFormatTests :: [TestTree]
 bibliographyFormatTests =
-  [ testCase "root ADR 0470: project loading retains the last complete CSL record without changing legacy entries"
+  [ testCase "root ADR 0470 I4, I9: declared list order and labels reach text HTML and EPUB" $
+      forM_ [(labelled, sortKey) | labelled <- [False, True], sortKey <- ["title", "author"]] $ \(labelled, sortKey) ->
+        withBibProject "bibliography = [\"refs.json\"]" "[cite c] [cite a] [cite b]\n\n@bibliography\n" [("refs.json", TE.encodeUtf8 "[{\"id\":\"a\",\"title\":\"A\",\"author\":[{\"family\":\"Kádár\"}]},{\"id\":\"b\",\"title\":\"B\",\"author\":[{\"family\":\"Kz\"}]},{\"id\":\"c\",\"title\":\"C\",\"author\":[{\"family\":\"Z\"}]}]")] $ \tmp -> do
+          let declaration = T.replace ".types.book]" ".types.default]" (T.replace "pieces=['DOI {DOI}.']" "pieces=['{title}']" (T.replace "sort=['citation']" ("sort=['" <> sortKey <> "']\n" <> if labelled then "label='({number:kanji})'" else "") customBibliographyDeclaration))
+          TIO.appendFile (tmp </> "style.toml") (declaration <> "\n[bibliography.styles.custom.names.author]\npart-delimiter=''\n")
+          TIO.appendFile (tmp </> "manifest.toml") "[targets.text]\n[targets.epub]\n"
+          result <- build (defaultOptions tmp) {optTargets = Just [TargetText, TargetHtml, TargetEpub]}
+          assertEqual "no errors" [] (filter isError (brDiagnostics result))
+          output <- TIO.readFile (tmp </> "build/text/horizontal/a.txt")
+          let expected = if labelled then "(二) A\n(三) B\n(一) C" else "A\nB\nC"
+          assertBool (T.unpack output) (expected `T.isInfixOf` output)
+          html <- TIO.readFile (tmp </> "build/html/a.html")
+          assertBool "native list numbering disabled" ("list-style: none" `T.isInfixOf` html)
+          assertBool "first label" ((if labelled then "(二) A</li>" else ">A</li>") `T.isInfixOf` html)
+          archive <- toArchive <$> BL.readFile (tmp </> "build/epub/book.epub")
+          let xhtml = maybe "" (TE.decodeUtf8 . BL.toStrict . fromEntry) (findEntryByPath "OEBPS/a.xhtml" archive)
+          assertBool "EPUB label" ((if labelled then "(二) A</li>" else ">A</li>") `T.isInfixOf` xhtml),
+    testCase "root ADR 0470 I7: author-sorted lists warn once per missing Japanese author key" $
+      forM_ [False, True] $ \listed ->
+        withBibProject "bibliography = [\"refs.json\"]" ("[cite a] [cite b]\n" <> if listed then "\n@bibliography\n" else "") [("refs.json", TE.encodeUtf8 "[{\"id\":\"a\",\"title\":\"A\",\"author\":[{\"family\":\"山田\"}]},{\"id\":\"b\",\"title\":\"B\",\"author\":[{\"family\":\"山田\"}]}]")] $ \tmp -> do
+          let declaration = T.replace ".types.book]" ".types.default]" (T.replace "pieces=['DOI {DOI}.']" "pieces=['{title}']" (T.replace "sort=['citation']" "sort=['author']" customBibliographyDeclaration)) <> "\n[bibliography.styles.custom.names.author]\npart-delimiter=''\n"
+          TIO.appendFile (tmp </> "style.toml") declaration
+          TIO.appendFile (tmp </> "manifest.toml") "[targets.text]\n"
+          result <- build (defaultOptions tmp) {optTargets = Just [TargetText]}
+          assertEqual "no errors" [] (filter isError (brDiagnostics result))
+          length [() | d <- brDiagnostics result, diagCode d == DiagnosticCode "G03306"] @?= if listed then 1 else 0,
+    testCase "root ADR 0470 I2: hanging indent offsets only continuation lines in both writing directions" $
+      forM_ [False, True] $ \vertical -> do
+        let declaration = T.replace ".types.book]" ".types.default]" (T.replace "pieces=['DOI {DOI}.']" "pieces=['{title}']" (T.replace "hanging-indent='0pt'" "hanging-indent='20pt'" customBibliographyDeclaration))
+            style = replaceIn "writing-mode = \"horizontal\"" (if vertical then "writing-mode = \"vertical\"" else "writing-mode = \"horizontal\"") (replaceIn "lines = 30" "lines = 12" horizontalStyle) <> TE.encodeUtf8 declaration
+            manifest = "bibliography = [\"refs.json\"]\n" <> miniManifest
+            records = TE.encodeUtf8 ("[{\"id\":\"a\",\"title\":\"" <> T.replicate 30 "あ" <> "\"}]")
+        result <- withMiniInput fakeProvider manifest style "[cite a]\n\n@bibliography\n" [("refs.json", records)] $ \input geom fonts -> do
+          layout <- layoutPdf input geom fonts >>= either (assertFailure . show) pure
+          let entries = [sl | sl <- Map.elems (plLines layout), "あ" `T.isInfixOf` setLineText sl]
+          assertBool "entry wraps" (length entries >= 2)
+          map slIndent entries @?= 0 : replicate (length entries - 1) (20 * pt)
+          assertBool "no fixed numeric label" (not (any (T.isInfixOf "[1]" . setLineText) entries))
+        either (assertFailure . show) pure result,
+    testCase "root ADR 0470: project loading retains the last complete CSL record without changing legacy entries"
       $ withBibProject
         "bibliography = [\"first.json\", \"second.json\"]"
         "本文。\n"

@@ -1771,9 +1771,12 @@ it has none; a URL is in the character style url (golem-doc ADR 0005),
 and a link when it passes the checks of [link] (docs/adr ADR 0182).
 -}
 bibliographyLines :: Map Text [EntryPart] -> [(Text, Int)] -> [[Inline]]
-bibliographyLines bib cites =
+bibliographyLines = bibliographyLinesWithLabels (\_ n -> "[" <> T.pack (show n) <> "] ")
+
+bibliographyLinesWithLabels :: (Text -> Int -> Text) -> Map Text [EntryPart] -> [(Text, Int)] -> [[Inline]]
+bibliographyLinesWithLabels labelFor bib cites =
   -- the number its own inline: the label of the entry (docs/adr ADR 0183)
-  [ Text sp0 ("[" <> T.pack (show n) <> "] ") : merged (fromMaybe [EntryText k] (Map.lookup k bib))
+  [ [Text sp0 label | let { label = labelFor k n }, not (T.null label)] <> merged (fromMaybe [EntryText k] (Map.lookup k bib))
   | (k, n) <- cites
   ]
   where
@@ -3215,7 +3218,11 @@ unitsOf lang book geom indexSet styleOf pageOf bib sections = concat (snd (mapAc
               let (face, ind) = paraLook style geom st
                   locators = maybe False channelLocators (Map.lookup name (bookChannelDecls book))
                in (n + 1, inFrame (frame n FChannel) [(unit (UPara (if null ctx then ind else noIndent)) Nothing is face (paraSizeSource style st)) {uParaStyle = st} | is <- channelLines (pgVertical geom) pageOf locators (channelAt book sp)])
-            ChannelOutput BibliographyOutput -> (n + 1, inFrame (frame n FBibliography) [plainUnit (UPara noIndent) Nothing is | is <- bibliographyLines (bibliographyEntriesFor book (Just (spanFile sp, sp)) bib) (bibliographyAt book sp)])
+            ChannelOutput BibliographyOutput ->
+              let at = Just (spanFile sp, sp)
+                  hanging = Sp (fromMaybe 0 (bookBibliographyHangingIndent book))
+                  indent = noIndent {inStart = hanging, inFirst = -hanging}
+               in (n + 1, inFrame (frame n FBibliography) [plainUnit (UPara indent) Nothing is | is <- bibliographyLinesWithLabels (bibliographyLabelFor book at) (bibliographyEntriesFor book at bib) (bibliographyAt book sp)])
             ForcedBreak k -> (n, [plainUnit (UBreak k) Nothing []])
             PageControl (NoBreakLines 0) -> (n, [])
             PageControl c -> (n, [plainUnit (UPageControl c) Nothing []])

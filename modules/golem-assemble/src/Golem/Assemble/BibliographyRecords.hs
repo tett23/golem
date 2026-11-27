@@ -1,5 +1,5 @@
 -- | Resolve a CSL record through an explicit declaration (root ADR 0470).
-module Golem.Assemble.BibliographyRecords (formatBibliographyRecord, formatBibliographyRecordWithSuffix, formatBibliographyCitation, formatBibliographyCitationWith, formatBibliographyCitationWithSuffix, formatBibliographyYearCitationWithSuffix, formatBibliographySubsequentCitationWithSuffix) where
+module Golem.Assemble.BibliographyRecords (formatBibliographyLabelWithSuffix, formatBibliographyRecord, formatBibliographyRecordWithSuffix, formatBibliographyCitation, formatBibliographyCitationWith, formatBibliographyCitationWithSuffix, formatBibliographyYearCitationWithSuffix, formatBibliographySubsequentCitationWithSuffix) where
 
 import Control.Applicative ((<|>))
 import Data.Map.Strict qualified as Map
@@ -15,6 +15,12 @@ import Golem.Bibliography (CslDate (..), CslEntry (ceId, ceType), CslName (..), 
 import Golem.Bibliography.Csl
 import Golem.Doc.Citation (CitePiece (..))
 import Golem.Doc.IR (Locator (..), LocatorLabel (..), LocatorValue (..), locatorLabelName)
+
+-- | Labels use the same record fields and number notation as entry pieces.
+formatBibliographyLabelWithSuffix :: Text -> BibliographyStyle d -> Int -> CslRecord -> Either Text Text
+formatBibliographyLabelWithSuffix suffix style number record = do
+  fragments <- recordFragments suffix False Nothing style number Nothing record (maybe [] pure (bsLabel style))
+  pure (foldMap (\case BibliographyField _ value -> value; BibliographyLiteral value -> value) fragments)
 
 formatBibliographyRecord :: BibliographyStyle d -> Int -> CslRecord -> Either Text [EntryPart]
 formatBibliographyRecord = formatBibliographyRecordWithSuffix ""

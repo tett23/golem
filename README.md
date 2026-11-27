@@ -599,6 +599,7 @@ cabal test all
 通常の CLI も同じように検査し、引数名と値の位置で誤りを報告する。
 
 参考文献の宣言の差し込み片を扱うライブラリ API は、golem-assemble の `Golem.Assemble.BibliographyFormats` にある（[root ADR 0470](docs/adr/0470-bibliography-styles-by-name-and-by-declaration.md)）。
+通常の CLI の一覧にも `sort` と `label` を適用し、PDF、HTML、EPUB の二行目以降は `hanging-indent` で字下げする。
 差し込み片のテストは `cabal test golem-assemble-test --test-options='-p /0470/'` で実行する。
 宣言向けの書誌データは `Golem.Bibliography.Csl.decodeCslRecords` で読み、編者、DOI、名前の並べ替えのキーなどを保持する。
 書誌データの読み取りのテストは `cabal test golem-bibliography-test` で実行する。

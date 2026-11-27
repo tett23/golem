@@ -848,11 +848,11 @@ blockHtml c (Block sp lbl blang body) = case body of
   ChannelOutput BibliographyOutput ->
     [ el
         "ol"
-        [("class", "bibliography")]
+        ([("class", "bibliography")] <> [("style", "list-style: none; padding-inline-start: 0") | Just _ <- [bookBibliographyHangingIndent (cBook c)]])
         ( nl
             : concat
-              [ [el "li" [("id", citeId c (Just (spanFile sp, sp)) k)] (maybe [textOf k] (concatMap entryPart) (Map.lookup k (bibliographyEntriesFor (cBook c) (Just (spanFile sp, sp)) (hcBibliography (cCfg c))))), nl]
-              | (k, _) <- bibliographyAt (cBook c) sp
+              [ [el "li" ([("id", citeId c (Just (spanFile sp, sp)) k)] <> [("style", "padding-inline-start: " <> L.ptText (L.Sp indent) <> "pt; text-indent: " <> L.ptText (L.Sp (-indent)) <> "pt") | Just indent <- [bookBibliographyHangingIndent (cBook c)], indent /= 0]) ([textOf (bibliographyLabelFor (cBook c) (Just (spanFile sp, sp)) k number) | Just _ <- [bookBibliographyHangingIndent (cBook c)]] <> maybe [textOf k] (concatMap entryPart) (Map.lookup k (bibliographyEntriesFor (cBook c) (Just (spanFile sp, sp)) (hcBibliography (cCfg c))))), nl]
+              | (k, number) <- bibliographyAt (cBook c) sp
               ]
         ),
       nl

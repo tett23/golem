@@ -9395,12 +9395,12 @@ CSL の XML と BibTeX のスタイルプログラムは読まない（[root ADR
 #### 参考文献の番号とリンク
 
 参考文献の番号は、一覧ごとに 1 から振る（[golem-doc ADR 0008](golem-doc/adr/0008-multiple-index-and-bibliography.md)）。
-一覧の中の順は、その一覧の範囲で最初に引用された順である。
+既定の `golem` スタイルの一覧の中の順は、その一覧の範囲で最初に引用された順である。
 同じ文献を二つの一覧の範囲で引用すれば、両方の一覧に載り、それぞれの一覧の番号を持つ。
 引用の印は、その印が載る一覧での番号を表示する。
 文書に `@bibliography` がなければ、文書の全体で番号を振る。
 
-PDF は、`@bibliography` の位置に `[n] ` と書誌を、最初に引用された順に並べる。
+既定の `golem` スタイルでは、PDF は `@bibliography` の位置に `[n] ` と書誌を、最初に引用された順に並べる。
 `@bibliography` が二つ以上あれば、それぞれの位置に、その一覧の範囲の書誌を並べる。
 
 HTML と EPUB の参考文献の項目の `id` は、本の全体で一意にする。
@@ -9426,6 +9426,12 @@ HTML と EPUB の引用の印は、`<span class="cite">` の中に、括弧、�
 
 選んだ自作の宣言は、通常の CLI の PDF、HTML、EPUB、テキストの引用と一覧に適用する。
 本の言語で印全体の囲みと区切りを、文献の言語で個々の引用、名前、位置ラベルと一覧の書式を解決する（[root ADR 0475](adr/0475-complete-bibliography-declarations-and-citation-delimiters.md)）。
+
+一覧は、本の言語で選んだ `sort` のキーの順に並べ、同順位では引用された順を保つ。
+項目の頭は文献の言語で選んだ `label` の書式で組み、省略か空文字列なら頭を付けない。
+PDF、HTML、EPUB は、本の言語で選んだ `hanging-indent` を項目の二行目以降に当てる。
+HTML と EPUB は宣言の頭とは別の自動番号を付けず、テキストは一項目を一行に出す。
+
 種類の表と言語別の宣言の選択には、CSL の文字列の `type` と `language` を使い、それ以外は指定なしとして扱う。
 種類ごとの `citation` と `citation-year` は、通常の引用と年だけの引用の書式を上書きする（[root ADR 0480](adr/0480-complete-bibliography-sorting-and-conditional-formats.md)）。
 一致する種類の表が無ければ `types.default` を選ぶ。

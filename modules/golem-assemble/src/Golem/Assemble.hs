@@ -23,6 +23,7 @@ module Golem.Assemble
     tocWithinDepth,
     bibliographyAt,
     bibliographyEntriesFor,
+    bibliographyLabelFor,
     citationPiecesFor,
     resolvedCitationPieces,
     bookCitationItems,
@@ -223,6 +224,10 @@ data Book = Book
     -} bookBibliographies :: ![(Maybe ListAt, [(Text, Int)])],
     -- | Declared entry parts for each list and citation key.
     bookBibliographyEntries :: !(Map (Maybe ListAt, Text) [EntryPart]),
+    -- | Resolved labels, including empty labels, for declared list styles.
+    bookBibliographyLabels :: !(Map (Maybe ListAt, Text) Text),
+    -- | Declared hanging indent in scaled points; Nothing retains legacy output.
+    bookBibliographyHangingIndent :: !(Maybe Integer),
     -- | Prepared marks, retaining distinct items that share a plugin source span.
     bookCitationPieces :: !(Map SrcSpan [([CiteItem ()], [CitePiece])]),
     -- | the list and the number of each citation mark, by its file and span
@@ -265,6 +270,12 @@ citationPiecesFor book sp items = fromMaybe (citationPieces items) (resolvedCita
 -- | A span is not a unique identity for plugin-generated marks.
 resolvedCitationPieces :: Book -> SrcSpan -> [CiteItem r] -> Maybe [CitePiece]
 resolvedCitationPieces book sp items = Map.lookup sp (bookCitationPieces book) >>= lookup (map void items)
+
+-- | A label and its separating space, with the legacy number as fallback.
+bibliographyLabelFor :: Book -> Maybe ListAt -> Text -> Int -> Text
+bibliographyLabelFor book at key number =
+  let label = Map.findWithDefault ("[" <> T.pack (show number) <> "]") (at, key) (bookBibliographyLabels book)
+   in if T.null label then "" else label <> " "
 
 -- | The entries resolved for this list, with legacy entries as fallback.
 bibliographyEntriesFor :: Book -> Maybe ListAt -> Map Text [EntryPart] -> Map Text [EntryPart]
@@ -550,6 +561,8 @@ assemble cfg evalDeferred docs0 =
             bookIndexes = indexes,
             bookBibliographies = bibliographies,
             bookBibliographyEntries = Map.empty,
+            bookBibliographyLabels = Map.empty,
+            bookBibliographyHangingIndent = Nothing,
             bookCitationPieces = Map.empty,
             bookCiteMarks = citeMarks,
             bookLabels = labels,
