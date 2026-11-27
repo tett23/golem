@@ -30,6 +30,7 @@ import Golem.Project.Style (KeepParts (..))
 import Golem.Syntax (Diagnostic (..), DiagnosticCode (..))
 import Golem.Typeset (PdfLayout (..))
 import Support (horizontalStyle, layoutMini, replaceIn)
+import System.Environment (lookupEnv)
 
 -- | A paragraph of so many characters, a no-break, a stanza of verse
 -- lines of so many characters each, or a list item of a paragraph of so
@@ -116,6 +117,22 @@ inputs =
   [(width, capacity, Nothing, items) | width <- [2, 3], capacity <- [3, 4, 5, 6], items <- manuscripts]
     <> [(width, capacity, Just mode, items) | mode <- ["column", "page", "spread"], width <- [2, 3], capacity <- [3, 4, 5, 6], items <- lists]
 
+{- | root ADR 0352 I3, I4: empty input and repeated no-breaks before,
+between and after paragraphs/stanzas. Capacities 1 and 2 keep errors
+in the comparison rather than filtering unsuccessful layouts out.
+-}
+controlInputs :: [(Int, Int, Maybe String, [Item])]
+controlInputs =
+  [(width, capacity, Nothing, items) | width <- [2, 3], capacity <- [1 .. 6], items <- cases]
+  where
+    cases =
+      [[], [K], [K, K, K]]
+        <> [ items
+           | count <- [0, 1, 3],
+             let ks = replicate count K,
+             items <- [ks <> [P 5], [P 12] <> ks <> [P 25], [V [5, 25]] <> ks <> [P 5], [Q 5] <> ks <> [V [5, 25]], [P 5] <> ks]
+           ]
+
 -- | The wrapped figure of `width` zw, indented by `indent`.
 figureOf :: Int -> T.Text -> T.Text
 figureOf width indent = indent <> "@nonumber\n" <> indent <> "@figure images/tiny.jpg alt=\"t\" wrap=start width=" <> T.pack (show width) <> "zw\n\n"
@@ -164,7 +181,8 @@ unmet = \case
 main :: IO ()
 main = do
   image <- BS.readFile "modules/golem-pdf/test/fixtures/tiny.jpg"
-  forM_ inputs $ \(width, capacity, mode, items) -> do
+  controls <- (== Just "controls") <$> lookupEnv "CAUSAL_MODE"
+  forM_ (if controls then controlInputs else inputs) $ \(width, capacity, mode, items) -> do
     putStrLn (show width <> " " <> show capacity <> maybe "" (" " <>) mode <> " [" <> unwords (map name items) <> "]")
     let style =
           replaceIn "lines = 30" (T.pack ("lines = " <> show capacity)) $

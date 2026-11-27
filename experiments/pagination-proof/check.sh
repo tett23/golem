@@ -381,8 +381,25 @@ if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|implemented_by|exte
   echo "unproved or unchecked Lean declaration in $causalStanza" >&2
   exit 1
 fi
-LEAN_PATH="$tmp" "$lean" "$causalStanza"
+LEAN_PATH="$tmp" "$lean" -o "$tmp/CausalStanza.olean" "$causalStanza"
 echo "causal stanza hold and display-row fallback preserve wrap cursor readiness"
+
+# Connect no-break preprocessing and successive paragraph/stanza results.
+causalParagraphs=$root/experiments/pagination-proof/CausalParagraphs.lean
+if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|implemented_by|extern|native_decide)([^A-Za-z_]|$)' "$causalParagraphs"; then
+  echo "unproved or unchecked Lean declaration in $causalParagraphs" >&2
+  exit 1
+fi
+LEAN_PATH="$tmp" "$lean" "$causalParagraphs"
+(cd "$root" && CAUSAL_MODE=controls driverCheck experiments/pagination-proof/CausalBoundary.hs) > "$tmp/causal-controls-haskell"
+CAUSAL_MODE=controls LEAN_PATH="$tmp" "$lean" --run "$cboundary" > "$tmp/causal-controls-lean"
+diff -u "$tmp/causal-controls-haskell" "$tmp/causal-controls-lean"
+controlInputs=$(grep -c '^[0-9]' "$tmp/causal-controls-lean")
+CAUSAL_MODE=controls LEAN_PATH="$tmp" "$lean" --run "$cboundary" premises > "$tmp/causal-controls-premises" || {
+  cat "$tmp/causal-controls-premises" >&2
+  exit 1
+}
+echo "causal paragraph cursor handoffs and $controlInputs repeated no-break boundary cases agree"
 
 
 # The values of the evaluation of Golem.Layout.KnuthPlass (badness,
