@@ -1,0 +1,291 @@
+[
+  {
+    "id": "brown-levinson1987",
+    "type": "book",
+    "title": "Politeness: Some universals in language usage",
+    "author": [
+      {
+        "family": "Brown",
+        "given": "Penelope"
+      },
+      {
+        "family": "Levinson",
+        "given": "Stephen C."
+      }
+    ],
+    "issued": {
+      "date-parts": [
+        [
+          1987
+        ]
+      ]
+    },
+    "language": "en",
+    "publisher": "Cambridge University Press",
+    "DOI": "10.1017/CBO9780511813085",
+    "URL": "https://doi.org/10.1017/CBO9780511813085",
+    "publisher-place": "Cambridge"
+  },
+  {
+    "id": "ide1989",
+    "type": "article-journal",
+    "title": "Formal forms and discernment: Two neglected aspects of universals of linguistic politeness",
+    "author": [
+      {
+        "family": "Ide",
+        "given": "Sachiko"
+      }
+    ],
+    "issued": {
+      "date-parts": [
+        [
+          1989
+        ]
+      ]
+    },
+    "language": "en",
+    "volume": "8",
+    "issue": "2–3",
+    "page": "223-248",
+    "DOI": "10.1515/mult.1989.8.2-3.223",
+    "URL": "https://doi.org/10.1515/mult.1989.8.2-3.223",
+    "container-title": "Multilingua"
+  },
+  {
+    "id": "matsumoto1988",
+    "type": "article-journal",
+    "title": "Reexamination of the universality of face: Politeness phenomena in Japanese",
+    "author": [
+      {
+        "family": "Matsumoto",
+        "given": "Yoshiko"
+      }
+    ],
+    "issued": {
+      "date-parts": [
+        [
+          1988
+        ]
+      ]
+    },
+    "language": "en",
+    "volume": "12",
+    "issue": "4",
+    "page": "403-426",
+    "DOI": "10.1016/0378-2166(88)90003-3",
+    "URL": "https://doi.org/10.1016/0378-2166(88)90003-3",
+    "container-title": "Journal of Pragmatics"
+  },
+  {
+    "id": "agha1994",
+    "type": "article-journal",
+    "title": "Honorification",
+    "author": [
+      {
+        "family": "Agha",
+        "given": "Asif"
+      }
+    ],
+    "issued": {
+      "date-parts": [
+        [
+          1994
+        ]
+      ]
+    },
+    "language": "en",
+    "volume": "23",
+    "page": "277-302",
+    "DOI": "10.1146/annurev.an.23.100194.001425",
+    "URL": "https://doi.org/10.1146/annurev.an.23.100194.001425",
+    "container-title": "Annual Review of Anthropology"
+  },
+  {
+    "id": "okamoto1999",
+    "type": "article-journal",
+    "title": "Situated politeness: Manipulating honorific and non-honorific expressions in Japanese conversations",
+    "author": [
+      {
+        "family": "Okamoto",
+        "given": "Shigeko"
+      }
+    ],
+    "issued": {
+      "date-parts": [
+        [
+          1999
+        ]
+      ]
+    },
+    "language": "en",
+    "volume": "9",
+    "issue": "1",
+    "page": "51-74",
+    "DOI": "10.1075/prag.9.1.05oka",
+    "URL": "https://doi.org/10.1075/prag.9.1.05oka",
+    "container-title": "Pragmatics"
+  },
+  {
+    "id": "pizziconi2003",
+    "type": "article-journal",
+    "title": "Re-examining politeness, face and the Japanese language",
+    "author": [
+      {
+        "family": "Pizziconi",
+        "given": "Barbara"
+      }
+    ],
+    "issued": {
+      "date-parts": [
+        [
+          2003
+        ]
+      ]
+    },
+    "language": "en",
+    "volume": "35",
+    "issue": "10–11",
+    "page": "1471-1506",
+    "DOI": "10.1016/S0378-2166(02)00200-X",
+    "URL": "https://doi.org/10.1016/S0378-2166(02)00200-X",
+    "container-title": "Journal of Pragmatics"
+  },
+  {
+    "id": "fukada-asato2004",
+    "type": "article-journal",
+    "title": "Universal politeness theory: Application to the use of Japanese honorifics",
+    "author": [
+      {
+        "family": "Fukada",
+        "given": "Atsushi"
+      },
+      {
+        "family": "Asato",
+        "given": "Noriko"
+      }
+    ],
+    "issued": {
+      "date-parts": [
+        [
+          2004
+        ]
+      ]
+    },
+    "language": "en",
+    "volume": "36",
+    "issue": "11",
+    "page": "1991-2002",
+    "DOI": "10.1016/j.pragma.2003.11.006",
+    "URL": "https://doi.org/10.1016/j.pragma.2003.11.006",
+    "container-title": "Journal of Pragmatics"
+  },
+  {
+    "id": "haugh2007",
+    "type": "article-journal",
+    "title": "The discursive challenge to politeness research: An interactional alternative",
+    "author": [
+      {
+        "family": "Haugh",
+        "given": "Michael"
+      }
+    ],
+    "issued": {
+      "date-parts": [
+        [
+          2007
+        ]
+      ]
+    },
+    "language": "en",
+    "volume": "3",
+    "issue": "2",
+    "DOI": "10.1515/PR.2007.013",
+    "URL": "https://doi.org/10.1515/PR.2007.013",
+    "container-title": "Journal of Politeness Research"
+  },
+  {
+    "id": "watts2003",
+    "type": "book",
+    "title": "Politeness",
+    "author": [
+      {
+        "family": "Watts",
+        "given": "Richard J."
+      }
+    ],
+    "issued": {
+      "date-parts": [
+        [
+          2003
+        ]
+      ]
+    },
+    "language": "en",
+    "publisher": "Cambridge University Press",
+    "DOI": "10.1017/CBO9780511615184",
+    "URL": "https://doi.org/10.1017/CBO9780511615184",
+    "publisher-place": "Cambridge"
+  },
+  {
+    "id": "kadar-haugh2013",
+    "type": "book",
+    "title": "Understanding politeness",
+    "author": [
+      {
+        "family": "Kádár",
+        "given": "Dániel Z."
+      },
+      {
+        "family": "Haugh",
+        "given": "Michael"
+      }
+    ],
+    "issued": {
+      "date-parts": [
+        [
+          2013
+        ]
+      ]
+    },
+    "language": "en",
+    "publisher": "Cambridge University Press",
+    "DOI": "10.1017/CBO9781139382717",
+    "URL": "https://doi.org/10.1017/CBO9781139382717",
+    "publisher-place": "Cambridge"
+  },
+  {
+    "id": "pizziconi2011",
+    "type": "chapter",
+    "title": "Honorifics: The cultural specificity of a universal mechanism in Japanese",
+    "author": [
+      {
+        "family": "Pizziconi",
+        "given": "Barbara"
+      }
+    ],
+    "issued": {
+      "date-parts": [
+        [
+          2011
+        ]
+      ]
+    },
+    "language": "en",
+    "editor": [
+      {
+        "family": "Kádár",
+        "given": "Dániel Z."
+      },
+      {
+        "family": "Mills",
+        "given": "Sara"
+      }
+    ],
+    "page": "45-70",
+    "publisher": "Cambridge University Press",
+    "DOI": "10.1017/CBO9780511977886.005",
+    "URL": "https://doi.org/10.1017/CBO9780511977886.005",
+    "container-title": "Politeness in East Asia",
+    "publisher-place": "Cambridge"
+  }
+]

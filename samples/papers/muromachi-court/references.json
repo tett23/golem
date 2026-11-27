@@ -1,0 +1,231 @@
+[
+  {
+    "id": "imatani1990",
+    "type": "book",
+    "title": "室町の王権：足利義満の王権簒奪計画",
+    "author": [
+      {
+        "family": "今谷",
+        "given": "明"
+      }
+    ],
+    "issued": {
+      "date-parts": [
+        [
+          1990
+        ]
+      ]
+    },
+    "language": "ja",
+    "publisher": "中央公論社",
+    "ISBN": "9784121009784",
+    "URL": "https://cir.nii.ac.jp/crid/1971149384770302872",
+    "collection-title": "中公新書"
+  },
+  {
+    "id": "tomita1989",
+    "type": "article-journal",
+    "title": "室町殿と天皇",
+    "author": [
+      {
+        "family": "富田",
+        "given": "正弘"
+      }
+    ],
+    "issued": {
+      "date-parts": [
+        [
+          1989
+        ]
+      ]
+    },
+    "language": "ja",
+    "page": "4-48",
+    "issue": "319",
+    "URL": "https://cir.nii.ac.jp/crid/1520572359386553984",
+    "container-title": "日本史研究"
+  },
+  {
+    "id": "tomita2012",
+    "type": "book",
+    "title": "中世公家政治文書論",
+    "author": [
+      {
+        "family": "富田",
+        "given": "正弘"
+      }
+    ],
+    "issued": {
+      "date-parts": [
+        [
+          2012
+        ]
+      ]
+    },
+    "language": "ja",
+    "publisher": "吉川弘文館",
+    "ISBN": "9784642029094",
+    "URL": "https://cir.nii.ac.jp/crid/1971993809729667507"
+  },
+  {
+    "id": "matsunaga2013",
+    "type": "book",
+    "title": "室町期公武関係と南北朝内乱",
+    "author": [
+      {
+        "family": "松永",
+        "given": "和浩"
+      }
+    ],
+    "issued": {
+      "date-parts": [
+        [
+          2013
+        ]
+      ]
+    },
+    "language": "ja",
+    "publisher": "吉川弘文館",
+    "ISBN": "9784642029117",
+    "URL": "https://cir.nii.ac.jp/crid/1970867909765746346"
+  },
+  {
+    "id": "mizuno2005",
+    "type": "book",
+    "title": "室町時代公武関係の研究",
+    "author": [
+      {
+        "family": "水野",
+        "given": "智之"
+      }
+    ],
+    "issued": {
+      "date-parts": [
+        [
+          2005
+        ]
+      ]
+    },
+    "language": "ja",
+    "publisher": "吉川弘文館",
+    "ISBN": "4642028471",
+    "URL": "https://cir.nii.ac.jp/crid/1970586434861559226"
+  },
+  {
+    "id": "mizuno2008",
+    "type": "article-journal",
+    "title": "南北朝・室町期の公武関係論と国家像の展望",
+    "author": [
+      {
+        "family": "水野",
+        "given": "智之"
+      }
+    ],
+    "issued": {
+      "date-parts": [
+        [
+          2008
+        ]
+      ]
+    },
+    "language": "ja",
+    "issue": "700",
+    "page": "2-15",
+    "URL": "https://cir.nii.ac.jp/crid/1520853832915931136",
+    "container-title": "歴史評論"
+  },
+  {
+    "id": "hisamizu2011",
+    "type": "book",
+    "title": "室町期の朝廷公事と公武関係",
+    "author": [
+      {
+        "family": "久水",
+        "given": "俊和"
+      }
+    ],
+    "issued": {
+      "date-parts": [
+        [
+          2011
+        ]
+      ]
+    },
+    "language": "ja",
+    "publisher": "岩田書院",
+    "ISBN": "9784872947052",
+    "URL": "https://cir.nii.ac.jp/crid/1971149384754600495",
+    "collection-title": "中世史研究叢書",
+    "collection-number": "20"
+  },
+  {
+    "id": "ishihara2015",
+    "type": "book",
+    "title": "室町時代の将軍家と天皇家",
+    "author": [
+      {
+        "family": "石原",
+        "given": "比伊呂"
+      }
+    ],
+    "issued": {
+      "date-parts": [
+        [
+          2015
+        ]
+      ]
+    },
+    "language": "ja",
+    "publisher": "勉誠出版",
+    "ISBN": "9784585221296",
+    "URL": "https://cir.nii.ac.jp/crid/1971430859869162512"
+  },
+  {
+    "id": "ishihara2011",
+    "type": "article-journal",
+    "title": "室町殿行幸にみる足利義教の位置づけ",
+    "author": [
+      {
+        "family": "石原",
+        "given": "比伊呂"
+      }
+    ],
+    "issued": {
+      "date-parts": [
+        [
+          2011
+        ]
+      ]
+    },
+    "language": "ja",
+    "volume": "29",
+    "page": "1-19",
+    "URL": "https://cir.nii.ac.jp/crid/1574231876773404544",
+    "container-title": "青山史学"
+  },
+  {
+    "id": "takatori2021",
+    "type": "article-journal",
+    "title": "足利将軍家子弟・室町殿猶子の門寺院入室とその意義",
+    "author": [
+      {
+        "family": "髙鳥",
+        "given": "廉"
+      }
+    ],
+    "issued": {
+      "date-parts": [
+        [
+          2021
+        ]
+      ]
+    },
+    "language": "ja",
+    "volume": "130",
+    "issue": "9",
+    "page": "41-67",
+    "DOI": "10.24471/shigaku.130.9_41",
+    "URL": "https://cir.nii.ac.jp/crid/1390574953711185280",
+    "container-title": "史学雑誌"
+  }
+]
