@@ -4,6 +4,7 @@ import Data.Either (isLeft)
 import Data.Map.Strict qualified as Map
 import Data.Text (Text)
 import Golem.Assemble.BibliographyFormats
+import Golem.Assemble.Formats (Notation)
 import Golem.Bibliography (EntryPart (..))
 import Test.Tasty
 import Test.Tasty.HUnit
@@ -11,7 +12,20 @@ import Test.Tasty.HUnit
 tests :: TestTree
 tests =
   testGroup "bibliography declaration pieces" $
-    [ testCase "root ADR 0470 I2: character styles affect fields and preserve URL parts" $
+    [ testCase "root ADR 0470 I8: a month label and numeric month use their own contexts" $
+        contextual (Just . maybe "Oct." (const "10")) ["{month}", "/", "{month:kanji}"]
+          @?= Right [BibliographyField "month" "Oct.", BibliographyLiteral "/", BibliographyField "month" "十"],
+      testCase "root ADR 0470 I3: required presence is checked in the requested notation context" $
+        contextual (\case Nothing -> Nothing; Just _ -> Just "10") ["({month})", "{month:kanji}"]
+          @?= Right [BibliographyField "month" "十"],
+      testCase "root ADR 0470 I3: a missing numeric context suppresses its whole required piece" $
+        contextual (\case Nothing -> Just "Oct."; Just _ -> Nothing) ["{month} {month:kanji}"] @?= Right [],
+      testCase "root ADR 0470 I3: an optional missing numeric context keeps literal punctuation" $
+        contextual (\case Nothing -> Just "Oct."; Just _ -> Nothing) ["{month}({month?:kanji})"]
+          @?= Right [BibliographyField "month" "Oct.", BibliographyLiteral "(", BibliographyLiteral ")"],
+      testCase "root ADR 0470 I8: contextual numeric values retain notation range errors" $
+        assertBool "Roman 4000 is not hidden by the plain month label" (isLeft (contextual (Just . maybe "Oct." (const "4000")) ["{month:upper-roman}"])),
+      testCase "root ADR 0470 I2: character styles affect fields and preserve URL parts" $
         bibliographyEntryParts (Map.fromList [("title", "italic"), ("URL", "strong")]) [BibliographyField "title" "Title", BibliographyLiteral ". ", BibliographyField "URL" "https://example.org"]
           @?= [EntryStyled "italic" [EntryText "Title"], EntryText ". ", EntryStyled "strong" [EntryUrl "https://example.org"]],
       testCase "root ADR 0470 I2: an unstyled field retains ordinary text" $
@@ -85,3 +99,6 @@ render names values pieces = do
 
 fragments :: [(Text, Text)] -> [Text] -> Either Text [BibliographyFragment]
 fragments values source = traverse (parseBibliographyPiece ["title", "URL", "volume"]) source >>= renderBibliographyFragments (`lookup` values)
+
+contextual :: (Maybe Notation -> Maybe Text) -> [Text] -> Either Text [BibliographyFragment]
+contextual value source = traverse (parseBibliographyPiece ["month"]) source >>= renderBibliographyFragmentsWith (\_ notation -> value notation)

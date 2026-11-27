@@ -9,6 +9,7 @@ module Golem.Assemble.BibliographyFormats
     renderBibliographyPieces,
     BibliographyFragment (..),
     renderBibliographyFragments,
+    renderBibliographyFragmentsWith,
     bibliographyEntryParts,
   )
 where
@@ -20,7 +21,7 @@ import Data.Maybe (fromMaybe, isNothing)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Read qualified as TR
-import Golem.Assemble.Formats (Braces (..), Piece (..), Slot (..), formatReason, notationName, parseFormat, unknownSlot, writeNumber)
+import Golem.Assemble.Formats (Braces (..), Notation, Piece (..), Slot (..), formatReason, notationName, parseFormat, unknownSlot, writeNumber)
 import Golem.Bibliography (EntryPart (..))
 
 -- | One conditional piece, parsed once; a slot keeps its name and @?@.
@@ -58,20 +59,36 @@ data BibliographyFragment = BibliographyLiteral !Text | BibliographyField !Text 
   deriving stock (Eq, Show)
 
 renderBibliographyFragments :: (Text -> Maybe Text) -> [BibliographyPiece] -> Either Text [BibliographyFragment]
-renderBibliographyFragments value = fmap concat . traverse render
+renderBibliographyFragments value = renderBibliographyFragmentsWith (const . value)
+
+{- | Apply per-field character styles without styling adjacent punctuation.
+URL fields keep the existing URL behavior of each output.
+-}
+bibliographyEntryParts :: Map Text Text -> [BibliographyFragment] -> [EntryPart]
+bibliographyEntryParts styles = map $ \case
+  BibliographyLiteral text -> EntryText text
+  BibliographyField name text ->
+    let part = if name == "URL" then EntryUrl text else EntryText text
+     in maybe part (\style -> EntryStyled style [part]) (Map.lookup name styles)
+
+{- | Field lookup can distinguish a plain value from an explicit number
+notation, for example a month label from its numeric month (root ADR 0470).
+-}
+renderBibliographyFragmentsWith :: (Text -> Maybe Notation -> Maybe Text) -> [BibliographyPiece] -> Either Text [BibliographyFragment]
+renderBibliographyFragmentsWith value = fmap concat . traverse render
   where
-    present name = value name >>= \t -> if T.null t then Nothing else Just t
+    present name notation = value name notation >>= \t -> if T.null t then Nothing else Just t
     render (BibliographyPiece pieces)
       | any missing pieces = Right []
       | otherwise = concat <$> traverse substitute pieces
     missing = \case
       PLit _ -> False
-      PText (name, optional) -> not optional && isNothing (present name)
-      PNumber (name, optional) _ -> not optional && isNothing (present name)
+      PText (name, optional) -> not optional && isNothing (present name Nothing)
+      PNumber (name, optional) notation -> not optional && isNothing (present name notation)
     substitute = \case
       PLit t -> Right (literal t)
-      PText (name, _) -> Right (field name (fromMaybe "" (present name)))
-      PNumber (name, _) notation -> case present name of
+      PText (name, _) -> Right (field name (fromMaybe "" (present name Nothing)))
+      PNumber (name, _) notation -> case present name notation of
         Nothing -> Right []
         Just t -> case (notation, integer t) of
           (Just n, Just k) -> case writeNumber n k of
@@ -84,13 +101,3 @@ renderBibliographyFragments value = fmap concat . traverse render
 
     literal t = [BibliographyLiteral t | not (T.null t)]
     field name t = [BibliographyField name t | not (T.null t)]
-
-{- | Apply per-field character styles without styling adjacent punctuation.
-URL fields keep the existing URL behavior of each output.
--}
-bibliographyEntryParts :: Map Text Text -> [BibliographyFragment] -> [EntryPart]
-bibliographyEntryParts styles = map $ \case
-  BibliographyLiteral text -> EntryText text
-  BibliographyField name text ->
-    let part = if name == "URL" then EntryUrl text else EntryText text
-     in maybe part (\style -> EntryStyled style [part]) (Map.lookup name styles)
