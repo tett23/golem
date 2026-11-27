@@ -43,7 +43,9 @@ try {
   'root ADR 0351 I1, I2: the reserved bracket comment branch needs an arbitrary-input proof');
   assert.doesNotMatch(strict.stderr, /^unsupported (BulletList|OrderedList) choice /m,
     'root ADR 0351 I1, I2: list wrappers need arbitrary-input recognition composition proofs');
-  assert.ok(baselineUnsupported <= 21, 'the full grammar model must not regress in unsupported choices');
+  assert.doesNotMatch(strict.stderr, /^unsupported (DefList|DefGroup|DefBody) choice /m,
+    'root ADR 0351 I1, I2: definition list wrappers require arbitrary-input composition proofs');
+  assert.ok(baselineUnsupported <= 18, 'the full grammar model must not regress in unsupported choices');
   assert.equal(strict.status === 0, baselineUnsupported === 0,
     'strict generation succeeds exactly when every choice is supported');
   for (const line of strict.stderr.split('\n').filter(line => line.startsWith('unsupported '))) {
@@ -197,6 +199,11 @@ try {
     ['= term\n  body\n', 'DefList', { DefTerm: 1 }],
     ['= [f: term]\n  body\n', 'DefList', { DefTerm: 1, InlineCommand: 1 }],
     ['= term\n= other\n  body\n', 'DefList', { DefTerm: 2 }],
+    ['= first\n  one\n= second\n  two\n', 'DefList', { DefList: 1, DefGroup: 2, DefBody: 2 }],
+    ['= first\n  one\n\n= second\n  two\n', 'DefList', { DefList: 1, DefGroup: 2, DefBody: 2 }],
+    ['= term\n  one\n=:\n  two\n', 'DefList', { DefGroup: 1, DefBody: 2 }],
+    ['= term\n  one\n\n=:\n  two\n', 'DefList', { DefGroup: 1, DefBody: 2 }],
+    ['- lead\n  = term\n    鰍𠮷\n', 'BulletList', { DefList: 1, DefGroup: 1, DefBody: 1 }],
     ['```\n```\n', 'CodeBlock', { CodeBlock: 1, CodeLine: 0 }],
     ['```hs key=x\nbody\n```\n', 'CodeBlock', { CodeBlock: 1, CodeLine: 1 }],
     ['- x\n  ```\n  body\n  ```\n', 'BulletList', { CodeBlock: 1, CodeLine: 1 }],
@@ -422,6 +429,63 @@ try {
     writeFileSync(changedPath, original.replace(before, after));
     writeFileSync(samplePath, sample);
     const parsed = spawnSync(process.env.PEG_HS ?? 'peg-hs', ['parse', '--format', 'cst', changedPath, samplePath],
+      { encoding: 'utf8', env: { ...process.env, XDG_CACHE_HOME: join(work, 'cache') } });
+    assert.equal(parsed.status === 0, accepted, `root ADR 0351 I1, I2: ${name}: ${parsed.stderr}`);
+    if (!accepted) assert.match(parsed.stderr, /^\d+:\d+: expected /m);
+    for (const [kind, count] of Object.entries(counts ?? {})) {
+      assert.equal([...parsed.stdout.matchAll(new RegExp(`^ +${kind}@`, 'gm'))].length, count);
+    }
+  }
+  const definitionShapes = [
+    ['DefList', "DefGroup(ind) (BlankLines? &(Ind(ind) '=' [ \\t]) DefGroup(ind))*"],
+    ['DefGroup', 'DefTerm(ind)+ DefBody(ind) (BlankLines? DefNew(ind) DefBody(ind))*'],
+    ['DefBody', '&(Ind(col ind + 2) ![ \\t] !BlankLine .) Block(col ind + 2) (BlankLines? &(Ind(col ind + 2) ![ \\t] !BlankLine .) Block(col ind + 2))*'],
+  ];
+  const definitionMutations = [];
+  for (const [rule, shape] of definitionShapes) {
+    const before = `${rule} <- ${shape}`;
+    const changes = rule === 'DefList' ? [
+      ['NeedsMore', shape.replace(')*', ')+')],
+      ['BlankRequired', shape.replace('BlankLines?', 'BlankLines')],
+      ['GuardNegative', shape.replace('&(', '!(')],
+      ['FirstGroup', shape.replace('DefGroup(ind)', 'DefTerm(ind)')],
+    ] : rule === 'DefGroup' ? [
+      ['TermsOptional', shape.replace('DefTerm(ind)+', 'DefTerm(ind)*')],
+      ['NeedsMore', shape.replace(')*', ')+')],
+      ['NewMarker', shape.replace('DefNew(ind)', 'NewDefMark')],
+      ['FirstBody', shape.replace('DefBody(ind)', 'Block(ind)')],
+    ] : [
+      ['NeedsMore', shape.replace(')*', ')+')],
+      ['GuardNegative', shape.replace('&(', '!(')],
+      ['IndentMismatch', shape.replace('col ind + 2', 'col ind + 1')],
+      ['RepeatedBlock', shape.replace(/Block\(col ind \+ 2\)\)\*$/, 'Paragraph(col ind + 2))*')],
+    ];
+    for (const [name, changedShape] of changes) {
+      const after = `${rule} <- ${changedShape}`;
+      assert.ok(original.includes(before));
+      assert.notEqual(before, after);
+      const path = join(work, rule + name + '.hpeg');
+      writeFileSync(path, original.replace(before, after));
+      const rejected = spawnSync(process.execPath, [join(here, 'generate.mjs'), path, generated], { encoding: 'utf8' });
+      assert.notEqual(rejected.status, 0);
+      assert.match(rejected.stderr, new RegExp(`^unsupported ${rule} choice `, 'm'),
+        `root ADR 0351 I1, I2: ${rule + name} must invalidate the canonical composition proof`);
+      definitionMutations.push([rule + name, before, after]);
+    }
+  }
+  const nativeDefinitionMutations = [
+    ['DefListNeedsMore', '= term\n  body\n', false],
+    ['DefListBlankRequired', '= first\n  one\n= second\n  two\n', true, { DefList: 2 }],
+    ['DefGroupFirstBody', '= term\n  body\n', false],
+    ['DefBodyGuardNegative', '= term\n  body\n', false],
+  ];
+  for (const [name, sample, accepted, counts] of nativeDefinitionMutations) {
+    const [, before, after] = definitionMutations.find(([key]) => key === name);
+    const grammar = join(work, 'Native' + name + '.hpeg');
+    const input = join(work, 'native-definition.gm');
+    writeFileSync(grammar, original.replace(before, after));
+    writeFileSync(input, sample);
+    const parsed = spawnSync(process.env.PEG_HS ?? 'peg-hs', ['parse', '--format', 'cst', grammar, input],
       { encoding: 'utf8', env: { ...process.env, XDG_CACHE_HOME: join(work, 'cache') } });
     assert.equal(parsed.status === 0, accepted, `root ADR 0351 I1, I2: ${name}: ${parsed.stderr}`);
     if (!accepted) assert.match(parsed.stderr, /^\d+:\d+: expected /m);
@@ -1219,7 +1283,7 @@ try {
   assert.equal(plusCompositionProof.status, 0, plusCompositionProof.stdout + plusCompositionProof.stderr);
   const listCompositionSource = join(work, 'ListCompositionTotal.lean');
   copyFileSync(join(here, 'ListCompositionTotal.lean'), listCompositionSource);
-  const listCompositionProof = spawnSync(lean, [listCompositionSource], growthEnv);
+  const listCompositionProof = spawnSync(lean, ['-o', join(work, 'ListCompositionTotal.olean'), listCompositionSource], growthEnv);
   assert.equal(listCompositionProof.status, 0, listCompositionProof.stdout + listCompositionProof.stderr);
   assert.doesNotMatch(listCompositionProof.stdout + listCompositionProof.stderr, /sorryAx|declaration uses 'sorry'/);
   const listModelMutation = model.replace(/(name := "BulletList"[^\n]*?\.ref "ListItem" \["ind", )"0"/, '$1"1"');
@@ -1230,6 +1294,31 @@ try {
   assert.notEqual(listRefuted.status, 0);
   assert.match(listRefuted.stdout + listRefuted.stderr, /type mismatch|unsolved goals/,
     'root ADR 0351 I1, I2: actual generated list-kind mutation must refute the theorem, not imports');
+  writeFileSync(generated, model);
+  execFileSync(lean, ['-o', join(work, 'Generated.olean'), generated], growthEnv);
+  const definitionCompositionSource = join(work, 'DefinitionCompositionTotal.lean');
+  copyFileSync(join(here, 'DefinitionCompositionTotal.lean'), definitionCompositionSource);
+  const definitionProof = spawnSync(lean, [definitionCompositionSource], growthEnv);
+  assert.equal(definitionProof.status, 0, definitionProof.stdout + definitionProof.stderr);
+  assert.doesNotMatch(definitionProof.stdout + definitionProof.stderr, /sorryAx|declaration uses 'sorry'/);
+  for (const [rule, before, after] of [
+    ['DefList', '.ref "DefGroup" ["ind"]', '.ref "DefTerm" ["ind"]'],
+    ['DefGroup', '.plus (.ref "DefTerm" ["ind"])', '.star (.ref "DefTerm" ["ind"])'],
+    ['DefBody', '.andPred', '.notPred'],
+  ]) {
+    const astChanged = model.split('\n').map(line => {
+      if (!line.includes(`name := "${rule}"`)) return line;
+      assert.ok(line.includes(before));
+      return line.replace(before, after);
+    }).join('\n');
+    assert.notEqual(astChanged, model);
+    writeFileSync(generated, astChanged);
+    execFileSync(lean, ['-o', join(work, 'Generated.olean'), generated], growthEnv);
+    const refuted = spawnSync(lean, [definitionCompositionSource], growthEnv);
+    assert.notEqual(refuted.status, 0);
+    assert.match(refuted.stdout + refuted.stderr, /type mismatch|unsolved goals/,
+      'root ADR 0351 I1, I2: changing the generated definition AST must refute the theorem, not its imports');
+  }
   writeFileSync(generated, model);
   execFileSync(lean, ['-o', join(work, 'Generated.olean'), generated], growthEnv);
   const blockCompositionProof = spawnSync(lean, [join(here, 'BlockComposition.lean')], growthEnv);
@@ -1253,7 +1342,7 @@ try {
   assert.match(refuted.stdout + refuted.stderr, /unsolved goals/, 'the mutation must refute the theorem, not fail to load a file');
   const unsupportedChoices = [...strict.stderr.matchAll(/^unsupported [A-Za-z][A-Za-z0-9]* choice /gm)].length;
   assert.equal(unsupportedChoices, baselineUnsupported, 'strict report count must remain stable through mutation tests');
-  console.log(`grammar: source and AST rules ${emittedRuleCount}/${astRuleCount}/${sourceRuleCount}, unsupported choices ${unsupportedChoices}, positive proof modules 31, negative mutations 129, implementation parser cases ${parserCases.length}, syntax-only parser cases 1, native reserved-body entry cases ${nativeBodySamples.length}, native parser counterexamples ${3 + nativeListMutations.length + nativeLexicalMutations.length + nativeCompositionMutations.length + nativeExpressionMutations.length + nativeArgumentMutations.length + nativeBlockLeafMutations.length}, rejected parser cases ${rejectedParserCases.length + badDelimiterCases.length + 1 + lexicalRejectedCases.length + compositionRejectedCases.length + expressionRejectedCases.length + argumentRejectedCases.length + blockLeafRejectedCases.length}`);
+  console.log(`grammar: source and AST rules ${emittedRuleCount}/${astRuleCount}/${sourceRuleCount}, unsupported choices ${unsupportedChoices}, positive proof modules 32, negative mutations 144, implementation parser cases ${parserCases.length}, syntax-only parser cases 1, native reserved-body entry cases ${nativeBodySamples.length}, native parser counterexamples ${3 + nativeListMutations.length + nativeDefinitionMutations.length + nativeLexicalMutations.length + nativeCompositionMutations.length + nativeExpressionMutations.length + nativeArgumentMutations.length + nativeBlockLeafMutations.length}, rejected parser cases ${rejectedParserCases.length + badDelimiterCases.length + 1 + lexicalRejectedCases.length + compositionRejectedCases.length + expressionRejectedCases.length + argumentRejectedCases.length + blockLeafRejectedCases.length}`);
 } finally {
   rmSync(work, { recursive: true, force: true });
 }
