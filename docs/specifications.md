@@ -568,7 +568,7 @@ flowchart TD
     numerals["golem-numerals<br/>数の表記（最下層）"]
     syntax["golem-syntax<br/>diagnostic とソース位置（最下層）"]
     length["golem-length<br/>長さの型と単位の変換（最下層）"]
-    unicode["golem-unicode<br/>書記素と語の分割、文字クラス（最下層）"]
+    unicode["golem-unicode<br/>書記素と語の分割、文字クラス<br/>ラテン文字のキー（最下層）"]
     geometry["golem-geometry<br/>パスと矩形、閉じたパスの内側"]
     preflight["golem-preflight<br/>プリフライトの設定と検査"]
     subgraph pdfpath["PDF 経路"]
@@ -588,6 +588,7 @@ flowchart TD
     end
     assemble --> doc
     assemble --> numerals
+    assemble --> unicode
     cli --> driver
     cli --> lsp
     doc --> parser
@@ -605,9 +606,7 @@ flowchart TD
     fmt --> parser
     html --> assemble
     html --> bibliography
-    html --> unicode
     layout --> project
-    layout --> unicode
     layoutspec --> pdf
     layoutspec --> project
     lint --> eval
@@ -644,6 +643,7 @@ PDF 経路のモジュールだけが、レイアウト IR、シェイピング[
 - golem-font は長さを持たず、位置と寸法をフォントの単位で返すので、golem-length に依存しない。
 - golem-unicode は base、containers、text だけに依存し、golem のどのパッケージにも依存しない（[docs/adr/0411](adr/0411-segment-graphemes-and-words-in-haskell.md)）。
   UAX #29 の拡張書記素クラスタの分割（`Golem.Unicode.Grapheme`）と語の境界（`Golem.Unicode.Word`）、一般カテゴリが L か N かの判定（`Golem.Unicode.Category`）、JLReq の文字クラス（`Golem.Unicode.CharClass`）を持つ。
+  ラテン文字のソートキーは `Golem.Unicode.Latin` が作り、golem-assemble が名前の並べ替えに使う（[root ADR 0470](adr/0470-bibliography-styles-by-name-and-by-declaration.md)）。
   分割は Haskell の純粋な関数であり、FFI を使わないので、wasm でもそのまま組める。
   分割の規則は libgrapheme 3.0.0 の実装に倣い、字の性質の表は Unicode 17.0.0 のデータから `scripts/gen-unicode-segmentation.sh` が生成する。
   golem-html と golem-unicode のライブラリが golem-layout と golem-project に依存しないことは、`scripts/ci/test.sh` が `.cabal` を読んで確かめる。
@@ -678,6 +678,20 @@ golem-doc はこの三つに依存せず、golem-bibliography と golem-numerals
 宣言の型 `Golem.Assemble.BibliographyStyle` は、キーの省略と空の値を区別し、言語ごとの部分的な上書きも保持する。
 書式の誤りは値ごとの G03304、無いスタイルの選択は G03303、決まった名前の再定義は G03305 にする。
 キーの型と範囲の誤りは G03006 にする。
+
+名前の書式は `Golem.Assemble.BibliographyNames` が、解決済みのオプションを受けて組む（[root ADR 0470](adr/0470-bibliography-styles-by-name-and-by-declaration.md)）。
+姓名の順、頭文字、名前の列の区切りと人数の上限を扱い、頭文字には書記素クラスタを使う。
+省略を示す接尾の文字列は、前の空きや区切りも含め、呼出側が指定する。
+この API は、宣言で省略したキーの既定値を決めない。
+
+文献の並べ替えは `Golem.Assemble.BibliographySort` が、項目とそのキーを一緒に動かす安定ソートで行う。
+著者のキーは、明示した読み、無ければ指定の区切りでつないだ姓と名から作り、小文字にしてラテン文字の正準分解による発音区別符号を除く。
+2 件以上がある同著者同年のグループに、文献キーの順に `a`、`b` などの年の接尾辞を割り当てる。
+ラテン文字の表は Unicode 17.0.0 の `UnicodeData.txt` と `Scripts.txt` から `scripts/gen-unicode-latin.sh` で作り、両入力の SHA-256 を固定する。
+
+部分宣言の上書きは、`overlayBibliographyStyle` と `overlayBibliographyNames` が行う。
+明示した空文字列、空配列、`false`、ゼロは上書きの値として保ち、書かなかったキーは引き継ぐ。
+種類ごとの書式、名前の書式、言語の表は、キーごとに重ねる。
 
 ### golem-evaluate と golem-driver
 

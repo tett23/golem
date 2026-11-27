@@ -25,9 +25,11 @@ library
   exposed-modules:
     Golem.Unicode.Category
     Golem.Unicode.CharClass
+    Golem.Unicode.Latin
     Golem.Unicode.Grapheme
     Golem.Unicode.Word
   other-modules:
+    Golem.Unicode.LatinTable
     Golem.Unicode.Ranges
     Golem.Unicode.Table
   build-depends:
@@ -41,7 +43,8 @@ test-suite golem-unicode-test
   type:             exitcode-stdio-1.0
   hs-source-dirs:   test
   main-is:          Main.hs
-  other-modules:    ConformanceSpec
+  other-modules:    LatinSpec
+                    ConformanceSpec
                     CountsSpec
                     SegmentSpec
   build-depends:
