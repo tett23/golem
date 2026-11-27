@@ -1,5 +1,6 @@
 module Main (main) where
 
+import BibliographyStyleSpec qualified
 import ColophonSpec qualified
 import Control.Exception (evaluate)
 import Control.Monad (forM_, void)
@@ -1013,6 +1014,7 @@ tests =
             (Map.lookup 1 (stHeadings st) >>= hsSize) @?= Just (Abs (16 * 65536)),
       TitleFormatSpec.tests,
       FitCharactersSpec.tests,
+      BibliographyStyleSpec.tests,
       VarsSpec.tests,
       testCase "dimensions" $ do
         parseDim "1pt" @?= Just (Abs 65536)

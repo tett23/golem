@@ -17,6 +17,7 @@ library
   hs-source-dirs:   src
   exposed-modules:
     Golem.Project
+    Golem.Project.Bibliography
     Golem.Project.Feature
     Golem.Project.Position
     Golem.Project.Files
@@ -49,7 +50,8 @@ test-suite golem-project-test
   type:             exitcode-stdio-1.0
   hs-source-dirs:   test
   main-is:          Main.hs
-  other-modules:    ColophonSpec
+  other-modules:    BibliographyStyleSpec
+                    ColophonSpec
                     FramesSpec
                     OutlinesSpec
                     PathDataSpec

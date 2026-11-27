@@ -18,6 +18,7 @@ library
   exposed-modules:
     Golem.Assemble
     Golem.Assemble.BibliographyFormats
+    Golem.Assemble.BibliographyStyle
     Golem.Assemble.Collation
     Golem.Assemble.Formats
     Golem.Assemble.ListMarkers

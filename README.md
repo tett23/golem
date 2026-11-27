@@ -594,6 +594,8 @@ cabal test all
 差し込み片のテストは `cabal test golem-assemble-test --test-options='-p /0470/'` で実行する。
 宣言向けの書誌データは `Golem.Bibliography.Csl.decodeCslRecords` で読み、編者、DOI、名前の並べ替えのキーなどを保持する。
 書誌データの読み取りのテストは `cabal test golem-bibliography-test` で実行する。
+スタイル宣言の型は `Golem.Assemble.BibliographyStyle`、TOML の読み取りと書式の検査は `Golem.Project.Bibliography` にある。
+宣言のテストは `cabal test golem-project-test --test-options='-p /0470/'` で実行する。
 
 依存のバージョンは `cabal.project.freeze` で固定している。
 このファイルを消してビルドすると、依存のバージョンが変わりうる。
