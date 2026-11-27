@@ -1,6 +1,6 @@
 # ADR 0408: RGB を自動で CMYK 化しない原則と図版の色置換を区別する
 
-Status: accepted
+Status: superseded [{"part":"共通モジュールで RGB から CMYK への固定の近似を認める範囲","by":["docs/adr/0474-centralize-color-conversions-with-a-fixed-approximation.md"],"kind":"replace"}]
 
 ## 文脈
 
