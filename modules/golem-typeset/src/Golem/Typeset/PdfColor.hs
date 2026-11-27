@@ -19,10 +19,10 @@ import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
+import Golem.Color qualified as Color
 import Golem.Pdf qualified as P
 import Golem.Typeset.Ccitt (CcittParams (..), decodeCcitt)
 import Golem.Typeset.FigureColor (Cmyk, RasterAnalysis (..), RasterKind (..))
-import Golem.Color qualified as Color
 import Golem.Typeset.PdfDct (DctSamples (..), PdfDctSpec (..), decodePdfDct)
 import Golem.Typeset.PdfShading qualified as S
 

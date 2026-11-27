@@ -75,10 +75,10 @@ import Data.Map.Strict qualified as Map
 import Data.Maybe (catMaybes, isJust)
 import Data.Ratio ((%))
 import Data.Text (Text)
-import Golem.Color qualified as Color
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import GHC.Conc (par, pseq)
+import Golem.Color qualified as Color
 import Golem.Geometry (FillRule (..), LineCap (..), LineJoin (..), Path (..), Segment (..), Stroke (..), SubPath (..), solidStroke)
 import Golem.Length (Sp (..))
 import Golem.Pdf.Drawing

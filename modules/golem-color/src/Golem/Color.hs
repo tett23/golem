@@ -58,14 +58,20 @@ module Golem.Color
 where
 
 import Data.Bits (shiftR)
-import Data.Word (Word8, Word64)
+import Data.Word (Word64, Word8)
 
 data Rgb = Rgb !Rational !Rational !Rational deriving (Eq, Show)
+
 data Cmyk = Cmyk !Rational !Rational !Rational !Rational deriving (Eq, Show)
+
 newtype Gray = Gray Rational deriving (Eq, Show)
+
 data Rgb8 = Rgb8 !Int !Int !Int deriving (Eq, Show)
+
 data Rgb16 = Rgb16 !Int !Int !Int deriving (Eq, Show)
+
 data Cmyk8 = Cmyk8 !Int !Int !Int !Int deriving (Eq, Show)
+
 data Cmyk16 = Cmyk16 !Int !Int !Int !Int deriving (Eq, Show)
 
 bounded :: (Ord a, Num a) => a -> a -> Bool
@@ -149,9 +155,10 @@ rgb8ToCmyk8 (Rgb8 r g b) = let (c, m, y, k) = inverseInteger 255 (r, g, b) in Cm
 rgb16ToCmyk16 :: Rgb16 -> Cmyk16
 rgb16ToCmyk16 (Rgb16 r g b) = let (c, m, y, k) = inverseInteger 65535 (r, g, b) in Cmyk16 c m y k
 
--- | The fixed-point YCbCr arithmetic from JuicyPixels 3.3.9 (BSD-3-Clause;
--- see LICENSE-JuicyPixels). The JPEG
--- decoder and its marker handling remain in golem-typeset.
+{- | The fixed-point YCbCr arithmetic from JuicyPixels 3.3.9 (BSD-3-Clause;
+see LICENSE-JuicyPixels). The JPEG
+decoder and its marker handling remain in golem-typeset.
+-}
 ycbcr8ToRgb8 :: Word8 -> Word8 -> Word8 -> Rgb8
 ycbcr8ToRgb8 y cb cr = Rgb8 (clamp (yi + crR)) (clamp (yi + green)) (clamp (yi + cbB))
   where

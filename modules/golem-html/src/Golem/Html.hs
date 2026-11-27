@@ -50,11 +50,11 @@ import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
-import Golem.Color qualified as Color
 import Golem.Assemble
 import Golem.Assemble.ListMarkers
 import Golem.Assemble.Numbering (formatSeparator, formatTitle, titleSeparator)
 import Golem.Bibliography (EntryPart (..))
+import Golem.Color qualified as Color
 import Golem.Doc.Citation (CitePiece (..), citationPieces)
 import Golem.Doc.FigureWidth (FigureWidth (..), parseFigureWidth)
 import Golem.Doc.IR

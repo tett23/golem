@@ -19,8 +19,8 @@ import Data.ByteString (ByteString)
 import Data.ByteString.Builder qualified as B
 import Data.ByteString.Lazy qualified as BL
 import Data.Ratio ((%))
-import Golem.Color qualified as Color
 import Data.Text.Encoding qualified as TE
+import Golem.Color qualified as Color
 import Golem.Pdf.Number (showRationalDigits)
 
 -- | A drawing: its width and height, and what it draws, y downwards from the top left.
