@@ -1,6 +1,6 @@
 # ADR 0478: number-text で有理数を受け付け、小数を含む糖衣構文を追加する
 
-Status: superseded-pending [{"part":"明示した StyleTcy を Number で保持する箇所","by":["docs/adr/0479-treat-tate-chu-yoko-as-a-japanese-character.md"],"kind":"replace"}]
+Status: superseded [{"part":"明示した StyleTcy を Number で保持する箇所","by":["docs/adr/0479-treat-tate-chu-yoko-as-a-japanese-character.md"],"kind":"replace"}]
 
 ## 文脈
 
