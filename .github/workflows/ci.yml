@@ -51,6 +51,9 @@ jobs:
     outputs:
       build: ${{ steps.decide.outputs.build }}
     steps:
+      - name: Record the workflow revision (root ADR 0472)
+        run: |
+          printf 'ci-critical-path: workflow_revision=%s\n' "$GITHUB_WORKFLOW_SHA"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0

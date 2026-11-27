@@ -245,6 +245,7 @@ HTML と EPUB は、既定ではフォントのファイルを同梱せず、役
 見出しは `[headings.<階層>]` の `font` の役割の書体と `size` の大きさで組み、行の格子にそろえて置く。
 `font` が `[fonts]` にない役割を指す場合はエラーになる。
 見出しを行取りの中の前、中央、後ろのどこに寄せるかは、`block-align` で選べる。
+`[headings.<階層>]` の `paragraph-style` には段落スタイルの名前を書け、行送り、次の段落のスタイル、先頭の文字スタイル、行揃え、OpenType features、字取りを見出しに当てられる（[root ADR 0468](docs/adr/0468-paragraph-styles-for-headings-and-lists.md)）。
 見出しの番号と題のあいだの区切りの文字列は `[headings.<階層>]` の `number-title-separator` で選べ、目次、柱、PDF のしおりもその区切りを使う（[Golem ADR 0372](docs/adr/0372-number-title-separator.md)）。
 図版、コードブロック、表のキャプションの区切りは、段落スタイル `caption` の `number-title-separator` で選べる。
 番号と題の並べ方は、同じ場所の `title-format` に `{title}（{number}）` のような書式で書け、`[metadata]`、`[vars]`、ファイルの変数も差し込める（[root ADR 0463](docs/adr/0463-title-formats-for-numbered-headings-and-captions.md)）。
@@ -796,6 +797,19 @@ Golem のビルドとテストは Node を使わない。
 - 夜間に `main` で走る `.github/workflows/race.yml` と `.github/workflows/enum.yml` と `.github/workflows/browser.yml` と `.github/workflows/wasm-tests.yml`。
 - 毎日一回 wasmtime のアドバイザリと action の固定を照合する `.github/workflows/advisories.yml`。
 - Alloy のモデルを変えたときと週に一度走る `.github/workflows/models.yml` と、そのモデルの重いコマンドを夜間に走らせる `.github/workflows/models-nightly.yml`。
+
+CI の時間は `sh scripts/ci/ci-critical-path.sh` で測る。
+ローカルの再利用ワークフローを再帰的に展開し、直列のジョブは足し、並列のジョブと matrix の脚は最も長い時間を使う。
+呼出元の時間と子の時間は二重に数えず、ランナーの順番待ちは含めない。
+外部の再利用ワークフロー、読めない呼出先、循環、対応しない実行済みか実行中のジョブがあれば、理由を出して計測を中止する。
+`--needs` は呼出元の依存関係、`--graph` は展開した依存グラフを表示する（[root ADR 0472](./docs/adr/0472-count-reusable-workflows-in-ci-timing.md)）。
+保存したジョブの JSON も引数に渡せる。
+API の入力は changes ジョブの `GITHUB_WORKFLOW_SHA` の記録、古い実行では最初のマージ版の checkout のログから、実行版を確定する。
+PR の `headSha` は実行版と異なることがあるため代用しない。
+`workflow_revision` を持つ保存入力は該当コミットを Git の履歴から読む。
+API の計測では不足するコミットを同じリポジトリの origin から取得する。
+保存入力に同じ版の `workflow_files` もあれば、その内容を使い、Git オブジェクトの取得は不要である。
+どちらの指定もない保存入力は `--workflow FILE` のファイルを使う。
 
 #### どのジョブを走らせるか
 

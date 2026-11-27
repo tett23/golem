@@ -7,6 +7,7 @@ module Golem.Html
     HtmlLists (..),
     HtmlCharStyle (..),
     HtmlParaStyle (..),
+    HtmlHeadingStyle (..),
     HtmlPhysicalParagraph (..),
     HtmlIndent (..),
     HtmlBox (..),
@@ -135,7 +136,10 @@ data HtmlConfig = HtmlConfig
     -- | those of each file with styles of its own, resolved with its styles (root ADR 0467)
     hcLocalAnonymousStyles :: !(Map FileId (Map StyleRef HtmlParaStyle)),
     -- | the font and size of the cells of the tables in a paragraph style without a name (root ADR 0467)
-    hcAnonymousTableFaces :: !(Map StyleRef Face)
+    hcAnonymousTableFaces :: !(Map StyleRef Face),
+    -- | Allowed heading paragraph keys (root ADR 0468), global and per file.
+    hcHeadingStyles :: !(Map Int HtmlHeadingStyle),
+    hcLocalHeadingStyles :: !(Map FileId (Map Int HtmlHeadingStyle))
   }
 
 {- | A rule before or after a paragraph or a heading as CSS (golem-driver
@@ -242,6 +246,16 @@ data HtmlFeatures = HtmlFeatures
 
 noFeatures :: HtmlFeatures
 noFeatures = HtmlFeatures Nothing Nothing Nothing Nothing []
+
+-- | Only the paragraph properties applicable to a heading (root ADR 0468).
+data HtmlHeadingStyle = HtmlHeadingStyle
+  { hhsName :: !Text,
+    hhsPitch :: !(Maybe Text),
+    hhsAlign :: ![Text],
+    hhsFeatures :: !HtmlFeatures,
+    hhsFitCharacters :: !(Maybe Int)
+  }
+  deriving stock (Eq)
 
 -- | A resolved paragraph style for CSS (docs/adr ADR 0005, 0006).
 data HtmlParaStyle = HtmlParaStyle
@@ -750,7 +764,9 @@ blockHtml c (Block sp lbl blang body) = case body of
     let tag = "h" <> T.pack (show l)
         info = Map.lookup sp (bookHeadings (cBook c))
         anchor = maybe (headingAnchor lbl sp) hiAnchor info
-     in [el tag [("id", anchor)] (titledNodes (hcLanguage (cCfg c)) (cBook c) (spanFile sp) (Just l) True (info >>= hiNumberText) (foldMap inlineText is) (inlines c is)), nl]
+        headingStyle = Map.lookup l (Map.findWithDefault (hcHeadingStyles (cCfg c)) (spanFile sp) (hcLocalHeadingStyles (cCfg c)))
+        cls = [("class", "ps-" <> hhsName h) | Just h <- [headingStyle]]
+     in [el tag ([("id", anchor)] <> cls) (titledNodes (hcLanguage (cCfg c)) (cBook c) (spanFile sp) (Just l) True (info >>= hiNumberText) (foldMap inlineText is) (inlines c is)), nl]
   BulletList items -> [el "ul" (idAttr lbl <> listClass (NE.length . hlBullets)) (nl : concatMap (item inList Nothing) items), nl]
   OrderedList items ->
     let start = case items of
@@ -1650,6 +1666,7 @@ css cfg book =
       -- the rules of paragraph styles and headings as pseudo-elements (golem-driver ADR 0027)
       <> concat [ruleRules (if name == "body" then "p:not([class])" else "p.ps-" <> name) (hpsRuleBefore ps) (hpsRuleAfter ps) | (name, ps) <- Map.toAscList (hcParaStyles cfg), name /= "code"]
       <> concat [ruleRules ("h" <> tshow l) b a | (l, (b, a)) <- Map.toAscList (hcHeadingRules cfg)]
+      <> headingStyleRules "" (hcHeadingStyles cfg)
       -- no indent in list items (docs/adr ADR 0006); li p[class] is stronger than p.ps-name
       <> ["li p, li p[class] { padding-inline-start: 0; text-indent: 0; }" | any (uncurry indentRule) (Map.toList (hcParaStyles cfg))]
       -- the lines of a paragraph that keeps them; br is for readers without CSS
@@ -1678,7 +1695,9 @@ css cfg book =
       <> concat [localRules n l | (n, fid) <- zip [1 :: Int ..] docs, Just l <- [Map.lookup fid (hcLocalStyles cfg)]]
       -- the styles without a name as the files with styles of their own resolve them (root ADR 0467)
       <> concat [anonymousRules ("body.file-" <> tshow n <> " ") (anonymousOf a) | (n, fid) <- zip [1 :: Int ..] docs, Map.member fid (hcLocalStyles cfg), Just a <- [Map.lookup fid (hcLocalAnonymousStyles cfg)]]
+      <> concat [headingStyleRules ("body.file-" <> tshow n <> " ") hs | (n, fid) <- zip [1 :: Int ..] docs, Just hs <- [Map.lookup fid (hcLocalHeadingStyles cfg)]]
   where
+    headingStyleRules prefix hs = [rule (prefix <> "h" <> tshow level <> ".ps-" <> hhsName h) (hhsAlign h <> featureDecls (hhsFeatures h) <> ["line-height: " <> p | Just p <- [hhsPitch h]] <> maybe [] fitDecls (hhsFitCharacters h)) | (level, h) <- Map.toAscList hs]
     numbers = anonymousStyleNumbers book
     -- the key of a style without a name: NAME.pso-N, so that p.ps-KEY is p.ps-NAME.pso-N
     anonymousKey r = (\n -> styleRefName r <> ".pso-" <> tshow n) <$> Map.lookup r numbers

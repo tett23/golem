@@ -994,6 +994,23 @@ tests =
       NaturalKeySpec.tests,
       FunctionsSpec.tests,
       FilesSpec.tests,
+      testCase "root ADR 0468 I1, I2: headings can name an existing paragraph style" $ do
+        case parseStyle (FileId 0) "[headings.1]\nparagraph-style = \"body\"\n" of
+          Left ds -> assertFailure (show ds)
+          Right _ -> pure (),
+      testCase "root ADR 0468 I5: each missing heading paragraph style has G03302" $ do
+        let src = "[headings.1]\nparagraph-style = \"missing\"\n[headings.2]\nparagraph-style = \"missing\"\n"
+        case parseStyle (FileId 0) src of
+          Left ds -> [c | d <- ds, let { DiagnosticCode c = diagCode d }] @?= ["G03302", "G03302"]
+          Right _ -> assertFailure "missing styles accepted",
+      testCase "root ADR 0468 I2, I3: headings inherit only the allowed paragraph keys" $ do
+        let src = "[page]\nsize = \"B6\"\n[page.grid]\nfont-size = \"10pt\"\ncharacters = 20\nlines = 20\nline-pitch = \"16pt\"\nposition = { top = \"18mm\", gutter = \"20mm\" }\nalignment = \"free\"\n[paragraph-styles.parent]\nline-pitch = \"20pt\"\nalign = \"center\"\nsize = \"6pt\"\nindent = \"8zw\"\nspace-before = 2\n[paragraph-styles.h]\nbased-on = \"parent\"\n[headings.1]\nparagraph-style = \"h\"\nsize = \"16pt\"\n"
+        case parseStyle (FileId 0) src of
+          Left ds -> assertFailure (show ds)
+          Right st -> do
+            headingParaName st 1 @?= Just "h"
+            fmap (\d -> (psLinePitch d, psAlign d, psSize d, psIndent d, psSpaceBefore d)) (headingParaStyle st 1) @?= Just (Just (PitchDim (Abs (20 * 65536))), Just ParaCenter, Nothing, Nothing, Nothing)
+            (Map.lookup 1 (stHeadings st) >>= hsSize) @?= Just (Abs (16 * 65536)),
       TitleFormatSpec.tests,
       FitCharactersSpec.tests,
       VarsSpec.tests,
