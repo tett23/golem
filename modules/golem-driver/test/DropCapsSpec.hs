@@ -37,7 +37,8 @@ buildDiagnostics check style source = withSystemTempDirectory "golem-drop" $ \tm
 
 dropCapsTests :: [TestTree]
 dropCapsTests =
-  wrappedDropCapsTests
+  integrationHeadingTests
+    <> wrappedDropCapsTests
     <> wrappedInitialRowsTests
     <> [ testCase "root ADR 0465 I2, I4: three-line drop cap shortens three lines and suppresses first-line indent" $ do
            (_, pl) <- layoutOk (dropStyle "drop-lines = 3\n") ("@style title\n" <> T.replicate 70 "あ" <> "\n") []
@@ -137,4 +138,18 @@ wrappedInitialRowsTests =
         other -> assertFailure (show other)
   | writing <- ["horizontal", "vertical"],
     placement <- ["grid", "free"]
+  ]
+
+integrationHeadingTests :: [TestTree]
+integrationHeadingTests =
+  [ testCase "root ADR 0465 I7, root ADR 0468 I2: heading ignores drop-lines in its selected style" $ do
+      let style = horizontalStyle <> "\n[paragraph-styles.h]\ndrop-lines = 3\n[headings.1]\nsize = \"10pt\"\n"
+      (_, selected) <- layoutOk (style <> "paragraph-style = \"h\"\n") "# 題名\n" []
+      (_, plain) <- layoutOk style "# 題名\n" []
+      setLines selected @?= setLines plain,
+    testCase "root ADR 0465 I2, I3, root ADR 0468 I2: heading next-style activates body drop caps" $ do
+      let style = horizontalStyle <> "\n[paragraph-styles.h]\nnext-style = \"cap\"\n[paragraph-styles.cap]\ndrop-lines = 3\n[headings.1]\nsize = \"10pt\"\nparagraph-style = \"h\"\n"
+      (_, pl) <- layoutOk style "# 題名\n\nあ\n" []
+      length (linesOf pl) @?= 4
+      length [() | sl <- linesOf pl, Box _ c <- lineItems (slLine sl), lkSize (bcLook c) > fs] @?= 1
   ]
