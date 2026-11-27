@@ -86,6 +86,7 @@ recordFragments suffix shortAuthor style number location record sources = do
           pure (Just text)
     (year, numericMonth, day) = case recordDate "issued" record of
       Just (DateParts y m d) -> (Just (tshow y), tshow <$> m, tshow <$> d)
+      Just (DateLiteral literal) -> (Just literal, Nothing, Nothing)
       _ -> (Nothing, Nothing, Nothing)
     month = case recordDate "issued" record of
       Just (DateParts _ (Just n) _) -> (bsMonths style >>= lookup n . zip [1 ..]) <|> Just (tshow n)

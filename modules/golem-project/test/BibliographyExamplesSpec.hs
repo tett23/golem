@@ -9,6 +9,7 @@ import Data.ByteString.Lazy qualified as BL
 import Data.Map.Strict qualified as Map
 import Data.Text (Text)
 import Data.Text qualified as T
+import Data.Text.Encoding qualified as TE
 import Data.Text.IO qualified as TIO
 import Data.Text.Read qualified as TR
 import Golem.Assemble.BibliographyFormats
@@ -40,6 +41,16 @@ tests =
                let people n = [Names.PersonalName (Just ("N" <> T.pack (show i))) (Just "A") | i <- [1 :: Int .. n]]
                Names.formatBibliographyNamesWith extras format (people 6) @?= "A. N1, A. N2, A. N3, A. N4, A. N5, and A. N6"
                Names.formatBibliographyNamesWith extras format (people 7) @?= "A. N1 et al.",
+             testCase "root ADR 0470 I8: literal issued dates survive the selected record formatter" $ do
+               let declaration = Decl.emptyBibliographyStyle {Decl.bsTypes = Map.singleton "default" (Decl.BibliographyType (Just ["{year:kanji}", " ({month})", " ({day})"]) Map.empty)}
+               forM_ ["n.d.", "circa 2020", "2020/21"] $ \literal -> do
+                 let source = "[{\"id\":\"a\",\"issued\":{\"literal\":\"" <> literal <> "\"}}]"
+                 records <- either (failure . show) pure (Json.decodeCslRecords (BL.fromStrict (TE.encodeUtf8 source)))
+                 case records of
+                   [record] -> do
+                     parts <- either (failure . T.unpack) pure (formatBibliographyRecord declaration 1 record)
+                     Csl.entryText parts @?= literal
+                   _ -> failure "one literal-date record required",
              testCase "root ADR 0470 I8: an explicit numeric month overrides the declared month label" $
                verifyExample "ieee" (T.replace "{month?}" "{month?:kanji} ") (T.replace "Oct. " "十 "),
              testCase "root ADR 0470 I6: an unlisted type uses the explicit default without changing its example" $
