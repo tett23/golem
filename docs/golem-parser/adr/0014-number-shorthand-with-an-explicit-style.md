@@ -1,6 +1,6 @@
 # ADR 0014: 数の糖衣構文に表記を指定する
 
-Status: accepted-pending
+Status: accepted
 
 ## 文脈
 

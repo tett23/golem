@@ -19,6 +19,7 @@ import LangSpec qualified
 import LinkSpec qualified
 import NaturalSpec qualified
 import NoteSpec qualified
+import NumberStyleShorthandSpec qualified
 import OperatorSpec qualified
 import OverrideAllSpec qualified
 import OverrideImportSpec qualified
@@ -34,4 +35,4 @@ import Test.Tasty
 import VarsSpec qualified
 
 main :: IO ()
-main = enterPackageDirectory >> defaultMain (testGroup "golem-eval" [ExprSpec.tests, FileSpec.tests, FigureOutlineSpec.tests, RegexStyleSpec.tests, OperatorSpec.tests, DeferredSpec.tests, DiagnosticSitesSpec.tests, BuiltinSpec.tests, TableSpec.tests, TableAttributesSpec.tests, NoteSpec.tests, CiteSpec.tests, IndexKindSpec.tests, RationalSpec.tests, NaturalSpec.tests, RangeSpec.tests, FunctionSpec.tests, ImportListSpec.tests, ImportAliasSpec.tests, OverrideImportSpec.tests, OverrideAllSpec.tests, VarsSpec.tests, LinkSpec.tests, LangSpec.tests, ShySpec.tests, ExceptionsSpec.tests, ParagraphStyleControlsSpec.tests, StyleArgumentsSpec.tests, BlockBodySpec.tests, FollowOnSpec.tests])
+main = enterPackageDirectory >> defaultMain (testGroup "golem-eval" [NumberStyleShorthandSpec.tests, ExprSpec.tests, FileSpec.tests, FigureOutlineSpec.tests, RegexStyleSpec.tests, OperatorSpec.tests, DeferredSpec.tests, DiagnosticSitesSpec.tests, BuiltinSpec.tests, TableSpec.tests, TableAttributesSpec.tests, NoteSpec.tests, CiteSpec.tests, IndexKindSpec.tests, RationalSpec.tests, NaturalSpec.tests, RangeSpec.tests, FunctionSpec.tests, ImportListSpec.tests, ImportAliasSpec.tests, OverrideImportSpec.tests, OverrideAllSpec.tests, VarsSpec.tests, LinkSpec.tests, LangSpec.tests, ShySpec.tests, ExceptionsSpec.tests, ParagraphStyleControlsSpec.tests, StyleArgumentsSpec.tests, BlockBodySpec.tests, FollowOnSpec.tests])

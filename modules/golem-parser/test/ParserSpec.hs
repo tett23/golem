@@ -494,7 +494,36 @@ numberShorthandTests :: TestTree
 numberShorthandTests =
   testGroup
     "number shorthand ##…## (golem-parser ADR 0011)"
-    [ testCase "in the middle of text" $ do
+    [ testCase "golem-parser ADR 0014 I2, I6: styled shorthand keeps its complete body and source in the CST" $
+        mapM_
+          ( \body -> do
+              let source = "前##" <> body <> "##後\n"
+              parseOk source
+              shorthandNodes source @?= [[(KNumberMark, "##"), (KNumberBody, body), (KNumberMark, "##")]]
+          )
+          ["0:tcy", "47:kanji", "804:kanji-digits", "23:custom", "23:future9-style"],
+      testCase "golem-parser ADR 0014 I3: styled code blocks and escapes do not become shorthand CST nodes" $
+        mapM_
+          ( \source -> do
+              parseOk source
+              shorthandNodes source @?= []
+          )
+          ["```\n##47:tcy##\n```\n", "```hs\n##804:kanji-digits##\n```\n", "\\##47:tcy##\n"],
+      testCase "golem-parser ADR 0014 I4: styled malformed bodies are retained for evaluation diagnostics" $
+        mapM_
+          ( \body -> do
+              let source = "##" <> body <> "##\n"
+              parseOk source
+              shorthandNodes source @?= [[(KNumberMark, "##"), (KNumberBody, body), (KNumberMark, "##")]]
+          )
+          ["047:tcy", "47:", "47::tcy", "47: tcy", "47 :tcy", "47:Tcy"],
+      testCase "golem-parser ADR 0014 I4: unclosed styled shorthand stops at the existing cell and slot boundaries" $ do
+        let source = "| ##47:tcy|値 |\n|---|---|\n| a | b |\n"
+        parseOk source
+        shorthandNodes source @?= [[(KNumberMark, "##"), (KNumberBody, "47:tcy")]]
+        parseOk "[ruby: ##47:tcy|よみ]\n"
+        shorthandNodes "[ruby: ##47:tcy|よみ]\n" @?= [[(KNumberMark, "##"), (KNumberBody, "47:tcy")]],
+      testCase "in the middle of text" $ do
         parseOk "本文##12##本文\n"
         childKindsOf NParagraph "本文##12##本文\n" @?= [KText, NNumberShorthand, KText, KNewline]
         shorthandNodes "本文##12##本文\n" @?= [[(KNumberMark, "##"), (KNumberBody, "12"), (KNumberMark, "##")]],

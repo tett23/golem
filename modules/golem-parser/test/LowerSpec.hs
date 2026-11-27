@@ -118,6 +118,22 @@ tests =
   testGroup
     "CST to AST (ADR 0005)"
     [ whitespaceTests,
+      testCase "golem-parser ADR 0014 I2: styled shorthand keeps its source spelling and complete UTF-8 span" $
+        case ast "前##47:kanji##後\n" of
+          [Paragraph [Located _ (Text "前"), Located sp (NumberShorthand t), Located _ (Text "後")]] ->
+            (t, spanStart sp, spanEnd sp) @?= ("##47:kanji##", 3, 15)
+          other -> assertFailure (show other),
+      testCase "golem-parser ADR 0014 I3: styled shorthand in a code slot is recoverable as literal text" $
+        case ast "[code: ##47:tcy##]\n" of
+          [Paragraph [Located _ (Command name [] [slot])]] -> do
+            locValue name @?= "code"
+            inl (shorthandsAsText slot) @?= [Text "##47:tcy##"]
+          other -> assertFailure (show other),
+      testCase "golem-parser ADR 0014 I3: styled shorthand remains literal in code blocks and after an escape" $ do
+        case ast "```\n##47:tcy##\n##804:kanji-digits##\n```\n" of
+          [CodeBlock Nothing [] source] -> map locValue source @?= ["##47:tcy##", "##804:kanji-digits##"]
+          other -> assertFailure (show other)
+        plainParas "\\##47:tcy##\n" @?= [[Text "##47:tcy##"]],
       -- golem-parser ADR 0011
       testCase "##36## is a NumberShorthand of six bytes" $
         case ast "##36##\n" of
