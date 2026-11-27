@@ -25,12 +25,22 @@ import Test.Tasty.HUnit
 -- These fixtures are only the transcribed examples. Their explicit
 -- bounds are the example author counts, not publication-wide name rules.
 tests :: TestTree
-tests = testGroup "primary bibliography examples" [example name | name <- ["ieee", "vancouver", "sist02", "unified-linguistics"]]
+tests =
+  testGroup
+    "primary bibliography examples"
+    ( [example name | name <- ["ieee", "vancouver", "sist02", "unified-linguistics"]]
+        <> [ testCase "root ADR 0470 I8: an explicit numeric month overrides the declared month label" $
+               verifyExample "ieee" (T.replace "{month?}" "{month?:kanji} ") (T.replace "Oct. " "十 ")
+           ]
+    )
 
 example :: String -> TestTree
-example name = testCase ("root ADR 0470 I6: explicit " <> name <> " declaration matches its primary-source example") $ do
+example name = testCase ("root ADR 0470 I6: explicit " <> name <> " declaration matches its primary-source example") (verifyExample name id id)
+
+verifyExample :: String -> (Text -> Text) -> (Text -> Text) -> Assertion
+verifyExample name changeDeclaration changeExpected = do
   let path extension = "test/fixtures/bibliography/" <> name <> extension
-  source <- TIO.readFile (path ".toml")
+  source <- changeDeclaration <$> TIO.readFile (path ".toml")
   style <- either (failure . show) pure (parseStyle (FileId 0) source)
   Decl.bibSelected (stBibliography style) @?= "example"
   declaration <- require "example declaration" (Map.lookup "example" (Decl.bibStyles (stBibliography style)))
@@ -75,12 +85,17 @@ example name = testCase ("root ADR 0470 I6: explicit " <> name <> " declaration 
   pieces <- require "explicit pieces" (Decl.btPieces entry)
   let authorField = Names.formatBibliographyNames format (map person (Json.recordNames "author" record))
       fields = Map.fromList ([("author", authorField), ("page", uncurry (formatBibliographyRange mode delimiter) endpoints)] <> date <> editorFields)
-      field key = Map.lookup key fields <|> Json.recordText key record
+      field key notation
+        | key == "month",
+          Just _ <- notation = case Json.recordDate "issued" record of
+            Just (Csl.DateParts _ (Just number) _) -> Just (T.pack (show number))
+            _ -> Nothing
+        | otherwise = Map.lookup key fields <|> Json.recordText key record
   parsed <- either (failure . T.unpack) pure (traverse (parseBibliographyPiece Decl.bibliographyFields) pieces)
-  fragments <- either (failure . T.unpack) pure (renderBibliographyFragments field parsed)
+  fragments <- either (failure . T.unpack) pure (renderBibliographyFragmentsWith field parsed)
   let parts = bibliographyEntryParts (Decl.btCharStyles entry) fragments
   expected <- TIO.readFile (path ".txt") >>= require "expected example ends with newline" . T.stripSuffix "\n"
-  Csl.entryText parts @?= expected
+  Csl.entryText parts @?= changeExpected expected
   [(styleName, Csl.entryText body) | Csl.EntryStyled styleName body <- parts]
     @?= case name of
       "ieee" -> [("italic", "IEEE Trans. Biomed. Eng.")]

@@ -673,6 +673,10 @@ golem-doc はこの三つに依存せず、golem-bibliography と golem-numerals
 
 `renderBibliographyFragments` は、欄の値とリテラルの断片を分け、欄名を保持する。
 片を省く規則と数の表記は文字列を返す API と共通で、書式の解釈を二重に持たない。
+`renderBibliographyFragmentsWith` は、値を引く関数に、差し込みで明示した数の表記も渡す。
+呼出側は、`{month}` に月名を、`{month:kanji}` に数の月を返せる。
+必須の値が無いかどうかも、その差し込みの表記で選んだ値で判定する。
+既存の `renderBibliographyFragments` は、数の表記によらず同じ値を使う。
 `bibliographyEntryParts` は、断片の欄名に対応する文字スタイルを `EntryStyled` にし、句読点はスタイルの外に保つ。
 `URL` の欄は `EntryUrl` を保ち、文字スタイルの中でも従来の URL の扱いを使う。
 HTML と EPUB は欄の文字スタイルを `cs-` のクラスにし、PDF は `CharStyle` のインラインにする。
