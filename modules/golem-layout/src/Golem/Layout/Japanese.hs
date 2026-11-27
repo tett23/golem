@@ -2436,14 +2436,21 @@ normalize env codeSpaces = go (0 :: Int) AtStart True
                 bcEdgeEnd = bcEdgeEnd c + edge (akiBetween set (AkiChar l) AkiLineEnd)
               }
       _ -> c
-    -- the classes come from the base characters, without combining characters (golem-driver ADR 0036)
+    -- Use a non-numeric ideograph only for the outside of a tcy box
+    -- (root ADR 0479). Its stored/drawn text stays intact. This keeps
+    -- outer kinsoku and number-unit rules without leaking inner characters.
+    -- Other edges come from base characters without combining characters.
     baseOf = baseText . bcText
-    firstChar c = case T.uncons (baseOf c) of
-      Just (ch, _) | not (isRuby c) -> Just ch
-      _ -> Nothing
-    lastChar c = case T.unsnoc (baseOf c) of
-      Just (_, ch) | not (isRuby c) -> Just ch
-      _ -> Nothing
+    firstChar c
+      | boxKind c == KindTcy = Just '漢'
+      | otherwise = case T.uncons (baseOf c) of
+          Just (ch, _) | not (isRuby c) -> Just ch
+          _ -> Nothing
+    lastChar c
+      | boxKind c == KindTcy = Just '漢'
+      | otherwise = case T.unsnoc (baseOf c) of
+          Just (_, ch) | not (isRuby c) -> Just ch
+          _ -> Nothing
     firstClass c = lookClass (bcLook c) <$> firstChar c
     lastClass c = lookClass (bcLook c) <$> lastChar c
     {- a character of both scripts in a Latin span (docs/adr ADR 0187): no
