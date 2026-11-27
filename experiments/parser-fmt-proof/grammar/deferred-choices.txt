@@ -3,9 +3,6 @@
 # the unsupported choices differ: remove a line when its choice is proved.
 File choice 1: BlankLines? (&. Blocks(0) BlankLines?)?
 Blocks choice 1: Block(ind) (BlankLines? &(Ind(ind) !BlankLine .) Block(ind))*
-ReservedRange choice 1: !'...' &'..' (&{ False } '..')^reserved (ES AddExpr)? (ES (ReservedRange / RangeOp (ES AddExpr)?))*
-ReservedRange choice 2: ReservedRange
-ReservedRange choice 3: RangeOp (ES AddExpr)?
 BlockGroup choice 1: cs:BlockCommand(ind)+ (&{ not (or (take 1 (reverse cs))) } GroupBody(ind))?
 GroupBody choice 1: Div(ind)
 GroupBody choice 2: &(Ind(ind) !BlockCommandStart ![ \t] !BlankLine) AttributedBlock(ind)

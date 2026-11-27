@@ -479,7 +479,7 @@ const continuationProved = lineLeavesProved && blankLineProved && indentFullyPro
   divLineProved && indentedUnitRuleMatches(ast?.rules.find(r => r.name === 'LineContinuation'),
     'Nl !BlankLine Ind(ind) !BlockStart !(&{ inFence ind } DivLine)');
 // ExpressionComposition retains every alternative, its priority, and both
-// range_end labels. ReservedRange recovery itself remains unsupported.
+// range_end labels. Label recovery and action/AST values remain unproved.
 function unitAlternativesMatch(r, expected) {
   return r?.params.length === 0 && r.templateParams.length === 0 && r.type.trim() === '()' &&
     r.alts.length === expected.length && r.alts.every((alt, index) => alt.action?.trim() === '()' &&
@@ -497,6 +497,12 @@ const rangeProved = expressionSpaceProved &&
   unitAlternativesMatch(ast?.rules.find(r => r.name === 'AddExpr'), ['AddExpr ES AddOp ES MulExpr', 'MulExpr']) &&
   unitAlternativesMatch(ast?.rules.find(r => r.name === 'CompareExpr'), ['AddExpr ES CmpOp ES AddExpr', 'AddExpr']) &&
   unitAlternativesMatch(ast?.rules.find(r => r.name === 'RangeExpr'), expectedRanges);
+// ReservedRangeTotal proves both guards and the always-failing label for
+// every input. The suffix from the actual grammar is unreachable, including
+// its two nested choices; no recognizer or action hypothesis is assumed.
+const reservedRangeFullyProved = singleUnitRuleMatches(
+  ast?.rules.find(r => r.name === 'ReservedRange'),
+  "!'...' &'..' (&{ False } '..')^reserved (ES AddExpr)? (ES (ReservedRange / RangeOp (ES AddExpr)?))*");
 // ArgumentsComposition preserves the positional/keyword split, comment
 // repetitions and the labelled ordering/closing guards of these exact rules.
 const positionalProved = wordFullyProved &&
@@ -556,6 +562,7 @@ if (!fragment && ast) {
     if (inlineCommandProved && rule.name === 'InlineCommand') continue;
     if (callProved && rule.name === 'CallExpr') continue;
     if (rangeProved && rule.name === 'RangeExpr') continue;
+    if (reservedRangeFullyProved && rule.name === 'ReservedRange') continue;
     if (variableProved && rule.name === 'VarExpr') continue;
     if (proseSlotsProved && rule.name === 'ProseSlots') continue;
     if (continuationProved && rule.name === 'LineContinuation') continue;

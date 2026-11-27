@@ -35,7 +35,9 @@ try {
     'root ADR 0351 I1/I2: paragraph, definition term and code fences require recognition proofs');
   // root ADR 0459 added four choices of the ::: body (GroupBody, Div, DivBlocks),
   // which recurse through Block like the other block structures.
-  assert.ok(baselineUnsupported <= 27, 'the full grammar model must not regress in unsupported choices');
+  assert.doesNotMatch(strict.stderr, /^unsupported ReservedRange choice /m,
+    'root ADR 0351 I1, I2: the reserved-range guards and label have an arbitrary-input proof');
+  assert.ok(baselineUnsupported <= 24, 'the full grammar model must not regress in unsupported choices');
   assert.equal(strict.status === 0, baselineUnsupported === 0,
     'strict generation succeeds exactly when every choice is supported');
   for (const line of strict.stderr.split('\n').filter(line => line.startsWith('unsupported '))) {
@@ -481,6 +483,43 @@ try {
     assert.match(rejected.stderr, new RegExp(`^unsupported ${rule} choice `, 'm'),
       `root ADR 0351 I1/I2: ${name} must invalidate its recognition proof`);
   }
+
+  const reservedRangeBody = original.match(/^ReservedRange <- ([\s\S]*?) \{ \(\) \}/m)?.[1];
+  assert.equal(reservedRangeBody?.replace(/\s+/g, ' '),
+    "!'...' &'..' (&{ False } '..')^reserved (ES AddExpr)? (ES (ReservedRange / RangeOp (ES AddExpr)?))*");
+  const reservedRangeMutations = [
+    ['ReservedExcludedGuard', "!'...'", "&'...'"],
+    ['ReservedLookahead', "&'..'", "&'...'"],
+    ['ReservedFalsePredicate', '&{ False }', '&{ True }'],
+    ['ReservedLabel', '^reserved', '^range_end'],
+    ['ReservedSuffix', '(ES AddExpr)?', '(ES AddExpr)+'],
+    ['ReservedNestedPriority', 'ReservedRange / RangeOp (ES AddExpr)?', 'RangeOp (ES AddExpr)? / ReservedRange'],
+  ];
+  for (const [name, before, after] of reservedRangeMutations) {
+    const changedBody = reservedRangeBody.replace(before, after);
+    assert.notEqual(changedBody, reservedRangeBody);
+    const changedPath = join(work, name + '.hpeg');
+    const changed = original.replace(reservedRangeBody, changedBody);
+    assert.notEqual(changed, original);
+    writeFileSync(changedPath, changed);
+    const rejected = spawnSync(process.execPath, [join(here, 'generate.mjs'), changedPath, generated], { encoding: 'utf8' });
+    assert.notEqual(rejected.status, 0);
+    assert.match(rejected.stderr, /^unsupported ReservedRange choice /m,
+      `root ADR 0351 I1/I2: ${name} must invalidate the exact generated rule proof`);
+  }
+  const nativeReservedPath = join(work, 'NativeReservedFalsePredicate.hpeg');
+  writeFileSync(nativeReservedPath, original.replace(reservedRangeBody,
+    reservedRangeBody.replace('&{ False }', '&{ True }')));
+  const nativeReservedSample = join(work, 'native-reserved-range.gm');
+  writeFileSync(nativeReservedSample, '[= 1..2]\n');
+  const nativeReserved = spawnSync(process.env.PEG_HS ?? 'peg-hs',
+    ['parse', '--format', 'cst', nativeReservedPath, nativeReservedSample],
+    { encoding: 'utf8', env: { ...process.env, XDG_CACHE_HOME: join(work, 'cache') } });
+  assert.equal(nativeReserved.status, 0, nativeReserved.stdout + nativeReserved.stderr);
+  assert.match(nativeReserved.stdout, /RangeExpr@3\.\.7/,
+    'root ADR 0351: changing the always-failing predicate must accept the previously rejected range');
+  assert.match(nativeReserved.stdout, /TEXT@4\.\.6 \"\.\.\"/,
+    'the accepted CST must contain the two reserved dots at their original span');
 
   const nativeExpressionMutations = [
     ['CallNamespaceMany', '[= foo.bar.baz(1)]\n', true, { CallExpr: 1, ExprIdent: 3 }],
@@ -1031,6 +1070,24 @@ try {
   const throwingPrefixProof = spawnSync(lean, ['-o', join(work, 'ThrowingPrefixTotal.olean'), throwingSource],
     { cwd: work, env: { ...process.env, LEAN_PATH: work }, encoding: 'utf8' });
   assert.equal(throwingPrefixProof.status, 0, throwingPrefixProof.stderr);
+  const reservedRangeSource = join(work, 'ReservedRangeTotal.lean');
+  copyFileSync(join(here, 'ReservedRangeTotal.lean'), reservedRangeSource);
+  const reservedRangeProof = spawnSync(lean, [reservedRangeSource], growthEnv);
+  assert.equal(reservedRangeProof.status, 0, reservedRangeProof.stdout + reservedRangeProof.stderr);
+  assert.doesNotMatch(reservedRangeProof.stdout, /sorryAx/,
+    'root ADR 0351: the arbitrary-input theorem must not depend on sorry');
+  const reservedLabelMutation = model.replace(/(name := "ReservedRange"[^\n]*?)\) "reserved"/,
+    '$1) "range_end"');
+  assert.notEqual(reservedLabelMutation, model);
+  writeFileSync(generated, reservedLabelMutation);
+  execFileSync(lean, ['-o', join(work, 'Generated.olean'), generated], growthEnv);
+  const reservedRefuted = spawnSync(lean, [reservedRangeSource], growthEnv);
+  assert.notEqual(reservedRefuted.status, 0,
+    'root ADR 0351: changing the generated label must refute the theorem');
+  assert.match(reservedRefuted.stdout + reservedRefuted.stderr, /type mismatch|unsolved goals/,
+    'the counterexample must refute the theorem rather than fail to load its imports');
+  writeFileSync(generated, model);
+  execFileSync(lean, ['-o', join(work, 'Generated.olean'), generated], growthEnv);
   const expressionSource = join(work, 'ExpressionComposition.lean');
   copyFileSync(join(here, 'ExpressionComposition.lean'), expressionSource);
   const expressionProof = spawnSync(lean, ['-o', join(work, 'ExpressionComposition.olean'), expressionSource], growthEnv);
@@ -1062,7 +1119,7 @@ try {
   assert.match(refuted.stdout + refuted.stderr, /unsolved goals/, 'the mutation must refute the theorem, not fail to load a file');
   const unsupportedChoices = [...strict.stderr.matchAll(/^unsupported [A-Za-z][A-Za-z0-9]* choice /gm)].length;
   assert.equal(unsupportedChoices, baselineUnsupported, 'strict report count must remain stable through mutation tests');
-  console.log(`grammar: source and AST rules ${emittedRuleCount}/${astRuleCount}/${sourceRuleCount}, unsupported choices ${unsupportedChoices}, positive proof modules 28, negative mutations 106, implementation parser cases ${parserCases.length}, syntax-only parser cases 1, native parser counterexamples ${1 + nativeLexicalMutations.length + nativeCompositionMutations.length + nativeExpressionMutations.length + nativeArgumentMutations.length + nativeBlockLeafMutations.length}, rejected parser cases ${rejectedParserCases.length + badDelimiterCases.length + 1 + lexicalRejectedCases.length + compositionRejectedCases.length + expressionRejectedCases.length + argumentRejectedCases.length + blockLeafRejectedCases.length}`);
+  console.log(`grammar: source and AST rules ${emittedRuleCount}/${astRuleCount}/${sourceRuleCount}, unsupported choices ${unsupportedChoices}, positive proof modules 29, negative mutations 113, implementation parser cases ${parserCases.length}, syntax-only parser cases 1, native parser counterexamples ${2 + nativeLexicalMutations.length + nativeCompositionMutations.length + nativeExpressionMutations.length + nativeArgumentMutations.length + nativeBlockLeafMutations.length}, rejected parser cases ${rejectedParserCases.length + badDelimiterCases.length + 1 + lexicalRejectedCases.length + compositionRejectedCases.length + expressionRejectedCases.length + argumentRejectedCases.length + blockLeafRejectedCases.length}`);
 } finally {
   rmSync(work, { recursive: true, force: true });
 }
