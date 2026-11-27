@@ -109,8 +109,8 @@ tests =
           )
           overridableBlockCommands,
       -- the overridable commands of root ADR 0471, which replaced those of 0453
-      testCase "root ADR 0471 I2: there are forty-two overridable commands" $
-        length overridableInline + length overridableBlockCommands @?= 42,
+      testCase "root ADR 0471 I2: the added cites command is overridable with the existing commands" $
+        length overridableInline + length overridableBlockCommands @?= 43,
       testCase "root ADR 0453 I2: a listed fixed block command is G02270 once, and the built-in one is called" $
         mapM_
           ( \n -> do

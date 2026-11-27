@@ -483,6 +483,11 @@
   [code: page=5]、[code: page=5...7]、[code: page=xii] のように書くと、引用した文献の頁が番号の後に組まれます。
   [code: page] は、キーが一つのときだけ書けます。
 
+= [strong: [code: \[cites: \[cite a page=5\]\|\[cite b page=7\]\]]]
+  文献ごとの頁を一つの引用の印にまとめます。
+  引数は取らず、各スロットには単一キーの [code: cite] を一つだけ書きます。
+  同じキーを二度書くと、エラーになります。
+
 プラグインのコマンドも、同じ形で呼び出します（第[ref-number plugins]章「[ref-title plugins]」）。
 
 ```

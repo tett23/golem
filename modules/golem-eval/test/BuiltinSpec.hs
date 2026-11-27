@@ -22,7 +22,7 @@ tests =
       testCase "parseBuiltin rejects names that are not built in" $
         map parseBuiltin ["nope", "", "Strong", "greet", "strong "] @?= replicate 5 Nothing,
       testCase "builtinInlineCommands keeps its names and order" $
-        builtinInlineCommands @?= ["strong", "bold", "italic", "code", "ruby", "kenten", "color", "style", "warichu", "upright", "tcy", "number-text", "ref-number", "ref-title", "ref-page", "note", "sidenote", "endnote", "index", "cite", "aki", "link", "lang", "shy"],
+        builtinInlineCommands @?= ["strong", "bold", "italic", "code", "ruby", "kenten", "color", "style", "warichu", "upright", "tcy", "number-text", "ref-number", "ref-title", "ref-page", "note", "sidenote", "endnote", "index", "cite", "cites", "aki", "link", "lang", "shy"],
       -- docs/adr ADR 0031, root ADR 0471: a plugin may override every built-in inline command
       testCase "root ADR 0471 I2: every built-in inline command is one a plugin may override" $
         map builtinName allBuiltins @?= builtinInlineCommands,

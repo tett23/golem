@@ -2852,8 +2852,9 @@ lines の範囲がファイルの行を外れています
 `number-text`、`ref-number`、`ref-title`、`ref-page`、`cite` は散文スロットを取らないので、書くとこのコードになり、コマンドは出力しない。
 `link` の散文スロットは一つまでで、二つ以上書くとこのコードになる（[docs/adr/0182](adr/0182-external-links.md)）。
 `[note 名前: 本文]` のように、名前と散文スロットを両方書いた `note` もこのコードになり、何も出力しない（[docs/adr/0263](adr/0263-notes-with-more-than-one-paragraph.md)）。
+`cites` に引数がある、スロットがない、各スロットの単一キーの `cite` が一つでない場合もこのコードになる（[root ADR 0385](adr/0385-bibliography-and-citation-styles.md)）。
 
-- メッセージ: `<名前> には散文スロットが一つ必要です`、`index には散文スロットが一つ必要です`、`ruby には散文スロットが二つ必要です`、`ruby side=both には散文スロットが三つ必要です`、`<名前> は散文スロットを取りません`、`link の散文スロットは一つまでです`、`note は名前を書くと散文スロットを取りません`
+- メッセージ: `<名前> には散文スロットが一つ必要です`、`index には散文スロットが一つ必要です`、`ruby には散文スロットが二つ必要です`、`ruby side=both には散文スロットが三つ必要です`、`<名前> は散文スロットを取りません`、`link の散文スロットは一つまでです`、`note は名前を書くと散文スロットを取りません`、`cites は引数を取らず、各スロットに単一キーの cite を一つずつ書きます`
 - 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
 - ADR: [golem-eval ADR 0003](golem-eval/adr/0003-evaluation-diagnostic-codes.md)
 

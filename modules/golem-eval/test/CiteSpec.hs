@@ -2,10 +2,15 @@
 module CiteSpec (tests) where
 
 import Control.Monad (forM_)
+import Data.List (permutations)
+import Data.Map.Strict qualified as Map
 import Data.Set qualified as Set
 import Data.Text (Text)
+import Data.Text qualified as T
 import Golem.Doc.IR
+import Golem.Eval.Builtin (BuiltinInline (..))
 import Golem.Eval.File
+import Golem.Eval.Value (PluginArg (..), Value (..))
 import Golem.Syntax
 import Support
 import Test.Tasty
@@ -31,7 +36,41 @@ tests :: TestTree
 tests =
   testGroup
     "citations (docs/adr/0266)"
-    [ testCase "I6: no cause: a citation of as many items as keys, in the order written" $ do
+    [ testCase "root ADR 0385 I1: cites aggregation preserves the locator and affix IR" $
+        let command = PluginCommand $ \args _ at -> case args of
+              [PluginPositional (VString key)] -> Right ([Cite at [CiteItem key (Just (Locator LocatorChapter (LocNumber 2))) [Text at "cf. "] [Text at "!"]]], [])
+              _ -> Left []
+            custom = ctx {ctxPlugins = noPlugins {phOverrides = Map.singleton BCite command}}
+            (ds, result) = evalSource custom "[cites: [cite \"a\"]|[cite \"b\"]]\n"
+            itemParts item = (citKey item, citLocator item, [t | Text _ t <- citPrefix item], [t | Text _ t <- citSuffix item])
+         in (map diagCodeText ds, [[itemParts item | item <- items] | Paragraph _ xs <- resultBodies result, Cite _ items <- xs])
+              @?= ([], [[(key, Just (Locator LocatorChapter (LocNumber 2)), ["cf. "], ["!"]) | key <- ["a", "b"]]]),
+      testCase "root ADR 0385 I1: cites keeps each page across every four-key permutation" $
+        forM_ (permutations [("a", 2), ("b", 5), ("c", 7), ("d", 11)]) $ \entries ->
+          let source = "[cites: " <> T.intercalate "|" ["[cite " <> key <> " page=" <> T.pack (show (number :: Integer)) <> "]" | (key, number) <- entries] <> "]\n"
+           in citesOf source @?= ([[CiteItem key (page (LocNumber number)) [] [] | (key, number) <- entries]], []),
+      testCase "root ADR 0385 I1: cites accepts line wrapping around slot citations" $
+        citesOf "[cites:\n [cite a] |\n [cite b]\n]\n" @?= ([[citeItem "a", citeItem "b"]], []),
+      testCase "root ADR 0385 I1: a duplicate points at its repeated key" $
+        let (ds, _) = evalSource ctx "[cites: [cite a]|[cite b]|[cite a]]\n"
+         in [(spanStart (diagSpan d), spanEnd (diagSpan d)) | d <- ds] @?= [(32, 33)],
+      testCase "root ADR 0385 I1: duplicate and child errors are all reported in source order" $
+        codes "[cites: [cite a]|[cite a]|[cite x]]\n" @?= ["G02147", "G02021"],
+      testCase "root ADR 0385 I1: cites combines single-key citations in written order" $
+        citesOf "[cites: [cite c]|[cite a]]\n" @?= ([[citeItem "c", citeItem "a"]], []),
+      testCase "root ADR 0385 I1: each cites item retains its own page" $
+        citesOf "[cites: [cite a page=5]|[cite b page=7...9]]\n"
+          @?= ([[CiteItem "a" (page (LocNumber 5)) [] [], CiteItem "b" (page (LocRange 7 9)) [] []]], []),
+      testCase "root ADR 0385 I1: cites permits surrounding slot whitespace" $
+        citesOf "[cites: [cite a] | [cite b] ]\n" @?= ([[citeItem "a", citeItem "b"]], []),
+      testCase "root ADR 0385 I1: duplicate cites keys are G02147" $
+        codes "[cites: [cite a]|[cite b]|[cite a]]\n" @?= ["G02147"],
+      testCase "root ADR 0385 I1: cites slots require one single-key citation" $
+        forM_ ["[cites]", "[cites:]", "[cites: text]", "[cites: [cite a b]]", "[cites: [cite a][cite b]]", "[cites: [cite a]|]", "[cites a: [cite a]]"] $ \source ->
+          assertEqual (show source) ["G02038"] (codes (source <> "\n")),
+      testCase "root ADR 0385 I1: child citation errors are retained once" $
+        codes "[cites: [cite x]|[cite a]]\n" @?= ["G02021"],
+      testCase "I6: no cause: a citation of as many items as keys, in the order written" $ do
         citesOf "[cite a]\n" @?= ([[citeItem "a"]], [])
         citesOf "[cite c a]\n" @?= ([[citeItem "c", citeItem "a"]], [])
         citesOf "[cite a b c d]\n" @?= ([map citeItem ["a", "b", "c", "d"]], [])

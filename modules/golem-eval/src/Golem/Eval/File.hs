@@ -3559,6 +3559,7 @@ builtinWith ctx inHeading sp b args slots = do
                     Left (code, m) -> err code sp m >> pure []
       _ -> err "G02038" sp "index には散文スロットが一つ必要です" >> pure []
     BCite -> cite ctx sp args
+    BCites -> cites ctx inHeading sp args slots
     BRuby
       | not (null pos) -> err "G02157" sp "ruby の指定はキーと値で書きます" >> pure []
       | otherwise -> case rubyOptions kw of
@@ -3862,6 +3863,42 @@ cite ctx sp args = do
       VRange a b | a >= 0 -> Just (LocRange a b)
       VString t | not (T.null t) -> Just (LocText t)
       _ -> Nothing
+
+{- | Each cites slot contains one single-key cite (root ADR 0385).
+The original item, including its locator and affixes, moves as a whole.
+Duplicate keys are reported at the repeated key, not at the outer command.
+-}
+cites :: EvalContext -> Bool -> SrcSpan -> [A.Located A.Argument] -> [[A.Located A.Inline]] -> M [Inline]
+cites ctx inHeading sp args slots
+  | not (null args) || null slots = malformed sp >> pure []
+  | otherwise = do
+      parsed <- walk Set.empty slots
+      pure [Cite sp (map snd located) | Just located <- [sequence parsed]]
+  where
+    malformed at = err "G02038" at "cites は引数を取らず、各スロットに単一キーの cite を一つずつ書きます"
+    walk _ [] = pure []
+    walk seen (slot : rest) = do
+      item <- one slot
+      checked <- case item of
+        Just (at, value)
+          | citKey value `Set.member` seen ->
+              err "G02147" at ("一つの引用に同じキーを二度書いています: " <> citKey value) >> pure Nothing
+        _ -> pure item
+      let seen' = maybe seen (\(_, value) -> Set.insert (citKey value) seen) item
+      remaining <- walk seen' rest
+      pure (checked : remaining)
+    one slot = case trimLine slot of
+      [node@(A.Located commandSpan (A.Command (A.Located _ "cite") childArgs _))] -> do
+        before <- gets (length . stDiags)
+        result <- evalInlines ctx inHeading [node]
+        problems <- gets (any isError . drop before . stDiags)
+        case result of
+          [Cite _ [item]]
+            | not problems ->
+                pure (Just (fromMaybe commandSpan (listToMaybe [at | A.Located at (A.Positional _) <- childArgs]), item))
+          _ | problems -> pure Nothing
+          _ -> malformed commandSpan >> pure Nothing
+      _ -> malformed (maybe sp (\(A.Located at _) -> at) (listToMaybe slot)) >> pure Nothing
 
 -- | The first keyword argument @k@, at the position of the argument.
 keywordAt :: Text -> [A.Located A.Argument] -> Maybe (A.Located A.ArgValue)
