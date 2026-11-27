@@ -433,6 +433,16 @@ sh "$root/experiments/pagination-proof/check-causal-probe-shape.sh"
 LEAN_PATH="$tmp" "$lean" "$causalProbeEntries"
 echo "root ADR 0352 I3: every modeled probe entry preserves wrap readiness"
 
+# Relate the reached parts counter to the actual text length, not all states.
+partsOffsetEntries=$root/experiments/pagination-proof/PartsOffsetEntries.lean
+if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|implemented_by|extern|native_decide)([^A-Za-z_]|$)' "$partsOffsetEntries"; then
+  echo "unproved or unchecked Lean declaration in $partsOffsetEntries" >&2
+  exit 1
+fi
+sh "$root/experiments/pagination-proof/check-parts-offset-shape.sh"
+LEAN_PATH="$tmp" "$lean" "$partsOffsetEntries"
+echo "root ADR 0352 I5: every modeled parts entry preserves the text offset"
+
 
 # The values of the evaluation of Golem.Layout.KnuthPlass (badness,
 # fitness, line demerits, cumulative widths, the demerits of the chosen

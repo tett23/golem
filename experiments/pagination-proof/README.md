@@ -1745,6 +1745,10 @@ golem-layout は区切りを 1 行以上にする（`Paginate.hs:155`）。
    処理の成功や、前処理がカーソルの条件を保つことを別途仮定しない。
    分岐と引数は `check-causal-probe-shape.sh` で写しと比べる。
    本体の全制御や組み直す状態全体の対応は残し、[プローブの入口の依存調査](../../docs/research/0352-causal-probe-entry-dependencies.md) に記録する。
+   `PartsOffsetEntries.lean` は、段落の分割の各再帰入口で、テキスト数が最初の数 `base` と採用済み行数 `before` の和に等しいことを導く。
+   この入口の条件があれば、対応モデルの改行器の採番を `base + before` から表せる。
+   任意の状態がこの条件を持つと仮定せず、部分採用と再試行に沿って証明する。
+   [採用済み行数の依存調査](../../docs/research/0352-parts-offset-dependencies.md) に、組み直す `Built` の採番表との接続が残ることも記録する。
 
 これらを終えるまで Alloy の定期実行と既存の参照を維持する。
 終えたときは、Alloy の定期実行を終え、規則やモデルを変えたときにローカルの Lean で検証し直す手順を CONTRIBUTING に書く。
@@ -1782,6 +1786,7 @@ sh experiments/pagination-proof/check.sh
 `CausalCalls.lean` は `CausalParagraphs.olean` と `WrapVerses.olean` を読み込み、失敗する試みも含む各入口の条件を検査する。
 `CausalStanzaEntries.lean` は `CausalCalls.olean` を読み込み、詩の配置と採用の相互再帰の入口を検査する。
 `CausalProbeEntries.lean` も `CausalCalls.olean` を読み込み、後続のプローブの相互再帰の入口を検査する。
+`PartsOffsetEntries.lean` も同じファイルを読み込み、段落の分割の各入口のテキスト数と採用済み行数を検査する。
 `CausalFirstIds.lean` は、採番の算術部分だけをほかのモデルを読み込まずに検査する。
 `WholeOrder.lean` は `WholeNotes.olean` を読み込み、ほかの検査と並んで検査し、最後にその結果を待つ。
 `WholeRules.lean` は `Whole.olean` を読み込み、同じくほかの検査と並んで検査する。
