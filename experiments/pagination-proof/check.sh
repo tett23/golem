@@ -302,6 +302,16 @@ fi
 LEAN_PATH="$tmp" "$lean" "$wrapPosition"
 echo "a wrap is outside the next column after beginWrap and successful forward parts"
 
+# Only the arithmetic component of the retry's first-ID premise is
+# proved here; the connection to the complete rebuild/parts model remains.
+causalFirstIds=$root/experiments/pagination-proof/CausalFirstIds.lean
+if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|implemented_by|extern|native_decide)([^A-Za-z_]|$)' "$causalFirstIds"; then
+  echo "unproved or unchecked Lean declaration in $causalFirstIds" >&2
+  exit 1
+fi
+"$lean" "$causalFirstIds"
+echo "the arithmetic first-ID scan preserves the current unit's ID under rebreaking"
+
 # The boundary inputs of PhysicalBoundary.hs on Physical.lean's paginate,
 # against golem-layout's paginatePhysical (root ADR 0352).
 pboundary=$root/experiments/pagination-proof/PhysicalBoundary.lean

@@ -1688,6 +1688,8 @@ golem-typeset はコードの行を脚注なしで作り（`Flow.hs:3870`）、g
    `I5_itemJobs_lines` と `I5_jobsFrom_lines` は前提 `JobsLines` を置き、前提なしの `I5_causal_jobsFrom_lines` は `CausalBoundary.lean` の 4864 個の原稿についての定理である。
    `I5_stanza_lines` は `fallback` と `hold` についての仮定を置き、`I5_parts_lines` の前提 `hb`（改行し直しても段落の最初の行の id が変わらないこと）は未確認である。
    欠けているのは、golem-typeset の改行器と後続の判定について、これらの前提を導く定理か、前提を確かめる照合である。
+   `CausalFirstIds.lean` の四つの補題は、原稿順の採番を数の列の走査として表し、先行する単位の加算量が変わらなければ、現在の単位の行数を変えても先頭の id が変わらないことを証明する。
+   この算術部分と `numberComposedFlow`、`besideFirsts`、`parts` の写しとの接続はまだなく、補題だけで `hb` を解消したとは扱わない。
 3. 区切りの残り。
    保持の中の `@need-lines`、区切りの前の行アキ、自由な配置（`SeparatorPhysical.lean`）の保持の性質は、照合だけで確かめ、定理がない。
    `markBookParts` の定義の項と表、入れ子のリスト、段組みが二つ以上の段、本文と行送りの違う段落スタイル、脚注を区切りと並べた原稿は、照合していない。
@@ -1732,6 +1734,7 @@ sh experiments/pagination-proof/check.sh
 `WholeNotes.lean` と `PhysicalNotes.lean` も、`Whole.olean` と `Physical.olean` を読み込んで検査する。
 `PhysicalDrain.lean` は、`PhysicalNotes.olean` を作ってから、それを読み込んで検査する。
 `WrapPosition.lean` は、`Physical.olean` を読み込み、除外領域と段の位置について証明を検査する。
+`CausalFirstIds.lean` は、採番の算術部分だけをほかのモデルを読み込まずに検査する。
 `WholeOrder.lean` は `WholeNotes.olean` を読み込み、ほかの検査と並んで検査し、最後にその結果を待つ。
 `WholeRules.lean` は `Whole.olean` を読み込み、同じくほかの検査と並んで検査する。
 `WholeSlots.lean` は `Separator.olean` を読み込んで検査する。
