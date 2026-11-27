@@ -29,6 +29,7 @@ module Golem.Assemble
     citationPiecesFor,
     resolvedCitationPieces,
     citationPiecesInNoteFor,
+    resolvedNoteCitationPieces,
     bookCitationItems,
     indexAt,
     channelAt,
@@ -292,9 +293,14 @@ resolvedCitationPieces book sp items = Map.lookup sp (bookCitationPieces book) >
 -- | A note-local mark when prepared, otherwise exactly the legacy lookup.
 citationPiecesInNoteFor :: Book -> Maybe NoteCitationContext -> SrcSpan -> [(CiteItem r, Maybe Int)] -> [CitePiece]
 citationPiecesInNoteFor book context sp items =
-  case context >>= (`Map.lookup` bookNoteCitationPieces book) of
-    Just (at, expected, pieces) | at == sp && expected == map (void . fst) items -> pieces
-    _ -> citationPiecesFor book sp items
+  fromMaybe (citationPiecesFor book sp items) (context >>= \at -> resolvedNoteCitationPieces book at sp (map fst items))
+
+-- | Exact source and item matching, without applying a legacy fallback.
+resolvedNoteCitationPieces :: Book -> NoteCitationContext -> SrcSpan -> [CiteItem r] -> Maybe [CitePiece]
+resolvedNoteCitationPieces book context sp items =
+  case Map.lookup context (bookNoteCitationPieces book) of
+    Just (at, expected, pieces) | at == sp && expected == map void items -> Just pieces
+    _ -> Nothing
 
 -- | A label and its separating space, with the legacy number as fallback.
 bibliographyLabelFor :: Book -> Maybe ListAt -> Text -> Int -> Text

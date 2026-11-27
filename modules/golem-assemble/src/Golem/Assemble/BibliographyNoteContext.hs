@@ -13,9 +13,9 @@ module Golem.Assemble.BibliographyNoteContext
 where
 
 import Control.Monad (void)
-import Data.List (mapAccumL)
 import Data.Maybe (fromMaybe)
 import Golem.Assemble (NoteChannelKind (..), NoteCitationContext (..))
+import Golem.Doc.Citation (citationCount, citationOffsets)
 import Golem.Doc.IR
 import Golem.Syntax (SrcSpan)
 
@@ -82,24 +82,3 @@ citationsInlines = concatMap citation
       Resolved _ _ _ xs -> citationsInlines xs
       -- A nested note, if present before validation, has its own context.
       _ -> []
-
-{- | Offsets of direct children within one note; descendants inherit the
-same starting offset. Nested note bodies belong to another context.
--}
-citationOffsets :: [InlineF r] -> [(Int, InlineF r)]
-citationOffsets = snd . mapAccumL (\n value -> (n + countInline value, (n, value))) 0
-
-citationCount :: [InlineF r] -> Int
-citationCount = sum . map countInline
-
-countInline :: InlineF r -> Int
-countInline = \case
-  Cite {} -> 1
-  Ruby _ _ segments -> sum (map (citationCount . rsBase) segments)
-  Kenten _ _ xs -> citationCount xs
-  Color _ _ xs -> citationCount xs
-  CharStyle _ _ xs -> citationCount xs
-  Link _ _ xs -> citationCount xs
-  Lang _ _ xs -> citationCount xs
-  Resolved _ _ _ xs -> citationCount xs
-  _ -> 0

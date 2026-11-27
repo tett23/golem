@@ -11,7 +11,7 @@ import Data.Maybe (mapMaybe)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Text.IO qualified as TIO
-import Golem.Assemble (Book (..), IndexGroup (..), IndexLocator (..), IndexSection (..), citationPiecesFor)
+import Golem.Assemble (Book (..), IndexGroup (..), IndexLocator (..), IndexSection (..), NoteChannelKind (..), NoteCitationContext (..), citationPiecesFor)
 import Golem.Bibliography (EntryPart (..), entryText, formatEntry)
 import Golem.Bibliography.Csl (recordEntry, recordText)
 import Golem.Doc.Citation (CitePiece (..), citationText)
@@ -30,7 +30,7 @@ import Golem.Project (Project (..), ProjectFailure (..))
 import Golem.Project.Files (diskFiles)
 import Golem.Project.Style (parseStyle)
 import Golem.Syntax
-import Golem.Typeset (IndexLine (..), PdfInput (..), PdfLayout (..), SetLine (..), TocGeometry (..), TocPage (..), bibliographyLines, indexLineInlines, indexLines, layoutPdf, layoutPdfUnnumbered, tocPage)
+import Golem.Typeset (IndexLine (..), PartLine (..), PdfInput (..), PdfLayout (..), PlacedSidenote (..), SetLine (..), TocGeometry (..), TocPage (..), bibliographyLines, indexLineInlines, indexLines, layoutPdf, layoutPdfUnnumbered, tocPage)
 import Support
 import System.Directory (createDirectoryIfMissing, doesDirectoryExist)
 import System.FilePath ((</>))
@@ -277,6 +277,72 @@ bibliographyFormatTests =
               result <- build (defaultOptions tmp) {optTargets = Just [TargetText]}
               assertEqual "no errors" [] (filter isError (brDiagnostics result))
               length [() | d <- brDiagnostics result, diagCode d == DiagnosticCode "G03306"] @?= if differentGiven then 2 else 1,
+    testGroup
+      "PDF note occurrence consumers"
+      [ testCase ("root ADR 0470 I5: PDF structural note ordinals in " <> name <> if vertical then " vertically" else " horizontally") $ do
+          let style =
+                replaceIn "writing-mode = \"horizontal\"" (if vertical then "writing-mode = \"vertical\"" else "writing-mode = \"horizontal\"") (replaceIn "lines = 30" "lines = 12" horizontalStyle)
+                  <> (if channel == SidenoteChannel then "\n[sidenotes]\nwidth='6zw'\ngap='1zw'\n" else "")
+                  <> "\n[notes]\nplacement='"
+                  <> (if atChapterEnd then "chapter-end" else "page-foot")
+                  <> "'\n"
+                  <> if keeps then "\n[paragraph-styles.sidenote]\nline-breaks='keep'\n" else ""
+          result <- withMiniInput fakeProvider miniManifest style "seed" [] $ \input geom fonts -> do
+            pgVertical geom @?= vertical
+            let original = piBook input
+                fid = case bookDocs original of Document file _ : _ -> file; _ -> FileId 0
+                target = mkSpan fid 0 1
+                citation = mkSpan fid 2 3
+                items = [citeItem "a"]
+                mark = Cite citation items
+                para xs = Block target Nothing Nothing (Paragraph Nothing xs)
+                note = case channel of FootnoteChannel -> Note; SidenoteChannel -> Sidenote; EndnoteChannel -> Endnote
+                body n = if n == (1 :: Int) then if channel == SidenoteChannel then [para (if keeps then [mark, LineBreak target, mark, LineBreak target, mark] else [mark, mark, mark])] else [para [Lang target "en" [mark, mark]], para [mark]] else [para [mark]]
+                content = [mark, note target 1 Nothing (body 1)] <> [note target 2 Nothing (body 2) | channel /= SidenoteChannel]
+                base = original {bookDocs = [Document fid [para content]], bookCitationPieces = Map.singleton citation [(items, [CiteText "G"])]}
+                table = Map.fromList [(NoteCitationContext target channel n occurrence, (citation, items, [CiteText text])) | (n, occurrence, text) <- [(1, 0, "C0"), (1, 1, "C1"), (1, 2, "C2"), (2, 0, "D0")]]
+                allLines layout = concat [slLine sl : concatMap snd (slNotes sl) | sl <- Map.elems (plLines layout)] <> [ptLine part | placed <- concat (Map.elems (plSidenotes layout)), part <- psLines placed]
+                allText layout = T.concat [bcText box | line <- allLines layout, Box _ box <- lineItems line]
+                equivalent = Map.map (\(source, values, _) -> (source, values, [CiteText "G"])) table
+                mismatched = Map.map (\(source, _, pieces) -> (source, [citeItem "different"], pieces)) table
+            legacy <- layoutPdf input {piBook = base} geom fonts >>= either (assertFailure . show) pure
+            resolved <- layoutPdf input {piBook = base {bookNoteCitationPieces = table}} geom fonts >>= either (assertFailure . show) pure
+            let text = allText resolved
+            forM_ ["C0", "C1", "C2"] $ \token -> T.count token text @?= 1
+            T.count "D0" text @?= if channel == SidenoteChannel then 0 else 1
+            T.count "G" text @?= 1
+            T.count "G" (allText legacy) @?= if channel == SidenoteChannel then 4 else 5
+            assertBool "all note bodies fit" (all (null . poUnmet) (plPages resolved))
+            forM_ [equivalent, mismatched] $ \prepared -> do
+              control <- layoutPdf input {piBook = base {bookNoteCitationPieces = prepared}} geom fonts >>= either (assertFailure . show) pure
+              map lineItems (allLines control) @?= map lineItems (allLines legacy)
+          either (assertFailure . show) pure result
+      | (name, channel, atChapterEnd, vertical, keeps) <- [(name, channel, atChapterEnd, vertical, False) | (name, channel, atChapterEnd) <- [("footnotes", FootnoteChannel, False), ("chapter notes", FootnoteChannel, True), ("endnotes", EndnoteChannel, False)], vertical <- [False, True]] <> [("sidenotes", SidenoteChannel, False, False, False), ("kept sidenotes", SidenoteChannel, False, False, True)]
+      ],
+    testCase "root ADR 0470 I5: note-local ordinals retain deferred first-note targets during page renumbering" $ do
+      result <- withMiniInput fakeProvider miniManifest (replaceIn "lines = 30" "lines = 5" horizontalStyle <> "\n[notes]\nnumbering='page'\n") "seed" [] $ \input geom fonts -> do
+        let original = piBook input
+            fid = case bookDocs original of Document file _ : _ -> file; _ -> FileId 0
+            target = mkSpan fid 0 1
+            citation = mkSpan fid 2 3
+            items = [citeItem "a"]
+            mark = Cite citation items
+            note n body = Note target n Nothing (noteBody target body)
+            filler = concat (replicate 7 [Text target "あ", LineBreak target])
+            source = [Text target "始", note 1 [Text target "unrelated"], LineBreak target] <> filler <> [Text target "次", note 2 [mark, Text target " / ", mark], LineBreak target] <> filler <> [Text target "後", note 3 [mark]]
+            reference = [CiteNoteNumber target 2 Nothing (Just "2")]
+            table = Map.fromList [(NoteCitationContext target FootnoteChannel n occurrence, (citation, items, pieces)) | (n, occurrence, pieces) <- [(2, 0, [CiteText "FIRST"]), (2, 1, reference), (3, 0, reference)]]
+            book = original {bookDocs = [Document fid [Block target Nothing Nothing (Paragraph Nothing source)]], bookNoteCitationPieces = table}
+            allLines layout = concat [slLine sl : concatMap snd (slNotes sl) | sl <- Map.elems (plLines layout)]
+            references layout = [(mnNumber number, bcText box) | line <- allLines layout, Box _ box <- lineItems line, Just markBox <- [bcMark box], Just number@CiteNoteMarkNumber {} <- [mbNumber markBox]]
+            calls layout = length [() | line <- allLines layout, Box _ box <- lineItems line, Just markBox <- [bcMark box], Just number <- [mbNumber markBox], mnCall number]
+        initial <- layoutPdfUnnumbered input {piBook = book} geom fonts >>= either (assertFailure . show) pure
+        numbered <- layoutPdf input {piBook = book} geom fonts >>= either (assertFailure . show) pure
+        references initial @?= [(2, "2"), (2, "2")]
+        references numbered @?= [(1, "1"), (1, "1")]
+        calls initial @?= 3
+        calls numbered @?= 3
+      either (assertFailure . show) pure result,
     testCase "root ADR 0470 I5: shared-span first notes retain S1 identity, page renumbering and non-page-local fallbacks" $
       forM_ [("page", False), ("book", False), ("page", True)] $ \(numbering, endnotes) -> do
         result <- withMiniInput fakeProvider miniManifest (replaceIn "lines = 30" "lines = 5" horizontalStyle <> "\n[notes]\nnumbering='" <> numbering <> "'\n") "seed" [] $ \input geom fonts -> do

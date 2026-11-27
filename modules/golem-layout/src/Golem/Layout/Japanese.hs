@@ -65,7 +65,7 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Unsafe (lengthWord8)
 import Data.Void (absurd)
-import Golem.Doc.Citation (CitePiece (..), citationPieces, citationText)
+import Golem.Doc.Citation (CitePiece (..), citationCount, citationOffsets, citationPieces, citationText)
 import Golem.Doc.IR
 import Golem.Layout.Aki (AkiPos (..), AkiSet, akiBetween, defaultAkiSet, noAki)
 import Golem.Layout.Aki qualified as A
@@ -175,6 +175,9 @@ data ComposeEnv = ComposeEnv
     -- | the number of a cited work (golem-driver ADR 0007)
     ceCiteNumber :: SrcSpan -> Text -> Maybe Int,
     ceCitePieces :: SrcSpan -> [CiteItem ()] -> Maybe [CitePiece],
+    -- | Optional occurrence-local lookup for one S1 note (root ADR 0470).
+    ceCitePiecesAt :: Maybe (Int -> SrcSpan -> [CiteItem ()] -> Maybe [CitePiece]),
+    ceCiteOrdinal :: !Int,
     {- | the penalty of a break after a hyphen or dash in a Latin word;
     10000 or more means no such break (golem-layout ADR 0008)
     -} ceExplicitHyphenPenalty :: !Int,
@@ -279,6 +282,8 @@ defaultComposeEnv fs =
       ceSidenoteMarkStyle = Nothing,
       ceCiteNumber = \_ _ -> Nothing,
       ceCitePieces = \_ _ -> Nothing,
+      ceCitePiecesAt = Nothing,
+      ceCiteOrdinal = 0,
       ceExplicitHyphenPenalty = 50,
       ceNumberUnitPenalty = 10000,
       ceAkiSet = defaultAkiSet,
@@ -389,9 +394,24 @@ data WordShys = WordShys
   }
   deriving stock (Eq, Show)
 
+-- | Environments of siblings, without a mutable lookup counter.
+citationEnvironments :: ComposeEnv -> [InlineF r] -> [(ComposeEnv, InlineF r)]
+citationEnvironments env xs = case ceCitePiecesAt env of
+  Nothing -> map (env,) xs
+  Just _ -> [(env {ceCiteOrdinal = ceCiteOrdinal env + offset}, value) | (offset, value) <- citationOffsets xs]
+
+citationLookup :: ComposeEnv -> SrcSpan -> [CiteItem ()] -> Maybe [CitePiece]
+citationLookup env sp items =
+  (ceCitePiecesAt env >>= (\lookupAt -> lookupAt (ceCiteOrdinal env) sp items)) <|> ceCitePieces env sp items
+
+piecesAll :: ComposeEnv -> [Inline] -> [(Sourced, Piece)]
+piecesAll env xs = case ceCitePiecesAt env of
+  Nothing -> concatMap (piecesOf env) xs
+  Just _ -> concatMap (uncurry piecesOf) (citationEnvironments env xs)
+
 -- | Display text before line breaking, including resolved numbers and only the base of ruby.
 displayedInlines :: ComposeEnv -> [Inline] -> Text
-displayedInlines env = foldMap (foldMap (display . snd) . piecesOf env)
+displayedInlines env = foldMap (display . snd) . piecesAll env
   where
     display = \case
       PChar _ ch selectors -> T.cons ch selectors
@@ -559,14 +579,17 @@ structured env inls =
               labelEnv = maybe env (\t -> env {ceLook = (ceLook env) {lkLink = Just t}}) link
               (st1, ns1, ps1) = walkAll labelEnv st0 labelled
               (st2, after) = freshLeaf st1
-              (_, ns2, ps2) = walkAll env st2 rest
+              (_, ns2, ps2) = walkAll (case ceCitePiecesAt env of Nothing -> env; Just _ -> env {ceCiteOrdinal = ceCiteOrdinal env + citationCount labelled}) st2 rest
               inner = NodeLeaf 0 : ns1
            in (NodeElem RoleLabel (maybe inner (\t -> [NodeLink t labelled inner]) link) : after : ns2, joinShys (ps1 <> ps2))
 
 walkAll :: ComposeEnv -> LeafState -> [Inline] -> (LeafState, [InlineNode], [(Int, Sourced, Piece)])
-walkAll env st0 xs = foldl' step (st0, [], []) (zip xs (textEdges env xs))
+walkAll env st0 xs = case ceCitePiecesAt env of
+  Nothing -> foldl' step (st0, [], []) (zip xs (textEdges env xs))
+  Just _ -> foldl' stepAt (st0, [], []) (zip (citationEnvironments env xs) (textEdges env xs))
   where
     step (st, ns, ps) (inl, e) = let (st', ns', ps') = walk env {ceTextEdges = e} st inl in (st', ns <> ns', ps <> ps')
+    stepAt (st, ns, ps) ((here, inl), e) = let (st', ns', ps') = walk here {ceTextEdges = e} st inl in (st', ns <> ns', ps <> ps')
 
 {- | The edges of each of inlines (docs/adr ADR 0283): whether the nearest
 character before it and the nearest after it in the run of the characters
@@ -577,8 +600,12 @@ run, has False on both sides: what it holds does not read them.
 textEdges :: ComposeEnv -> [Inline] -> [(Bool, Bool)]
 textEdges env xs =
   let (outerBefore, outerAfter) = ceTextEdges env
-      befores = scanl (\acc x -> fromMaybe acc (edgeOf True env x)) outerBefore xs
-      afters = drop 1 (scanr (\x acc -> fromMaybe acc (edgeOf False env x)) outerAfter xs)
+      befores = case ceCitePiecesAt env of
+        Nothing -> scanl (\acc x -> fromMaybe acc (edgeOf True env x)) outerBefore xs
+        Just _ -> scanl (\acc (here, x) -> fromMaybe acc (edgeOf True here x)) outerBefore (citationEnvironments env xs)
+      afters = case ceCitePiecesAt env of
+        Nothing -> drop 1 (scanr (\x acc -> fromMaybe acc (edgeOf False env x)) outerAfter xs)
+        Just _ -> drop 1 (scanr (\(here, x) acc -> fromMaybe acc (edgeOf False here x)) outerAfter (citationEnvironments env xs))
    in [if inRun x then (b, a) else (False, False) | (x, b, a) <- zip3 xs befores afters]
   where
     inRun = \case
@@ -613,7 +640,7 @@ edgeOf fromEnd env inl = case inl of
   Resolved _ _ _ xs -> inner env xs
   Kenten _ sh xs -> inner env {ceLook = lk {lkKenten = Just (fromMaybe KentenSesame (sh >>= kentenShapeFromName))}} xs
   -- a citation mark: the characters of its text, read as text (docs/adr ADR 0298)
-  Cite sp is -> textEdge (citationText (fromMaybe (citationPieces [(i, ceCiteNumber env sp (citKey i)) | i <- is]) (ceCitePieces env sp is)))
+  Cite sp is -> textEdge (citationText (fromMaybe (citationPieces [(i, ceCiteNumber env sp (citKey i)) | i <- is]) (citationLookup env sp is)))
   IndexMark {} -> Nothing
   ChannelItem {} -> Nothing
   ProofComment {} -> Nothing
@@ -625,7 +652,9 @@ edgeOf fromEnd env inl = case inl of
     restyled = env {ceLook = ceRestyle env lk inl}
     ordered :: [a] -> [a]
     ordered = if fromEnd then reverse else id
-    inner e ys = listToMaybe (mapMaybe (edgeOf fromEnd e) (ordered ys))
+    inner e ys = case ceCitePiecesAt e of
+      Nothing -> listToMaybe (mapMaybe (edgeOf fromEnd e) (ordered ys))
+      Just _ -> listToMaybe (mapMaybe (uncurry (edgeOf fromEnd)) (ordered (citationEnvironments e ys)))
     -- the nearest character of a text that is not of both scripts outside a span, past soft hyphens
     textEdge t =
       let bases = [T.head u | u <- clusters (T.filter (/= softHyphen) t)]
@@ -714,7 +743,7 @@ walk env st@(LeafState next cur seen) inl = case inl of
   Cite sp is
     | isNothing (lkLink lk),
       any isJust [ceCiteLink env sp (citKey i) | i <- is] ->
-        let pieces = fromMaybe (citationPieces [(i, ceCiteNumber env sp (citKey i)) | i <- is]) (ceCitePieces env sp is)
+        let pieces = fromMaybe (citationPieces [(i, ceCiteNumber env sp (citKey i)) | i <- is]) (citationLookup env sp is)
             reference = \case
               CiteNumber key n -> Just (key, T.pack (show n))
               CiteReference key text -> Just (key, text)
@@ -941,16 +970,16 @@ piecesOf env inl = case inl of
   -- the target of a link is a look of the characters inside (docs/adr ADR 0182)
   Link _ _ xs -> restyled xs
   -- the language likewise; the inner span wins (docs/adr ADR 0187)
-  Lang _ l xs -> concatMap (piecesOf env {ceLook = lk {lkLang = Just l}}) xs
+  Lang _ l xs -> piecesAll env {ceLook = lk {lkLang = Just l}} xs
   -- [ref-number] to a note numbered per page: its number alone in a box that reserves the widest (root ADR 0422)
   Resolved sp RefNumber l _
     | Just (ch, n) <- ceNoteRefOf env l ->
         let num = MarkNumber ch n False True
          in at sp [PMark lk lk (bareNumberParts env n) 0 0 (Just num)]
   -- a resolved reference is set as what it holds (docs/adr/0215)
-  Resolved _ _ _ xs -> concatMap (piecesOf env) xs
+  Resolved _ _ _ xs -> piecesAll env xs
   -- the shape is a look of the characters inside; the inner kenten wins (golem-driver ADR 0019)
-  Kenten _ sh xs -> concatMap (piecesOf env {ceLook = lk {lkKenten = Just (fromMaybe KentenSesame (sh >>= kentenShapeFromName))}}) xs
+  Kenten _ sh xs -> piecesAll env {ceLook = lk {lkKenten = Just (fromMaybe KentenSesame (sh >>= kentenShapeFromName))}} xs
   Ruby sp _ segs -> at sp (rubyPieces env segs)
   Tcy sp content -> at sp (tcyPieces env content)
   Upright sp t -> at sp (if ceVertical env then [PBox lk u KindUpright (L.zwToSp (lkSize lk) (ceCellRatio env)) | u <- graphemeClusters t] else textPieces lk t)
@@ -998,7 +1027,7 @@ piecesOf env inl = case inl of
   -- nothing shows; its page is followed like that of an index mark (golem-doc ADR 0007)
   ChannelItem sp _ -> at sp [PAnchor (\i -> AnchorIndex i sp (IndexEntry [] [] IndexPoint))]
   -- the mark of the default style; a key whose number is not known as itself (docs/adr/0266)
-  Cite sp is -> at sp (citeTextPieces env lk (fromMaybe (citationPieces [(i, ceCiteNumber env sp (citKey i)) | i <- is]) (ceCitePieces env sp is)))
+  Cite sp is -> at sp (citeTextPieces env lk (fromMaybe (citationPieces [(i, ceCiteNumber env sp (citKey i)) | i <- is]) (citationLookup env sp is)))
   ProofComment {} -> []
   -- the lines of a keep style are split before they are composed (docs/adr
   -- ADR 0005); what reaches here is a hard break (docs/adr ADR 0016)
@@ -1008,7 +1037,7 @@ piecesOf env inl = case inl of
     lk = ceLook env
     at sp = map (((ceSizeSource env, sp), const (spanStart sp)),)
     -- the look inside: the inner setting wins, the rest is inherited (golem-driver ADR 0004)
-    restyled = concatMap (piecesOf env {ceLook = ceRestyle env lk inl, ceSizeSource = ceSizeSourceOf env (ceSizeSource env) inl})
+    restyled = piecesAll env {ceLook = ceRestyle env lk inl, ceSizeSource = ceSizeSourceOf env (ceSizeSource env) inl}
     -- the mark of a note or a numbered sidenote (golem-driver ADR 0018) in the look of mark-style (docs/adr/0177)
     markPiece num parts = PMark lk (ceNoteMarkLook env lk) parts 0 0 num
     {- a labelled note is followed like an index mark, by its span: the page

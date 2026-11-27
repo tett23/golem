@@ -6,10 +6,12 @@ module Golem.Doc.Citation
   ( CitePiece (..),
     citationPieces,
     citationText,
+    citationOffsets,
+    citationCount,
   )
 where
 
-import Data.List (sortOn)
+import Data.List (mapAccumL, sortOn)
 import Data.Maybe (fromMaybe, isJust)
 import Data.Text (Text)
 import Data.Text qualified as T
@@ -106,3 +108,24 @@ citationText = T.concat . map piece
       CiteText t -> t
       CiteLocator l v -> l <> " " <> v
       CiteLocatorFormatted label delimiter value after -> if after then value <> delimiter <> label else label <> delimiter <> value
+
+{- | Offsets of direct children within one note; descendants inherit the
+same starting offset. Nested note bodies belong to another context.
+-}
+citationOffsets :: [InlineF r] -> [(Int, InlineF r)]
+citationOffsets = snd . mapAccumL (\n value -> (n + countInline value, (n, value))) 0
+
+citationCount :: [InlineF r] -> Int
+citationCount = sum . map countInline
+
+countInline :: InlineF r -> Int
+countInline = \case
+  Cite {} -> 1
+  Ruby _ _ segments -> sum (map (citationCount . rsBase) segments)
+  Kenten _ _ xs -> citationCount xs
+  Color _ _ xs -> citationCount xs
+  CharStyle _ _ xs -> citationCount xs
+  Link _ _ xs -> citationCount xs
+  Lang _ _ xs -> citationCount xs
+  Resolved _ _ _ xs -> citationCount xs
+  _ -> 0

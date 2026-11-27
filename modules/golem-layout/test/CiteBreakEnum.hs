@@ -397,6 +397,28 @@ firstNoteTests =
         assertBool "no automatic tate-chu-yoko" (all (\(kind, _, _) -> kind /= fromEnum KindTcy) (maybe [] mbParts (bcMark updated)))
         bcEdgeStart updated @?= bcEdgeStart c
         bcEdgeEnd updated @?= bcEdgeEnd c,
+    testCase "root ADR 0470 I5: occurrence lookup is structural across repeated shaping and inline containers" $
+      forM_ [False, True] $ \vertical -> do
+        let mark = IR.Cite sp [IR.citeItem "a"]
+            sources = [mark, IR.Text sp " ", IR.Lang sp "en" [IR.CharStyle sp "body" [mark, IR.Text sp " ", mark]]]
+            env = (envOf vertical plain) {ceCitePieces = \_ _ -> Just [CiteText "G"], ceCitePiecesAt = Just (\n _ _ -> Just [CiteText (T.pack (show n))]), ceCiteOrdinal = 4}
+            ordinary = [IR.Text sp "4 5 6"]
+        displayedInlines env sources @?= "4 5 6"
+        map keyOf (fst (composeInlines env sources)) @?= map keyOf (fst (composeInlines env ordinary))
+        displayedInlines env sources @?= "4 5 6",
+    testCase "root ADR 0470 I5: occurrence lookup follows ruby segments and falls back when absent" $ do
+      let mark = IR.Cite sp [IR.citeItem "a"]
+          sources = [IR.Ruby sp () [IR.RubySegment [mark] (Just "a"), IR.RubySegment [mark] (Just "b")], mark]
+          env = (envOf False plain) {ceCitePieces = \_ _ -> Just [CiteText "G"], ceCitePiecesAt = Just (\n _ _ -> if n == 1 then Nothing else Just [CiteText (T.pack (show n))])}
+      displayedInlines env sources @?= "2"
+      displayedInlines env {ceCitePiecesAt = Nothing} sources @?= "G",
+    testCase "root ADR 0470 I5: occurrence text edges agree with the actual glyphs on both shaping passes" $
+      forM_ [False, True] $ \vertical -> do
+        let mark = IR.Cite sp [IR.citeItem "a"]
+            sources = [mark, IR.Text sp "—", mark, IR.Text sp "—", mark]
+            env = (envOf vertical plain) {ceCitePieces = \_ _ -> Just [CiteText "G"], ceCitePiecesAt = Just (\n _ _ -> Just [CiteText (if n == 1 then "あ" else "A")])}
+        displayedInlines env sources @?= "A—あ—A"
+        map keyOf (fst (composeInlines env sources)) @?= map keyOf (fst (composeInlines env (map (IR.Text sp) ["A", "—", "あ", "—", "A"]))),
     testCase "root ADR 0470 I5: the first-note target identity selects its current number instead of the citation source or stale text" $ do
       let target = mkSpan (FileId 9) 70 80
           env = (firstNoteEnv False PositionNormal (Just "kanji") 12 60 ChannelNote) {ceCitePieces = \_ _ -> Just [CiteNoteNumber target 12 (Just "kanji") (Just "十二")], ceCiteNoteRefOf = \source _ -> if source == target then Just (ChannelSidenote, 17) else Nothing, ceMarkReserve = Just (0, 60)}
