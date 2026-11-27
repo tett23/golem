@@ -3114,7 +3114,7 @@ unitsOf lang book geom indexSet styleOf pageOf bib sections = concat (snd (mapAc
                   title = bookNumberedTitle book (Just l) lang sp (if haNoNumber attrs then Nothing else num) is
                   recto = maybe False hsRectoBreak (Map.lookup l (stHeadings style))
                   rules = maybe (Nothing, Nothing) (\h -> (hsRuleBefore h, hsRuleAfter h)) (Map.lookup l (stHeadings style))
-               in (n, [(unit (UHeading l (T.concat (map inlineText is)) recto) lbl title (uncurry (styleLook style Nothing) (headingFace lang style geom l)) (SourceHeading l)) {uRules = rules}])
+               in (n, [(unit (UHeading l (T.concat (map inlineText is)) recto) lbl title ((\(role, size) -> withFeatures (headingParaStyle style l) (styleLook style Nothing role size)) (headingFace lang style geom l)) (SourceHeading l)) {uRules = rules, uParaStyle = headingParaName style l}])
             BulletList items -> list style ctx n (map (Nothing,) items)
             OrderedList items -> list style ctx n (zip (map Just (itemNumbers items)) items)
             DefList gs ->
@@ -3404,7 +3404,7 @@ withDocStyle st e = e {ceRestyle = restyle st, ceRubyReading = styledReading st,
 
 -- | The composition of the text of a unit: its look, its document's style and the aki set of its paragraph style.
 unitEnv :: FlowEnv -> Unit -> ComposeEnv
-unitEnv fe u = (exceptionsOf (withDocStyle (uStyle u) (lookEnv fe (uLook u)))) {ceAkiSet = akiSetOf (uStyle u) (uParaStyle u), ceLabelInlines = unitLabelInlines u, ceLabelLink = unitLabelLink u}
+unitEnv fe u = (exceptionsOf (withDocStyle (uStyle u) (lookEnv fe (uLook u)))) {ceAkiSet = akiSetOf (uStyle u) (case uKind u of UHeading {} -> Nothing; _ -> uParaStyle u), ceLabelInlines = unitLabelInlines u, ceLabelLink = unitLabelLink u}
   where
     exceptionsOf = if madeByGolem u then id else withFileExceptions fe (spanFile (uSpan u))
 
@@ -3469,7 +3469,7 @@ flowUnits fe = ([(i, (withFit (withBox (withReserve (withListIndent u)))) {uInde
       _ -> u
     {- the box of a paragraph at the top of the document (docs/adr/0271): its
     lines the padding inside the box, which is from the indent to the end indent -}
-    withBox u = case (uKind u, paraStyle (uStyle u) (uParaStyle u)) of
+    withBox u = case (uKind u, unitParaStyle u) of
       (UPara (Indent s f e a), Just d)
         | topParagraph u,
           uParaStyle u /= Just "code",
@@ -3579,7 +3579,7 @@ composeUnit fe widths lineWidth u =
         Just n | not (fitBroken u), Just (fitted, at) <- fitItems env (fitWidth n u) textItems1 -> (fitted, map (anchorAt at) anchors0)
         _ -> (textItems1, anchors0)
       items = marker <> textItems
-      breaks = A.breakAligned (layoutAlign (uKind u)) (adjustedParams (uStyle u) (uParaStyle u) params) lineWidth items
+      breaks = A.breakAligned (unitAlign u) (adjustedParams (uStyle u) (case uKind u of UHeading {} -> Nothing; _ -> uParaStyle u) params) lineWidth items
       lines' = brLines breaks
    in Composed lines' (unitNotes fe u anchors) (unitSidenotes fe u shift anchors) (unitMarks fe u shift anchors) anchors items shift (brPositions breaks) 0 False Nothing
 
@@ -3596,8 +3596,27 @@ caption, a note, a frame and an entry of a channel are no such units.
 -}
 unitFit :: Unit -> Maybe Int
 unitFit u = case uKind u of
-  UPara _ | topParagraph u -> paraStyle (uStyle u) (uParaStyle u) >>= fitCharacters
+  UPara _ | topParagraph u -> unitParaStyle u >>= fitCharacters
+  UHeading level _ _ -> headingParaStyle (uStyle u) level >>= fitCharacters
   _ -> Nothing
+
+-- | Headings may use only the keys listed in root ADR 0468.
+unitParaStyle :: Unit -> Maybe ParaStyleDef
+unitParaStyle u = case uKind u of
+  UHeading level _ _ | Just d <- headingParaStyle (uStyle u) level -> Just d {psSize = Just (Abs (lkSize (uLook u)))}
+  _ -> paraStyle (uStyle u) (uParaStyle u)
+
+-- | The alignment of a selected heading style (root ADR 0468).
+unitAlign :: Unit -> A.ParaAlign
+unitAlign u = case uKind u of
+  UHeading level _ _ | Just d <- headingParaStyle (uStyle u) level -> layoutAlign (UPara noIndent {inAlign = fromMaybe ParaLeftJustified (psAlign d)})
+  _ -> layoutAlign (uKind u)
+
+-- | Spine-dependent alignment also applies to selected headings (root ADR 0468).
+unitSpine :: Unit -> Maybe Bool
+unitSpine u = case uKind u of
+  UHeading level _ _ | Just d <- headingParaStyle (uStyle u) level -> spineOf (UPara noIndent {inAlign = fromMaybe ParaLeftJustified (psAlign d)})
+  _ -> spineOf (uKind u)
 
 -- | The width of a paragraph of fit-characters: so many characters of its size (root ADR 0466).
 fitWidth :: Int -> Unit -> Sp
@@ -4063,7 +4082,7 @@ composeBeside fe widths unitAt i pf = go (i + 1) 0 0
     pageFace = pgFontSize (feGeom fe)
     free = maybe False ((== AlignFree) . gridAlignment) (stPage (piStyle (feInput fe)) >>= pageGrid)
     outside = (0, pfExclusionLength pf)
-    unitPitch u = fromMaybe pagePitch (paraStyle (uStyle u) (uParaStyle u) >>= resolvedParagraphPitch (uStyle u))
+    unitPitch u = fromMaybe pagePitch (unitParaStyle u >>= resolvedParagraphPitch (uStyle u))
     narrowed u distance k =
       if free
         then intersects (rowExtent (distance + fromIntegral k * unitPitch u) (unitPitch u) (lkSize (uLook u))) outside
@@ -4095,7 +4114,7 @@ besideRows fe cu i = snd (mapAccumL step (i, 0) paras)
     besides = cuBesides cu
     unitAt = cuUnits cu
     pagePitch = pgLinePitch (feGeom fe)
-    unitPitch j = fromMaybe pagePitch (paraStyle (uStyle (unitAt Map.! j)) (uParaStyle (unitAt Map.! j)) >>= resolvedParagraphPitch (uStyle (unitAt Map.! j)))
+    unitPitch j = fromMaybe pagePitch (unitParaStyle (unitAt Map.! j) >>= resolvedParagraphPitch (uStyle (unitAt Map.! j)))
     paras = [(j, c, off) | j <- besideParagraphs unitAt besides i, let (c, off) = besides Map.! j]
     gapBetween prior j = sum [gap | k <- [prior + 1 .. j - 1], Just Unit {uKind = UGap gap} <- [Map.lookup k unitAt]]
     step (prior, distance) (j, c, off) =
@@ -4115,7 +4134,7 @@ besideTake fe ex u offset distance k = lineTake ex start size
     geom = feGeom fe
     free = maybe False ((== AlignFree) . gridAlignment) (stPage (piStyle (feInput fe)) >>= pageGrid)
     size = lkSize (uLook u)
-    pitch = fromMaybe (pgLinePitch geom) (paraStyle (uStyle u) (uParaStyle u) >>= resolvedParagraphPitch (uStyle u))
+    pitch = fromMaybe (pgLinePitch geom) (unitParaStyle u >>= resolvedParagraphPitch (uStyle u))
     start
       | free = distance + fromIntegral k * pitch + faceOffset pitch size
       | otherwise = fromIntegral (offset + k) * pgLinePitch geom
@@ -4358,8 +4377,8 @@ numberedLines fe nextId u c indentOf =
       marksOf = Map.fromListWith (flip (<>)) [(lineOfItem i, [sp]) | (i, sp) <- cMarks c, not (cReflowed c) || i >= cItemStart c]
       boxes = [LineBox lid [NoteBody key (length nls) | (key, nls) <- Map.findWithDefault [] k noteLines] (if k == 0 && cItemStart c == 0 then unitLabel u else []) (Map.findWithDefault [] k marksOf) (lineReach fe l) | (k, (lid, l)) <- zip [0 ..] (zip ids ls)]
       -- a line not justified moves by its alignment (docs/adr/0189)
-      shiftOf k = A.lineShift (layoutAlign (uKind u)) (k == length ls - 1)
-      set = Map.fromList [(lid, SetLine l size (maybe (indentOf k) (!! k) (cActualIndents c) + shiftOf k l) (Map.findWithDefault [] k noteLines) (Map.findWithDefault [] k sidenoteLinesOf) (spineOf (uKind u))) | (k, (lid, l)) <- zip [0 ..] (zip ids ls)]
+      shiftOf k = A.lineShift (unitAlign u) (k == length ls - 1)
+      set = Map.fromList [(lid, SetLine l size (maybe (indentOf k) (!! k) (cActualIndents c) + shiftOf k l) (Map.findWithDefault [] k noteLines) (Map.findWithDefault [] k sidenoteLinesOf) (unitSpine u)) | (k, (lid, l)) <- zip [0 ..] (zip ids ls)]
    in (boxes, set)
 
 {- | A rule of a paragraph or heading for pagination (golem-driver ADR
@@ -4562,7 +4581,7 @@ numberFigure fe cu i u (pf, ferrs, _, fmarks) nb = case pfExclusion pf of
             pagePitch = pgLinePitch (feGeom fe)
             free = maybe False ((== AlignFree) . gridAlignment) (stPage (piStyle (feInput fe)) >>= pageGrid)
             excluded = (0, pfExclusionLength pf)
-            unitPitch j = fromMaybe pagePitch (paraStyle (uStyle (unitAt Map.! j)) (uParaStyle (unitAt Map.! j)) >>= resolvedParagraphPitch (uStyle (unitAt Map.! j)))
+            unitPitch j = fromMaybe pagePitch (unitParaStyle (unitAt Map.! j) >>= resolvedParagraphPitch (uStyle (unitAt Map.! j)))
             paras = [(j, c, off) | j <- besideParagraphs unitAt besides i, let (c, off) = besides Map.! j]
             parasAt = besideRows fe cu i
             -- what line k of the paragraph j loses to the exclusion (root ADR 0464)
@@ -4635,7 +4654,7 @@ partsAround cu i u =
 keep-last-lines and keep-all-lines, those of body when not written.
 -}
 keepOf :: Unit -> Keep
-keepOf u = case paraStyle (uStyle u) (uParaStyle u) of
+keepOf u = case unitParaStyle u of
   Just d -> Keep (fromMaybe 2 (psKeepFirstLines d)) (fromMaybe 2 (psKeepLastLines d)) (fromMaybe False (psKeepAllLines d))
   Nothing -> defaultKeep
 
@@ -4652,7 +4671,7 @@ keep-with-next (docs/adr/0261), for a paragraph at the top of the document.
 paraStartAndKeep :: Unit -> (Maybe BreakKind, Int)
 paraStartAndKeep u
   | not (topParagraph u) = (Nothing, 0)
-  | otherwise = case paraStyle (uStyle u) (uParaStyle u) of
+  | otherwise = case unitParaStyle u of
       Just d ->
         ( case psPageBreak d of
             Just StartColumn -> Just BreakColumn
@@ -4683,7 +4702,17 @@ numberText fe (firstOfBlock, lastOfBlock) u c nb =
         _ -> Nothing
       least = maybe 1 (headingLines (bookLanguage inp) (uStyle u) capacity) headingLevel
       alignment = maybe HeadingCenter hsBlockAlign (headingLevel >>= flip Map.lookup (stHeadings (uStyle u)))
-      hb = headingBlockAligned alignment fs pitch size (length ls) least
+      hb = case uKind u of
+        UHeading level _ _
+          | Just d <- headingParaStyle (uStyle u) level,
+            Just (PitchDim amount) <- psLinePitch d ->
+              let hp = dimToSp size amount
+                  extent = fromIntegral (max 0 (length ls - 1)) * hp + size
+                  count = max least (fromInteger ((L.unSp extent + L.unSp pitch - L.unSp fs + L.unSp pitch - 1) `div` L.unSp pitch))
+                  room = max 0 (fromIntegral (count - 1) * pitch + fs - extent)
+                  offset = case alignment of HeadingStart -> 0; HeadingCenter -> L.Sp (L.unSp room `div` 2); HeadingEnd -> room
+               in HeadingBlock hp count offset
+        _ -> headingBlockAligned alignment fs pitch size (length ls) least
       ruledOf = FRuled nextId (ruleSide geom True <$> fst (uRules u)) (ruleSide geom False <$> snd (uRules u)) False (RuleGrid pitch fs) 0
       kp = keepOf u
       flowOf = case uKind u of
@@ -4784,7 +4813,7 @@ boxErrors fe units =
       free u = maybe False ((== AlignFree) . gridAlignment) (stPage (uStyle u) >>= pageGrid)
       exceeds u ub
         | free u =
-            let pitch = fromMaybe pagePitch (paraStyle (uStyle u) (uParaStyle u) >>= resolvedParagraphPitch (uStyle u))
+            let pitch = fromMaybe pagePitch (unitParaStyle u >>= resolvedParagraphPitch (uStyle u))
                 (before, after) = boxExtras pitch (lkSize (uLook u)) pitch (lkSize (uLook u)) (ubPadding ub)
              in before + pitch + after > height
         | otherwise = 2 * boxLinesAround pagePitch (pgFontSize geom) (ubPadding ub) + 1 > capacity
@@ -4969,7 +4998,7 @@ numberComposedFlow inp geom fe units widths composed =
         UPara _
           | not (madeByGolem u),
             all (\(Frame _ k _) -> case k of FEndNote {} -> False; FEndNoteMore {} -> False; _ -> True) (uFrames u) ->
-              paraStyle (uStyle u) (uParaStyle u) >>= resolvedParagraphPitch (uStyle u)
+              unitParaStyle u >>= resolvedParagraphPitch (uStyle u)
         _ -> Nothing
       ordinaryPitches =
         [ (lid, pitch)
@@ -5013,7 +5042,7 @@ rebreakComposed :: FlowEnv -> Unit -> (Int -> Sp) -> Int -> Composed -> Composed
 rebreakComposed fe u width start source =
   let boxed = isJust (uBox u)
       params = if boxed then (feParams fe) {pProtrusion = compProtrusion (stComposition (piStyle (feInput fe)))} else feParams fe
-      result = A.breakAligned (layoutAlign (uKind u)) (adjustedParams (uStyle u) (uParaStyle u) params) width (drop start (cItems source))
+      result = A.breakAligned (unitAlign u) (adjustedParams (uStyle u) (case uKind u of UHeading {} -> Nothing; _ -> uParaStyle u) params) width (drop start (cItems source))
    in source {cLines = brLines result, cBreakPositions = map (+ start) (brPositions result), cItemStart = start, cReflowed = True, cActualIndents = Nothing}
 
 itemAfterBreak :: Composed -> Int -> Int
@@ -5133,7 +5162,7 @@ causalFreeFlow inp geom fe units widths jobs initialBuilt = jobsFrom Nothing Not
     composeAt pf origin region unit at countBefore start source =
       let PhysicalWrap page column end = region
           (actualPage, actualColumn, _) = physicalCursorPosition at
-          pitch = fromMaybe (pgLinePitch geom) (paraStyle (uStyle unit) (uParaStyle unit) >>= resolvedParagraphPitch (uStyle unit))
+          pitch = fromMaybe (pgLinePitch geom) (unitParaStyle unit >>= resolvedParagraphPitch (uStyle unit))
           face = lkSize (uLook unit)
           -- what line k loses to the exclusion, its band the em box of the line from the top of the exclusion (root ADR 0464)
           exclusionWidth = (exclusionWidths !!)

@@ -771,6 +771,8 @@ G03010、G03282、G03283、G05004、G07127、G07128、G08100、G08103 は、[cod
   [code: \[outlines.名前\]] の [code: path] が無いか、読めないか、閉じていません。
   [code: M]、[code: L]、[code: C]、[code: Z] の絶対座標で書き、部分パスを [code: Z] で閉じてください。
   この輪郭を指す図版は、四角に沿って回り込みます。
+= [strong: G03302 [code: 見出しの paragraph-style が指す段落スタイル … がありません]]
+  [code: \[headings.階層\]] の [code: paragraph-style] に書いた名前を確かめ、段落スタイルを定義するか、存在する名前に直してください。
 = [strong: G03008 [code: style.toml にないフォントの役割です: …]]
   見出しやスタイルの [code: font] に書いた役割が、[code: \[fonts\]] にありません。
 = [strong: G03011 [code: 段落スタイルの文字の大きさが版面の文字の大きさを超えます: …]]

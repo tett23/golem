@@ -27,9 +27,10 @@ import Data.Maybe (fromMaybe, isJust)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Golem.Doc.IR
-import Golem.Project.Style (LocalValue (..), ParaStyleDef (..), RegexStyleDef (..), Style (..), paraStyle, paraStyleWith)
+import Golem.Project.Style (LocalValue (..), ParaStyleDef (..), RegexStyleDef (..), Style (..), headingParaStyle, paraStyle, paraStyleWith)
 import Golem.Regex (Regex, compile, matches)
 import Golem.Syntax
+import Golem.Unicode.Grapheme (graphemeClusters)
 
 -- | The compiled regex styles by paragraph style (body included), in order.
 type RegexRules = Map Text [(Regex, Text)]
@@ -115,6 +116,7 @@ applyInitialStyles style d = d {docBlocks = map block (docBlocks d)}
   where
     block b = case blockBody b of
       Paragraph st is | Just c <- refStyle st >>= psInitialStyle -> b {blockBody = Paragraph st (initialStyled c is)}
+      Heading level attrs is | Just c <- headingParaStyle style level >>= psInitialStyle -> b {blockBody = Heading level attrs (headingInitialStyled c is)}
       _ -> b
     -- the style of a paragraph, the keys of @style over it (root ADR 0467)
     refStyle st = paraStyleWith style (styleRefNameOf st) (maybe [] refValues st)
@@ -130,6 +132,12 @@ initialStyled name is = case T.uncons (T.concat (map targetOf is)) of
   _ -> is
   where
     isExtending x = generalCategory x `elem` [NonSpacingMark, SpacingCombiningMark, EnclosingMark]
+
+-- | A heading's initial style covers one whole grapheme (root ADR 0468).
+headingInitialStyled :: Text -> [InlineF r] -> [InlineF r]
+headingInitialStyled name is = case graphemeClusters (T.concat (map targetOf is)) of
+  first : _ | first /= "\n" -> wrapRuns (Labels [name] (IntMap.fromList [(p, [0]) | p <- [0 .. T.length first - 1]])) 0 is
+  _ -> is
 
 -- ------------------------------------------------------------------ wrapping
 

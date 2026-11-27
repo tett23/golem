@@ -11,6 +11,7 @@ import Data.Text.Encoding qualified as TE
 import Data.Text.IO qualified as TIO
 import Golem.Driver
 import Golem.Layout.KnuthPlass (BoxContent (..), Item (..), Line (..))
+import Golem.Layout.Paginate (HeadingBlock (..))
 import Golem.Length (Sp (..))
 import Golem.Syntax
 import Golem.Typeset (PdfLayout (..), SetLine (..), layoutPdf)
@@ -94,7 +95,41 @@ fitWarnings ds = [(diagSeverity d, spanStart (diagSpan d)) | d <- diagnosticsOf 
 
 fitCharactersTests :: [TestTree]
 fitCharactersTests =
-  [ testCase "root ADR 0466 I1: a paragraph whose style has no fit-characters is set as before" $ do
+  [ testCase "root ADR 0468 I2: multi-line heading pitch uses its paragraph style" $ do
+      let style = replaceIn "characters = 12" "alignment = \"free\"\ncharacters = 12" horizontalStyle <> "\n[paragraph-styles.h]\nline-pitch = \"20pt\"\n[headings.1]\nparagraph-style = \"h\"\nsize = \"10pt\"\nlines = 1\n"
+      (_, pl) <- layoutOk style ("# " <> T.replicate 24 "あ" <> "\n") []
+      map hbPitch (Map.elems (plHeadings pl)) @?= [20 * 65536]
+      assertBool "multiple heading lines" (length (linesOf pl) > 1),
+    testCase "root ADR 0468 I2, I3: heading fitting uses heading size and ignores paragraph indents" $ do
+      let style = horizontalStyle <> "\n[paragraph-styles.h]\nfit-characters = 4\nsize = \"6pt\"\nindent = \"8zw\"\nspace-before = 2\n[headings.1]\nparagraph-style = \"h\"\nsize = \"10pt\"\n"
+      (_, pl) <- layoutOk style "# 目次\n" []
+      map slSize (linesOf pl) @?= [fs]
+      map lengthOf (linesOf pl) @?= [4 * fs]
+      map slIndent (linesOf pl) @?= [0],
+    testCase "root ADR 0468 I1, I2: unselected heading styles leave the heading unchanged" $ do
+      let para = "\n[color.swatches]\nblack = { cmyk = [0,0,0,100] }\n[paragraph-styles.h]\nindent = \"8zw\"\nspace-before = 2\nbackground = \"black\"\n[headings.1]\nsize = \"10pt\"\n"
+      (_, selected) <- layoutOk (horizontalStyle <> para <> "paragraph-style = \"h\"\n") "# 題名\n\n本文\n" []
+      (_, plain) <- layoutOk (horizontalStyle <> para) "# 題名\n\n本文\n" []
+      setLines selected @?= setLines plain,
+    testCase "root ADR 0468 I2: ignored tracking preserves the previous body tracking" $ do
+      let style = horizontalStyle <> "\n[paragraph-styles.body]\ntracking = 200\n[paragraph-styles.h]\ntracking = 0\n[headings.1]\nsize = \"10pt\"\n"
+      (_, selected) <- layoutOk (style <> "paragraph-style = \"h\"\n") "# 題名\n" []
+      (_, plain) <- layoutOk style "# 題名\n" []
+      setLines selected @?= setLines plain,
+    testCase "root ADR 0468 I2: HTML headings carry their paragraph style and only allowed CSS" $
+      withSystemTempDirectory "golem-heading-style" $ \tmp -> do
+        let style = replaceIn "characters = 12" "alignment = \"free\"\ncharacters = 12" horizontalStyle <> "\n[paragraph-styles.h]\nline-pitch = \"20pt\"\nalign = \"center\"\nindent = \"8zw\"\n[headings.1]\nparagraph-style = \"h\"\n"
+        writeProject tmp (miniManifest <> "\n[targets.html]\n") style "# 題名\n" []
+        r <- build (defaultOptions tmp) {optTargets = Just [TargetHtml], optFonts = fakeProvider}
+        filter isError (brDiagnostics r) @?= []
+        css <- TIO.readFile (tmp </> "build/html/style.css")
+        html <- TIO.readFile (tmp </> "build/html/a.html")
+        assertBool "style class" ("class=\"ps-h\"" `T.isInfixOf` html)
+        let headingRules = filter (T.isPrefixOf "h1.ps-h ") (T.lines css)
+        assertBool "line pitch" (any (T.isInfixOf "line-height: 20pt") headingRules)
+        assertBool "alignment" (any (T.isInfixOf "text-align: center") headingRules)
+        assertBool "no paragraph indent" (not (any (T.isInfixOf "padding-inline") headingRules)),
+    testCase "root ADR 0466 I1: a paragraph whose style has no fit-characters is set as before" $ do
       (_, fitted) <- layoutOk (fitStyle 4 "[paragraph-styles.other]\nfirst-line-indent = \"0zw\"\n") "@style other\n目次\n\n本文の段落です。\n" []
       (_, plain) <- layoutOk (plainStyle "[paragraph-styles.other]\nfirst-line-indent = \"0zw\"\n") "@style other\n目次\n\n本文の段落です。\n" []
       setLines fitted @?= setLines plain,
