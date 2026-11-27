@@ -14,6 +14,7 @@ import Golem.Assemble (AssembleConfig (..), Book (..), HeadingInfo (..), IndexGr
 import Golem.Assemble.Formats (arabic, kanjiNotation)
 import Golem.Assemble.ListMarkers (defaultNumberFormat)
 import Golem.Bibliography (EntryPart (..))
+import Golem.Doc.Citation (CitePiece (..))
 import Golem.Doc.IR
 import Golem.Html
 import Golem.Syntax.Span
@@ -225,6 +226,15 @@ citeLinkTests =
         let mark = Block (mkSpan fidA 0 1) Nothing Nothing (Paragraph Nothing [Cite (mkSpan fidA 0 1) [CiteItem "k" (Just (Locator LocatorPage (LocRange 5 7))) [] []]])
         bodyA cfg0 (assembled [[mark], [bib fidB 0]])
           @?= "<p><span class=\"cite\">[<a href=\"b.xhtml#cite-k\">1</a>, pp.\xA0\&5\x2013\&7]</span></p>\n",
+      testCase "root ADR 0480 I2: literal gaps hold only their joining graphemes" $ do
+        let mark = para 0 [Cite (at 1) [citeItem "k"]]
+            body label gap val labelAfter = bodyA cfg0 (assembled [[mark], [bib fidB 0]]) {bookCitationPieces = Map.singleton (at 1) [([citeItem "k"], [CiteLocatorFormatted label gap val labelAfter])]}
+        body "p." "  " "alpha beta-gamma" False
+          @?= "<p><span class=\"cite\">p<span style=\"white-space: nowrap\">.<span style=\"white-space: pre\">  </span>a</span>lpha beta-gamma</span></p>\n"
+        body "頁" " | " "alpha beta-gamma" True
+          @?= "<p><span class=\"cite\">alpha beta-gamm<span style=\"white-space: nowrap\">a<span style=\"white-space: pre\"> | </span>頁</span></span></p>\n"
+        body "" "  " "alpha beta" False
+          @?= "<p><span class=\"cite\"><span style=\"white-space: pre\">  </span>alpha beta</span></p>\n",
       testCase "C5 (docs/adr/0277): the label of a page and its value are apart by U+00A0, the rest as before" $ do
         let mark v = Block (mkSpan fidA 0 1) Nothing Nothing (Paragraph Nothing [Cite (mkSpan fidA 0 1) [CiteItem "k" (Just (Locator LocatorPage v)) [] []]])
             html v = bodyA cfg0 (assembled [[mark v], [bib fidB 0]])

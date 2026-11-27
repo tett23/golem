@@ -1251,7 +1251,15 @@ inlineBody c = \case
             CiteText t -> [textOf t]
             -- U+00A0: the browser does not break between the label of a page and its value (docs/adr/0277)
             CiteLocator l v -> [textOf (l <> "\xA0" <> v)]
-            CiteLocatorFormatted text -> [el "span" [("style", "white-space: pre")] [textOf text]]
+            CiteLocatorFormatted label delimiter value after ->
+              let (left, right) = if after then (value, label) else (label, value)
+                  leftUnits = graphemeClusters left
+                  rightUnits = graphemeClusters right
+                  literal = el "span" [("style", "white-space: pre")] [textOf delimiter]
+               in case (reverse leftUnits, rightUnits) of
+                    (lastLeft : prefix, firstRight : suffix) ->
+                      [textOf (T.concat (reverse prefix)), el "span" [("style", "white-space: nowrap")] [textOf lastLeft, literal, textOf firstRight], textOf (T.concat suffix)]
+                    _ -> [textOf left, literal, textOf right]
             CiteNumber k n -> reference k (tshow n)
             CiteReference k text -> reference k text
           reference key text = case bibliographyHome (cBook c) sp of

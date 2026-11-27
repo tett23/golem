@@ -360,6 +360,8 @@ bibliographyFormatTests =
     testCase "root ADR 0480 I2: explicit locator placement and spacing reach all text outputs" $
       forM_ [(position, delimiter) | position <- ["before", "after"], delimiter <- ["", " ", "  ", " | "]] $ \(position, delimiter) ->
         withBibProject "bibliography = [\"refs.json\"]" "本文[cite a page=5]。\n" [("refs.json", abcJson)] $ \tmp -> do
+          createDirectoryIfMissing True (tmp </> "fonts")
+          forM_ fakeFontFiles $ \(path, bytes) -> BS.writeFile (tmp </> path) bytes
           let base = fst (T.breakOn "[bibliography.styles.custom.types.book]" customBibliographyDeclaration)
               expected = if position == "before" then "頁" <> delimiter <> "5" else "5" <> delimiter <> "頁"
           TIO.appendFile (tmp </> "style.toml") (T.replace "citation=['ref-{number}']" "citation=['{locator}']" base <> "locator-labels={page=['頁','頁']}\nlocator-positions={page='" <> position <> "'}\nlocator-delimiters={page='" <> delimiter <> "'}\n")
@@ -369,11 +371,26 @@ bibliographyFormatTests =
           text <- TIO.readFile (tmp </> "build/text/horizontal/a.txt")
           assertBool (T.unpack text) (("(" <> expected <> ")") `T.isInfixOf` text)
           html <- TIO.readFile (tmp </> "build/html/a.html")
-          assertBool (T.unpack html) (expected `T.isInfixOf` html)
-          assertBool "explicit locator stays together" ("white-space: pre" `T.isInfixOf` html)
+          let visible = T.pack . outside False . T.unpack
+              outside _ [] = []
+              outside _ ('<' : cs) = outside True cs
+              outside _ ('>' : cs) = outside False cs
+              outside True (_ : cs) = outside True cs
+              outside False (c : cs) = c : outside False cs
+          assertBool (T.unpack html) (expected `T.isInfixOf` visible html)
+          assertBool "literal delimiter is preserved" (("white-space: pre\">" <> delimiter <> "</span>") `T.isInfixOf` html)
           archive <- toArchive <$> BL.readFile (tmp </> "build/epub/book.epub")
           let xhtml = maybe "" (TE.decodeUtf8 . BL.toStrict . fromEntry) (findEntryByPath "OEBPS/a.xhtml" archive)
-          assertBool (T.unpack xhtml) (expected `T.isInfixOf` xhtml),
+          assertBool (T.unpack xhtml) (expected `T.isInfixOf` visible xhtml)
+          BS.appendFile (tmp </> "style.toml") fakeBody
+          forM_ [False, True] $ \kept -> do
+            let mark = "[cite a page=\"" <> T.replicate 21 "1" <> "\"]"
+                source = if kept then "[style no-break: " <> mark <> "]\n" else mark <> "\n"
+            TIO.writeFile (tmp </> "a.gm") source
+            pdf <- build (defaultOptions tmp) {optTargets = Just [TargetPdf], optFonts = fakeProvider}
+            assertEqual "PDF has no errors" [] (filter isError (brDiagnostics pdf))
+            let overflowCodes = [code | d <- brDiagnostics pdf, let DiagnosticCode code = diagCode d, code `elem` ["G07105", "G07122"]]
+            assertEqual "ordinary overflow remains distinct from a user no-break range" [if kept then "G07122" else "G07105"] overflowCodes,
     testCase "root ADR 0480 I3: citation and year templates follow the selected record type" $
       forM_ (["typed", "global", "empty"] :: [T.Text]) $ \bookTemplate ->
         withBibProject "bibliography = [\"refs.json\"]" "通常 [cites: [cite b]|[cite a]|[cite r]|[cite m]]。\n\n年 [cites: [cite b form=year]|[cite a form=year]|[cite r form=year]|[cite m form=year]]。\n" [("refs.json", "[{\"id\":\"b\",\"type\":\"book\",\"title\":\"Book\",\"issued\":{\"date-parts\":[[2001]]}},{\"id\":\"a\",\"type\":\"article-journal\",\"title\":\"Article\",\"issued\":{\"date-parts\":[[2002]]}},{\"id\":\"r\",\"type\":\"report\",\"title\":\"Report\",\"issued\":{\"date-parts\":[[2003]]}},{\"id\":\"m\",\"title\":\"Missing\",\"issued\":{\"date-parts\":[[2004]]}}]")] $ \tmp -> do

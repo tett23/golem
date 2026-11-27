@@ -63,7 +63,7 @@ formatBibliographyCitationSelecting typeTemplate globalTemplate suffix style num
                   explicit = Map.member kind (bsLocatorPositions style) || Map.member kind (bsLocatorDelimiters style)
                in if not explicit
                     then if T.null label then CiteText value else CiteLocator label value
-                    else CiteLocatorFormatted (if position == "after" then value <> delimiter <> label else label <> delimiter <> value)
+                    else CiteLocatorFormatted label delimiter value (position == "after")
         BibliographyField _ value -> CiteText value
         BibliographyLiteral value -> CiteText value
     | fragment <- fragments

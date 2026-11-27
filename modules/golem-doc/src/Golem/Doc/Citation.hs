@@ -24,7 +24,7 @@ data CitePiece
   | CiteReference !Text !Text -- a key and its explicitly formatted number
   | CiteText !Text -- text: brackets, separators, an unnumbered key
   | CiteLocator !Text !Text -- the label of a locator and its value: "pp." "5–7"
-  | CiteLocatorFormatted !Text -- an explicitly placed label, delimiter and value, held together (root ADR 0480)
+  | CiteLocatorFormatted !Text !Text !Text !Bool -- label, literal delimiter, value, and whether the label follows (root ADR 0480)
   deriving stock (Eq, Show)
 
 {- | The pieces of the mark of a citation, from its items with their
@@ -102,4 +102,4 @@ citationText = T.concat . map piece
       CiteReference _ t -> t
       CiteText t -> t
       CiteLocator l v -> l <> " " <> v
-      CiteLocatorFormatted text -> text
+      CiteLocatorFormatted label delimiter value after -> if after then value <> delimiter <> label else label <> delimiter <> value
