@@ -68,6 +68,7 @@ module Golem.Typeset.Flow
     openingIndent,
     -- the paragraphs of fit-characters (root ADR 0466)
     fitItems,
+    dropCapMetrics,
     fitCharacterWarnings,
     fixpoint,
     fixpointWith,
@@ -3289,7 +3290,10 @@ data Composed = Composed
     -- | The source prefix already committed by causal free wrapping.
     cItemStart :: Int,
     cReflowed :: Bool,
-    cActualIndents :: Maybe [Sp]
+    cActualIndents :: Maybe [Sp],
+    -- | the lines occupied by a drop cap and their extra inset (root ADR 0465)
+    cDropInset :: Maybe (Int, Sp),
+    cDropPrefix :: Int
   }
 
 {- | The environment in which the units of the body are set (docs/adr/0173):
@@ -3460,8 +3464,12 @@ unitLabelLink u = listToMaybe [LinkTo (DestNoteMark (NoteId sp 0)) | Frame _ (FE
 M of each list; a unit in lists is indented by them (golem-driver ADR 0013).
 -}
 flowUnits :: FlowEnv -> ([(Int, Unit)], Map Int Sp)
-flowUnits fe = ([(i, (withFit (withBox (withReserve (withListIndent u)))) {uIndex = i}) | (i, u) <- zip [0 :: Int ..] rawUnits], widths)
+flowUnits fe = ([(i, (withFit (withBox (withReserve (withDrop (withListIndent u))))) {uIndex = i}) | (i, u) <- zip [0 :: Int ..] rawUnits], widths)
   where
+    -- Split off the initial grapheme without losing its inline wrappers.
+    withDrop u = case (uKind u, unitDropLines u, splitInitialText (uInlines u)) of
+      (UPara (Indent start _ end align), Just _, Just (capText, rest)) -> u {uKind = UPara (Indent start 0 end align), uInlines = capText <> rest}
+      _ -> u
     {- a paragraph fitted to its fit-characters is one line, ragged, put by
     its align (root ADR 0466); one that is not fitted keeps its align -}
     withFit u = case uKind u of
@@ -3567,7 +3575,10 @@ composeUnit fe widths lineWidth u =
       marker = markerItems env (listInner widths u) u
       -- the anchors count the items of the text; the marker comes first
       shift = length marker
-      (textItems0, anchors0) = composeInlines env (uInlines u)
+      capComposition = dropComposition fe u
+      (textItems0, anchors0) = maybe (composeInlines env (uInlines u)) (\(_, _, its, as) -> (its, as)) capComposition
+      inset = (\(n, cut, _, _) -> (n, cut)) <$> capComposition
+      actualWidth k = lineWidth k - dropInsetAt inset k
       {- numbered per page, the mark of a note at the end of a chapter is one
       box of the reserved width (docs/adr/0383); one box too when its
       number is set flat (docs/adr/0381) -}
@@ -3579,15 +3590,90 @@ composeUnit fe widths lineWidth u =
         Just n | not (fitBroken u), Just (fitted, at) <- fitItems env (fitWidth n u) textItems1 -> (fitted, map (anchorAt at) anchors0)
         _ -> (textItems1, anchors0)
       items = marker <> textItems
-      breaks = A.breakAligned (unitAlign u) (adjustedParams (uStyle u) (case uKind u of UHeading {} -> Nothing; _ -> uParaStyle u) params) lineWidth items
-      lines' = brLines breaks
-   in Composed lines' (unitNotes fe u anchors) (unitSidenotes fe u shift anchors) (unitMarks fe u shift anchors) anchors items shift (brPositions breaks) 0 False Nothing
+      breaks = A.breakAligned (unitAlign u) (adjustedParams (uStyle u) (case uKind u of UHeading {} -> Nothing; _ -> uParaStyle u) params) actualWidth items
+      lines' = padDropLines (maybe 0 fst inset) actualWidth (brLines breaks)
+   in Composed lines' (unitNotes fe u anchors) (unitSidenotes fe u shift anchors) (unitMarks fe u shift anchors) anchors items shift (brPositions breaks) 0 False Nothing inset (maybe 0 (\(_, _, its, _) -> length (takeWhile (\case Box 0 _ -> True; _ -> False) its)) capComposition)
 
 {- | The environment the text of a unit is composed in: a unit in a box
 with hanging-punctuation = false (docs/adr/0279).
 -}
 unitTextEnv :: FlowEnv -> Unit -> ComposeEnv
 unitTextEnv fe u = (unitEnv fe u) {ceSizeSource = uSource u, ceSite = unitSiteOf u, ceHanging = ceHanging (unitEnv fe u) && isNothing (uBox u)}
+
+-- | Applicable drop caps, excluding later kept source lines and the fit conflict (root ADR 0465).
+unitDropLines :: Unit -> Maybe Int
+unitDropLines u = case uKind u of
+  UPara _
+    | topParagraph u,
+      maybe True (== 0) (uStanza u),
+      Just d <- paraStyle (uStyle u) (uParaStyle u),
+      Just n <- psDropLines d,
+      isNothing (psFitCharacters d),
+      isJust (splitInitialText (uInlines u)) ->
+        Just n
+  _ -> Nothing
+
+-- | The inset of a body line beside its drop cap (root ADR 0465).
+dropInsetAt :: Maybe (Int, Sp) -> Int -> Sp
+dropInsetAt inset k = case inset of
+  Just (n, width) | k < n -> width
+  _ -> 0
+
+-- | Short drop-cap paragraphs reserve the empty rows of the initial (root ADR 0465).
+padDropLines :: Int -> (Int -> Sp) -> [Line] -> [Line]
+padDropLines n width ls = case ls of
+  template : _ -> ls <> [template {lineItems = [], lineRatio = 0, lineTarget = width k, lineExpansion = 0, lineProtrusion = (0, 0), lineOverflow = 0, lineEdge = (0, 0)} | k <- [length ls .. n - 1]]
+  [] -> []
+
+{- | Size and baseline shift of an initial (root ADR 0465), for n >= 1
+and positive cap-height ratios. Latin capitals align at the first and
+last baselines; the other initials align the outside edges of the em boxes.
+-}
+dropCapMetrics :: Bool -> Bool -> Sp -> Sp -> Int -> Rational -> Rational -> (Sp, Sp)
+dropCapMetrics vertical latin bodySize pitch n bodyCap initialCap =
+  let extra = fromIntegral (n - 1) * pitch
+      capitals = latin && not vertical
+      size = if capitals then Sp (round ((toRational (unSp bodySize) * bodyCap + toRational (unSp extra)) / initialCap)) else bodySize + extra
+      baseline
+        | capitals = negate extra
+        | vertical = Sp (unSp (bodySize - size) `div` 2)
+        | otherwise = L.zwToSp (bodySize - size) baselineRatio
+   in (size, baseline)
+
+{- | The initial grapheme placed beside the first n body lines. Its boxes
+have no advance in the body: their negative inner offset places them in
+the reserved inset. Both parts retain the leaves of the split inline
+structure, including the anchors of the body (root ADR 0465).
+-}
+dropComposition :: FlowEnv -> Unit -> Maybe (Int, Sp, [Item], [Anchor])
+dropComposition fe u = do
+  n <- unitDropLines u
+  (capText, rest) <- splitInitialText (uInlines u)
+  let env = unitTextEnv fe u
+      bodySize = lkSize (uLook u)
+      chosenLook = maybe (uLook u) (\name -> restyle (uStyle u) (uLook u) (CharStyle (uSpan u) name [])) (paraStyle (uStyle u) (uParaStyle u) >>= psInitialStyle)
+      initialFont look = look {lkFace = lkFace chosenLook, lkLatinFace = lkLatinFace chosenLook, lkSynthetic = lkSynthetic chosenLook, lkLatinSynthetic = lkLatinSynthetic chosenLook, lkSize = bodySize}
+      initialEnv = env {ceLook = initialFont chosenLook, ceRestyle = \look inline -> initialFont (ceRestyle env look inline)}
+      (initial, _) = composeInlines initialEnv capText
+      original = [(w, c) | Box w c <- initial]
+  (_, firstBox) <- listToMaybe original
+  let fonts = feFonts fe
+      geom = feGeom fe
+      pitch = fromMaybe (pgLinePitch geom) (paraStyle (uStyle u) (uParaStyle u) >>= resolvedParagraphPitch (uStyle u))
+      vertical = pgVertical geom
+      initialLook = bcLook firstBox
+      capHeight look text = fromMaybe 1 (listToMaybe [h | glyph <- lfShape fonts (shapingForFonts fonts False look (maybe 'H' fst (T.uncons text))) text, let h = lfCapHeight fonts (shFace glyph), h > 0])
+      latin = not vertical && maybe False (isLatin initialLook . fst) (T.uncons (bcText firstBox))
+      (size, baseline) = dropCapMetrics vertical latin bodySize pitch n (capHeight (uLook u) "H") (capHeight initialLook (bcText firstBox))
+      scaled = [(Sp (round (toRational (unSp w) * toRational (unSp size) / toRational (unSp (lkSize (bcLook c))))), c) | (w, c) <- original]
+      advance = sum (map fst scaled)
+      gap = maybe 0 (dimToSp bodySize) (paraStyle (uStyle u) (uParaStyle u) >>= psDropGap)
+      cut = advance + gap
+      prefix = [Box 0 c {bcLook = (bcLook c) {lkSize = size, lkBaselineShift = baseline}, bcPadStart = offset - cut, bcPadEnd = 0, bcExpandable = False, bcProtrudeStart = 0, bcProtrudeEnd = 0, bcEdgeStart = 0, bcEdgeEnd = 0, bcSource = (uSource u, snd (bcSource c))} | ((_, c), offset) <- zip scaled (scanl (+) 0 (map fst scaled))]
+      (body, anchors) = composeInlines env rest
+      offsetLeaf = maximum (0 : [leafIndex (bcLeaf c) | (_, c) <- original])
+      shifted = [case item of Box w c -> Box w c {bcLeaf = (bcLeaf c) {leafIndex = leafIndex (bcLeaf c) + offsetLeaf}}; _ -> item | item <- body]
+  pure (n, cut, prefix <> shifted, map (anchorAt (+ length prefix)) anchors)
 
 {- | The fit-characters of a unit (root ADR 0466): of a paragraph at the
 top of the document, or of the body of @style put in place there, whose
@@ -4378,7 +4464,15 @@ numberedLines fe nextId u c indentOf =
       boxes = [LineBox lid [NoteBody key (length nls) | (key, nls) <- Map.findWithDefault [] k noteLines] (if k == 0 && cItemStart c == 0 then unitLabel u else []) (Map.findWithDefault [] k marksOf) (lineReach fe l) | (k, (lid, l)) <- zip [0 ..] (zip ids ls)]
       -- a line not justified moves by its alignment (docs/adr/0189)
       shiftOf k = A.lineShift (unitAlign u) (k == length ls - 1)
-      set = Map.fromList [(lid, SetLine l size (maybe (indentOf k) (!! k) (cActualIndents c) + shiftOf k l) (Map.findWithDefault [] k noteLines) (Map.findWithDefault [] k sidenoteLinesOf) (unitSpine u)) | (k, (lid, l)) <- zip [0 ..] (zip ids ls)]
+      -- The initial stays at the paragraph edge even when its body is aligned.
+      capAtEdge k l
+        | k == 0,
+          cItemStart c == 0,
+          cDropPrefix c > 0 =
+            let (cap, rest) = splitAt (cDropPrefix c) (lineItems l)
+             in l {lineItems = [case item of { Box w box -> Box w box {bcPadStart = bcPadStart box - shiftOf k l}; _ -> item } | item <- cap] <> rest}
+        | otherwise = l
+      set = Map.fromList [(lid, SetLine (capAtEdge k l) size (maybe (indentOf k + dropInsetAt (cDropInset c) k) (!! k) (cActualIndents c) + shiftOf k l) (Map.findWithDefault [] k noteLines) (Map.findWithDefault [] k sidenoteLinesOf) (unitSpine u)) | (k, (lid, l)) <- zip [0 ..] (zip ids ls)]
    in (boxes, set)
 
 {- | A rule of a paragraph or heading for pagination (golem-driver ADR
@@ -4655,7 +4749,7 @@ keep-last-lines and keep-all-lines, those of body when not written.
 -}
 keepOf :: Unit -> Keep
 keepOf u = case unitParaStyle u of
-  Just d -> Keep (fromMaybe 2 (psKeepFirstLines d)) (fromMaybe 2 (psKeepLastLines d)) (fromMaybe False (psKeepAllLines d))
+  Just d -> Keep (max (if isNothing (uStanza u) then fromMaybe 0 (unitDropLines u) else 0) (fromMaybe 2 (psKeepFirstLines d))) (fromMaybe 2 (psKeepLastLines d)) (fromMaybe False (psKeepAllLines d))
   Nothing -> defaultKeep
 
 {- | Whether a paragraph takes keep-with-next and page-break
@@ -5043,7 +5137,7 @@ rebreakComposed fe u width start source =
   let boxed = isJust (uBox u)
       params = if boxed then (feParams fe) {pProtrusion = compProtrusion (stComposition (piStyle (feInput fe)))} else feParams fe
       result = A.breakAligned (unitAlign u) (adjustedParams (uStyle u) (case uKind u of UHeading {} -> Nothing; _ -> uParaStyle u) params) width (drop start (cItems source))
-   in source {cLines = brLines result, cBreakPositions = map (+ start) (brPositions result), cItemStart = start, cReflowed = True, cActualIndents = Nothing}
+   in source {cLines = brLines result, cBreakPositions = map (+ start) (brPositions result), cItemStart = start, cReflowed = True, cActualIndents = Nothing, cDropInset = Nothing}
 
 itemAfterBreak :: Composed -> Int -> Int
 itemAfterBreak source index = skip (index + 1) (drop (index + 1) (cItems source))
@@ -5170,9 +5264,11 @@ causalFreeFlow inp geom fe units widths jobs initialBuilt = jobsFrom Nothing Not
           exclusionWidths = [maybe 0 (\ex -> lineTake ex (physicalParagraphOrigin at + fromIntegral k * pitch - origin + faceOffset pitch face) face) (pfExclusion pf) | k <- [0 :: Int ..]]
           narrowed k = (page, column) == (actualPage, actualColumn) && intersects (rowExtent (physicalParagraphOrigin at + fromIntegral k * pitch) pitch face) (origin, end)
           indent k = unitLineIndent (pgFontSize geom) (uKind unit) (countBefore + k)
-          width k = feMeasure fe - (if narrowed k then exclusionWidth k else 0) - indent k - unitEndIndent (uKind unit)
-          tailComposed = rebreakComposed fe unit width start source
-          tailIndents = [indent k + if pfWrap pf == Just WrapStart && narrowed k then exclusionWidth k else 0 | k <- [0 .. length (cLines tailComposed) - 1]]
+          dropCut k = dropInsetAt (cDropInset source) (countBefore + k)
+          width k = feMeasure fe - (if narrowed k then exclusionWidth k else 0) - indent k - unitEndIndent (uKind unit) - dropCut k
+          rebroken = rebreakComposed fe unit width start source
+          tailComposed = rebroken {cLines = padDropLines (maybe 0 (subtract countBefore . fst) (cDropInset source)) width (cLines rebroken)}
+          tailIndents = [indent k + dropCut k + if pfWrap pf == Just WrapStart && narrowed k then exclusionWidth k else 0 | k <- [0 .. length (cLines tailComposed) - 1]]
        in (tailComposed, tailIndents)
     probeNext job pf origin region index later built cursor wanted = case later of
       [] ->

@@ -580,6 +580,7 @@ fakeFonts =
       lfCode = \_ g -> g,
       lfShape = \s t -> [Shaped (faceOf (shRole s)) (fromEnum c `mod` 65536) (advOf (shRole s) c) (T.singleton c) False i (0, 0) ClusterWhole | (i, c) <- zip [0 ..] (T.unpack t)],
       lfEmBoxCentral = const (38 / 100),
+      lfCapHeight = const (7 / 10),
       lfFaceFile = const ("fonts/b.otf", "truetype"),
       lfInkBox = \ix g -> case ix of
         8 -> Nothing

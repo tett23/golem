@@ -306,11 +306,11 @@ chapterNoteTests =
 
 -- | A paragraph style that sets nothing but its rules.
 ruled :: Maybe HtmlRule -> Maybe HtmlRule -> HtmlParaStyle
-ruled b a = HtmlParaStyle Nothing False 0 "0" "0" noFeatures b a defaultAlignDecls 0 0 "0em" [] Nothing Nothing Nothing Nothing
+ruled b a = HtmlParaStyle Nothing False 0 "0" "0" noFeatures b a defaultAlignDecls 0 0 "0em" [] Nothing Nothing Nothing Nothing Nothing
 
 -- | A paragraph style of the defaults of body (docs/adr/0189).
 plainPara :: HtmlParaStyle
-plainPara = HtmlParaStyle Nothing False 0 "0em" "0em" noFeatures Nothing Nothing defaultAlignDecls 0 0 "0em" [] Nothing Nothing Nothing Nothing
+plainPara = HtmlParaStyle Nothing False 0 "0em" "0em" noFeatures Nothing Nothing defaultAlignDecls 0 0 "0em" [] Nothing Nothing Nothing Nothing Nothing
 
 -- | The rules of the CSS that have a declaration of the keys of docs/adr/0189, but those of the cells of tables.
 alignSpaceLines :: HtmlConfig -> [Text]
@@ -1105,7 +1105,7 @@ langTests =
     ]
 
 xhtmlTests :: TestTree
-xhtmlTests = testGroup "XHTML and CSS (golem-html ADR 0001)" (tests <> [indexPageTests, langTests, pageBreakTests, genericFontTests, fontLicenseTests, openingIndentTests, fitCharactersTests, styleArgumentTests])
+xhtmlTests = testGroup "XHTML and CSS (golem-html ADR 0001)" (tests <> [indexPageTests, langTests, pageBreakTests, genericFontTests, fontLicenseTests, openingIndentTests, fitCharactersTests, styleArgumentTests, dropCapsTests])
 
 {- | The table of root ADR 0469 I2, the same as in the tests of golem-typeset:
 a paragraph, the language of its block, and whether its first character
@@ -1298,3 +1298,31 @@ fitCharactersTests =
         filter (T.isInfixOf "text-justify") (cssLines "" cfg0 {hcLocalStyles = Map.singleton fidA local})
           @?= ["body.file-1 p.ps-title { width: 3em; text-align: justify; text-align-last: justify; text-justify: inter-character; }"]
     ]
+
+-- | The CSS and excluded paragraphs of drop caps (root ADR 0465).
+dropCapsTests :: TestTree
+dropCapsTests =
+  testGroup
+    "root ADR 0465"
+    [ testCase "root ADR 0465 I1: styles without a drop cap leave markup and CSS unchanged" $ do
+        filter (T.isInfixOf "initial-letter") (cssLines "" cfg0) @?= []
+        assertBool "no exclusion marker" (not ("data-no-drop" `T.isInfixOf` bodyA cfg0 (bookOf [paragraph [txt "あいう"]]))),
+      testCase "root ADR 0465 I2: a named style writes initial-letter and its explicit gap" $
+        filter (T.isInfixOf "initial-letter") (cssLines "" cfg)
+          @?= ["p.ps-lead:not([data-no-drop])::first-letter { initial-letter: 3; margin-inline-end: 2pt; }"],
+      testCase "root ADR 0465 I2: a file style writes its scoped drop-cap rule" $ do
+        let local = HtmlLocalStyles Map.empty (Map.singleton "lead" dropped) Nothing Nothing Map.empty
+        filter (T.isInfixOf "initial-letter") (cssLines "" cfg0 {hcLocalStyles = Map.singleton fidA local})
+          @?= ["body.file-1 p.ps-lead:not([data-no-drop])::first-letter { initial-letter: 3; margin-inline-end: 2pt; }"],
+      testCase "root ADR 0465 I5, I7: ruby initials, list items and frames are excluded" $ do
+        let bodyParagraph = paragraph [txt "あいう"]
+            book = bookOf [bodyParagraph, Block (at 1) Nothing Nothing (BulletList [ListItem Nothing [bodyParagraph]]), Block (at 2) Nothing Nothing (FrameBlock "f" [bodyParagraph]), paragraph [Ruby (at 3) () [RubySegment [Text (at 3) "漢"] (Just "かん")]]]
+        T.count "data-no-drop" (bodyA cfg book) @?= 3,
+      testCase "root ADR 0465 I2: only the first source-line indent is suppressed for kept lines" $ do
+        let rules = cssLines "" cfg {hcParaStyles = Map.singleton "lead" dropped {hpsKeepLines = True}}
+        assertBool "only the first source line" ("p.ps-lead:not([data-no-drop]) > .line:first-child { text-indent: 0; }" `elem` rules)
+    ]
+  where
+    dropped = plainPara {hpsDropCap = Just (3, "2pt")}
+    cfg = cfg0 {hcParaStyles = Map.singleton "lead" dropped}
+    paragraph xs = Block (at 0) Nothing Nothing (Paragraph (Just (styleNamed "lead")) xs)

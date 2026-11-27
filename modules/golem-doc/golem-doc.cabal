@@ -30,6 +30,7 @@ library
     , containers    >=0.6  && <0.8
     , golem-length
     , golem-parser
+    , golem-unicode
     , golem-syntax
     , text          >=2.0  && <2.2
   default-language: GHC2021

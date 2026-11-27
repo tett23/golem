@@ -186,6 +186,7 @@ test-suite golem-driver-page-test
     FigureSpec
     FileSpacesSpec
     FitCharactersSpec
+    DropCapsSpec
     FramesSpec
     HeadingLevelsSpec
     KeepBookPartsSpec

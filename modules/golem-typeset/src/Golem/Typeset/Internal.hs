@@ -13,11 +13,12 @@ module Golem.Typeset.Internal
     Indent (..),
     openingIndent,
     fitItems,
+    dropCapMetrics,
   )
 where
 
 import Data.Map.Strict qualified as Map
-import Golem.Typeset.Flow (Assumed (..), Indent (..), composeEnv, fitItems, openingIndent, paraLook)
+import Golem.Typeset.Flow (Assumed (..), Indent (..), composeEnv, dropCapMetrics, fitItems, openingIndent, paraLook)
 
 -- | No assumed page numbers: the first round of the page references, and a text without them.
 emptyAssumed :: Assumed

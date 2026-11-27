@@ -1,0 +1,7 @@
+@style lead
+The opening letter stands beside the first three lines. This specimen uses the cap height of the typeface to align its top with the capitals of the first line and its baseline with the third line. After the third line, the text returns to the full measure of the paragraph. A short paragraph below tests the reserved height. The last paragraph has no drop cap.
+
+@style lead
+A.
+
+The paragraph after the short initial starts below all three reserved lines.

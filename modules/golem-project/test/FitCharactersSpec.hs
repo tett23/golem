@@ -37,7 +37,13 @@ tests :: TestTree
 tests =
   testGroup
     "fit-characters (root ADR 0466)"
-    [ testCase "root ADR 0466 I6: fit-characters of 1 and 4 read in style.toml and @style-def" $ do
+    [ testCase "root ADR 0465 I6: drop-gap accepts zero and positive dimensions in style.toml and style-def" $ do
+        mapM_ (\v -> codesOf ("[paragraph-styles.lead]\ndrop-lines = 3\ndrop-gap = " <> v <> "\n") @?= []) ["\"0pt\"", "\"2pt\"", "\"0.5zw\""]
+        localCodes "drop-gap" (LocalString "2pt") @?= [],
+      testCase "root ADR 0465 I6: invalid drop-lines and negative drop-gap produce one G03006 each" $ do
+        mapM_ (\v -> codesOf ("[paragraph-styles.lead]\ndrop-lines = " <> v <> "\n") @?= ["G03006"]) ["0", "-1", "2.5", "true", "\"3\""]
+        codesOf "[paragraph-styles.lead]\ndrop-gap = \"-1pt\"\n" @?= ["G03006"],
+      testCase "root ADR 0466 I6: fit-characters of 1 and 4 read in style.toml and @style-def" $ do
         codesOf "[paragraph-styles.title]\nfit-characters = 1\n" @?= []
         codesOf "[paragraph-styles.title]\nfit-characters = 4\n" @?= []
         localCodes "fit-characters" (LocalWord "4") @?= []

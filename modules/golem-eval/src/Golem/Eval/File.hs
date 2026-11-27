@@ -66,7 +66,7 @@ import Golem.Eval.Builtin
 import Golem.Eval.Expr
 import Golem.Eval.Functions
 import Golem.Eval.Number (exactText)
-import Golem.Eval.RegexStyle (applyInitialStyles, applyRegexStyles, regexRules)
+import Golem.Eval.RegexStyle (applyInitialStyles, applyRegexStyles, dropCapDiagnostics, regexRules)
 import Golem.Eval.Settings
 import Golem.Eval.Value
 import Golem.Parser.AST qualified as A
@@ -446,7 +446,7 @@ evalFile ctx0 (A.File fid blocks0) =
         { erDocument = styled,
           erExports = stVars st,
           erUsage = Usage (stDefined st) (stRefs st) (stNsRefs st) (stImports st) (stListedSites st) (stListedRefs st) (fileOverrides (ctxFunctions ctx) (ctxPlugins ctx) (A.File fid blocks0)),
-          erDiagnostics = stDiags st <> noteDiags <> breakDiags <> filterDiags <> unwritableText styled,
+          erDiagnostics = stDiags st <> noteDiags <> breakDiags <> filterDiags <> dropCapDiagnostics fileStyle styled <> unwritableText styled,
           erSource = ctxSource ctx,
           erStyles = local,
           erNumberSites = stNumberSites st,

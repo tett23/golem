@@ -534,9 +534,10 @@ data ParaStyleDef = ParaStyleDef
     psLineNumberInterval :: !(Maybe Int),
     -- | the format of a numbered caption (root ADR 0463)
     psTitleFormat :: !(Maybe [TitleFormatPart]),
-    {- | the lines of a drop cap (root ADR 0465): read for the check of
-    G03301 (root ADR 0466); the drop cap itself is not set yet
-    -} psDropLines :: !(Maybe Int),
+    -- | the lines occupied by a drop cap (root ADR 0465)
+    psDropLines :: !(Maybe Int),
+    -- | the gap between a drop cap and the text (root ADR 0465), zero when absent
+    psDropGap :: !(Maybe Dim),
     -- | the characters of the width a one-line paragraph is set to (root ADR 0466)
     psFitCharacters :: !(Maybe Int)
   }
@@ -688,7 +689,7 @@ noCharDef = CharStyleDef Nothing Nothing Nothing Nothing Nothing Nothing Nothing
 
 -- | A paragraph style with no key written.
 noParaDef :: ParaStyleDef
-noParaDef = ParaStyleDef Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing [] Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing
+noParaDef = ParaStyleDef Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing [] Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing
 
 -- | The keys body has without a definition (docs/adr ADR 0005, 0006, 0019; docs/adr/0020, 0189).
 bodyDefaults :: ParaStyleDef
@@ -1093,6 +1094,7 @@ overPara u b =
     (psLineNumberInterval u <|> psLineNumberInterval b)
     (psTitleFormat u <|> psTitleFormat b)
     (psDropLines u <|> psDropLines b)
+    (psDropGap u <|> psDropGap b)
     (psFitCharacters u <|> psFitCharacters b)
 
 {- | The parent of a paragraph style: body and code have none (golem-driver
@@ -2606,8 +2608,9 @@ instance FromValue ParaStyleDef where
     format <- optKeyOf "title-format" titleFormatOf
     -- a natural number greater than 0; any other value is G03006, a negative one too (root ADR 0465, 0466)
     drop' <- optKeyOf "drop-lines" (positiveCount "drop-lines")
+    gap <- dimKey "drop-gap"
     fit <- optKeyOf "fit-characters" (positiveCount "fit-characters")
-    pure (ParaStyleDef b f s ((\x -> if x == "keep" then KeepLines else JoinLines) <$> lb) pitch sb sbDim ind fli' rs aki k t p bs bg pad' border bw bst bsides brad rb ra align sbefore sbeforeDim safter safterDim endInd fs kwn kal kfl kll start adjustment slim sord tord pw nxt ini (oind >>= \v -> lookup v (zip openingIndentValues [minBound .. maxBound])) separator interval format drop' fit)
+    pure (ParaStyleDef b f s ((\x -> if x == "keep" then KeepLines else JoinLines) <$> lb) pitch sb sbDim ind fli' rs aki k t p bs bg pad' border bw bst bsides brad rb ra align sbefore sbeforeDim safter safterDim endInd fs kwn kal kfl kll start adjustment slim sord tord pw nxt ini (oind >>= \v -> lookup v (zip openingIndentValues [minBound .. maxBound])) separator interval format drop' gap fit)
     where
       positiveCount :: Text -> Value' l -> Matcher l Int
       positiveCount key = withValue $ \l x -> if x < 1 then failAt l (T.unpack key <> " は 0 より大きい整数です: " <> show x) else pure x
@@ -4020,6 +4023,7 @@ codeStyleChecks s =
             ("initial-style", isJust (psInitialStyle d)),
             ("opening-indent", isJust (psOpeningIndent d)),
             ("drop-lines", isJust (psDropLines d)),
+            ("drop-gap", isJust (psDropGap d)),
             ("fit-characters", isJust (psFitCharacters d))
           ],
         written
@@ -4878,6 +4882,7 @@ paraStyleNode =
         ("initial-style", ref CharStyles),
         ("opening-indent", enum openingIndentValues),
         ("drop-lines", int),
+        ("drop-gap", dim),
         ("fit-characters", int)
       ]
         <> featureNodes
