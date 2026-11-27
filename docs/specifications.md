@@ -682,14 +682,27 @@ HTML と EPUB は欄の文字スタイルを `cs-` のクラスにし、PDF は 
 省略を示す接尾の文字列は、前の空きや区切りも含め、呼出側が指定する。
 この API は、宣言で省略したキーの既定値を決めない。
 
+`applyBibliographyNames` と `applyBibliographyNameList` は、呼出側の完全なオプションに、宣言で書いたキーだけを重ねる。
+`et-al` の値を接尾辞へ写す関数も、呼出側が渡す。
+`bibliographyEditorLabel` は、明示した単数と複数のラベルから編者の人数に合うものを返し、編者がいなければ値を返さない。
+
 文献の並べ替えは `Golem.Assemble.BibliographySort` が、項目とそのキーを一緒に動かす安定ソートで行う。
 著者のキーは、明示した読み、無ければ指定の区切りでつないだ姓と名から作り、小文字にしてラテン文字の正準分解による発音区別符号を除く。
 2 件以上がある同著者同年のグループに、文献キーの順に `a`、`b` などの年の接尾辞を割り当てる。
+
+ページ範囲の数の終端は、`Golem.Assemble.BibliographyRanges.formatBibliographyRange` が組む。
+0 以上の二つの終端と、方式と区切り文字列を呼出側が渡す。
+`full` は終端を略さず、`minimal` は同じ桁数の昇順の範囲で共通する上の桁を終端から省く（`284-7` など）。
+
 ラテン文字の表は Unicode 17.0.0 の `UnicodeData.txt` と `Scripts.txt` から `scripts/gen-unicode-latin.sh` で作り、両入力の SHA-256 を固定する。
 
 部分宣言の上書きは、`overlayBibliographyStyle` と `overlayBibliographyNames` が行う。
 明示した空文字列、空配列、`false`、ゼロは上書きの値として保ち、書かなかったキーは引き継ぐ。
 種類ごとの書式、名前の書式、言語の表は、キーごとに重ねる。
+
+一次資料の書誌例は、`modules/golem-project/test/fixtures/bibliography/` の TOML 宣言と CSL-JSON を読み、差し込み片と名前と範囲の API で組んで照合する。
+IEEE、NLM、SIST の論文の 3 例と、Mouton の Heller の章の 1 例を対象にする。
+対照用の宣言の名前の上限は、各書誌例の人数を明示した値である。
 
 ### golem-evaluate と golem-driver
 

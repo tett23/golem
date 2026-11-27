@@ -1,0 +1,26 @@
+[
+  {
+    "id": "nishi2003",
+    "type": "article-journal",
+    "author": [
+      {
+        "literal": "西潔"
+      },
+      {
+        "literal": "石原和弘"
+      }
+    ],
+    "title": "火山地域における震源計算についての提案",
+    "container-title": "火山",
+    "volume": 48,
+    "issue": 5,
+    "page": "407-413",
+    "issued": {
+      "date-parts": [
+        [
+          2003
+        ]
+      ]
+    }
+  }
+]

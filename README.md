@@ -592,7 +592,10 @@ cabal test all
 `bibliographyEntryParts` が欄ごとの文字スタイルを付け、HTML、EPUB、PDF はスタイルを、テキストはその中の文字を出す。
 名前の書式と文献の並べ替えは `Golem.Assemble.BibliographyNames` と `Golem.Assemble.BibliographySort` にあり、解決済みのオプションとキーを受け取る。
 部分宣言の上書きは `overlayBibliographyStyle` が行い、省略されたキーの既定値を追加しない。
+`applyBibliographyNames` は、呼出側の明示したオプションに、宣言で書いた名前のキーだけを重ねる。
+数で渡したページ範囲は、`Golem.Assemble.BibliographyRanges` が明示した `full` または `minimal` と区切り文字列で組む。
 ラテン文字のソートキーは `Golem.Unicode.Latin` が Unicode 17.0.0 の表から作る。
+一次資料の書誌例 4 件と、その例を組む宣言は `modules/golem-project/test/fixtures/bibliography/` にある。
 
 依存のバージョンは `cabal.project.freeze` で固定している。
 このファイルを消してビルドすると、依存のバージョンが変わりうる。

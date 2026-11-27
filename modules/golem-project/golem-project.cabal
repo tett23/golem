@@ -7,6 +7,9 @@ author:             tett23
 maintainer:         tett23@gmail.com
 category:           Text
 build-type:         Simple
+extra-source-files: test/fixtures/bibliography/*.toml
+                    test/fixtures/bibliography/*.json
+                    test/fixtures/bibliography/*.txt
 
 common warnings
   ghc-options: -Wall -Wcompat -Wincomplete-record-updates -Wincomplete-uni-patterns -Wredundant-constraints -Werror=incomplete-patterns -Werror
@@ -50,7 +53,8 @@ test-suite golem-project-test
   type:             exitcode-stdio-1.0
   hs-source-dirs:   test
   main-is:          Main.hs
-  other-modules:    BibliographyStyleSpec
+  other-modules:    BibliographyExamplesSpec
+                    BibliographyStyleSpec
                     ColophonSpec
                     FramesSpec
                     OutlinesSpec
@@ -84,6 +88,7 @@ test-suite golem-project-test
     , directory
     , filepath
     , golem-assemble
+    , golem-bibliography
     , golem-length
     , golem-parser
     , golem-project

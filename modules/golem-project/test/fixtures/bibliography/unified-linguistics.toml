@@ -1,0 +1,39 @@
+# De Gruyter Mouton Journal Style Sheet v1.3, page 8, primary example.
+# https://www.degruyterbrill.com/publication/journal_key/JPLR/downloadAsset/JPLR_Mouton_journal_stylesheet.pdf
+# The four editor names were rechecked on 2026-11-27; see docs/research/bibliography-styles.md.
+# This fixture covers this chapter only, not a complete bundled style.
+# The explicit name bounds are the example counts, not publication-wide rules.
+[bibliography]
+style = 'example'
+[bibliography.styles.example]
+citation-mode = 'author-year'
+citation = ['({author} {year})']
+sort = ['author', 'year', 'title']
+page-range = 'full'
+range-delimiter = '–'
+[bibliography.styles.example.names.author]
+order = 'first-family-given'
+part-delimiter = ', '
+initials = false
+initial-format = '{i}'
+initial-delimiter = ' '
+delimiter = ', '
+last-delimiter = ' & '
+max = 1
+use-first = 1
+et-al = ''
+[bibliography.styles.example.names.editor]
+order = 'given-family'
+part-delimiter = ' '
+initials = false
+initial-format = '{i}'
+initial-delimiter = ' '
+delimiter = ', '
+last-delimiter = ' & '
+max = 4
+use-first = 4
+et-al = ''
+label = ['ed.', 'eds.']
+[bibliography.styles.example.types.chapter]
+pieces = ['{author}', '. {year}', '. {title}', '. In {editor}', ' ({editor-label}), ', '{container-title}', ' ({collection-title} {collection-number})', ', {page}', '. {publisher-place}', ': {publisher}', '.']
+char-styles = { container-title = 'italic' }
