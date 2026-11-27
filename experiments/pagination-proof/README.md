@@ -1720,6 +1720,20 @@ golem-typeset はコードの行を脚注なしで作り（`Flow.hs:3870`）、g
    写しの再帰分岐と定理の入力条件の分岐は `check-wrap-verse-shape.sh` で照合する。
    ただし、制御フローや詩の退避先を通るすべての初期状態への接続は残る。
    公理と定理の依存、有限の実装照合との区別は [詩の試し置きの依存調査](../../docs/research/0352-wrap-verse-entry-dependencies.md) に記録する。
+   `CausalStanza.lean` は、対応モデル `CausalBoundary` の任意の `Ms` について、成功した `stanza` と `accept` の出力のカーソルを扱う。
+   その保持処理を `waitForPrior`、一つの詩の行の退避先を `parts` から導くので、カーソルを保つことを退避先の前提として置かない。
+   `beginWrap` の返り値を直接使う `stanza` の入力では、成功結果の `WrapReady` も導く。
+   証明は 4864 個の列挙入力には限らないが、対応モデルの `Ms` の範囲にとどまり、全実装の原稿や行の内容と順序の一般証明には広げない。
+   前提と残りは [詩の配置と退避先の依存調査](../../docs/research/0352-causal-stanza-dependencies.md) に記録する。
+   `CausalParagraphs.lean` は、このモデルの任意の `Ms` について、段落間の `noBreak`、`paragraphAt`、`paragraphs` の成功結果へ同じカーソルの条件を伝える。
+   `beginWrap` の返り値から始める `paragraphs` では、成功した出力の `WrapReady` を、入力の `WrapReady` を別途仮定せずに導く。
+   `CAUSAL_MODE=controls` の 216 ケースで、繰り返した制御の前後、空の本文、容量 1〜6 行の成功と失敗を実装と照合する。
+   対応モデル以外の制御と、途中状態すべての接続は残す。
+   公理と前提は [段落間の受け渡しの依存調査](../../docs/research/0352-causal-paragraphs-dependencies.md) に記録する。
+   `CausalCalls.lean` は、処理全体の成功を前提にせず、モデルの `paragraphs` が試みる各入口の `WrapReady` を導く。
+   前処理の結果、詩の試しの全再帰入力、通常の段落と詩の配置の入力、次の段落の入力を扱う。
+   述語の分岐と再帰先は `check-causal-call-shape.sh` で写しと比べる。
+   詩の配置の内部の再試行と退避先すべての接続は残し、前提を [各入口の依存調査](../../docs/research/0352-causal-call-entry-dependencies.md) に記録する。
 
 これらを終えるまで Alloy の定期実行と既存の参照を維持する。
 終えたときは、Alloy の定期実行を終え、規則やモデルを変えたときにローカルの Lean で検証し直す手順を CONTRIBUTING に書く。
@@ -1752,6 +1766,9 @@ sh experiments/pagination-proof/check.sh
 `check-wrap-call-shape.sh` は、`Physical.lean` の `parts` と入口の述語の分岐を比較する。
 `WrapVerses.lean` は `WrapCalls.olean` を読み込み、詩の全再帰入力と成功結果のカーソルの条件を検査する。
 `check-wrap-verse-shape.sh` は、`Physical.lean` の `tryVerses` とその入口の述語の再帰分岐を比較する。
+`CausalStanza.lean` は `CausalBoundary.olean` と `WrapCalls.olean` を読み込み、詩の保持と退避先を具体化して成功結果のカーソルを検査する。
+`CausalParagraphs.lean` は `CausalStanza.olean` を読み込み、前処理と段落間の成功結果のカーソルを検査する。
+`CausalCalls.lean` は `CausalParagraphs.olean` と `WrapVerses.olean` を読み込み、失敗する試みも含む各入口の条件を検査する。
 `CausalFirstIds.lean` は、採番の算術部分だけをほかのモデルを読み込まずに検査する。
 `WholeOrder.lean` は `WholeNotes.olean` を読み込み、ほかの検査と並んで検査し、最後にその結果を待つ。
 `WholeRules.lean` は `Whole.olean` を読み込み、同じくほかの検査と並んで検査する。

@@ -317,7 +317,7 @@ if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|implemented_by|exte
   exit 1
 fi
 sh "$root/experiments/pagination-proof/check-wrap-verse-shape.sh"
-LEAN_PATH="$tmp" "$lean" "$wrapVerses"
+LEAN_PATH="$tmp" "$lean" -o "$tmp/WrapVerses.olean" "$wrapVerses"
 echo "every recursive verse trial entry and returned snapshot preserves its wrap readiness"
 
 # Only the arithmetic component of the retry's first-ID premise is
@@ -373,6 +373,44 @@ LEAN_PATH="$tmp" "$lean" --run "$cboundary" premises > "$tmp/causal-premises" ||
   exit 1
 }
 echo "every run of a figure places the lines of runLines in the $causalInputs manuscripts"
+
+# Instantiate stanza's hold and display-row fallback before using its cursor.
+LEAN_PATH="$tmp" "$lean" -o "$tmp/CausalBoundary.olean" "$cboundary"
+causalStanza=$root/experiments/pagination-proof/CausalStanza.lean
+if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|implemented_by|extern|native_decide)([^A-Za-z_]|$)' "$causalStanza"; then
+  echo "unproved or unchecked Lean declaration in $causalStanza" >&2
+  exit 1
+fi
+LEAN_PATH="$tmp" "$lean" -o "$tmp/CausalStanza.olean" "$causalStanza"
+echo "causal stanza hold and display-row fallback preserve wrap cursor readiness"
+
+# Connect no-break preprocessing and successive paragraph/stanza results.
+causalParagraphs=$root/experiments/pagination-proof/CausalParagraphs.lean
+if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|implemented_by|extern|native_decide)([^A-Za-z_]|$)' "$causalParagraphs"; then
+  echo "unproved or unchecked Lean declaration in $causalParagraphs" >&2
+  exit 1
+fi
+LEAN_PATH="$tmp" "$lean" -o "$tmp/CausalParagraphs.olean" "$causalParagraphs"
+(cd "$root" && CAUSAL_MODE=controls driverCheck experiments/pagination-proof/CausalBoundary.hs) > "$tmp/causal-controls-haskell"
+CAUSAL_MODE=controls LEAN_PATH="$tmp" "$lean" --run "$cboundary" > "$tmp/causal-controls-lean"
+diff -u "$tmp/causal-controls-haskell" "$tmp/causal-controls-lean"
+controlInputs=$(grep -c '^[0-9]' "$tmp/causal-controls-lean")
+CAUSAL_MODE=controls LEAN_PATH="$tmp" "$lean" --run "$cboundary" premises > "$tmp/causal-controls-premises" || {
+  cat "$tmp/causal-controls-premises" >&2
+  exit 1
+}
+echo "causal paragraph cursor handoffs and $controlInputs repeated no-break boundary cases agree"
+
+# Include entries of unsuccessful paragraphs calls, not only successful outputs.
+causalCalls=$root/experiments/pagination-proof/CausalCalls.lean
+if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|implemented_by|extern|native_decide)([^A-Za-z_]|$)' "$causalCalls"; then
+  echo "unproved or unchecked Lean declaration in $causalCalls" >&2
+  exit 1
+fi
+sh "$root/experiments/pagination-proof/check-causal-call-shape.sh"
+LEAN_PATH="$tmp" "$lean" "$causalCalls"
+echo "causal paragraph entries, including failed attempts, preserve wrap readiness"
+
 
 # The values of the evaluation of Golem.Layout.KnuthPlass (badness,
 # fitness, line demerits, cumulative widths, the demerits of the chosen
