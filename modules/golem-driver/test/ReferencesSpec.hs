@@ -277,6 +277,15 @@ bibliographyFormatTests =
         archive <- toArchive <$> BL.readFile (tmp </> "build/epub/book.epub")
         let xhtml = maybe "" (TE.decodeUtf8 . BL.toStrict . fromEntry) (findEntryByPath "OEBPS/a.xhtml" archive)
         assertBool (T.unpack xhtml) ("&lt;a&gt;&amp;[cite x]ref-" `T.isInfixOf` xhtml),
+    testCase "root ADR 0470 I6: a selected bundled IEEE book matches the primary example" $
+      let records = "[{\"id\":\"robot\",\"type\":\"book\",\"author\":[{\"family\":\"Klaus\",\"given\":\"B.\"},{\"family\":\"Horn\",\"given\":\"P.\"}],\"title\":\"Robot Vision\",\"publisher\":\"MIT Press\",\"publisher-place\":\"Cambridge, MA, USA\",\"issued\":{\"date-parts\":[[1986]]}}]"
+       in withBibProject "bibliography = [\"refs.json\"]" "[cite robot]\n\n@bibliography\n" [("refs.json", records)] $ \tmp -> do
+            TIO.appendFile (tmp </> "style.toml") "\n[bibliography]\nstyle='ieee'\n"
+            TIO.appendFile (tmp </> "manifest.toml") "[targets.text]\n"
+            result <- build (defaultOptions tmp) {optTargets = Just [TargetText]}
+            assertEqual "no errors" [] (map diagCode (filter isError (brDiagnostics result)))
+            output <- TIO.readFile (tmp </> "build/text/horizontal/a.txt")
+            assertBool (T.unpack output) ("B. Klaus and P. Horn, Robot Vision. Cambridge, MA, USA: MIT Press, 1986." `T.isInfixOf` output),
     testCase "root ADR 0470 I4: same-author years receive key-ordered suffixes after number notation" $
       forM_ [False, True] $ \languageOverride ->
         let records = "[{\"id\":\"z\",\"type\":\"book\",\"language\":\"en\",\"title\":\"Z\",\"author\":[{\"family\":\"Author\",\"given\":\"One\"}],\"issued\":{\"date-parts\":[[1988]]}},{\"id\":\"a\",\"type\":\"book\",\"language\":\"en\",\"title\":\"A\",\"author\":[{\"family\":\"Author\",\"given\":\"One\"}],\"issued\":{\"date-parts\":[[1988]]}},{\"id\":\"unused\",\"type\":\"book\",\"author\":[{\"family\":\"Author\",\"given\":\"One\"}],\"issued\":{\"date-parts\":[[1988]]}}]"

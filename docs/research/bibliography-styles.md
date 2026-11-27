@@ -86,6 +86,8 @@ Harvard は、著者と年の方式の書式の一群で、管理する団体を
 
 *IEEE Reference Guide*（V 3.28.2025、IEEE Publication Operations）が定める（`https://journals.ieeeauthorcenter.ieee.org/wp-content/uploads/sites/7/IEEE_Reference_Guide.pdf`）。
 引用は、引用した順に番号を振る `[1]` の形である。
+2026-11-27 に、[同じ案内の PDF](https://journals.ieeeauthorcenter.ieee.org/wp-content/uploads/sites/7/IEEE_Reference_Guide.pdf?WT.ac=journals) で、著者名は六人まで全員を書き、七人以上は第一著者の後を `et al.` にする規則を確認した。
+本文の複数の番号も、範囲に略さず `[1], [2], [3]` のように一つずつ書く。
 次の例は、この案内のとおりである。
 
 - 書籍：`B. Klaus and P. Horn, *Robot Vision*. Cambridge, MA, USA: MIT Press, 1986.`

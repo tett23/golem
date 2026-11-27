@@ -1,0 +1,26 @@
+[
+  {
+    "id": "klaus1986",
+    "type": "book",
+    "author": [
+      {
+        "family": "Klaus",
+        "given": "B."
+      },
+      {
+        "family": "Horn",
+        "given": "P."
+      }
+    ],
+    "title": "Robot Vision",
+    "publisher": "MIT Press",
+    "publisher-place": "Cambridge, MA, USA",
+    "issued": {
+      "date-parts": [
+        [
+          1986
+        ]
+      ]
+    }
+  }
+]
