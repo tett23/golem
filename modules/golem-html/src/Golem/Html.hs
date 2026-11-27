@@ -53,6 +53,7 @@ import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
 import Golem.Assemble
+import Golem.Assemble.BibliographyNoteContext (citationCount, citationOffsets)
 import Golem.Assemble.ListMarkers
 import Golem.Assemble.Numbering (formatSeparator, formatTitle, titleSeparator)
 import Golem.Bibliography (EntryPart (..))
@@ -411,6 +412,7 @@ data Ctx = Ctx
     {- | the text is inside a link: a resolved reference in it is its text
     alone (docs/adr/0267)
     -} cInLink :: Bool,
+    cNoteCitationContext :: !(Maybe NoteCitationContext),
     cPageBreaks :: Map SrcSpan [(Int, Text, Text)]
   }
 
@@ -543,7 +545,7 @@ page cfg ft book pageBreaks notes endnotes (Document fid bs) =
       local = Map.lookup fid (hcLocalStyles cfg)
       anonymous = Map.union (Map.findWithDefault Map.empty fid (hcLocalAnonymousStyles cfg)) (hcAnonymousStyles cfg)
       numbered = Map.fromList [(r, (n, Map.lookup r anonymous)) | (r, n) <- Map.toList (anonymousStyleNumbers book)]
-      c = Ctx cfg ft book here (maybe id (Map.union . hlParaStyles) local (hcParaStyles cfg)) numbered 0 notes endnotes (citeIds book) (maybe id (Map.union . hlCharStyles) local (hcCharStyles cfg)) False pageBreaks
+      c = Ctx cfg ft book here (maybe id (Map.union . hlParaStyles) local (hcParaStyles cfg)) numbered 0 notes endnotes (citeIds book) (maybe id (Map.union . hlCharStyles) local (hcCharStyles cfg)) False Nothing pageBreaks
       -- a page with styles of its own has the class of its position (docs/adr ADR 0014)
       classes = ["vertical" | hcVertical cfg] <> ["file-" <> tshow n | Just _ <- [local], (n, Document fid' _) <- zip [1 :: Int ..] (bookDocs book), fid' == fid]
       body = topBlocks c bs <> notesSection c <> endnotesSection c
@@ -1127,7 +1129,7 @@ spanAnchor :: SrcSpan -> Text
 spanAnchor (SrcSpan (FileId f) s _) = "i-" <> T.pack (show f) <> "-" <> T.pack (show s)
 
 inlines :: Ctx -> [InlineF r] -> [Node]
-inlines c = concatMap (inline c)
+inlines c = concatMap (uncurry inline) . inlineContexts c
 
 inline :: Ctx -> InlineF r -> [Node]
 inline c value = anchor <> inlineBody c value
@@ -1146,9 +1148,9 @@ inlineBody c = \case
   Text sp t -> pageTextWith (textHtml c) (Map.findWithDefault [] sp (cPageBreaks c)) t
   Ruby _ _ segs
     | any (\seg -> rsOptions seg /= defaultRubyOptions || isJust (rsOtherReading seg)) segs ->
-        concatMap extendedRuby segs
+        concatMap extendedRuby (zip (map fst (arrayContexts c (map rsBase segs))) segs)
     where
-      extendedRuby seg =
+      extendedRuby (context, seg) =
         let options = rsOptions seg
             monoClass = [("class", "mono") | length segs >= 2 || T.length (foldMap inlineText (rsBase seg)) == 1]
             alignment = case roAlign options of
@@ -1162,7 +1164,7 @@ inlineBody c = \case
               Nothing -> []
             readingHtml side readingText marks = [case mark of Nothing -> textOf (T.singleton ch); Just shape -> el "span" [("style", "text-emphasis-position:" <> (if side == "under" then "under left" else "over right") <> ";"), ("class", "kenten kenten-" <> shape)] [textOf (T.singleton ch)] | (ch, mark) <- zip (T.unpack (fromMaybe "" readingText)) (marks <> repeat Nothing)]
             wrap side baseNodes readingText marks = [el "ruby" (monoClass <> [("style", "ruby-position:" <> side <> ";" <> alignment)]) (baseNodes <> [el "rp" [] [textOf "（"], el "rt" readingSize (readingHtml side readingText marks), el "rp" [] [textOf "）"]])]
-            base = inlines c (rsBase seg)
+            base = inlines context (rsBase seg)
          in case roSide options of
               RubyBefore -> wrap "over" base (rsReading seg) (roReadingKenten options)
               RubyAfter -> wrap "under" base (rsReading seg) (roReadingKenten options)
@@ -1172,12 +1174,12 @@ inlineBody c = \case
     [ el
         "ruby"
         [("class", "mono") | length segs >= 2 || T.length (T.concat [foldMap inlineText b | RubySegment b _ <- segs]) == 1]
-        (concat [inlines c b <> [el "rp" [] [textOf "（"], el "rt" [] (maybe [] (\r' -> [textOf r']) r), el "rp" [] [textOf "）"]] | RubySegment b r <- segs])
+        (concat [inlines context b <> [el "rp" [] [textOf "（"], el "rt" [] (maybe [] (\r' -> [textOf r']) r), el "rp" [] [textOf "）"]] | (context, RubySegment b r) <- zip (map fst (arrayContexts c (map rsBase segs))) segs])
     ]
   -- the shape of the IR; none (from a plugin) is sesame (golem-driver ADR 0019)
   Kenten _ sh xs ->
     if any containsRuby xs
-      then concatMap emphasized xs
+      then concatMap (uncurry emphasized) (inlineContexts c xs)
       else [el "span" [("class", "kenten kenten-" <> fromMaybe "sesame" sh)] (inlines c xs)]
     where
       containsRuby = \case
@@ -1188,13 +1190,13 @@ inlineBody c = \case
         Lang _ _ ys -> any containsRuby ys
         Resolved _ _ _ ys -> any containsRuby ys
         _ -> False
-      emphasized (Ruby sp unit segs) = inline c (Ruby sp unit (map markSegment segs))
-      emphasized (Color sp name ys) = inline c (Color sp name [Kenten sp sh ys])
-      emphasized (CharStyle sp name ys) = inline c (CharStyle sp name [Kenten sp sh ys])
-      emphasized (Link sp target ys) = inline c (Link sp target [Kenten sp sh ys])
-      emphasized (Lang sp lang ys) = inline c (Lang sp lang [Kenten sp sh ys])
-      emphasized (Resolved sp kind label ys) = inline c (Resolved sp kind label [Kenten sp sh ys])
-      emphasized x = [el "span" [("class", "kenten kenten-" <> fromMaybe "sesame" sh)] (inline c x)]
+      emphasized context (Ruby sp unit segs) = inline context (Ruby sp unit (map markSegment segs))
+      emphasized context (Color sp name ys) = inline context (Color sp name [Kenten sp sh ys])
+      emphasized context (CharStyle sp name ys) = inline context (CharStyle sp name [Kenten sp sh ys])
+      emphasized context (Link sp target ys) = inline context (Link sp target [Kenten sp sh ys])
+      emphasized context (Lang sp lang ys) = inline context (Lang sp lang [Kenten sp sh ys])
+      emphasized context (Resolved sp kind label ys) = inline context (Resolved sp kind label [Kenten sp sh ys])
+      emphasized context x = [el "span" [("class", "kenten kenten-" <> fromMaybe "sesame" sh)] (inline context x)]
       markSegment seg =
         let opts = rsOptions seg
             marks reading previous = take (maybe 0 T.length reading) (map (Just . fromMaybe (fromMaybe "sesame" sh)) (previous <> repeat Nothing))
@@ -1276,7 +1278,7 @@ inlineBody c = \case
           reference key text = case bibliographyHome (cBook c) sp of
             Just home -> [Element "a" [("href", linkTo c home (citeId c at key))] [textOf text]]
             Nothing -> [textOf text]
-       in [el "span" [("class", "cite")] (concatMap piece (citationPiecesFor (cBook c) sp ns))]
+       in [el "span" [("class", "cite")] (concatMap piece (citationPiecesInNoteFor (cBook c) (cNoteCitationContext c) sp ns))]
     Nothing -> []
   ProofComment _ t -> [el "span" [("class", "proof")] [textOf t] | hcDev (cCfg c)]
   LineBreak _ -> [el "br" [] []]
@@ -1339,7 +1341,7 @@ noteText c n = fromMaybe (tshow n) (writeNumber (hcNoteNotation (cCfg c)) (toInt
 
 -- | The sidenotes of a paragraph after it, in the language of the paragraph (docs/adr ADR 0187).
 sidenotes :: Ctx -> Maybe Text -> [Inline] -> [Node]
-sidenotes c lang is = concat [[el "aside" ([("class", "sidenote")] <> maybe [] langPairs (at <|> lang)) (el "span" [("class", "number")] [textOf (tshow n)] : concatMap (inlines c) (noteParagraphs body)), nl] | (at, _, n, body) <- inlineSidenotes is]
+sidenotes c lang is = concat [[el "aside" ([("class", "sidenote")] <> maybe [] langPairs (at <|> lang)) (el "span" [("class", "number")] [textOf (tshow n)] : concat [inlines context xs | (context, xs) <- noteContexts c SidenoteChannel sp n (noteParagraphs body)]), nl] | (at, sp, n, body) <- inlineSidenotes is]
 
 -- | The text of the links of an endnote, in the notation of [endnotes] mark-format (root ADR 0412).
 endnoteText :: Ctx -> Int -> Text
@@ -1349,21 +1351,21 @@ endnoteText c n = fromMaybe (tshow n) (writeNumber (hcEndnoteNotation (cCfg c)) 
 notes, as they are written (root ADR 0412).
 -}
 endnotesSection :: Ctx -> [Node]
-endnotesSection c = noteList c "endnotes" (endnotesTitle (hcLanguage (cCfg c))) "endnote" "endnote-" "endnoteref-" endnoteText [(f, key, n, xs) | (f, key, d) <- cnList (cEndnotes c), (_, n, xs) <- documentEndnotes d]
+endnotesSection c = noteList c EndnoteChannel "endnotes" (endnotesTitle (hcLanguage (cCfg c))) "endnote" "endnote-" "endnoteref-" endnoteText [(f, key, sp, n, xs) | (f, key, d) <- cnList (cEndnotes c), (sp, n, xs) <- documentEndnotes d]
 
 {- | The notes of the chapter at the end of its last page, after a title
 (golem-driver ADR 0026); each links back to its mark, on whichever page.
 -}
 notesSection :: Ctx -> [Node]
-notesSection c = noteList c "notes" (notesTitle (hcLanguage (cCfg c))) "footnote" "note-" "noteref-" noteText [(f, key, n, xs) | (f, key, d) <- cnList (cNotes c), (_, n, xs) <- documentNotes d]
+notesSection c = noteList c FootnoteChannel "notes" (notesTitle (hcLanguage (cCfg c))) "footnote" "note-" "noteref-" noteText [(f, key, sp, n, xs) | (f, key, d) <- cnList (cNotes c), (sp, n, xs) <- documentNotes d]
 
 {- | A list of notes or endnotes: the section of its class with its title,
 an aside of its kind for each, a p for each paragraph, the link back at
 the start of the first (docs/adr/0263).
 -}
-noteList :: Ctx -> Text -> Text -> Text -> Text -> Text -> (Ctx -> Int -> Text) -> [(FileId, Int -> Text, Int, [[Inline]])] -> [Node]
-noteList _ _ _ _ _ _ _ [] = []
-noteList c cls title kind idPrefix backPrefix mark ns =
+noteList :: Ctx -> NoteChannelKind -> Text -> Text -> Text -> Text -> Text -> (Ctx -> Int -> Text) -> [(FileId, Int -> Text, SrcSpan, Int, [[Inline]])] -> [Node]
+noteList _ _ _ _ _ _ _ _ [] = []
+noteList c channel cls title kind idPrefix backPrefix mark ns =
   [ el
       "section"
       [("class", cls)]
@@ -1372,10 +1374,10 @@ noteList c cls title kind idPrefix backPrefix mark ns =
             [ [ Element
                   "aside"
                   [plainAttr "epub:type" kind, plainAttr "id" (idPrefix <> key n)]
-                  [el "p" [] ((if i == (0 :: Int) then [Element "a" [("href", linkTo c f (backPrefix <> key n))] [textOf (mark c n)], textOf " "] else []) <> inlines c is) | (i, is) <- zip [0 ..] ps],
+                  [el "p" [] ((if i == (0 :: Int) then [Element "a" [("href", linkTo c f (backPrefix <> key n))] [textOf (mark c n)], textOf " "] else []) <> inlines context is) | (i, (context, is)) <- zip [0 ..] (noteContexts c channel sp n ps)],
                 nl
               ]
-            | (f, key, n, ps) <- ns
+            | (f, key, sp, n, ps) <- ns
             ]
       ),
     nl
@@ -2185,3 +2187,19 @@ tcyNodes vertical content = case content of
   _ -> [el "span" [("class", "tcy")] [textOf value]]
   where
     value = case content of TcyLiteral t -> t; TcyNumber q -> renderIRNumber q
+
+-- These offsets are structural and pure: retries never consume a counter.
+inlineContexts :: Ctx -> [InlineF r] -> [(Ctx, InlineF r)]
+inlineContexts c xs = case cNoteCitationContext c of
+  Nothing -> map (c,) xs
+  Just context -> [(c {cNoteCitationContext = Just context {nccOccurrence = nccOccurrence context + offset}}, value) | (offset, value) <- citationOffsets xs]
+
+arrayContexts :: Ctx -> [[InlineF r]] -> [(Ctx, [InlineF r])]
+arrayContexts c arrays = case cNoteCitationContext c of
+  Nothing -> map (c,) arrays
+  Just context -> [(c {cNoteCitationContext = Just context {nccOccurrence = nccOccurrence context + offset}}, xs) | (offset, xs) <- zip (scanl (\n xs -> n + citationCount xs) 0 arrays) arrays]
+
+noteContexts :: Ctx -> NoteChannelKind -> SrcSpan -> Int -> [[Inline]] -> [(Ctx, [Inline])]
+noteContexts c channel sp n = arrayContexts context
+  where
+    context = c {cNoteCitationContext = if Map.null (bookNoteCitationPieces (cBook c)) then Nothing else Just (NoteCitationContext sp channel n 0)}

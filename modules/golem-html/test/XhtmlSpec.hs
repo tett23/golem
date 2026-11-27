@@ -4,13 +4,14 @@ the index and citations.
 -}
 module XhtmlSpec (xhtmlTests) where
 
+import Control.Monad (forM_)
 import Data.List.NonEmpty (NonEmpty (..))
 import Data.Map.Strict qualified as Map
 import Data.Maybe (fromMaybe)
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
-import Golem.Assemble (AssembleConfig (..), Book (..), HeadingInfo (..), IndexGroup (..), IndexLocator (..), IndexSection (..), LabelTarget (..), NoteNumbering (..), SeparatorAppearance (..), SeparatorStroke (..), TocEntry (..), assemble)
+import Golem.Assemble (AssembleConfig (..), Book (..), HeadingInfo (..), IndexGroup (..), IndexLocator (..), IndexSection (..), LabelTarget (..), NoteChannelKind (..), NoteCitationContext (..), NoteNumbering (..), SeparatorAppearance (..), SeparatorStroke (..), TocEntry (..), assemble)
 import Golem.Assemble.Formats (arabic, kanjiNotation)
 import Golem.Assemble.ListMarkers (defaultNumberFormat)
 import Golem.Bibliography (EntryPart (..))
@@ -98,6 +99,7 @@ bookOf bs =
       bookBibliographyLabels = Map.empty,
       bookBibliographyHangingIndent = Nothing,
       bookCitationPieces = Map.empty,
+      bookNoteCitationPieces = Map.empty,
       bookCiteMarks = Map.empty,
       bookLabels = Map.empty,
       bookReferenced = Set.empty,
@@ -509,7 +511,35 @@ ruleTests =
 
 tests :: [TestTree]
 tests =
-  [ testCase "root ADR 0468 I2: heading style has its own selector without paragraph spacing" $ do
+  [ testCase "root ADR 0470 I5: HTML consumes note-local ordinals without changing shared-span legacy marks" $
+      forM_ [(channel, variant) | channel <- [FootnoteChannel, SidenoteChannel, EndnoteChannel], variant <- [0 :: Int .. 3]] $ \(channel, variant) -> do
+        let note = case channel of FootnoteChannel -> Note; SidenoteChannel -> Sidenote; EndnoteChannel -> Endnote
+            items = [citeItem "a"]
+            mark = Cite (at 3) items
+            noteBodyOf :: Int -> [Block]
+            noteBodyOf n = if n == 1 then [para 4 first, para 5 [mark]] else [para 4 [mark]]
+            raw = Cite (at 3) [citeItem "a"]
+            first = case variant of
+              1 -> [Ruby (at 3) () [RubySegment [raw] (Just "a"), RubySegment [raw] (Just "b")]]
+              2 -> [CharStyle (at 3) "strong" [Lang (at 3) "ja" [mark, mark]]]
+              3 -> [Kenten (at 3) Nothing [Ruby (at 3) () [RubySegment [raw] (Just "a")], mark]]
+              _ -> [mark, mark]
+            base =
+              (bookOf [para 0 [mark, note (at 1) 1 Nothing (noteBodyOf 1), note (at 1) 2 Nothing (noteBodyOf 2)]])
+                { bookBibliographies = [(Nothing, [("a", 1)])],
+                  bookCiteMarks = Map.singleton (fidA, at 3) (Nothing, 1),
+                  bookCitationPieces = Map.singleton (at 3) [(items, [CiteText "GLOBAL"])]
+                }
+            table = Map.fromList [(NoteCitationContext (at 1) channel n occurrence, (at 3, items, [CiteText text])) | (n, occurrence, text) <- [(1, 0, "N1-0"), (1, 1, "N1-1"), (1, 2, "N1-2"), (2, 0, "N2-0")]]
+            output = bodyA cfg0 base {bookNoteCitationPieces = table}
+        forM_ ["N1-0", "N1-1", "N1-2", "N2-0"] $ \text -> T.count text output @?= 1
+        T.count "GLOBAL" output @?= 1
+        T.count "GLOBAL" (bodyA cfg0 base) @?= 5
+        let equivalent = Map.map (\(source, values, _) -> (source, values, [CiteText "GLOBAL"])) table
+            mismatched = Map.map (\(source, _, pieces) -> (source, [citeItem "different"], pieces)) table
+        bodyA cfg0 base {bookNoteCitationPieces = equivalent} @?= bodyA cfg0 base
+        bodyA cfg0 base {bookNoteCitationPieces = mismatched} @?= bodyA cfg0 base,
+    testCase "root ADR 0468 I2: heading style has its own selector without paragraph spacing" $ do
       let h = HtmlHeadingStyle "title" (Just "20pt") ["text-align: center"] noFeatures Nothing
           cfg = cfg0 {hcHeadingStyles = Map.singleton 1 h}
           book = bookOf [Block (at 1) Nothing Nothing (Heading 1 noHeadingAttrs [Text (at 1) "題名"])]

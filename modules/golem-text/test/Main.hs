@@ -1,5 +1,6 @@
 module Main (main) where
 
+import Control.Monad (forM_)
 import Data.List.NonEmpty (NonEmpty (..))
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
@@ -9,6 +10,7 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Golem.Assemble
 import Golem.Bibliography (EntryPart (..))
+import Golem.Doc.Citation (CitePiece (..))
 import Golem.Doc.IR
 import Golem.Syntax
 import Golem.TestSupport.PackageDirectory (enterPackageDirectory)
@@ -47,6 +49,7 @@ renderBlocks bib cites listings bodies =
             bookBibliographyLabels = Map.empty,
             bookBibliographyHangingIndent = Nothing,
             bookCitationPieces = Map.empty,
+            bookNoteCitationPieces = Map.empty,
             bookCiteMarks = Map.empty,
             bookLabels = Map.empty,
             bookReferenced = Set.empty,
@@ -90,7 +93,35 @@ tests :: TestTree
 tests =
   testGroup
     "golem-text"
-    [ testCase "root ADR 0470 I2: bibliography styles retain their text in plain output" $
+    [ testCase "root ADR 0470 I5: text consumes note-local ordinals without changing shared-span legacy marks" $
+        forM_ [(channel, variant) | channel <- [FootnoteChannel, SidenoteChannel, EndnoteChannel], variant <- [0 :: Int .. 3]] $ \(channel, variant) -> do
+          let note = case channel of FootnoteChannel -> Note; SidenoteChannel -> Sidenote; EndnoteChannel -> Endnote
+              items = [citeItem "a"]
+              mark = Cite (sp 3) items
+              para xs = Block (sp 4) Nothing Nothing (Paragraph Nothing xs)
+              body :: Int -> [Block]
+              body n = if n == 1 then [para first, para [mark]] else [para [mark]]
+              raw = Cite (sp 3) [citeItem "a"]
+              first = case variant of
+                1 -> [Ruby (sp 3) () [RubySegment [raw] (Just "a"), RubySegment [raw] (Just "b")]]
+                2 -> [CharStyle (sp 3) "strong" [Lang (sp 3) "ja" [mark, mark]]]
+                3 -> [Kenten (sp 3) Nothing [Ruby (sp 3) () [RubySegment [raw] (Just "a")], mark]]
+                _ -> [mark, mark]
+              cfg = AssembleConfig Map.empty "{n}" Map.empty NumberPerFile [] "{n}" "{n}" Map.empty 16 NumberPerChapter
+              (original, _) = assemble cfg noEval [Document (FileId 0) [para [mark, note (sp 1) 1 Nothing (body 1), note (sp 1) 2 Nothing (body 2)]]]
+              base = original {bookCitationPieces = Map.singleton (sp 3) [(items, [CiteText "GLOBAL"])]}
+              table = Map.fromList [(NoteCitationContext (sp 1) channel n occurrence, (sp 3, items, [CiteText text])) | (n, occurrence, text) <- [(1, 0, "N1-0"), (1, 1, "N1-1"), (1, 2, "N1-2"), (2, 0, "N2-0")]]
+              (_, ft) = registerFile "a.gm" emptyFileTable
+              output book = T.concat (map snd (renderText "ja" "kanji" False (const (const (0, 0))) lists False Map.empty Horizontal ft book))
+              resolved = output base {bookNoteCitationPieces = table}
+          forM_ ["N1-0", "N1-1", "N1-2", "N2-0"] $ \text -> T.count text resolved @?= 1
+          T.count "GLOBAL" resolved @?= 1
+          T.count "GLOBAL" (output base) @?= 5
+          let equivalent = Map.map (\(source, values, _) -> (source, values, [CiteText "GLOBAL"])) table
+              mismatched = Map.map (\(source, _, pieces) -> (source, [citeItem "different"], pieces)) table
+          output base {bookNoteCitationPieces = equivalent} @?= output base
+          output base {bookNoteCitationPieces = mismatched} @?= output base,
+      testCase "root ADR 0470 I2: bibliography styles retain their text in plain output" $
         renderBibliography (Map.fromList [("k", [EntryStyled "italic" [EntryText "Title"], EntryText ". ", EntryStyled "bold" [EntryUrl "https://example.org"]])]) [("k", 1)]
           @?= [("a.txt", "[1] Title. https://example.org\n")],
       testCase "root ADR 0478 I2, I4: rational text is normalized and integer vertical TCY stays kanji" $ do

@@ -13,6 +13,7 @@ module Golem.Assemble
     LabelTarget (..),
     NoteChannelKind (..),
     NoteTarget (..),
+    NoteCitationContext (..),
     TocEntry (..),
     IndexGroup (..),
     IndexLocator (..),
@@ -27,6 +28,7 @@ module Golem.Assemble
     bibliographyLabelFor,
     citationPiecesFor,
     resolvedCitationPieces,
+    citationPiecesInNoteFor,
     bookCitationItems,
     indexAt,
     channelAt,
@@ -148,6 +150,15 @@ data NoteTarget = NoteTarget
   }
   deriving stock (Eq, Show)
 
+-- | A citation occurrence in an already numbered S1 note (root ADR 0470).
+data NoteCitationContext = NoteCitationContext
+  { nccNoteSpan :: !SrcSpan,
+    nccChannel :: !NoteChannelKind,
+    nccNumber :: !Int,
+    nccOccurrence :: !Int
+  }
+  deriving stock (Eq, Ord, Show)
+
 data TocEntry = TocEntry
   { teLevel :: !Int,
     teNumber :: !(Maybe Text),
@@ -235,6 +246,8 @@ data Book = Book
     bookBibliographyHangingIndent :: !(Maybe BibliographyHangingIndent),
     -- | Prepared marks, retaining distinct items that share a plugin source span.
     bookCitationPieces :: !(Map SrcSpan [([CiteItem ()], [CitePiece])]),
+    -- | Prepared note marks, with their full occurrence identity and source payload.
+    bookNoteCitationPieces :: !(Map NoteCitationContext (SrcSpan, [CiteItem ()], [CitePiece])),
     -- | the list and the number of each citation mark, by its file and span
     bookCiteMarks :: !(Map (FileId, SrcSpan) (Maybe ListAt, Int)),
     bookLabels :: !(Map Text LabelTarget),
@@ -275,6 +288,13 @@ citationPiecesFor book sp items = fromMaybe (citationPieces items) (resolvedCita
 -- | A span is not a unique identity for plugin-generated marks.
 resolvedCitationPieces :: Book -> SrcSpan -> [CiteItem r] -> Maybe [CitePiece]
 resolvedCitationPieces book sp items = Map.lookup sp (bookCitationPieces book) >>= lookup (map void items)
+
+-- | A note-local mark when prepared, otherwise exactly the legacy lookup.
+citationPiecesInNoteFor :: Book -> Maybe NoteCitationContext -> SrcSpan -> [(CiteItem r, Maybe Int)] -> [CitePiece]
+citationPiecesInNoteFor book context sp items =
+  case context >>= (`Map.lookup` bookNoteCitationPieces book) of
+    Just (at, expected, pieces) | at == sp && expected == map (void . fst) items -> pieces
+    _ -> citationPiecesFor book sp items
 
 -- | A label and its separating space, with the legacy number as fallback.
 bibliographyLabelFor :: Book -> Maybe ListAt -> Text -> Int -> Text
@@ -569,6 +589,7 @@ assemble cfg evalDeferred docs0 =
             bookBibliographyLabels = Map.empty,
             bookBibliographyHangingIndent = Nothing,
             bookCitationPieces = Map.empty,
+            bookNoteCitationPieces = Map.empty,
             bookCiteMarks = citeMarks,
             bookLabels = labels,
             bookReferenced = refd,

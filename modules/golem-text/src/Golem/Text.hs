@@ -16,6 +16,7 @@ import Data.Ratio (denominator, numerator)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Golem.Assemble
+import Golem.Assemble.BibliographyNoteContext (citationCount, citationOffsets)
 import Golem.Assemble.ListMarkers
 import Golem.Assemble.Numbering (numberedTitleText)
 import Golem.Bibliography (EntryPart, entryText)
@@ -57,7 +58,8 @@ data Ctx = Ctx
     -- | the depth of the list around (0 outside lists)
     cDepth :: Int,
     -- | whether the captions of tables are after them, [tables] caption-position (docs/adr/0262)
-    cTableCaptionBelow :: Bool
+    cTableCaptionBelow :: Bool,
+    cNoteCitationContext :: !(Maybe NoteCitationContext)
   }
 
 {- | The markers of [lists] (golem-driver ADR 0013): the bullets and the
@@ -84,7 +86,7 @@ renderText lang numberDefault dev firstLine lists captionBelow bib variant ft bo
     (isLast, d@(Document fid _)) <- zip (map (== length chapter) [1 ..]) chapter
   ]
   where
-    ctxOf fid = Ctx variant lang numberDefault book dev (firstLine fid) False lists bib 0 captionBelow
+    ctxOf fid = Ctx variant lang numberDefault book dev (firstLine fid) False lists bib 0 captionBelow Nothing
 
 {- | The blocks of a file, an empty line between two; blank lines add
 their empty lines between two blocks, and nothing before the first
@@ -124,13 +126,13 @@ topText c = T.concat . go False Nothing Nothing
 file :: Ctx -> Document -> [Document] -> Text
 file c (Document _ bs) chapter =
   let body = topText c bs
-      notes = [(n, paragraphs) | d <- chapter, (_, n, paragraphs) <- documentNotes d]
+      notes = [(sp, n, paragraphs) | d <- chapter, (sp, n, paragraphs) <- documentNotes d]
       noteMark n = (if cVariant c == Vertical then "※" else "*") <> T.pack (show n)
       -- the first paragraph after the mark, each other on a line of its own (docs/adr/0263)
-      listText title ns = T.intercalate "\n" (title : [noteMark n <> " " <> T.intercalate "\n" (map (inlines c) ps) | (n, ps) <- ns])
+      listText channel title ns = T.intercalate "\n" (title : [noteMark n <> " " <> T.intercalate "\n" [inlines context xs | (context, xs) <- noteContexts c channel sp n ps] | (sp, n, ps) <- ns])
       -- the endnotes after the notes, under a title of their own (root ADR 0412)
-      endnotes = [(n, paragraphs) | d <- chapter, (_, n, paragraphs) <- documentEndnotes d]
-      lists = [listText (notesTitle (cLanguage c)) notes | not (null notes)] <> [listText (endnotesTitle (cLanguage c)) endnotes | not (null endnotes)]
+      endnotes = [(sp, n, paragraphs) | d <- chapter, (sp, n, paragraphs) <- documentEndnotes d]
+      lists = [listText FootnoteChannel (notesTitle (cLanguage c)) notes | not (null notes)] <> [listText EndnoteChannel (endnotesTitle (cLanguage c)) endnotes | not (null endnotes)]
       noteText = T.intercalate "\n\n" lists
       full
         | null lists = body
@@ -224,10 +226,10 @@ block c ind (Block sp _ _ body) = case body of
       (Block _ _ _ (Paragraph Nothing is) : rest) | not (any isLineBreak is) -> T.intercalate "\n" (inlines c is : map (block inItem i) rest)
       _ -> T.intercalate "\n" (map (block inItem i) bs)
     sidenotes is =
-      T.concat ["\n※" <> T.pack (show n) <> " " <> T.intercalate "\n" (map (inlines c) (noteParagraphs nb)) | (_, _, n, nb) <- inlineSidenotes is]
+      T.concat ["\n※" <> T.pack (show n) <> " " <> T.intercalate "\n" [inlines context xs | (context, xs) <- noteContexts c SidenoteChannel noteSpan n (noteParagraphs nb)] | (_, noteSpan, n, nb) <- inlineSidenotes is]
 
 inlines :: Ctx -> [InlineF r] -> Text
-inlines c = T.concat . map (inline c)
+inlines c = T.concat . map (uncurry inline) . inlineContexts c
 
 inline :: Ctx -> InlineF r -> Text
 inline c = \case
@@ -256,7 +258,7 @@ inline c = \case
   ChannelItem {} -> ""
   -- the mark of the default style; nothing when a number is not known (docs/adr/0266)
   Cite sp is -> case traverse (\i -> (,) i . Just <$> citeNumber (cBook c) sp (citKey i)) is of
-    Just ns -> citationText (citationPiecesFor (cBook c) sp ns)
+    Just ns -> citationText (citationPiecesInNoteFor (cBook c) (cNoteCitationContext c) sp ns)
     Nothing -> ""
   ProofComment _ t -> if cProfileDev c then "【校正：" <> t <> "】" else ""
   LineBreak _ -> "\n"
@@ -278,11 +280,27 @@ segments without a reading are written as they are.
 ruby :: Ctx -> [RubySegment] -> Text
 ruby c segs
   | any (isJust . rsOtherReading) segs =
-      T.concat [inlines c (rsBase seg) <> maybe "" (\t -> "（" <> t <> "）") (rsReading seg) <> maybe "" (\t -> "（" <> t <> "）") (rsOtherReading seg) | seg <- segs]
-ruby c segments = go segments
+      T.concat [inlines context (rsBase seg) <> maybe "" (\t -> "（" <> t <> "）") (rsReading seg) <> maybe "" (\t -> "（" <> t <> "）") (rsOtherReading seg) | (context, seg) <- zip (map fst (arrayContexts c (map rsBase segs))) segs]
+ruby c segments = go (zip (map fst (arrayContexts c (map rsBase segments))) segments)
   where
     go [] = ""
-    go segs@(RubySegment _ (Just _) : _) =
-      let (withR, rest) = span (\(RubySegment _ r) -> isJust r) segs
-       in T.concat [inlines c b | RubySegment b _ <- withR] <> "（" <> T.concat [r | RubySegment _ (Just r) <- withR] <> "）" <> go rest
-    go (RubySegment b Nothing : rest) = inlines c b <> go rest
+    go segs@((_, RubySegment _ (Just _)) : _) =
+      let (withR, rest) = span (\(_, RubySegment _ r) -> isJust r) segs
+       in T.concat [inlines context b | (context, RubySegment b _) <- withR] <> "（" <> T.concat [r | (_, RubySegment _ (Just r)) <- withR] <> "）" <> go rest
+    go ((context, RubySegment b Nothing) : rest) = inlines context b <> go rest
+
+-- These offsets are structural and pure: retries never consume a counter.
+inlineContexts :: Ctx -> [InlineF r] -> [(Ctx, InlineF r)]
+inlineContexts c xs = case cNoteCitationContext c of
+  Nothing -> map (c,) xs
+  Just context -> [(c {cNoteCitationContext = Just context {nccOccurrence = nccOccurrence context + offset}}, value) | (offset, value) <- citationOffsets xs]
+
+arrayContexts :: Ctx -> [[InlineF r]] -> [(Ctx, [InlineF r])]
+arrayContexts c arrays = case cNoteCitationContext c of
+  Nothing -> map (c,) arrays
+  Just context -> [(c {cNoteCitationContext = Just context {nccOccurrence = nccOccurrence context + offset}}, xs) | (offset, xs) <- zip (scanl (\n xs -> n + citationCount xs) 0 arrays) arrays]
+
+noteContexts :: Ctx -> NoteChannelKind -> SrcSpan -> Int -> [[Inline]] -> [(Ctx, [Inline])]
+noteContexts c channel sp n = arrayContexts context
+  where
+    context = c {cNoteCitationContext = if Map.null (bookNoteCitationPieces (cBook c)) then Nothing else Just (NoteCitationContext sp channel n 0)}

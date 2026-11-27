@@ -324,6 +324,7 @@ pageMapTests =
           bookBibliographyLabels = Map.empty,
           bookBibliographyHangingIndent = Nothing,
           bookCitationPieces = Map.empty,
+          bookNoteCitationPieces = Map.empty,
           bookCiteMarks = Map.empty,
           bookLabels = Map.empty,
           bookReferenced = Set.empty,
