@@ -26,11 +26,13 @@ library
     Golem.Unicode.Category
     Golem.Unicode.CharClass
     Golem.Unicode.Latin
+    Golem.Unicode.Script
     Golem.Unicode.Grapheme
     Golem.Unicode.Word
   other-modules:
     Golem.Unicode.LatinTable
     Golem.Unicode.Ranges
+    Golem.Unicode.ScriptTable
     Golem.Unicode.Table
   build-depends:
     , base        >=4.20 && <4.21
@@ -43,7 +45,8 @@ test-suite golem-unicode-test
   type:             exitcode-stdio-1.0
   hs-source-dirs:   test
   main-is:          Main.hs
-  other-modules:    LatinSpec
+  other-modules:    ScriptSpec
+                    LatinSpec
                     ConformanceSpec
                     CountsSpec
                     SegmentSpec

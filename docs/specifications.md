@@ -635,7 +635,9 @@ PDF 経路のモジュールだけが、レイアウト IR、シェイピング[
 - golem-unicode は base、containers、text だけに依存し、golem のどのパッケージにも依存しない（[docs/adr/0411](adr/0411-segment-graphemes-and-words-in-haskell.md)）。
   UAX #29 の拡張書記素クラスタの分割（`Golem.Unicode.Grapheme`）と語の境界（`Golem.Unicode.Word`）、一般カテゴリが L か N かの判定（`Golem.Unicode.Category`）、JLReq の文字クラス（`Golem.Unicode.CharClass`）を持つ。
   ラテン文字のソートキーは `Golem.Unicode.Latin` が作り、golem-assemble が名前の並べ替えに使う（[root ADR 0470](adr/0470-bibliography-styles-by-name-and-by-declaration.md)）。
-  分割は Haskell の純粋な関数であり、FFI を使わないので、wasm でもそのまま組める。
+  `Golem.Unicode.Script` は Unicode 17.0.0 の Script が Han、Hiragana、Katakana のいずれかに当たるかを判定する。
+  golem-assemble の `authorNeedsSortKeyWarning` は、その判定を使って、著者順の一覧に載る第一著者の姓に並べ替えのキーが必要かを返す。
+  これらは Haskell の純粋な関数であり、FFI を使わないので、wasm でもそのまま組める。
   分割の規則は libgrapheme 3.0.0 の実装に倣い、字の性質の表は Unicode 17.0.0 のデータから `scripts/gen-unicode-segmentation.sh` が生成する。
   golem-html と golem-unicode のライブラリが golem-layout と golem-project に依存しないことは、`scripts/ci/test.sh` が `.cabal` を読んで確かめる。
 - golem-geometry は base、text、golem-length だけに依存し、パスと矩形の型、パスのデータの読み込み、曲線を折れ線に直すことと、閉じたパスの内側の区間を持つ（[root ADR 0437](adr/0437-paths-and-the-box-model.md)、「パスとボックスモデル」）。

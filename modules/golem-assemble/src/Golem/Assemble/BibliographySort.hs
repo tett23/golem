@@ -6,6 +6,7 @@ module Golem.Assemble.BibliographySort
   ( SortFields (..),
     sortBibliographyEntries,
     authorSortKey,
+    authorNeedsSortKeyWarning,
     bibliographyYearSuffixes,
   )
 where
@@ -20,6 +21,7 @@ import Data.Text qualified as T
 import Golem.Assemble.BibliographyNames (BibliographyName (..))
 import Golem.Assemble.Formats (lowerAlphaNotation, writeNumber)
 import Golem.Unicode.Latin (latinSortKey)
+import Golem.Unicode.Script (isHanOrKana)
 
 -- | Resolved keys; the author is lowercase with Latin diacritics removed.
 data SortFields = SortFields
@@ -73,3 +75,15 @@ bibliographyYearSuffixes entries =
     ]
   where
     groups = Map.fromListWith Set.union [(group, Set.singleton key) | (key, group) <- entries]
+
+{- | The caller says whether this author appears in a bibliography. No
+warning is needed outside a listing sorted by author (root ADR 0470 I7).
+-}
+authorNeedsSortKeyWarning :: Bool -> [Text] -> Maybe Text -> Maybe BibliographyName -> Bool
+authorNeedsSortKeyWarning listed keys reading author =
+  listed
+    && "author" `elem` keys
+    && maybe True (T.null . T.strip) reading
+    && case author of
+      Just (PersonalName (Just family) _) -> T.any isHanOrKana family
+      _ -> False
