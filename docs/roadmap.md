@@ -37,7 +37,7 @@ v0.1.0-rc4 と v1.0.0 のどちらで扱うかは、まだ決めていない。
 
 ### テストと CI
 
-- **再利用ワークフローを含む CI の時間の計測（未実装）**：ローカルの呼出先を再帰的に展開して時間を計測し、読めない場合は停止する。[root ADR 0457](adr/0457-split-the-tests-rest-runner-in-two.md) の 20 回の計測を新しい記録で訂正する（[root ADR 0472](adr/0472-count-reusable-workflows-in-ci-timing.md)）。
+- **CI の予算超過の改善**：再利用ワークフローを含む同じ 20 回の中央値は 864 秒で、予算 300 秒を超える。検査の範囲と予算を保って短くする手段を、別の ADR で決める（[root ADR 0472](adr/0472-count-reusable-workflows-in-ci-timing.md)、[訂正した計測](ci-timings/2026-11-27-reusable-workflow-critical-path.md)）。
 - **行の帯の区間のテストの高速化**：[root ADR 0447](adr/0447-find-the-strip-intervals-by-pieces-between-vertices-and-crossings.md) のテスト設計は、0 から 10 の格子の上の頂点が 3 から 6 の多角形をすべて列挙すると書く。今は、テストの時間の上限に収めるため、頂点の数ごとに全体から均等に選んだ 40 個で確かめている（メンテナーが 2026-11-25 に認めた）。`stripInside` とテストを速くし、選ぶ数を増やすか、すべてを列挙する。着手するときに ADR を作る。
 - **軽量な形式手法の残りの範囲**：規則を不変条件として書き、小さな入力のすべてで確かめる手法を、範囲ごとに一つの ADR と一つのプルリクエストで広げる（[docs/adr/0208](adr/0208-widen-lightweight-formal-methods.md) の 1）。次の範囲では、試作で調べた入力を回帰テストに取り込み、CI で常時調べる範囲を実行時間から決める。
   - **パーサーと `golem fmt` の往復（未実装）**：文法から作る短い原稿を列挙し、`golem fmt` の往復と diagnostics の位置の不変条件で確かめる。[ADR 0351](adr/0351-prove-parser-formatter-round-trips.md) に従い、実際の文法から作った Lean モデルの結果を、パーサーと整形処理の出力に照らして確かめる。

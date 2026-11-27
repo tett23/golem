@@ -443,6 +443,15 @@ CI を待つ時間は変更を一つ入れるたびにかかるので、CI が�
 測るのは、プルリクエストの `ci.yml` の成功した実行のうち `build` を省かなかった直近 20 回の時間の中央値で、ランナーの順番待ちは含めない（[ADR 0392](adr/0392-budget-the-pull-request-ci-at-five-minutes.md)、計測のコマンドは `scripts/ci/ci-critical-path.sh`）。
 この時間が 300 秒を超えたら、ほかの作業より先に CI を改善する（CONTRIBUTING.md）。
 
+ローカルの再利用ワークフローも同じ依存グラフに展開し、呼出元の前後の依存を保つ。
+直列の子は時間を足し、並列の子と matrix の脚は最も長い時間を使い、呼出元の時間を二重に加えない。
+matrix の呼出元が違う子の時間は混ぜない。
+省いたジョブは 0 秒で、ランナーの待ち時間は数えない。
+外部の再利用ワークフロー、読めない呼出先、循環、グラフに対応しない実行中か実行済みのジョブがあれば、理由を出して計測を中止する。
+`--needs` は既存の呼出元の依存関係、`--graph` は展開したグラフの JSON を表示する。
+API の入力は実行の `headSha` を `workflow_revision` として記録し、保存入力もこの値を持つ場合は該当コミットの `.github/workflows/` をローカルの Git の履歴から読む。
+この値を持たない保存入力は、`--workflow FILE` または既定のワークフローのファイルを使う（[root ADR 0472](adr/0472-count-reusable-workflows-in-ci-timing.md)）。
+
 CI は、検査を減らさずに時間を縮める（[ADR 0395](adr/0395-bring-the-pull-request-ci-under-five-minutes.md)）。
 `build` のランナーは、自分が使うものだけを組む（`scripts/ci/build-targets.sh`）。
 テストのランナーは自分が走らせるテストのスイートを、出力と環境の検査のランナーは実行ファイルの `golem` だけを組む。

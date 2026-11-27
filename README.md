@@ -794,6 +794,15 @@ Golem のビルドとテストは Node を使わない。
 - 毎日一回 wasmtime のアドバイザリと action の固定を照合する `.github/workflows/advisories.yml`。
 - Alloy のモデルを変えたときと週に一度走る `.github/workflows/models.yml` と、そのモデルの重いコマンドを夜間に走らせる `.github/workflows/models-nightly.yml`。
 
+CI の時間は `sh scripts/ci/ci-critical-path.sh` で測る。
+ローカルの再利用ワークフローを再帰的に展開し、直列のジョブは足し、並列のジョブと matrix の脚は最も長い時間を使う。
+呼出元の時間と子の時間は二重に数えず、ランナーの順番待ちは含めない。
+外部の再利用ワークフロー、読めない呼出先、循環、対応しない実行済みか実行中のジョブがあれば、理由を出して計測を中止する。
+`--needs` は呼出元の依存関係、`--graph` は展開した依存グラフを表示する（[root ADR 0472](./docs/adr/0472-count-reusable-workflows-in-ci-timing.md)）。
+保存したジョブの JSON も引数に渡せる。
+`workflow_revision` を持つ入力と API から収集する入力では、該当コミットの `.github/workflows/` を Git のローカルの履歴から読むため、そのコミットのオブジェクトが必要である。
+指定がない保存入力は `--workflow FILE` のファイルを使う。
+
 #### どのジョブを走らせるか
 
 変更が `docs/` の下のファイル、`tools/textlint/` の下のファイル、リポジトリの根の Markdown のファイルだけの場合、`build`、`determinism`、`visual`、`format`、`release-scripts`、`scripts-macos`、`plugins`、`editors-lsp`、`verapdf` は省かれる（[docs/adr/0009](./docs/adr/0009-ci-speed.md)、[docs/adr/0036](./docs/adr/0036-textlint-for-documents.md)）。

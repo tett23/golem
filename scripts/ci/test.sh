@@ -4955,6 +4955,108 @@ run cpath --workflow "$CP/noci.yml" "$CP/m1.json"
 if [ "$CODE" = 1 ] && grep -qF 'no job ci' "$WORK/err"; then ok; else ng "ADR 0392 I1: a workflow without the job ci fails"; fi
 
 
+# root ADR 0472: local reusable workflows are part of the same needs graph.
+CPR=$CP/reusable
+mkdir -p "$CPR/.github/workflows"
+cat >"$CPR/.github/workflows/ci.yml" <<'YAML'
+jobs:
+  before:
+    steps: []
+  call:
+    needs: before
+    uses: ./.github/workflows/child.yml
+  ci:
+    needs: call
+    steps: []
+YAML
+cp_child() {
+  cat >"$CPR/.github/workflows/child.yml" <<YAML
+jobs:
+  first:
+    steps: []
+  second:
+    $1
+    steps: []
+YAML
+}
+cp_child '# independent'
+cp_run "$CP/reuse.json" "$(cp_job before 10)" "$(cp_job 'call / first' 20)" "$(cp_job 'call / second' 40)" "$(cp_job ci 5)"
+run cpath --workflow "$CPR/.github/workflows/ci.yml" "$CP/reuse.json"
+expect 'root ADR 0472 I2, I3: parallel children include the predecessor and successor once' 0 55
+cp_run "$CP/wrapper.json" "$(cp_job before 10)" "$(cp_job call 1000)" "$(cp_job 'call / first' 20)" "$(cp_job 'call / second' 40)" "$(cp_job ci 5)"
+run cpath --workflow "$CPR/.github/workflows/ci.yml" "$CP/wrapper.json"
+expect 'root ADR 0472 I3: a caller wrapper does not add its duration twice' 0 55
+cp_child 'needs: first'
+run cpath --workflow "$CPR/.github/workflows/ci.yml" "$CP/reuse.json"
+expect 'root ADR 0472 I2, I3: serial children include both durations once' 0 75
+cp_run "$CP/reuse-wait.json" "$(cp_job before 10)" "$(cp_job 'call / first' 20 success 7200)" "$(cp_job 'call / second' 40 success 7200)" "$(cp_job ci 5)"
+run cpath --workflow "$CPR/.github/workflows/ci.yml" "$CP/reuse-wait.json"
+expect 'root ADR 0472 I4: runner waiting does not affect child durations' 0 75
+cp_run "$CP/reuse-skipped.json" "$(cp_job before 10)" "$(cp_job 'call / first' 20 skipped)" "$(cp_job 'call / second' 40 skipped)" "$(cp_job ci 5)"
+run cpath --workflow "$CPR/.github/workflows/ci.yml" "$CP/reuse-skipped.json"
+expect 'root ADR 0472 I2: all skipped children take zero seconds' 0 15
+# Matrix callers must not combine long stages from different invocations.
+cp_run "$CP/caller-matrix.json" "$(cp_job before 10)" "$(cp_job 'call (a) / first' 100)" "$(cp_job 'call (a) / second' 1)" "$(cp_job 'call (b) / first' 1)" "$(cp_job 'call (b) / second' 100)" "$(cp_job ci 5)"
+run cpath --workflow "$CPR/.github/workflows/ci.yml" "$CP/caller-matrix.json"
+expect 'root ADR 0472 I2: serial stages stay within their caller matrix leg' 0 116
+jq '.workflow_revision="not-a-commit"' "$CP/reuse.json" >"$CP/bad-revision.json"
+run cpath --workflow "$CPR/.github/workflows/ci.yml" "$CP/bad-revision.json"
+if [ "$CODE" != 0 ] && [ ! -s "$WORK/out" ]; then ok; else ng 'root ADR 0472 I5: an unreadable recorded workflow revision is rejected'; fi
+cp_child '# independent'
+cp_run "$CP/reuse-matrix.json" "$(cp_job before 10)" "$(cp_job 'call / first (one)' 20)" "$(cp_job 'call / first (two)' 40)" "$(cp_job 'call / second' 10)" "$(cp_job ci 5)"
+run cpath --workflow "$CPR/.github/workflows/ci.yml" "$CP/reuse-matrix.json"
+expect 'root ADR 0472 I2: the longest child matrix leg is used' 0 55
+cat >"$CPR/.github/workflows/child.yml" <<'YAML'
+jobs:
+  nested:
+    uses: ./.github/workflows/grandchild.yml
+YAML
+cat >"$CPR/.github/workflows/grandchild.yml" <<'YAML'
+jobs:
+  proof:
+    steps: []
+YAML
+cp_run "$CP/nested.json" "$(cp_job before 10)" "$(cp_job 'call / nested / proof (one)' 20)" "$(cp_job 'call / nested / proof (two)' 40)" "$(cp_job ci 5)"
+run cpath --workflow "$CPR/.github/workflows/ci.yml" "$CP/nested.json"
+expect 'root ADR 0472 I2, I3: nested reuse with a matrix keeps all dependencies' 0 55
+run cpath --workflow "$CPR/.github/workflows/ci.yml" --graph
+if [ "$CODE" = 0 ] && jq -e 'has("call / nested / proof") and (.ci == ["call"])' "$WORK/out" >/dev/null; then ok; else ng 'root ADR 0472 I3: the expanded graph is inspectable'; fi
+cp_run "$CP/unknown.json" "$(cp_job before 10)" "$(cp_job 'call / unexpected' 40)" "$(cp_job ci 5)"
+run cpath --workflow "$CPR/.github/workflows/ci.yml" "$CP/unknown.json"
+if [ "$CODE" != 0 ] && [ ! -s "$WORK/out" ]; then ok; else ng 'root ADR 0472 I5: an unmatched completed job cannot produce a median'; fi
+jq '.jobs[1].status="in_progress" | .jobs[1].conclusion=null | .jobs[1].completed_at=null' "$CP/unknown.json" >"$CP/unknown-running.json"
+run cpath --workflow "$CPR/.github/workflows/ci.yml" "$CP/unknown-running.json"
+if [ "$CODE" != 0 ] && [ ! -s "$WORK/out" ]; then ok; else ng 'root ADR 0472 I5: an unmatched running job cannot produce a median'; fi
+rm "$CPR/.github/workflows/grandchild.yml"
+run cpath --workflow "$CPR/.github/workflows/ci.yml" "$CP/nested.json"
+if [ "$CODE" != 0 ] && [ ! -s "$WORK/out" ]; then ok; else ng 'root ADR 0472 I5: a missing workflow cannot produce a median'; fi
+cat >"$CPR/.github/workflows/grandchild.yml" <<'YAML'
+jobs:
+  recurse:
+    uses: ./.github/workflows/ci.yml
+YAML
+run cpath --workflow "$CPR/.github/workflows/ci.yml" "$CP/nested.json"
+if [ "$CODE" != 0 ] && [ ! -s "$WORK/out" ]; then ok; else ng 'root ADR 0472 I5: recursive workflow calls are rejected'; fi
+cat >"$CPR/.github/workflows/child.yml" <<'YAML'
+jobs:
+  external:
+    uses: someone/repo/.github/workflows/task.yml@main
+YAML
+run cpath --workflow "$CPR/.github/workflows/ci.yml" "$CP/nested.json"
+if [ "$CODE" != 0 ] && [ ! -s "$WORK/out" ]; then ok; else ng 'root ADR 0472 I5: external workflows are not fetched or ignored'; fi
+cat >"$CPR/.github/workflows/child.yml" <<'YAML'
+jobs:
+  a:
+    needs: b
+    steps: []
+  b:
+    needs: a
+    steps: []
+YAML
+run cpath --workflow "$CPR/.github/workflows/ci.yml" "$CP/reuse.json"
+if [ "$CODE" != 0 ] && [ ! -s "$WORK/out" ]; then ok; else ng 'root ADR 0472 I5: a dependency cycle is rejected'; fi
+
+
 # ---------------------------------------------------------------- the CI of pull requests under five minutes
 # (docs/adr/0395-bring-the-pull-request-ci-under-five-minutes.md)
 
