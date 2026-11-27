@@ -590,6 +590,9 @@ cabal build all
 cabal test all
 ```
 
+参考文献の宣言の差し込み片を扱うライブラリ API は、golem-assemble の `Golem.Assemble.BibliographyFormats` にある（[root ADR 0470](docs/adr/0470-bibliography-styles-by-name-and-by-declaration.md)）。
+差し込み片のテストは `cabal test golem-assemble-test --test-options='-p /0470/'` で実行する。
+
 依存のバージョンは `cabal.project.freeze` で固定している。
 このファイルを消してビルドすると、依存のバージョンが変わりうる。
 

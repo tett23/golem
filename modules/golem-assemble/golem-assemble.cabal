@@ -17,6 +17,7 @@ library
   hs-source-dirs:   src
   exposed-modules:
     Golem.Assemble
+    Golem.Assemble.BibliographyFormats
     Golem.Assemble.Collation
     Golem.Assemble.Formats
     Golem.Assemble.ListMarkers
@@ -37,7 +38,7 @@ test-suite golem-assemble-test
   type:             exitcode-stdio-1.0
   hs-source-dirs:   test
   main-is:          Main.hs
-  other-modules:    WriterNotesSpec AssembleSpec IndexSpec ListMarkersSpec NumberingSpec TableNumberSpec
+  other-modules:    WriterNotesSpec BibliographyFormatsSpec AssembleSpec IndexSpec ListMarkersSpec NumberingSpec TableNumberSpec
   build-depends:
     , base
     , containers
