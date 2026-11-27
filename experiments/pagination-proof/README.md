@@ -1756,6 +1756,8 @@ golem-layout は区切りを 1 行以上にする（`Paginate.hs:155`）。
    具体的な対応モデルの `paragraphAt` では、採番と `hold` の条件も導く。
    これはモデルの ID 列についての導出であり、実装の文字列の全量と `Built` の対応は残る。
    [成功結果の依存調査](../../docs/research/0352-parts-numbered-output-dependencies.md) に、前提、24 境界、残件を記録する。
+   `BuiltFirstIds.lean` は、所有する図版の採番量も変わることを含めた二段階の走査から、現在の段落の先頭 ID の不変を導く。
+   export list だけを変更した一時コピーによる採番表の観測 12 件と、全原稿への射影が残ることを [二段階の採番の依存調査](../../docs/research/0352-built-first-id-dependencies.md) に記録する。
 
 これらを終えるまで Alloy の定期実行と既存の参照を維持する。
 終えたときは、Alloy の定期実行を終え、規則やモデルを変えたときにローカルの Lean で検証し直す手順を CONTRIBUTING に書く。
@@ -1799,6 +1801,8 @@ sh experiments/pagination-proof/check.sh
 `PartsNumberedOutput.lean` は `PartsNumberedEntries.olean` を読み込み、到達入口から成功結果の行 ID の条件を検査する。
 24 入力の有限検査は、Lean の実行結果を `check.sh` で `true` と比較する。
 `CausalFirstIds.lean` は、採番の算術部分だけをほかのモデルを読み込まずに検査する。
+`BuiltFirstIds.lean` はその出力を読み込み、二段階の走査と 648 入力、対照の 2 件を検査する。
+`check-built-first-ids.sh` は、依存する package 環境を渡したローカルの `RUNGHC` で、export list だけを開いた一時ソースから本体の採番表を観測する。
 `WholeOrder.lean` は `WholeNotes.olean` を読み込み、ほかの検査と並んで検査し、最後にその結果を待つ。
 `WholeRules.lean` は `Whole.olean` を読み込み、同じくほかの検査と並んで検査する。
 `WholeSlots.lean` は `Separator.olean` を読み込んで検査する。

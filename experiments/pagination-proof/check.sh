@@ -327,8 +327,19 @@ if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|implemented_by|exte
   echo "unproved or unchecked Lean declaration in $causalFirstIds" >&2
   exit 1
 fi
-"$lean" "$causalFirstIds"
+"$lean" -o "$tmp/CausalFirstIds.olean" "$causalFirstIds"
 echo "the arithmetic first-ID scan preserves the current unit's ID under rebreaking"
+
+# Model the owning figure's contribution and the following beside scan.
+builtFirstIds=$root/experiments/pagination-proof/BuiltFirstIds.lean
+if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|implemented_by|extern|native_decide)([^A-Za-z_]|$)' "$builtFirstIds"; then
+  echo "unproved or unchecked Lean declaration in $builtFirstIds" >&2
+  exit 1
+fi
+LEAN_PATH="$tmp" "$lean" "$builtFirstIds" > "$tmp/built-first-ids"
+printf '%s\n' true > "$tmp/built-first-ids-expected"
+diff -u "$tmp/built-first-ids-expected" "$tmp/built-first-ids"
+echo "root ADR 0352 I5: two-pass owner and beside numbering preserves the rebroken paragraph's first ID; 648 boundaries and 2 counterchecks pass"
 
 # The boundary inputs of PhysicalBoundary.hs on Physical.lean's paginate,
 # against golem-layout's paginatePhysical (root ADR 0352).
