@@ -1730,6 +1730,10 @@ golem-typeset はコードの行を脚注なしで作り（`Flow.hs:3870`）、g
    `CAUSAL_MODE=controls` の 216 ケースで、繰り返した制御の前後、空の本文、容量 1〜6 行の成功と失敗を実装と照合する。
    対応モデル以外の制御と、途中状態すべての接続は残す。
    公理と前提は [段落間の受け渡しの依存調査](../../docs/research/0352-causal-paragraphs-dependencies.md) に記録する。
+   `CausalCalls.lean` は、処理全体の成功を前提にせず、モデルの `paragraphs` が試みる各入口の `WrapReady` を導く。
+   前処理の結果、詩の試しの全再帰入力、通常の段落と詩の配置の入力、次の段落の入力を扱う。
+   述語の分岐と再帰先は `check-causal-call-shape.sh` で写しと比べる。
+   詩の配置の内部の再試行と退避先すべての接続は残し、前提を [各入口の依存調査](../../docs/research/0352-causal-call-entry-dependencies.md) に記録する。
 
 これらを終えるまで Alloy の定期実行と既存の参照を維持する。
 終えたときは、Alloy の定期実行を終え、規則やモデルを変えたときにローカルの Lean で検証し直す手順を CONTRIBUTING に書く。
@@ -1764,6 +1768,7 @@ sh experiments/pagination-proof/check.sh
 `check-wrap-verse-shape.sh` は、`Physical.lean` の `tryVerses` とその入口の述語の再帰分岐を比較する。
 `CausalStanza.lean` は `CausalBoundary.olean` と `WrapCalls.olean` を読み込み、詩の保持と退避先を具体化して成功結果のカーソルを検査する。
 `CausalParagraphs.lean` は `CausalStanza.olean` を読み込み、前処理と段落間の成功結果のカーソルを検査する。
+`CausalCalls.lean` は `CausalParagraphs.olean` と `WrapVerses.olean` を読み込み、失敗する試みも含む各入口の条件を検査する。
 `CausalFirstIds.lean` は、採番の算術部分だけをほかのモデルを読み込まずに検査する。
 `WholeOrder.lean` は `WholeNotes.olean` を読み込み、ほかの検査と並んで検査し、最後にその結果を待つ。
 `WholeRules.lean` は `Whole.olean` を読み込み、同じくほかの検査と並んで検査する。
