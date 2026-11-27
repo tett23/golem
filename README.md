@@ -595,6 +595,8 @@ cabal test all
 
 引用の引数を扱うライブラリ API の `Golem.Eval.CitationArgument.decodeCitationArgument` は、位置の 26 種類と文字列の前置き・後置きを型付きの値に変換する。
 `cite` の `page` の値も、この API で読む。
+`validateCitationLocatorArguments` は、名前と値の位置を持つ引数列について、位置の種類の競合と重複、未知の引数名、不正な位置の値を入力順に検査する。
+この検査 API は通常の CLI には接続していない。
 
 参考文献の宣言の差し込み片を扱うライブラリ API は、golem-assemble の `Golem.Assemble.BibliographyFormats` にある（[root ADR 0470](docs/adr/0470-bibliography-styles-by-name-and-by-declaration.md)）。
 差し込み片のテストは `cabal test golem-assemble-test --test-options='-p /0470/'` で実行する。
