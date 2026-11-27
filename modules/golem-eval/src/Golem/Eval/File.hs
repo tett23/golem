@@ -3329,10 +3329,17 @@ evalInline ctx inHeading (A.Located sp i) = case i of
   -- evalInlines has made it text already; this is for safety (golem-parser ADR 0010)
   A.Escaped c -> pure [Text sp (T.singleton c)]
   A.SoftBreak -> pure []
-  -- ##N## is [number-text N] (golem-parser ADR 0011)
-  A.NumberShorthand t -> case shorthandDigits t of
-    Just n -> evalCommand ctx inHeading sp (A.Located sp "number-text") [A.Located sp (A.Positional (A.Word n))] []
-    Nothing -> err "G02078" sp "## と ## のあいだには算用数字だけを書きます。本文の ## は \\## と書きます" >> pure []
+  -- Both shorthand forms use the ordinary name resolution and arguments (golem-parser ADR 0014).
+  A.NumberShorthand t -> case shorthandNumber t of
+    Just (n, style) ->
+      evalCommand
+        ctx
+        inHeading
+        sp
+        (A.Located sp "number-text")
+        (A.Located sp (A.Positional (A.Word n)) : [A.Located sp (A.Keyword (A.Located sp "style") (A.Word name)) | name <- maybe [] pure style])
+        []
+    Nothing -> err "G02078" sp "## と ## のあいだには算用数字、または算用数字:表記名を書きます。本文の ## は \\## と書きます" >> pure []
   -- the hard breaks of a paragraph are split off before; this one is in a prose slot
   A.HardBreak -> err "G02056" sp "強制改行は段落の中にだけ書けます。コマンドの中では使えません" >> pure []
   A.ErrorInline -> pure []
@@ -3369,16 +3376,26 @@ evalInline ctx inHeading (A.Located sp i) = case i of
           Left d -> report d >> pure []
           Right t -> pure [Text sp t]
 
-{- | The digits of ##N##: ASCII digits between the two ##, without a
-leading zero but 0 itself (golem-parser ADR 0011).
+{- | The number and optional style argument of the shorthand (golem-parser ADR 0014).
+The style is a syntactic name, not an enumeration of built-in number styles.
 -}
-shorthandDigits :: Text -> Maybe Text
-shorthandDigits t = do
+shorthandNumber :: Text -> Maybe (Text, Maybe Text)
+shorthandNumber t = do
   inner <- T.stripPrefix "##" t >>= T.stripSuffix "##"
-  case T.unpack inner of
-    "0" -> Just inner
-    (c : _) | c /= '0' && T.all isDigit inner && T.all isAscii inner -> Just inner
-    _ -> Nothing
+  let (digits, suffix) = T.breakOn ":" inner
+      validDigits =
+        digits == "0" || case T.uncons digits of
+          Just (c, _) -> c /= '0' && T.all (\x -> isAscii x && isDigit x) digits
+          Nothing -> False
+      validStyle name = case T.uncons name of
+        Just (c, rest) -> isAsciiLower c && T.all (\x -> isAsciiLower x || (isAscii x && isDigit x) || x == '-') rest
+        Nothing -> False
+  if not validDigits
+    then Nothing
+    else
+      if T.null suffix
+        then Just (digits, Nothing)
+        else let name = T.drop 1 suffix in if validStyle name then Just (digits, Just name) else Nothing
 
 {- | The slots of [code: ...] and [style code: ...] with every ##…## made
 the text it was written with (golem-parser ADR 0011), before the command

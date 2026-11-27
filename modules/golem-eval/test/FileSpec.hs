@@ -728,7 +728,7 @@ shorthandTests =
       testCase "##10## is a Number at the whole shorthand" $
         body "a##10##b\n" @?= [Paragraph Nothing [Text (mkSpan (FileId 1) 0 1) "a", Number (mkSpan (FileId 1) 1 7) 10 Nothing, Text (mkSpan (FileId 1) 7 8) "b"]],
       testCase "anything but ASCII digits is G02078 at the whole shorthand" $ do
-        let msg = "## と ## のあいだには算用数字だけを書きます。本文の ## は \\## と書きます"
+        let msg = "## と ## のあいだには算用数字、または算用数字:表記名を書きます。本文の ## は \\## と書きます"
         mapM_
           (\(src, e) -> (src, diags src) @?= (src, [("G02078", msg, 0, e)]))
           [("##007##\n", 7), ("##1.5##\n", 7), ("##1,000##\n", 9), ("##1 2##\n", 7), ("##12年\n", 7)]

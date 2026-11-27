@@ -231,6 +231,11 @@ HTML と EPUB は `@frame` の段落をその位置の `aside` に書き、マ�
 行頭の `@set x = "abc"` でファイル内の変数を宣言し、`[= x]` で参照する（[ADR 0391](docs/adr/0391-keep-the-at-sign-on-variable-declarations.md)）。
 `@` の無い行頭の `set x = "abc"` は宣言にならず、本文になる。
 
+### 数の表記
+
+`##17:tcy##` は `[number-text 17 style=tcy]`、`##17:kanji##` は `[number-text 17 style=kanji]` と同じ意味である（[golem-parser ADR 0014](docs/golem-parser/adr/0014-number-shorthand-with-an-explicit-style.md)）。
+書字方向に応じた数の表記を、一つの数ごとに指定できる。
+
 ### 書体とスタイル
 
 PDF を出力するには、`style.toml` の `[fonts.body]` に和文と欧文のフォントのファイルを書く。
@@ -610,7 +615,7 @@ cabal test golem-driver:golem-driver-output-test --test-options=--accept
 
 #### 見た目の回帰テスト
 
-見た目の回帰テストは、23 の入力の PDF を shem で 72 dpi の画像に描き、ページごとの SHA-256 を `scripts/visual/pages/` の参照と比べる（[docs/adr/0094](./docs/adr/0094-visual-regression-page-hashes-at-72-dpi.md)）。
+見た目の回帰テストは、24 の入力の PDF を shem で 72 dpi の画像に描き、ページごとの SHA-256 を `scripts/visual/pages/` の参照と比べる（[docs/adr/0094](./docs/adr/0094-visual-regression-page-hashes-at-72-dpi.md)）。
 入力には、機能を組み合わせた二冊の fixture（`modules/golem-driver/test/fixtures/complex-vertical` と `complex-horizontal`）を含む（[docs/adr/0175](./docs/adr/0175-complex-typesetting-fixture.md)）。
 二冊は、出力のゴールデンと決定性の検査（`scripts/determinism.sh` と `scripts/env-determinism/check.sh`）の入力でもある。
 二冊の参照やゴールデンを書き直すプルリクエストは、説明に、変わったページと変わった理由を書く（`CONTRIBUTING.md`）。
@@ -883,7 +888,7 @@ x86-64 では、さらに次のことを行う。
 
 - EPUB が epubcheck を通ることを確かめる。
 - 組んだ二つのマニュアルの PDF と HTML を成果物 `manual` と `manual-dev` として上げる。
-- 見た目の回帰テストの 23 の PDF を `scripts/visual/build.sh` で組んで成果物 `visual-pdfs` として上げる（[docs/adr/0095](./docs/adr/0095-visual-job-in-ci.md)）。
+- 見た目の回帰テストの 24 の PDF を `scripts/visual/build.sh` で組んで成果物 `visual-pdfs` として上げる（[docs/adr/0095](./docs/adr/0095-visual-job-in-ci.md)）。
 - `outputs` が、すべてのパッケージのソースの tarball を `cabal sdist all` で作る。
   `.cabal` の `extra-source-files`、`extra-doc-files`、`data-files` のワイルドカードがチェックアウトのファイルに一つも当たらなければ、`cabal install` と同じく失敗する（[docs/adr/0452](./docs/adr/0452-check-the-file-lists-of-the-packages-with-cabal-sdist-in-ci.md)）。
 - 実行の環境を変えても出力が変わらないことを `scripts/env-determinism/check.sh` で確かめる。
