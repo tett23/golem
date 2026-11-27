@@ -1714,6 +1714,12 @@ golem-typeset はコードの行を脚注なしで作り（`Flow.hs:3870`）、g
    保持が実装と同じ `waitForPrior` の形なら、成功した `parts` の出力も `WrapReady` を満たす。
    `check-wrap-call-shape.sh` は、終端の戻り値を真に置き換えた `parts` の分岐が、この述語の分岐と一致することを確かめる。
    ただし、`causalFreeFlow` のすべての呼び出し元が `parts` に渡す状態について、この初期条件を導く接続は残る。
+   `WrapVerses.lean` は、最初のカーソルが `WrapReady` を満たせば、詩の行を試す `tryVerses` の全再帰入力について同じ条件を保つことを示す。
+   エラーで終わる試しの入力も含め、改行器と詩の長さを制限しない。
+   `beginWrap` の返り値を直接使う入力では初期条件も導き、成功した詩の試しが返すカーソルでも `trialWrapRest_putLine` の前提を導く。
+   写しの再帰分岐と定理の入力条件の分岐は `check-wrap-verse-shape.sh` で照合する。
+   ただし、制御フローや詩の退避先を通るすべての初期状態への接続は残る。
+   公理と定理の依存、有限の実装照合との区別は [詩の試し置きの依存調査](../../docs/research/0352-wrap-verse-entry-dependencies.md) に記録する。
 
 これらを終えるまで Alloy の定期実行と既存の参照を維持する。
 終えたときは、Alloy の定期実行を終え、規則やモデルを変えたときにローカルの Lean で検証し直す手順を CONTRIBUTING に書く。
@@ -1744,6 +1750,8 @@ sh experiments/pagination-proof/check.sh
 `WrapPosition.lean` は、`Physical.olean` を読み込み、除外領域と段の位置について証明を検査する。
 `WrapCalls.lean` は、`WrapPosition.olean` を読み込み、各再帰入力の除外領域と非空性を検査する。
 `check-wrap-call-shape.sh` は、`Physical.lean` の `parts` と入口の述語の分岐を比較する。
+`WrapVerses.lean` は `WrapCalls.olean` を読み込み、詩の全再帰入力と成功結果のカーソルの条件を検査する。
+`check-wrap-verse-shape.sh` は、`Physical.lean` の `tryVerses` とその入口の述語の再帰分岐を比較する。
 `CausalFirstIds.lean` は、採番の算術部分だけをほかのモデルを読み込まずに検査する。
 `WholeOrder.lean` は `WholeNotes.olean` を読み込み、ほかの検査と並んで検査し、最後にその結果を待つ。
 `WholeRules.lean` は `Whole.olean` を読み込み、同じくほかの検査と並んで検査する。
