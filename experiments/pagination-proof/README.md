@@ -1752,6 +1752,10 @@ golem-layout は区切りを 1 行以上にする（`Paginate.hs:155`）。
    `PartsNumberedEntries.lean` は、この入口の条件と対応モデルの改行器を接続し、全再帰入口で行 ID が `base + before` から連続することを導く。
    任意の状態で `I5_parts_lines` の前提を仮定せず、到達する入口について証明する。
    配置結果全体の過不足と順序と、本体の `Built` の採番表との一致は残し、[入口の行 ID の依存調査](../../docs/research/0352-parts-numbered-entry-dependencies.md) に記録する。
+   `PartsNumberedOutput.lean` は、この入口の条件を `parts` の成功結果へ接続し、以前の ID 列を残して新たな連続 ID 列だけを加えることを導く。
+   具体的な対応モデルの `paragraphAt` では、採番と `hold` の条件も導く。
+   これはモデルの ID 列についての導出であり、実装の文字列の全量と `Built` の対応は残る。
+   [成功結果の依存調査](../../docs/research/0352-parts-numbered-output-dependencies.md) に、前提、24 境界、残件を記録する。
 
 これらを終えるまで Alloy の定期実行と既存の参照を維持する。
 終えたときは、Alloy の定期実行を終え、規則やモデルを変えたときにローカルの Lean で検証し直す手順を CONTRIBUTING に書く。
@@ -1792,6 +1796,8 @@ sh experiments/pagination-proof/check.sh
 `PartsOffsetEntries.lean` も同じファイルを読み込み、段落の分割の各入口のテキスト数と採用済み行数を検査する。
 `PartsNumberedEntries.lean` は `PartsOffsetEntries.olean` を読み込み、到達する各入口の行 ID の条件を検査する。
 `check-parts-numbered-shape.sh` は、その述語と元の `parts` の分岐と引数を比較する。
+`PartsNumberedOutput.lean` は `PartsNumberedEntries.olean` を読み込み、到達入口から成功結果の行 ID の条件を検査する。
+24 入力の有限検査は、Lean の実行結果を `check.sh` で `true` と比較する。
 `CausalFirstIds.lean` は、採番の算術部分だけをほかのモデルを読み込まずに検査する。
 `WholeOrder.lean` は `WholeNotes.olean` を読み込み、ほかの検査と並んで検査し、最後にその結果を待つ。
 `WholeRules.lean` は `Whole.olean` を読み込み、同じくほかの検査と並んで検査する。

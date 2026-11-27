@@ -450,8 +450,19 @@ if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|implemented_by|exte
   exit 1
 fi
 sh "$root/experiments/pagination-proof/check-parts-numbered-shape.sh"
-LEAN_PATH="$tmp" "$lean" "$partsNumberedEntries"
+LEAN_PATH="$tmp" "$lean" -o "$tmp/PartsNumberedEntries.olean" "$partsNumberedEntries"
 echo "root ADR 0352 I5: every reached concrete parts entry has sequential line IDs"
+
+# Use those local entry guards for the modeled successful paragraph output.
+partsNumberedOutput=$root/experiments/pagination-proof/PartsNumberedOutput.lean
+if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|implemented_by|extern|native_decide)([^A-Za-z_]|$)' "$partsNumberedOutput"; then
+  echo "unproved or unchecked Lean declaration in $partsNumberedOutput" >&2
+  exit 1
+fi
+LEAN_PATH="$tmp" "$lean" "$partsNumberedOutput" > "$tmp/parts-numbered-output"
+printf '%s\n' true > "$tmp/parts-numbered-output-expected"
+diff -u "$tmp/parts-numbered-output-expected" "$tmp/parts-numbered-output"
+echo "root ADR 0352 I5: successful modeled paragraph output preserves its prefix and sequential line IDs; 24 direct boundaries pass"
 
 
 # The values of the evaluation of Golem.Layout.KnuthPlass (badness,
