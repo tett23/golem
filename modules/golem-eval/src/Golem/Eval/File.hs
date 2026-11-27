@@ -3867,7 +3867,8 @@ cite ctx sp args = do
   mapM_ (either report (\(code, msg) -> err code sp msg)) problems
   -- root ADR 0470 keeps the ordinary citation after an invalid form;
   -- all other citation errors still remove it.
-  pure [Cite sp [CiteItem k locator prefix suffix | k <- keys] | not (any blocking problems)]
+  let constructor = if any (\keyword -> ckName keyword == "form" && ckValue keyword == VString "year") successful then CiteYearItem else CiteItem
+  pure [Cite sp [constructor k locator prefix suffix | k <- keys] | not (any blocking problems)]
   where
     blocking (Left d) = diagCode d /= DiagnosticCode "G02289"
     blocking (Right _) = True

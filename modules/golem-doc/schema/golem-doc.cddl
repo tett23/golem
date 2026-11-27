@@ -92,6 +92,7 @@ inline-no-ruby =
 ; an item of a citation: the key, where in the work, the text before and
 ; after (docs/adr/0266)
 cite-item = [key: tstr, locator: locator / null, prefix: inlines, suffix: inlines]
+          / [key: tstr, locator: locator / null, prefix: inlines, suffix: inlines, form: "year"]
 locator = [label: locator-label, value: locator-value]
 locator-label = "appendix" / "article-locator" / "book" / "canon" / "chapter" / "column" / "elocation" / "equation" / "figure" / "folio" / "issue" / "line" / "note" / "opus" / "page" / "paragraph" / "part" / "rule" / "section" / "sub-verbo" / "supplement" / "table" / "timestamp" / "title" / "verse" / "volume"
 locator-value = [0, uint64] / [1, from: uint64, to: uint64] / [2, tstr .size (1..9223372036854775807)]   ; RFC 8610 writes both ends of a range

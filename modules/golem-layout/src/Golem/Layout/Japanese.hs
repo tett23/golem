@@ -64,6 +64,7 @@ import Data.Ratio (denominator, numerator, (%))
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Unsafe (lengthWord8)
+import Data.Void (absurd)
 import Golem.Doc.Citation (CitePiece (..), citationPieces, citationText)
 import Golem.Doc.IR
 import Golem.Layout.Aki (AkiPos (..), AkiSet, akiBetween, defaultAkiSet, noAki)
@@ -1427,7 +1428,7 @@ withRuby = \case
   Sidenote s n lbl bs -> Sidenote s n lbl bs
   Endnote s n lbl bs -> Endnote s n lbl bs
   IndexMark s e -> IndexMark s e
-  Cite s is -> Cite s [CiteItem k l (map withRuby p) (map withRuby q) | CiteItem k l p q <- is]
+  Cite s is -> Cite s (map (fmap absurd) is)
   ProofComment s t -> ProofComment s t
   LineBreak s -> LineBreak s
   Aki s a -> Aki s a

@@ -43,7 +43,7 @@ tests =
                Names.formatBibliographyNamesWith extras format (people 7) @?= "A. N1 et al.",
              testCase "root ADR 0470 I8: literal issued dates survive the selected record formatter" $ do
                let declaration = Decl.emptyBibliographyStyle {Decl.bsTypes = Map.singleton "default" (Decl.BibliographyType (Just ["{year:kanji}", " ({month})", " ({day})"]) Map.empty)}
-               forM_ ["n.d.", "circa 2020", "2020/21"] $ \literal -> do
+               forM_ ["n.d.", "circa 2020", "2020/21", "寛永某年", "ヒジュラ暦1445年"] $ \literal -> do
                  let source = "[{\"id\":\"a\",\"issued\":{\"literal\":\"" <> literal <> "\"}}]"
                  records <- either (failure . show) pure (Json.decodeCslRecords (BL.fromStrict (TE.encodeUtf8 source)))
                  case records of

@@ -211,7 +211,7 @@ inlineT rt = \case
   Resolved s k l xs -> tagged 22 [spanT s, int (fromEnum k), text l, sub xs]
   where
     sub = list (inlineT rt)
-    citeItemT (CiteItem k l p q) = TList [text k, opt locatorT l, sub p, sub q]
+    citeItemT item = TList ([text (citKey item), opt locatorT (citLocator item), sub (citPrefix item), sub (citSuffix item)] <> [text "year" | citationYearOnly item])
     locatorT (Locator l v) = TList [text (locatorLabelName l), locatorValueT v]
     locatorValueT = \case
       LocNumber n -> TList [int (0 :: Int), int n]
@@ -380,6 +380,7 @@ termCiteItem :: (Term -> D [InlineF r]) -> Term -> D (CiteItem r)
 termCiteItem sub t =
   asList t >>= \case
     [k, l, p, q] -> CiteItem <$> asText k <*> asOpt termLocator l <*> sub p <*> sub q
+    [k, l, p, q, TString "year"] -> CiteYearItem <$> asText k <*> asOpt termLocator l <*> sub p <*> sub q
     _ -> bad "引用の項目"
   where
     termLocator x =

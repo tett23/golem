@@ -167,10 +167,23 @@ tests =
       testCase "root ADR 0385: default numeric locators keep affixes with the written item" $
         citationText (citationPieces [(CiteItem "c" (page (LocNumber 9)) [Text sp "see "] [Text sp "!"], Just 3), (citeItem "a", Just 1)]) @?= "[see 3, p. 9!; 1]",
       testCase "I7: citations of every locator, a prefix and a suffix survive the CBOR round trip" $
-        forM_ [minBound .. maxBound] $ \label ->
-          forM_ [LocNumber 0, LocNumber 5, LocRange 5 7, LocText "xii"] $ \v -> do
-            let d = docOf [Cite sp [CiteItem "a" (Just (Locator label v)) [Text sp "前"] [Text sp "後"], citeItem "b"]]
-            decodeDocument (encodeDocument d) @?= Right d,
+        forM_ [CiteItem, CiteYearItem] $ \constructor ->
+          forM_ [minBound .. maxBound] $ \label ->
+            forM_ [LocNumber 0, LocNumber 5, LocRange 5 7, LocText "xii"] $ \v -> do
+              let d = docOf [Cite sp [constructor "a" (Just (Locator label v)) [Text sp "前"] [Text sp "後"], citeItem "b"]]
+              decodeDocument (encodeDocument d) @?= Right d,
+      testCase "root ADR 0470: year-only CBOR retains the explicit form and ordinary item bytes" $ do
+        let spT = TList [TInt 0, TInt 0, TInt 1]
+            item = TList [TString "a", TNull, TList [], TList [], TString "year"]
+            source = toStrictByteString (encodeTerm (TList [TList [TInt 25, spT, TList [item]]]))
+        decoded <- either (\problem -> assertFailure (T.unpack problem) >> pure []) pure (decodeInlines source)
+        encodeInlines decoded @?= source,
+      testCase "root ADR 0470: year-only CBOR rejects undefined forms" $
+        forM_ [TString "author", TString "YEAR", TString "", TInt 0, TNull] $ \form -> do
+          let spT = TList [TInt 0, TInt 0, TInt 1]
+              item = TList [TString "a", TNull, TList [], TList [], form]
+              source = toStrictByteString (encodeTerm (TList [TList [TInt 25, spT, TList [item]]]))
+          assertBool "undefined form" (either (const True) (const False) (decodeInlines source)),
       testCase "a citation is tag 25; 15 is retired" $ do
         let spT = TList [TInt 0, TInt 0, TInt 1]
             inl t = decodeInlines (toStrictByteString (encodeTerm (TList [t])))
@@ -205,6 +218,7 @@ tests =
                 (code, _, _) <- readProcessWithExitCode exe ["--ci", "validate", "--cddl", "schema/golem-doc.cddl", "--cbor", path] ""
                 pure code
           validate (encodeDocument (docOf [Cite sp [CiteItem "a" (page (LocRange 5 7)) [Text sp "前"] [], citeItem "b"]])) >>= (@?= ExitSuccess)
+          validate (encodeDocument (docOf [Cite sp [CiteYearItem "a" (page (LocNumber 5)) [Text sp "前"] [], citeItem "b"]])) >>= (@?= ExitSuccess)
           code <- validate (encodeDocument (docOf [Cite sp []]))
           assertBool "empty" (code /= ExitSuccess)
     ]

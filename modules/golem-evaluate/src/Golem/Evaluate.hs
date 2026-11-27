@@ -47,7 +47,7 @@ import Data.Text.Encoding qualified as TE
 import Data.Text.Unsafe (lengthWord8)
 import Data.Time.Calendar (showGregorian, toGregorian)
 import Golem.Assemble
-import Golem.Assemble.BibliographyRecords (formatBibliographyCitationWithSuffix, formatBibliographyRecordWithSuffix)
+import Golem.Assemble.BibliographyRecords (formatBibliographyCitationWithSuffix, formatBibliographyRecordWithSuffix, formatBibliographyYearCitationWithSuffix)
 import Golem.Assemble.BibliographySort (bibliographyYearSuffixes)
 import Golem.Assemble.BibliographyStyle qualified as Bib
 import Golem.Assemble.CitationFormats (joinBibliographyCitations)
@@ -282,7 +282,8 @@ resolveBibliographyRecords style fid manifest records book = case selected of
           number <- maybe (Left "引用番号がありません") Right (citeNumber book sp (citKey item))
           effective <- either (Left . T.intercalate ", ") Right (Bib.bibliographyForLanguages language (fromMaybe language (recordText "language" record)) declaration)
           let at = fst =<< Map.lookup (spanFile sp, sp) (bookCiteMarks book)
-          pieces <- formatBibliographyCitationWithSuffix (suffixFor at (citKey item) effective) effective number (citLocator item) record
+          let formatter = if citationYearOnly item then formatBibliographyYearCitationWithSuffix else formatBibliographyCitationWithSuffix
+          pieces <- formatter (suffixFor at (citKey item) effective) effective number (citLocator item) record
           let literal inlines = [CiteText text | let text = foldMap inlineText inlines, not (T.null text)]
           pure (literal (citPrefix item) <> pieces <> literal (citSuffix item))
         marks = map mark (bookCitationItems book)

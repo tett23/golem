@@ -70,7 +70,11 @@ tests =
           let (ds, _) = evalSource ctx source
            in [(diagCodeText d, (spanStart (diagSpan d), spanEnd (diagSpan d))) | d <- ds] @?= [("G02289", expected)],
       testCase "root ADR 0470: the valid year citation form has no invalid-form diagnostic" $
-        citesOf "[cite a form=year]\n" @?= ([[citeItem "a"]], []),
+        citesOf "[cite a form=year]\n" @?= ([[CiteYearItem "a" Nothing [] []]], []),
+      testCase "root ADR 0470: cites keeps each explicit form with its key and locator" $
+        let (items, ds) = citesOf "[cites: [cite a form=year chapter=3 prefix=\"<see>& \" suffix=\"!\"]|[cite b]]\n"
+         in (ds, [[(citKey item, citationYearOnly item, citLocator item, [text | Text _ text <- citPrefix item], [text | Text _ text <- citSuffix item]) | item <- xs] | xs <- items])
+              @?= ([], [[("a", True, Just (Locator LocatorChapter (LocNumber 3)), ["<see>& "], ["!"]), ("b", False, Nothing, [], [])]]),
       testCase "root ADR 0475 I6: citation affixes are literal text, including markup and empty strings" $
         forM_ ["", "<a>&[cite x]", "参照: {year}"] $ \literal ->
           let source = "[cite a prefix=" <> ("\"" <> literal <> "\"") <> " suffix=" <> ("\"" <> literal <> "\"") <> "]\n"

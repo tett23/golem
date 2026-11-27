@@ -33,6 +33,7 @@ import Data.Sequence (Seq)
 import Data.Sequence qualified as Seq
 import Data.Text (Text)
 import Data.Text qualified as T
+import Data.Void (absurd)
 import Golem.Doc.IR
 import Golem.Emet.Eval (Result (..))
 import Golem.Eval.Value (Value (..), numberOf)
@@ -118,7 +119,7 @@ withRuby = \case
   Sidenote s n lbl bs -> Sidenote s n lbl bs
   Endnote s n lbl bs -> Endnote s n lbl bs
   IndexMark s e -> IndexMark s e
-  Cite s is -> Cite s [CiteItem k l (map withRuby p) (map withRuby q) | CiteItem k l p q <- is]
+  Cite s is -> Cite s (map (fmap absurd) is)
   ProofComment s t -> ProofComment s t
   LineBreak s -> LineBreak s
   Aki s a -> Aki s a
@@ -197,7 +198,7 @@ encodeInline = \case
       SeeAuto -> "SeeAuto"
       SeeOnly -> "SeeOnly"
       SeeAlso -> "SeeAlso"
-    citeItemE (CiteItem k l p q) = (\a b -> con "CiteItem" [str k, maybeR locator l, a, b]) <$> encodeInlines p <*> encodeInlines q
+    citeItemE item = (\a b -> con (if citationYearOnly item then "CiteYearItem" else "CiteItem") [str (citKey item), maybeR locator (citLocator item), a, b]) <$> encodeInlines (citPrefix item) <*> encodeInlines (citSuffix item)
     locator (Locator l v) = con "Locator" [str (locatorLabelName l), locatorValue v]
     locatorValue = \case
       LocNumber n -> con "LocNumber" [nat (max 0 n)]
@@ -467,6 +468,7 @@ inlineD cx = \case
       r -> bad ("参照の種類ではない値です: " <> shown r)
     citeItemD = \case
       RCon "CiteItem" [k, l, p, q] -> CiteItem <$> strD k <*> maybeD locatorD l <*> inlinesD cx p <*> inlinesD cx q
+      RCon "CiteYearItem" [k, l, p, q] -> CiteYearItem <$> strD k <*> maybeD locatorD l <*> inlinesD cx p <*> inlinesD cx q
       r -> bad ("引用の項目ではない値です: " <> shown r)
     locatorD = \case
       RCon "Locator" [l, v] -> Locator <$> (strD l >>= \t -> maybe (bad ("位置の種類ではない値です: " <> t)) pure (locatorLabelNamed t)) <*> locatorValueD v

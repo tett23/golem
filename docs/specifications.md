@@ -9349,12 +9349,14 @@ CSL-JSON は、文献管理ソフトが書き出せる標準の形式である�
 スロットのない呼び出しや、単一キーの `cite` が一つでないスロットは G02038 とする。
 キーが重複したときは、二度目以降のキーの位置で G02147 とする。
 子の `cite` のエラーと重複するキーは、書いた順に報告する。
-エラーが一つでもあれば、外側の引用を作らない。
+G02289 以外のエラーが一つでもあれば、外側の引用を作らない。
+`form` の値が不正な G02289 では、通常の引用として一件を残すが、ビルドはエラーで止まる。
 
 引用された文献だけがチャネルに送られ、`@bibliography` の位置に一覧として出る。
 
 意味論 IR の引用は、引用の一件（`CiteItem`）の一つ以上の列である。
 一件は、キー、位置（`Locator`、CSL 1.0.2 の 26 の種類のどれかと、数、範囲、文字列のどれかの値）、前置き、後置きを持つ。
+`form=year` の一件は `CiteYearItem` として保ち、通常の `CiteItem` の構築と区別する（[root ADR 0470](adr/0470-bibliography-styles-by-name-and-by-declaration.md)）。
 記法も、26 種類の位置と文字列の前置きと後置きを作る（[root ADR 0385](adr/0385-bibliography-and-citation-styles.md)）。
 `page` 以外の位置を展開するときは、選んだ宣言に対応するラベルを要する。
 プラグインと Emet の関数の出力の検査（`Golem.Doc.Validate`）も、これらの位置と地の文の前置きと後置きを許す。
@@ -9383,8 +9385,9 @@ PDF では、頁の文言と値のあいだで行を分けない（[docs/adr/027
 HTML と EPUB では、頁の文言と値のあいだを U+0020 の代わりに U+00A0 NO-BREAK SPACE で書き、閲覧環境でも行を分けない（下の HTML と EPUB の段落）。
 プレーンテキストは行を折り返さないので、U+0020 のまま書く。
 
-引用の書式は、処理系が持つこの一種類だけである。
-引用の書式は数千種類あり、それを解釈する処理系の実装は独立した大きな仕事になるためである（書式を選べるようにする予定は [docs/roadmap.md](roadmap.md)）。
+この節の書式は、既定の `golem` の番号式である。
+宣言を選んだときは、後述の宣言の引用の書式を使う。
+CSL の XML と BibTeX のスタイルプログラムは読まない（[root ADR 0470](adr/0470-bibliography-styles-by-name-and-by-declaration.md)）。
 
 #### 参考文献の番号とリンク
 
@@ -9421,13 +9424,19 @@ HTML と EPUB の引用の印は、`<span class="cite">` の中に、括弧、�
 選んだ自作の宣言は、通常の CLI の PDF、HTML、EPUB、テキストの引用と一覧に適用する。
 本の言語で印全体の囲みと区切りを、文献の言語で個々の引用、名前、位置ラベルと一覧の書式を解決する（[root ADR 0475](adr/0475-complete-bibliography-declarations-and-citation-delimiters.md)）。
 `citation-sort = "year"` は、一つの印の文献を発行年の古い順に動かし、各キーの位置、前置きと後置きも一緒に動かす。
-`year-suffix = true` は、一つの一覧の範囲で引用する文献の著者列と年を比べ、同じ組の文献にキーの順で `a`、`b` を付ける。
+比較には `issued` の `date-parts` の数値年を使う。
+`issued.literal` と年の無い文献は、数値年のある文献より前に置き、その中では入力順を保つ。
+`[cite キー form=year]` は、`author-year` では `citation-year` の片で組み、ほかのモードでは通常の引用と同じになる。
+位置、前置き、後置きと年の接尾辞は、年だけの引用でも保つ。
+`issued.literal` の文字列も年の値として使い、暦を推測したり、ほかの暦へ換算したりしない。
+`year-suffix = true` は、一つの一覧の範囲で引用する文献の著者列と `date-parts` の数値年を比べ、同じ組の文献にキーの順で `a`、`b` を付ける。
+`issued.literal` と年の無い文献は、接尾辞の対象にしない。
 接尾辞は `{year}` の数の表記の後に付き、引用と一覧で同じものを使う。
 別の一覧の範囲と、引用しない文献は、この割り当てに加えない。
 前置きと後置きは差し込みやマークアップとして読み直さず、HTML と EPUB では文字をエスケープする。
 漢数字などで組んだ番号も、対応する一覧へのリンクを保つ。
 一覧を置かない本では、一覧の文献種別の書式を要しない。
-注の引用、年だけの引用、一覧の並べ替えとラベルとぶら下げ字下げ、同梱のスタイルは実装途中である。
+注の引用、一覧の並べ替えとラベルとぶら下げ字下げ、同梱のスタイルは実装途中である。
 IEEE、Vancouver、SIST 02、Unified Style Sheet for Linguistics の同梱宣言のファイルは `modules/golem-project/data/bibliography/` にある。
 `ieee`、`vancouver`、`sist02`、`unified-linguistics` を選ぶと、埋め込んだ宣言を自作の宣言と同じ読み手で読み、別名に写した宣言と同じ文字列を組む。
 IEEE の書籍と論文と章の三つの一次資料例と、ほかの三つのスタイルの一例ずつ、IEEE の著者名の六人と七人の境界を照合している。
@@ -10093,6 +10102,10 @@ HTML、EPUB、プレーンテキストは、中のインラインをほかのイ
 `value` は、`[0, uint64]`（数）、`[1, uint64, uint64]`（範囲）、`[2, tstr]`（空でない文字列）のいずれかである。
 以前の引用のタグ 15 は廃止し、使い回さない。
 プラグインの SDK の `Inline::Cite` は `items: Vec<CiteItem>` を持ち、位置の種類を文字列のまま通す。
+年だけの一件は、通常の四要素の後に五つめの要素 `"year"` を持つ（[root ADR 0470](adr/0470-bibliography-styles-by-name-and-by-declaration.md)）。
+通常の一件は、従来の四要素のままである。
+SDK の `CiteItem.form` は `CitationForm::Normal` か `CitationForm::Year` で、`CiteItem::key` は前者を作る。
+Emet では、通常の `Inline.CiteItem` のほかに、同じ四つの引数を取る `Inline.CiteYearItem` を使う。
 
 脚注は `[23, span, uint64, [+ block]]`、傍注は `[24, span, uint64, [+ block]]` であり、本文はブロックの並びである（[docs/adr/0263](adr/0263-notes-with-more-than-one-paragraph.md)）。
 脚注、傍注、章末の注は、ラベルを持つときだけ、本文の後に五つめの要素としてラベルの文字列を持つ（`? label: tstr`、[root ADR 0422](adr/0422-references-to-notes.md)）。

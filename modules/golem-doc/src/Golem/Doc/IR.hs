@@ -66,6 +66,7 @@ module Golem.Doc.IR
     SeeKind (..),
     CiteItem (..),
     citeItem,
+    citationYearOnly,
     citeInlines,
     Locator (..),
     LocatorLabel (..),
@@ -578,13 +579,26 @@ data SeeKind = SeeAuto | SeeOnly | SeeAlso
 where in the work it cites, and the text before and after it. The fields
 start with @cit@ not to meet 'ciKey' of a channel item.
 -}
-data CiteItem r = CiteItem
-  { citKey :: !Text,
-    citLocator :: !(Maybe Locator),
-    citPrefix :: ![InlineF r],
-    citSuffix :: ![InlineF r]
-  }
+data CiteItem r
+  = CiteItem
+      { citKey :: !Text,
+        citLocator :: !(Maybe Locator),
+        citPrefix :: ![InlineF r],
+        citSuffix :: ![InlineF r]
+      }
+  | -- | Explicit @form=year@ (root ADR 0470); the selected style decides its output.
+    CiteYearItem
+      { citKey :: !Text,
+        citLocator :: !(Maybe Locator),
+        citPrefix :: ![InlineF r],
+        citSuffix :: ![InlineF r]
+      }
   deriving stock (Eq, Show, Functor)
+
+-- | Whether the source explicitly requested the year-only citation form.
+citationYearOnly :: CiteItem r -> Bool
+citationYearOnly CiteYearItem {} = True
+citationYearOnly CiteItem {} = False
 
 -- | An item of a key alone: no locator, no prefix, no suffix.
 citeItem :: Text -> CiteItem r
@@ -711,7 +725,9 @@ noRuby = \case
 
 -- | An item of a citation whose prefix and suffix have no ruby (docs/adr/0266).
 itemNoRuby :: CiteItem () -> Maybe (CiteItem Void)
-itemNoRuby (CiteItem k l p q) = CiteItem k l <$> traverse noRuby p <*> traverse noRuby q
+itemNoRuby item = constructor (citKey item) (citLocator item) <$> traverse noRuby (citPrefix item) <*> traverse noRuby (citSuffix item)
+  where
+    constructor = if citationYearOnly item then CiteYearItem else CiteItem
 
 {- | The inlines of the paragraphs of the body of a note, in order
 (docs/adr/0263); the other blocks, which the evaluation and Validate do

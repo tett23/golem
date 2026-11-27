@@ -1,5 +1,5 @@
 -- | Resolve a CSL record through an explicit declaration (root ADR 0470).
-module Golem.Assemble.BibliographyRecords (formatBibliographyRecord, formatBibliographyRecordWithSuffix, formatBibliographyCitation, formatBibliographyCitationWith, formatBibliographyCitationWithSuffix) where
+module Golem.Assemble.BibliographyRecords (formatBibliographyRecord, formatBibliographyRecordWithSuffix, formatBibliographyCitation, formatBibliographyCitationWith, formatBibliographyCitationWithSuffix, formatBibliographyYearCitationWithSuffix) where
 
 import Control.Applicative ((<|>))
 import Data.Map.Strict qualified as Map
@@ -32,6 +32,12 @@ formatBibliographyCitation style number = formatBibliographyCitationWith style n
 
 formatBibliographyCitationWith :: BibliographyStyle d -> Int -> Maybe Locator -> CslRecord -> Either Text [CitePiece]
 formatBibliographyCitationWith = formatBibliographyCitationWithSuffix ""
+
+-- | Only author-year styles use their explicit year template (root ADR 0470).
+formatBibliographyYearCitationWithSuffix :: Text -> BibliographyStyle d -> Int -> Maybe Locator -> CslRecord -> Either Text [CitePiece]
+formatBibliographyYearCitationWithSuffix suffix style = formatBibliographyCitationWithSuffix suffix selected
+  where
+    selected = if bsCitationMode style == Just "author-year" then style {bsCitation = bsCitationYear style} else style
 
 formatBibliographyCitationWithSuffix :: Text -> BibliographyStyle d -> Int -> Maybe Locator -> CslRecord -> Either Text [CitePiece]
 formatBibliographyCitationWithSuffix suffix style number location record = do

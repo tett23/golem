@@ -1,7 +1,9 @@
 module CslRecordSpec (tests) where
 
+import Control.Monad (forM_)
 import Data.Aeson qualified as J
 import Data.ByteString.Lazy.Char8 qualified as BL
+import Data.Text.Encoding qualified as TE
 import Golem.Bibliography
 import Golem.Bibliography.Csl
 import Test.Tasty
@@ -33,6 +35,12 @@ tests =
         case records of
           [record] -> recordDate "issued" record @?= Just (DateParts 2011 (Just 10) (Just 25))
           _ -> assertFailure "expected one record",
+      testCase "root ADR 0470 I8: calendar literals and missing years are not guessed or converted" $
+        forM_ [("", Nothing), (",\"issued\":{\"date-parts\":[[null]]}", Nothing), (",\"issued\":{\"literal\":\"寛永某年\"}", Just (DateLiteral "寛永某年")), (",\"issued\":{\"date-parts\":[[null]],\"literal\":\"ヒジュラ暦1445年\"}", Just (DateLiteral "ヒジュラ暦1445年")), (",\"issued\":{\"date-parts\":[[1445]],\"calendar\":\"islamic\"}", Just (DateParts 1445 Nothing Nothing))] $ \(fields, expected) -> do
+          records <- either (assertFailure . show) pure (decodeCslRecords (BL.fromStrict (TE.encodeUtf8 ("[{\"id\":\"a\"" <> fields <> "}]"))))
+          case records of
+            [record] -> recordDate "issued" record @?= expected
+            _ -> assertFailure "expected one record",
       testCase "root ADR 0470 I3: missing, blank and structured fields are absent" $ do
         records <- either (assertFailure . show) pure $ decodeCslRecords "[{\"id\":\"a\",\"title\":\"  \",\"DOI\":null,\"edition\":{}}]"
         case records of

@@ -15,7 +15,7 @@ import Golem.Assemble (IndexGroup (..), IndexLocator (..), IndexSection (..), ci
 import Golem.Bibliography (EntryPart (..), entryText, formatEntry)
 import Golem.Bibliography.Csl (recordEntry, recordText)
 import Golem.Doc.Citation (citationText)
-import Golem.Doc.IR (Block (..), BlockBody (..), Document (..), Inline, InlineF (..), citeItem)
+import Golem.Doc.IR (Block (..), BlockBody (..), CiteItem (..), Document (..), Inline, InlineF (..), citeItem)
 import Golem.Driver
 import Golem.Eval.File (EvalResult (..))
 import Golem.Evaluate (loadBibliographyRecords)
@@ -361,6 +361,18 @@ bibliographyFormatTests =
         assertEqual "no errors" [] (map diagCode (filter isError (brDiagnostics result)))
         output <- TIO.readFile (tmp </> "build/text/horizontal/a.txt")
         assertBool (T.unpack output) ("(Knuth, 1981)" `T.isInfixOf` output),
+    testCase "root ADR 0470: year-only citation selects citation-year only in author-year mode" $
+      forM_ ["numeric", "author-year"] $ \mode ->
+        withBibProject "bibliography = [\"refs.json\"]" "本文[cite knuth1981 form=year prefix=\"before \" suffix=\" after\"]。\n\n@bibliography\n" [("refs.json", refsJson)] $ \tmp -> do
+          let base = T.replace "citation-mode='numeric'" ("citation-mode='" <> mode <> "'\ncitation-year=['{year}']") (T.replace ".types.book]" ".types.default]" customBibliographyDeclaration)
+              declaration = if mode == "author-year" then T.replace "citation=['ref-{number}']" "citation=['{author}, {year}']" base else base
+          TIO.appendFile (tmp </> "style.toml") (declaration <> "\n[bibliography.styles.custom.names.short]\ndelimiter=''\nlast-delimiter=''\n")
+          TIO.appendFile (tmp </> "manifest.toml") "[targets.text]\n"
+          result <- build (defaultOptions tmp) {optTargets = Just [TargetText]}
+          assertEqual "no errors" [] (map diagCode (filter isError (brDiagnostics result)))
+          output <- TIO.readFile (tmp </> "build/text/horizontal/a.txt")
+          let expected = if mode == "author-year" then "(before 1981 after)" else "(before ref-1 after)"
+          assertBool (T.unpack output) (expected `T.isInfixOf` output),
     testCase "root ADR 0470 I4: two citation marks may share a plugin source span" $
       withBibProject "bibliography = [\"refs.json\"]" "[cite a] と [cite b]。\n\n@bibliography\n" [("refs.json", abcJson)] $ \tmp -> do
         TIO.appendFile (tmp </> "style.toml") (T.replace ".types.book]" ".types.default]" customBibliographyDeclaration)
@@ -377,6 +389,35 @@ bibliographyFormatTests =
                 assertEqual "no errors" [] (map diagCode (filter isError ds))
                 citationText (citationPiecesFor book shared [(citeItem "a", Just 1)]) @?= "(ref-1)"
                 citationText (citationPiecesFor book shared [(citeItem "b", Just 2)]) @?= "(ref-2)",
+    testCase "root ADR 0470: ordinary and year forms of the same key retain a shared plugin span" $
+      withBibProject "bibliography = [\"refs.json\"]" "[cite knuth1981 form=year] と [cite knuth1981]。\n\n@bibliography\n" [("refs.json", refsJson)] $ \tmp -> do
+        let declaration = T.replace "citation-mode='numeric'" "citation-mode='author-year'\ncitation-year=['{year}']" (T.replace "citation=['ref-{number}']" "citation=['{author}, {year}']" (T.replace ".types.book]" ".types.default]" customBibliographyDeclaration))
+        TIO.appendFile (tmp </> "style.toml") (declaration <> "\n[bibliography.styles.custom.names.short]\ndelimiter=''\nlast-delimiter=''\n")
+        evaluated <- evaluateProject Dev tmp
+        case evaluated of
+          Left failure -> assertFailure (show (pfDiagnostics failure))
+          Right e -> do
+            let shared = mkSpan (fst (Map.findMin (evResults e))) 0 1
+                rewrite (Document fid blocks) = Document fid [case blockBody b of Paragraph st xs -> b {blockBody = Paragraph st [case inline of Cite _ items -> Cite shared items; _ -> inline | inline <- xs]}; _ -> b | b <- blocks]
+                results = Map.map (\r -> r {erDocument = rewrite (erDocument r)}) (evResults e)
+            case evReassemble e results of
+              (Nothing, ds) -> assertFailure (show ds)
+              (Just book, ds) -> do
+                assertEqual "no errors" [] (map diagCode (filter isError ds))
+                citationText (citationPiecesFor book shared [(CiteYearItem "knuth1981" Nothing [] [], Just 1)]) @?= "(1981)"
+                citationText (citationPiecesFor book shared [(citeItem "knuth1981", Just 1)]) @?= "(Knuth, 1981)",
+    testCase "root ADR 0470: an actual SDK Wasm filter preserves the explicit year form" $ do
+      wasm <- BS.readFile (".." </> ".." </> "plugins" </> "wasm" </> "auto-tcy.wasm")
+      withBibProject "bibliography = [\"refs.json\"]" "12\n\n[cite knuth1981 form=year]。\n" [("refs.json", refsJson), ("auto-tcy.wasm", wasm)] $ \tmp -> do
+        TIO.writeFile (tmp </> "style.toml") (T.replace "writing-mode = \"horizontal\"" "writing-mode = \"vertical\"" (TE.decodeUtf8 horizontalStyle))
+        let declaration = T.replace "citation-mode='numeric'" "citation-mode='author-year'\ncitation-year=['{year}']" (T.replace "citation=['ref-{number}']" "citation=['{author}, {year}']" (T.replace ".types.book]" ".types.default]" customBibliographyDeclaration))
+        TIO.appendFile (tmp </> "style.toml") (declaration <> "\n[bibliography.styles.custom.names.short]\ndelimiter=''\nlast-delimiter=''\n")
+        TIO.appendFile (tmp </> "manifest.toml") "[plugins.auto-tcy]\npath='auto-tcy.wasm'\n[[filters]]\nplugin='auto-tcy'\nfilter='auto-tcy'\nfiles=['a.gm']\n"
+        result <- build (defaultOptions tmp) {optTargets = Just [TargetHtml]}
+        assertEqual "no errors" [] (map diagCode (filter isError (brDiagnostics result)))
+        html <- TIO.readFile (tmp </> "build/html/a.html")
+        assertBool (T.unpack html) ("<span class=\"tcy\">12</span>" `T.isInfixOf` html)
+        assertBool (T.unpack html) ("(1981)" `T.isInfixOf` html),
     testCase "root ADR 0470: selected declaration formats retained CSL metadata in HTML" $
       withBibProject "bibliography = [\"refs.json\"]" "本文[cite custom]。\n\n@bibliography\n" [("refs.json", "[{\"id\":\"custom\",\"type\":\"book\",\"title\":\"Legacy title\",\"DOI\":\"10.1/example\"}]")] $ \tmp -> do
         TIO.appendFile (tmp </> "style.toml") customBibliographyDeclaration
