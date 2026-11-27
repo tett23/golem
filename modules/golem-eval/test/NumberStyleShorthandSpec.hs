@@ -2,6 +2,7 @@
 module NumberStyleShorthandSpec (tests) where
 
 import Data.Map.Strict qualified as Map
+import Data.Ratio ((%))
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
@@ -38,7 +39,8 @@ tests :: TestTree
 tests =
   testGroup
     "golem-parser ADR 0014"
-    [ testGroup
+    [ rationalNumberTests,
+      testGroup
         "explicit number shorthand styles"
         [ testCase ("golem-parser ADR 0014 I2: complete Number IR in " <> T.unpack direction <> " for " <> T.unpack style) $ do
             let parsed = either (error . show) id (parseStyle (FileId 9) ("[page]\nsize = \"A5\"\nwriting-mode = \"" <> direction <> "\"\n"))
@@ -101,4 +103,37 @@ tests =
               [Paragraph Nothing [Text _ actual]] -> actual @?= "##17:tcy##"
               other -> assertFailure (show other)
         ]
+    ]
+
+rationalNumberTests :: TestTree
+rationalNumberTests =
+  testGroup
+    "root ADR 0478"
+    [ testGroup
+        "I1 I2 exact rational values"
+        [ testCase (T.unpack source) $ do
+            let (ds, r) = evalSource baseCtx (source <> "\n")
+            map diagCodeText ds @?= []
+            case resultBodies r of
+              [Paragraph Nothing [Number _ n _]] -> toRational n @?= expected
+              other -> assertFailure (show other)
+        | (source, expected) <- [("##0.1##", 1 % 10), ("##0.10:tcy##", 1 % 10), ("##1.0##", 1), ("##0.00##", 0), ("[number-text -0.25]", (-1) % 4), ("[number-text [= 1/3]]", 1 % 3), ("[number-text 1e-1]", 1 % 10), ("[number-text [= 1/1]]", 1), ("[number-text [= 1/9223372036854775807]]", 1 % 9223372036854775807), ("[number-text [= 2/(2 ** 64 - 2)]]", 1 % 9223372036854775807), ("[number-text -9223372036854775808]", -9223372036854775808), ("[number-text 9223372036854775807]", 9223372036854775807)]
+        ],
+      testCase "root ADR 0478 I1: complete IR and style equality" $
+        mapM_ (\n -> mapM_ (pair baseCtx n) ["kanji", "kanji-digits", "tcy", "unknown"]) ["0.1", "0.10", "1.0", "0.00"],
+      testCase "root ADR 0478 I2: equivalent decimals normalize before IR" $
+        observed baseCtx "##0.10##\n" @?= observed baseCtx "##0.1##\n",
+      testCase "root ADR 0478 I1: overriding plugin receives the same original numeric type" $ do
+        let output = PluginCommand (\args _ sp -> Right ([Text sp (T.pack (show args))], []))
+            ctx = baseCtx {ctxPlugins = noPlugins {phOverrides = Map.singleton BNumberText output}}
+        mapM_ (\n -> pair ctx n "custom") ["0.1", "1.0", "12"],
+      testCase "root ADR 0478 I5: rejected values preserve diagnostic priority" $
+        mapM_
+          (\(source, code) -> map diagCodeText (fst (evalSource baseCtx (source <> "\n"))) @?= [code])
+          [("[number-text \"0.1\"]", "G02019"), ("[number-text [= 1...3]]", "G02113"), ("[number-text 1e1301]", "G02086"), ("[number-text [= 1/(2 ** 63)]]", "G02091"), ("[number-text 9223372036854775808]", "G02091"), ("##1.2.3##", "G02078"), ("##1.##", "G02078"), ("##00.1##", "G02078")],
+      testCase "root ADR 0478 I7: decimal shorthand stays literal in code" $ do
+        let ctx = baseCtx {ctxCharStyles = Set.singleton "code"}
+        case resultBodies (evalResult ctx "[code: ##0.10:tcy##]\n") of
+          [Paragraph Nothing [CharStyle _ "code" [Text _ t]]] -> t @?= "##0.10:tcy##"
+          other -> assertFailure (show other)
     ]

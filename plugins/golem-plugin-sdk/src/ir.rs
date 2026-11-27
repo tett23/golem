@@ -28,6 +28,61 @@ pub struct RubySegment {
     pub reading: Option<String>,
 }
 
+/// A reduced rational with an int64 numerator and positive int64 denominator.
+/// Number values use CBOR tag 30, including integral values.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Rational {
+    numerator: i64,
+    denominator: i64,
+}
+
+impl Rational {
+    pub fn new(numerator: i64, denominator: i64) -> Option<Self> {
+        if denominator == 0 { return None; }
+        let mut n = numerator as i128;
+        let mut d = denominator as i128;
+        if d < 0 { n = -n; d = -d; }
+        let (mut a, mut b) = (n.abs(), d);
+        while b != 0 { (a, b) = (b, a % b); }
+        n /= a;
+        d /= a;
+        Some(Self { numerator: i64::try_from(n).ok()?, denominator: i64::try_from(d).ok()? })
+    }
+    pub fn numerator(self) -> i64 { self.numerator }
+    pub fn denominator(self) -> i64 { self.denominator }
+}
+
+impl From<i64> for Rational {
+    fn from(numerator: i64) -> Self { Self { numerator, denominator: 1 } }
+}
+
+impl std::fmt::Display for Rational {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if self.denominator == 1 { write!(f, "{}", self.numerator) }
+        else { write!(f, "{}/{}", self.numerator, self.denominator) }
+    }
+}
+
+fn rational_value(q: Rational) -> Value {
+    Value::Tag(30, Box::new(Value::Array(vec![int(q.numerator), int(q.denominator)])))
+}
+
+fn rational_of(value: &Value) -> R<Rational> {
+    if let Value::Tag(30, pair) = value {
+        if let Value::Array(pair) = &**pair {
+            if let [n, d] = pair.as_slice() {
+                let (n, d) = (i64_of(n)?, i64_of(d)?);
+                if d > 0 {
+                    if let Some(q) = Rational::new(n, d) {
+                        if (q.numerator, q.denominator) == (n, d) { return Ok(q); }
+                    }
+                }
+            }
+        }
+    }
+    Err(DecodeError::Shape("canonical rational"))
+}
+
 /// `number-style = 0..2`
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum NumberStyle {
@@ -64,7 +119,7 @@ pub enum Inline {
     /// 27 (root ADR 0380)
     Upright { span: Span, text: String },
     /// 9
-    Number { span: Span, value: i64, style: Option<NumberStyle> },
+    Number { span: Span, value: Rational, style: Option<NumberStyle> },
     /// 10
     Ref { span: Span, kind: RefKind, label: String },
     /// 11: the expression as it came in; a plugin may only pass it on
@@ -330,7 +385,7 @@ pub fn inline_value(x: &Inline) -> Value {
             9,
             span,
             vec![
-                int(*value),
+                rational_value(*value),
                 style.map_or(Value::Null, |s| int(match s {
                     NumberStyle::Kanji => 0u8,
                     NumberStyle::KanjiDigits => 1,
@@ -628,7 +683,7 @@ pub fn inline_of(v: &Value) -> R<Inline> {
         (28, [s]) => Inline::Upright { span, text: text_of(s)? },
         (9, [n, st]) => Inline::Number {
             span,
-            value: i64_of(n)?,
+            value: rational_of(n)?,
             style: opt(st, |s| match u64_of(s)? {
                 0 => Ok(NumberStyle::Kanji),
                 1 => Ok(NumberStyle::KanjiDigits),
@@ -767,6 +822,41 @@ mod tests {
     }
 
     #[test]
+    fn root_adr_0478_i3_rational_normalization_and_limits() {
+        assert_eq!(Rational::new(2, 20), Rational::new(1, 10));
+        assert_eq!(Rational::new(0, -5), Some(0.into()));
+        assert_eq!(Rational::new(i64::MIN, i64::MIN), Some(1.into()));
+        assert_eq!(Rational::new(i64::MIN, -1), None);
+        assert_eq!(Rational::new(1, 0), None);
+        for (n, d) in [(1, 0), (1, -1), (2, 4), (0, 2)] {
+            let invalid = Value::Array(vec![int(9u8), span_value(sp(0, 1)), Value::Tag(30, Box::new(Value::Array(vec![int(n), int(d)]))), Value::Null]);
+            assert!(inline_of(&invalid).is_err());
+        }
+    }
+
+    #[test]
+    fn root_adr_0478_i6_reject_integer_overflow_in_rational_payload() {
+        for (n, d) in [(i64::MAX as i128 + 1, 1), (1, i64::MAX as i128 + 1)] {
+            let invalid = Value::Array(vec![int(9u8), span_value(sp(0, 1)), Value::Tag(30, Box::new(Value::Array(vec![Value::Int(n), Value::Int(d)]))), Value::Null]);
+            assert!(inline_of(&invalid).is_err());
+        }
+    }
+
+    #[test]
+    fn root_adr_0478_i6_reject_old_integer_number() {
+        let old = Value::Array(vec![int(9u8), span_value(sp(0, 1)), int(1i64), Value::Null]);
+        assert!(inline_of(&old).is_err(), "Number requires canonical rational tag 30");
+    }
+
+    #[test]
+    fn root_adr_0478_i3_accept_fraction_number() {
+        let fraction = Value::Array(vec![int(9u8), span_value(sp(0, 1)), Value::Tag(30, Box::new(Value::Array(vec![int(1i64), int(3i64)]))), Value::Null]);
+        let decoded = inline_of(&fraction).expect("rational Number");
+        assert_eq!(inline_value(&decoded), fraction);
+    }
+
+
+    #[test]
     fn inline_roundtrip() {
         let xs = vec![
             Inline::Text { span: sp(0, 3), text: "漢字".into() },
@@ -776,7 +866,7 @@ mod tests {
                 span: sp(0, 3),
                 segments: vec![RubySegment { base: vec![Inline::Text { span: sp(0, 3), text: "漢".into() }], reading: Some("かん".into()) }],
             },
-            Inline::Number { span: sp(1, 2), value: -5, style: Some(NumberStyle::Tcy) },
+            Inline::Number { span: sp(1, 2), value: (-5).into(), style: Some(NumberStyle::Tcy) },
             Inline::Aki { span: sp(1, 2), zw: None, sp: Some(Sp(65536)) },
             Inline::Deferred { span: sp(1, 2), expr: Value::Array(vec![Value::Int(0), span_value(sp(1, 2)), Value::Int(3)]) },
             Inline::ChannelItem { span: sp(1, 2), channel: "glossary".into(), key: Some("k".into()), reading: None, body: vec![] },

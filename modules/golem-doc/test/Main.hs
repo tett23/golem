@@ -6,6 +6,7 @@ import Codec.CBOR.Term (Term (..), encodeTerm)
 import Codec.CBOR.Write (toStrictByteString)
 import Control.Exception (ErrorCall, evaluate, try)
 import Data.ByteString qualified as BS
+import Data.Ratio ((%))
 import Golem.Doc.Cbor
 import Golem.Doc.IR
 import Golem.Doc.Validate
@@ -46,7 +47,7 @@ cddlValidator = do
 
 tests :: TestTree
 tests =
-  testGroup "golem-doc" [cbor, CborExprSpec.tests, verticalNumbers, int64Tests, LinkSpec.tests, LangSpec.tests, ResolvedSpec.tests, TableSpec.tests, StyleRefSpec.tests, NoteSpec.tests, CiteSpec.tests, IndexSpec.tests, headingLevelTests]
+  testGroup "golem-doc" [rationalNumberTests, cbor, CborExprSpec.tests, verticalNumbers, int64Tests, LinkSpec.tests, LangSpec.tests, ResolvedSpec.tests, TableSpec.tests, StyleRefSpec.tests, NoteSpec.tests, CiteSpec.tests, IndexSpec.tests, headingLevelTests]
 
 -- | The levels of a heading are 1 to 6 (docs/adr/0188).
 headingLevelTests :: TestTree
@@ -90,12 +91,12 @@ int64Tests =
         let is = [Number sp n Nothing | n <- [2 ^ (63 :: Int) - 1, negate (2 ^ (63 :: Int))]]
         decodeInlines (encodeInlines is) @?= Right is,
       testCase "a Number of 2^63 is out of range" $
-        inl (TList [TInt 9, spT, TInteger (2 ^ (63 :: Int)), TNull]) @?= Left outOfRange,
+        inl (TList [TInt 9, spT, TTagged 30 (TList [TInteger (2 ^ (63 :: Int)), TInt 1]), TNull]) @?= Left outOfRange,
       testCase "a Number of -2^63 - 1 is out of range" $
-        inl (TList [TInt 9, spT, TInteger (negate (2 ^ (63 :: Int)) - 1), TNull]) @?= Left outOfRange,
+        inl (TList [TInt 9, spT, TTagged 30 (TList [TInteger (negate (2 ^ (63 :: Int)) - 1), TInt 1]), TNull]) @?= Left outOfRange,
       testCase "a Number as a bignum (tag 2 and 3) is out of range" $ do
-        inl (TList [TInt 9, spT, TInteger (2 ^ (70 :: Int)), TNull]) @?= Left outOfRange
-        inl (TList [TInt 9, spT, TInteger (negate (2 ^ (70 :: Int))), TNull]) @?= Left outOfRange,
+        inl (TList [TInt 9, spT, TTagged 30 (TList [TInteger (2 ^ (70 :: Int)), TInt 1]), TNull]) @?= Left outOfRange
+        inl (TList [TInt 9, spT, TTagged 30 (TList [TInteger (negate (2 ^ (70 :: Int))), TInt 1]), TNull]) @?= Left outOfRange,
       testCase "the start of a span at 2^64 + 5 is not read as 5" $
         inl (TList [TInt 0, TList [TInt 0, TInteger (2 ^ (64 :: Int) + 5), TInteger (2 ^ (64 :: Int) + 6)], TString "a"]) @?= Left outOfRange,
       testCase "the other integers: @number, aki, a code line, an expression" $ do
@@ -443,3 +444,28 @@ cbor =
         validateInlines size [e] [Deferred sp e] @?= []
         validateInlines size [] [IndexMark sp (IndexEntry ["a", "b", "c"] ["a", "b", "c"] IndexPoint)] @?= ["索引の項目の段の数が不正です"]
     ]
+
+rationalNumberTests :: TestTree
+rationalNumberTests =
+  testGroup
+    "root ADR 0478 rational Number CBOR"
+    [ testCase "root ADR 0478 I6: IR validation also rejects out-of-range numerator and denominator" $ do
+        let invalid q = validateInlines (const (Just 1)) [] [Number sp q Nothing]
+        assertBool "numerator" (not (null (invalid (2 ^ (63 :: Int)))))
+        assertBool "denominator" (not (null (invalid (1 % (2 ^ (63 :: Int)))))),
+      testCase "root ADR 0478 I3: integers also encode as canonical rational tag 30" $
+        encodeInlines [Number sp 1 Nothing] @?= wire (TTagged 30 (TList [TInt 1, TInt 1])),
+      testCase "root ADR 0478 I3: a fraction decodes exactly" $
+        case decodeInlines (wire (TTagged 30 (TList [TInt 1, TInt 3]))) of
+          Right [Number _ n Nothing] -> toRational n @?= 1 % 3
+          other -> assertFailure (show other),
+      testCase "root ADR 0478 I6: reject old integer payload" $
+        assertBool "old Number integer is not the new ABI" (rejected (TInt 1)),
+      testCase "root ADR 0478 I6: reject invalid rational payloads" $
+        mapM_
+          (\t -> assertBool (show t) (rejected t))
+          [TTagged 30 (TList [TInt 1, TInt 0]), TTagged 30 (TList [TInt 1, TInt (-1)]), TTagged 30 (TList [TInt 2, TInt 4]), TTagged 30 (TList [TInteger (2 ^ (63 :: Int)), TInt 1])]
+    ]
+  where
+    wire value = toStrictByteString (encodeTerm (TList [TList [TInt 9, TList [TInt 0, TInt 0, TInt 1], value, TNull]]))
+    rejected value = case decodeInlines (wire value) of Left _ -> True; Right _ -> False

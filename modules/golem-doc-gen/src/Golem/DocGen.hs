@@ -9,6 +9,7 @@ module Golem.DocGen (genDocument, genInline, genExpr, genInt64) where
 
 import Data.List (nub)
 import Data.Map.Strict qualified as Map
+import Data.Ratio ((%))
 import Data.Text (Text)
 import Data.Void (Void)
 import Golem.Doc.IR
@@ -43,7 +44,7 @@ genInlineWith mr =
         Tcy <$> genSpan <*> genText,
         Warichu <$> genSpan <*> genText,
         Upright <$> genSpan <*> genText,
-        Number <$> genSpan <*> genInt64 <*> Gen.maybe Gen.enumBounded,
+        Number <$> genSpan <*> ((%) <$> genInt64 <*> Gen.integral (Range.linear 1 (2 ^ (63 :: Int) - 1))) <*> Gen.maybe Gen.enumBounded,
         Ref <$> genSpan <*> Gen.enumBounded <*> genText,
         Deferred <$> genSpan <*> (DeferredExpr <$> genExpr),
         -- every kind of a mark, a target of one level or two (docs/adr/0265)

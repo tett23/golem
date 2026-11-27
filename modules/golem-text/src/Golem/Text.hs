@@ -12,6 +12,7 @@ import Data.List.NonEmpty (NonEmpty)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (fromMaybe, isJust)
+import Data.Ratio (denominator, numerator)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Golem.Assemble
@@ -21,6 +22,7 @@ import Golem.Bibliography (EntryPart, entryText)
 import Golem.Doc.Citation (citationPieces, citationText)
 import Golem.Doc.IR
 import Golem.Numerals
+import Golem.Numerals.Number (renderIRNumber)
 import Golem.Syntax.Span
 import System.FilePath (replaceExtension)
 
@@ -30,11 +32,12 @@ data TextVariant = Vertical | Horizontal
 {- | Number notation: kanji in vertical text (tate-chu-yoko does not exist
 in plain text), arabic in horizontal text.
 -}
-renderNumber :: TextVariant -> Text -> Integer -> Maybe NumberStyle -> Text
-renderNumber Horizontal _ n _ = T.pack (show n)
-renderNumber Vertical def n st = case fromMaybe (verticalStyleOf (verticalNumbersNamed def) n) st of
-  StyleKanjiDigits -> kanjiDigits n
-  _ -> kanji n
+renderNumber :: TextVariant -> Text -> Rational -> Maybe NumberStyle -> Text
+renderNumber _ _ q _ | denominator q /= 1 = renderIRNumber q
+renderNumber Horizontal _ n _ = renderIRNumber n
+renderNumber Vertical def n st = case fromMaybe (verticalStyleOf (verticalNumbersNamed def) (numerator n)) st of
+  StyleKanjiDigits -> kanjiDigits (numerator n)
+  _ -> kanji (numerator n)
 
 data Ctx = Ctx
   { cVariant :: TextVariant,
@@ -210,7 +213,7 @@ block c ind (Block sp _ _ body) = case body of
       Just fmts ->
         let NumberFormat pre st suf = atDepth fmts depth
             num = case st of
-              NsBook -> renderNumber (cVariant c) (cNumberDefault c) n Nothing
+              NsBook -> renderNumber (cVariant c) (cNumberDefault c) (fromInteger n) Nothing
               _ -> fromMaybe (T.pack (show n)) (formatListNumber st n)
          in spaced (pre <> num <> suf)
     spaced m =

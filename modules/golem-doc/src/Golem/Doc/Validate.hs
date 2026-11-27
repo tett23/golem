@@ -207,6 +207,7 @@ spanErrors fileSize (SrcSpan f s e) = case fileSize f of
 inlineErrors :: (FileId -> Maybe Int) -> [DeferredExpr] -> InlineF r -> [Text]
 inlineErrors fileSize allowed i =
   spanErrors fileSize (inlineSpan i) <> case i of
+    Number _ q _ -> ["数が意味論 IR の有理数の範囲外です" | not (inInt64 (numerator q) && inInt64 (denominator q)) || denominator q < 1 || gcd (numerator q) (denominator q) /= 1]
     Ruby _ _ segs -> concatMap (\seg -> rubyErrors seg <> concatMap (inlineErrors fileSize allowed) (rsBase seg)) segs
     Kenten _ _ xs -> sub xs
     Color _ _ xs -> sub xs

@@ -533,8 +533,8 @@ verticalStyle = TE.encodeUtf8 (T.replace "writing-mode = \"horizontal\"" "writin
 shapes :: [Inline] -> [T.Text]
 shapes = map $ \case
   Text _ t -> t
-  Number _ n (Just StyleTcy) -> "#" <> T.pack (show n)
-  Number _ n _ -> "number " <> T.pack (show n)
+  i@(Number _ _ (Just StyleTcy)) -> "#" <> inlineText i
+  i@Number {} -> "number " <> inlineText i
   Tcy _ t -> "[tcy: " <> t <> "]"
   Warichu _ t -> "[warichu: " <> t <> "]"
   Upright _ t -> "[upright: " <> t <> "]"

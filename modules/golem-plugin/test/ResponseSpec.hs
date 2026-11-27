@@ -189,7 +189,7 @@ malformedResponseTests =
         p <- answering (withDiagnostics [] <> BS.pack [0x00])
         shout p @?= Left (BadOutput "CBOR の後ろに余分なバイトがあります"),
       testCase "a Number out of int64 is out of range, G06009 (golem-doc ADR 0006)" $ do
-        let numberOf n = TList [TList [TInt 9, TList [TInt 1, TInt 10, TInt 20], TInteger n, TNull]]
+        let numberOf n = TList [TList [TInt 9, TList [TInt 1, TInt 10, TInt 20], TTagged 30 (TList [TInteger n, TInt 1]), TNull]]
         mapM_
           ( \n -> do
               p <- answering (cbor (TList [numberOf n, TList []]))

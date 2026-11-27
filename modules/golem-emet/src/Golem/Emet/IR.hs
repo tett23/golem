@@ -150,7 +150,7 @@ encodeInline = \case
   Tcy sp t -> at sp "Tcy" [str t]
   Warichu sp t -> at sp "Warichu" [str t]
   Upright sp t -> at sp "Upright" [str t]
-  Number sp n st -> at sp "Number" [int n, maybeR numberStyle st]
+  Number sp n st -> at sp "Number" [RPrim (VRat n), maybeR numberStyle st]
   Ref sp k l -> at sp "Ref" [con (refKind k) [], str l]
   Deferred sp e -> do
     j <- gets (Seq.length . cDeferred)
@@ -384,7 +384,7 @@ inlineD cx = \case
     "Tcy" -> one1 $ \s t -> Tcy s <$> strD t
     "Warichu" -> one1 $ \s t -> Warichu s <$> strD t
     "Upright" -> one1 $ \s t -> Upright s <$> strD t
-    "Number" -> one2 $ \s n st -> Number s <$> intD n <*> maybeD numberStyle st
+    "Number" -> one2 $ \s n st -> Number s <$> ratD n <*> maybeD numberStyle st
     "Ref" -> one2 $ \s k l -> Ref s <$> refKind k <*> strD l
     "Deferred" -> one1 $ \s d -> Deferred s <$> deferred d
     "Note" -> withNumber Note

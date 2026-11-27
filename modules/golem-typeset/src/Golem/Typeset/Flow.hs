@@ -2884,7 +2884,7 @@ listMarker style vertical depth = \case
   Just n ->
     let NumberFormat pre st suf = atDepth (fromMaybe (pure (defaultNumberFormat vertical)) (lsNumbers (stLists style))) depth
      in case st of
-          NsBook -> [Text sp0 pre | not (T.null pre)] <> [Number sp0 n Nothing] <> [Text sp0 suf | not (T.null suf)]
+          NsBook -> [Text sp0 pre | not (T.null pre)] <> [Number sp0 (fromInteger n) Nothing] <> [Text sp0 suf | not (T.null suf)]
           -- set as the marks of notes are (docs/adr/0177)
           NsNotation notation -> markInlines sp0 (markParts vertical pre notation n suf)
   where

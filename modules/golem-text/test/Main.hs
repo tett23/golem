@@ -3,6 +3,7 @@ module Main (main) where
 import Data.List.NonEmpty (NonEmpty (..))
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
+import Data.Ratio ((%))
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
@@ -72,17 +73,27 @@ noEval _ _ _ = Right ""
 
 -- | The plain text of one file in a book of the language, with the number format of headings.
 render :: Text -> Text -> [Block] -> [Text]
-render lang format bs =
+render = renderVariant Horizontal
+
+renderVariant :: TextVariant -> Text -> Text -> [Block] -> [Text]
+renderVariant variant lang format bs =
   let cfg = AssembleConfig (Map.fromList [(1, format)]) "図{chapter}-{n}" Map.empty NumberPerFile [] "リスト{chapter}-{n}" "表{chapter}-{n}" Map.empty 16 NumberPerChapter
       (book, _) = assemble cfg noEval [Document (FileId 0) bs]
       (_, ft) = registerFile "a.gm" emptyFileTable
-   in concatMap (T.lines . snd) (renderText lang "kanji" False (const (const (0, 0))) lists False Map.empty Horizontal ft book)
+   in concatMap (T.lines . snd) (renderText lang "kanji" False (const (const (0, 0))) lists False Map.empty variant ft book)
 
 tests :: TestTree
 tests =
   testGroup
     "golem-text"
-    [ testCase "@bibliography lists the entries, or the key without one (golem-doc ADR 0004)" $
+    [ testCase "root ADR 0478 I2 I4: rational text is normalized and integer vertical TCY stays kanji" $ do
+        let values = [Number (sp 0) (1 % 10) (Just StyleTcy), Text (sp 0) " ", Number (sp 0) 1 (Just StyleTcy)]
+            bodies = [Block (sp 0) Nothing Nothing (Paragraph Nothing values)]
+        renderVariant Horizontal "ja" "{title}" bodies @?= ["0.1 1"]
+        renderVariant Vertical "ja" "{title}" bodies @?= ["0.1 一"],
+      testCase "root ADR 0478 I3: repeating fraction text uses 17 significant digits" $
+        render "ja" "{title}" [Block (sp 0) Nothing Nothing (Paragraph Nothing [Number (sp 0) (1 % 3) Nothing])] @?= ["0.33333333333333333"],
+      testCase "@bibliography lists the entries, or the key without one (golem-doc ADR 0004)" $
         renderBibliography (Map.fromList [("jlreq", [EntryText "日本語組版処理の要件、W3C、2020。"])]) [("jlreq", 1), ("missing", 2)]
           @?= [("a.txt", "[1] 日本語組版処理の要件、W3C、2020。\n[2] missing\n")],
       testCase "@bibliography writes the URL and the date of access as text (golem-doc ADR 0005)" $

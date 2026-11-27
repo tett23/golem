@@ -186,7 +186,7 @@ inlineT rt = \case
   Tcy s t -> tagged 8 [spanT s, text t]
   Warichu s t -> tagged 27 [spanT s, text t]
   Upright s t -> tagged 28 [spanT s, text t]
-  Number s n st -> tagged 9 [spanT s, int n, opt (int . fromEnum) st]
+  Number s n st -> tagged 9 [spanT s, rationalTerm n, opt (int . fromEnum) st]
   Ref s k l -> tagged 10 [spanT s, int (fromEnum k), text l]
   Deferred s (DeferredExpr e) -> tagged 11 [spanT s, exprT e]
   -- 12 and 13 are retired: the body is blocks (docs/adr/0263)
@@ -595,7 +595,7 @@ termInline rd t =
         (8, [x]) -> Tcy s <$> asText x
         (27, [x]) -> Warichu s <$> asText x
         (28, [x]) -> Upright s <$> asText x
-        (9, [n, st]) -> Number s <$> asInt n <*> asOpt asEnum st
+        (9, [n, st]) -> Number s <$> asRational n <*> asOpt asEnum st
         (10, [k, l]) -> Ref s <$> asEnum k <*> asText l
         (11, [e]) -> Deferred s . DeferredExpr <$> termExpr e
         -- 12 and 13 are retired (docs/adr/0263)

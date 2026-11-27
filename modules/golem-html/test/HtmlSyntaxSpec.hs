@@ -8,6 +8,7 @@ import Data.Char (isAlphaNum)
 import Data.List (isPrefixOf)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
+import Data.Ratio ((%))
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
@@ -302,7 +303,12 @@ htmlSyntaxTests :: TestTree
 htmlSyntaxTests =
   testGroup
     "the HTML target in the HTML syntax (root ADR 0432)"
-    [ testCase "root ADR 0438 I6: the paragraphs of @frame are in an aside at the place of the command in HTML" $
+    [ testCase "root ADR 0478 I2 I4: decimal HTML and XHTML use one normalized TCY span" $ do
+        let body = bookOf [Block (at 0) Nothing Nothing (Paragraph Nothing [Number (at 0) (1 % 10) (Just StyleTcy)])]
+        mapM_
+          (\site -> assertBool "one normalized whole TCY" ("<span class=\"tcy\">0.1</span>" `T.isInfixOf` T.concat (map snd (sitePages site))))
+          [renderHtml (cfg0 {hcVertical = True}) ft body, renderXhtmlWithPageBreaks (cfg0 {hcVertical = True}) ft body Map.empty],
+      testCase "root ADR 0438 I6: the paragraphs of @frame are in an aside at the place of the command in HTML" $
         do
           forM_ (htmlPages frameSample) (uncurry assertHtmlSyntax)
           assertFrameInPlace (T.concat (map snd (htmlPages frameSample))),
