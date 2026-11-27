@@ -262,6 +262,18 @@ SIST の事業は 2011 年度の末に終わり、サイトは更新されてい
 11. Pizziconi, Barbara. 2011. Honorifics: The cultural specificity of a universal mechanism in Japanese. In Dániel Z. Kádár & Sara Mills (eds.), *Politeness in East Asia*, 45–70. Cambridge: Cambridge University Press. https://doi.org/10.1017/CBO9780511977886.005 （編者は https://pure.hud.ac.uk/en/publications/politeness-in-east-asia/ による）
 ```
 
+## 見本で使う著者名の並べ替えのキー
+
+2026-11-27 に、日本語と欧文を混ぜる見本の第一著者のローマ字表記を確認した。
+この表記を使い、姓と名をコンマと空白でつないだ `golem-sort-key` を明示する。
+漢字から読みを推し量る処理は使わない。
+
+| 著者 | キー | 確認した資料 |
+| --- | --- | --- |
+| 宇佐美まゆみ | `Usami, Mayumi` | [CiNii Books の著者情報 DA10762367](https://ci.nii.ac.jp/author/DA10762367) |
+| 井出祥子 | `Ide, Sachiko` | [CiNii Books の著者情報 DA0072655X](https://ci.nii.ac.jp/author/DA0072655X) |
+| 滝浦真人 | `Takiura, Masato` | [国立国語研究所の著者紹介](https://kotoba.ninjal.ac.jp/kokugoken-author/takiura-masato/) |
+
 ## 文献スタイルの設計への示唆
 
 調べた書式は、欄の順、区切り、括弧と斜体、著者名の順と略し方、ページの範囲の略し方、一覧の分け方と並べ方、番号の有無で違う。
