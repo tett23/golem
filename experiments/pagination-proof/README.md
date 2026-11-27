@@ -1718,7 +1718,7 @@ golem-typeset はコードの行を脚注なしで作り（`Flow.hs:3870`）、g
    エラーで終わる試しの入力も含め、改行器と詩の長さを制限しない。
    `beginWrap` の返り値を直接使う入力では初期条件も導き、成功した詩の試しが返すカーソルでも `trialWrapRest_putLine` の前提を導く。
    写しの再帰分岐と定理の入力条件の分岐は `check-wrap-verse-shape.sh` で照合する。
-   ただし、制御フローや詩の退避先を通るすべての初期状態への接続は残る。
+   ただし、本体のすべての制御フローや詩の退避先を通る初期状態への接続は残る。
    公理と定理の依存、有限の実装照合との区別は [詩の試し置きの依存調査](../../docs/research/0352-wrap-verse-entry-dependencies.md) に記録する。
    `CausalStanza.lean` は、対応モデル `CausalBoundary` の任意の `Ms` について、成功した `stanza` と `accept` の出力のカーソルを扱う。
    その保持処理を `waitForPrior`、一つの詩の行の退避先を `parts` から導くので、カーソルを保つことを退避先の前提として置かない。
@@ -1733,7 +1733,12 @@ golem-typeset はコードの行を脚注なしで作り（`Flow.hs:3870`）、g
    `CausalCalls.lean` は、処理全体の成功を前提にせず、モデルの `paragraphs` が試みる各入口の `WrapReady` を導く。
    前処理の結果、詩の試しの全再帰入力、通常の段落と詩の配置の入力、次の段落の入力を扱う。
    述語の分岐と再帰先は `check-causal-call-shape.sh` で写しと比べる。
-   詩の配置の内部の再試行と退避先すべての接続は残し、前提を [各入口の依存調査](../../docs/research/0352-causal-call-entry-dependencies.md) に記録する。
+   その時点の前提と残りは [各入口の依存調査](../../docs/research/0352-causal-call-entry-dependencies.md) に記録する。
+   `CausalStanzaEntries.lean` は、モデルの `stanza` と `accept` の全再帰入力、詩の試しの全再帰入力、後続のプローブへの入力、保持の結果を検査する。
+   警告の追加、移動、採用する詩の行数を減らす再試行、一行の退避先が、次の入力の `WrapReady` を保つことを導く。
+   試し置きが返す各状態の条件は `tryVerses` から導き、処理全体の成功は前提にしない。
+   相互再帰の分岐と引数は `check-causal-stanza-shape.sh` で写しと比べる。
+   本体の全制御とプローブの内部は残し、[詩の再帰入口の依存調査](../../docs/research/0352-causal-stanza-entry-dependencies.md) に記録する。
 
 これらを終えるまで Alloy の定期実行と既存の参照を維持する。
 終えたときは、Alloy の定期実行を終え、規則やモデルを変えたときにローカルの Lean で検証し直す手順を CONTRIBUTING に書く。
@@ -1769,6 +1774,7 @@ sh experiments/pagination-proof/check.sh
 `CausalStanza.lean` は `CausalBoundary.olean` と `WrapCalls.olean` を読み込み、詩の保持と退避先を具体化して成功結果のカーソルを検査する。
 `CausalParagraphs.lean` は `CausalStanza.olean` を読み込み、前処理と段落間の成功結果のカーソルを検査する。
 `CausalCalls.lean` は `CausalParagraphs.olean` と `WrapVerses.olean` を読み込み、失敗する試みも含む各入口の条件を検査する。
+`CausalStanzaEntries.lean` は `CausalCalls.olean` を読み込み、詩の配置と採用の相互再帰の入口を検査する。
 `CausalFirstIds.lean` は、採番の算術部分だけをほかのモデルを読み込まずに検査する。
 `WholeOrder.lean` は `WholeNotes.olean` を読み込み、ほかの検査と並んで検査し、最後にその結果を待つ。
 `WholeRules.lean` は `Whole.olean` を読み込み、同じくほかの検査と並んで検査する。
