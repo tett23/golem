@@ -670,6 +670,9 @@ golem-doc はこの三つに依存せず、golem-bibliography と golem-numerals
 必須の値が無い片は句読点ごと省き、`?` のある差し込みは値だけを省く。
 数として読めない値には数の表記を当てず、そのまま書く。
 
+`renderBibliographyFragments` は、欄の値とリテラルの断片を分け、欄名を保持する。
+片を省く規則と数の表記は文字列を返す API と共通で、書式の解釈を二重に持たない。
+
 宣言向けの書誌データは、golem-bibliography の `decodeCslRecords` で読み、`recordText`、`recordNames`、`recordDate` から欄を引く（[root ADR 0470](adr/0470-bibliography-styles-by-name-and-by-declaration.md)）。
 編者と DOI などの欄、名前ごとの `golem-sort-key` も保持する。
 既定の書式で使う `decodeCslJson` と `recordEntry` の項目の形、読み込む順、不正な文字の検査は従来と同じである。

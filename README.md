@@ -596,6 +596,7 @@ cabal test all
 書誌データの読み取りのテストは `cabal test golem-bibliography-test` で実行する。
 スタイル宣言の型は `Golem.Assemble.BibliographyStyle`、TOML の読み取りと書式の検査は `Golem.Project.Bibliography` にある。
 宣言のテストは `cabal test golem-project-test --test-options='-p /0470/'` で実行する。
+差し込み片の `renderBibliographyFragments` は、欄の値と句読点を分け、値の欄名を保持する。
 名前の書式と文献の並べ替えは `Golem.Assemble.BibliographyNames` と `Golem.Assemble.BibliographySort` にあり、解決済みのオプションとキーを受け取る。
 部分宣言の上書きは `overlayBibliographyStyle` が行い、省略されたキーの既定値を追加しない。
 ラテン文字のソートキーは `Golem.Unicode.Latin` が Unicode 17.0.0 の表から作る。
