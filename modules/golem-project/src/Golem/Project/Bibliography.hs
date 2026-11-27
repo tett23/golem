@@ -37,7 +37,7 @@ declarationOf dimension languages = parseTableFromValue $ do
   delimiter <- optKey "citation-delimiter"
   citationPrefix <- optKey "citation-prefix"
   citationSuffix <- optKey "citation-suffix"
-  citationSort <- enumKey "citation-sort" ["written", "year"]
+  citationSort <- enumKey "citation-sort" ["written", "year", "author-year"]
   subsequent <- optKey "subsequent"
   channel <- enumKey "note-channel" ["footnote", "endnote"]
   sortKeys <- optKeyOf "sort" $ \value -> do
@@ -55,10 +55,12 @@ declarationOf dimension languages = parseTableFromValue $ do
   locatorLabels <- fromMaybe Map.empty <$> optKeyOf "locator-labels" (namedOf pairOf)
   locatorPositions <- fromMaybe Map.empty <$> optKeyOf "locator-positions" (namedOf (enumOf "locator-positions" ["before", "after"]))
   locatorDelimiters <- fromMaybe Map.empty <$> optKeyOf "locator-delimiters" (namedOf fromValue)
-  types <- fromMaybe Map.empty <$> optKeyOf "types" (namedOf typeOf)
+  typed <- fromMaybe Map.empty <$> optKeyOf "types" (namedOf typeOf)
+  let types = Map.map fst typed
+      typeCitations = Map.filter (/= emptyBibliographyTypeCitations) (Map.map snd typed)
   names <- fromMaybe Map.empty <$> optKeyOf "names" namesOf
   overrides <- if languages then fromMaybe Map.empty <$> optKeyOf "languages" (namedOf (declarationOf dimension False)) else pure Map.empty
-  pure (BibliographyStyle mode citation citationYear delimiter citationPrefix citationSuffix citationSort subsequent channel sortKeys languageOrder label indent suffix pageRange rangeDelimiter months locatorLabels locatorPositions locatorDelimiters types names overrides)
+  pure (BibliographyStyle mode citation citationYear delimiter citationPrefix citationSuffix citationSort subsequent channel sortKeys languageOrder label indent suffix pageRange rangeDelimiter months locatorLabels locatorPositions locatorDelimiters types typeCitations names overrides)
 
 pairOf :: Value' l -> Matcher l (Text, Text)
 pairOf value =
@@ -66,8 +68,14 @@ pairOf value =
     [one, many] -> pure (one, many)
     _ -> failAt (valueAnn value) "単数と複数の二つの文字列の配列です"
 
-typeOf :: Value' l -> Matcher l BibliographyType
-typeOf = parseTableFromValue $ BibliographyType <$> optKey "pieces" <*> (fromMaybe Map.empty <$> optKey "char-styles")
+typeOf :: Value' l -> Matcher l (BibliographyType, BibliographyTypeCitations)
+typeOf = parseTableFromValue $ do
+  pieces <- optKey "pieces"
+  charStyles <- fromMaybe Map.empty <$> optKey "char-styles"
+  citation <- optKey "citation"
+  year <- optKey "citation-year"
+  subsequent <- optKey "subsequent"
+  pure (BibliographyType pieces charStyles, BibliographyTypeCitations citation year subsequent)
 
 namesOf :: Value' l -> Matcher l (Map Text BibliographyNames)
 namesOf = parseTableFromValue $ do
@@ -121,6 +129,7 @@ bibliographyChecks bibliography = selected <> concatMap declaration (Map.toList 
       concat [pieces key values | (key, Just values) <- [("citation", bsCitation style), ("citation-year", bsCitationYear style), ("subsequent", bsSubsequent style)]]
         <> [bad [ScopeKey "label"] reason | Just text <- [bsLabel style], Left reason <- [parseBibliographyPiece bibliographyFields text]]
         <> concat [concat [piecesAt [ScopeKey "types", ScopeKey kind, ScopeKey "pieces"] values | Just values <- [btPieces entry]] | (kind, entry) <- Map.toList (bsTypes style)]
+        <> concat [concat [piecesAt [ScopeKey "types", ScopeKey kind, ScopeKey key] values | (key, Just values) <- [("citation", btcCitation entry), ("citation-year", btcCitationYear entry), ("subsequent", btcSubsequent entry)]] | (kind, entry) <- Map.toList (bsTypeCitations style)]
         <> [bad [ScopeKey "names", ScopeKey role, ScopeKey "initial-format"] reason | (role, names) <- Map.toList (bsNames style), Just text <- [bnInitialFormat names], Left reason <- [parseInitialFormat text]]
         <> concat [formats name (base <> [ScopeKey "languages", ScopeKey language]) override | (language, override) <- Map.toList (bsLanguages style)]
       where
@@ -141,7 +150,7 @@ bibliographySchema = NTable [("style", str), ("styles", NNamed Nothing (declarat
           ("citation-delimiter", str),
           ("citation-prefix", str),
           ("citation-suffix", str),
-          ("citation-sort", enumeration ["written", "year"]),
+          ("citation-sort", enumeration ["written", "year", "author-year"]),
           ("subsequent", strings),
           ("note-channel", enumeration ["footnote", "endnote"]),
           ("sort", NArray (enumeration ["citation", "author", "year", "title", "language"])),
@@ -155,7 +164,7 @@ bibliographySchema = NTable [("style", str), ("styles", NNamed Nothing (declarat
           ("locator-labels", NTable [(label, strings) | label <- bibliographyLocatorNames]),
           ("locator-positions", NTable [(label, enumeration ["before", "after"]) | label <- bibliographyLocatorNames]),
           ("locator-delimiters", NTable [(label, str) | label <- bibliographyLocatorNames]),
-          ("types", NNamed Nothing (NTable [("pieces", strings), ("char-styles", NNamed Nothing (NValue (LRef CharStyles)))])),
+          ("types", NNamed Nothing (NTable [("pieces", strings), ("char-styles", NNamed Nothing (NValue (LRef CharStyles))), ("citation", strings), ("citation-year", strings), ("subsequent", strings)])),
           ("names", NTable [("author", namesNode False False), ("editor", namesNode False True), ("short", namesNode True False)])
         ]
           <> [("languages", NNamed Nothing (declarationNode False)) | languages]

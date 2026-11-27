@@ -11,7 +11,7 @@ import Golem.Assemble.BibliographyFormats
 import Golem.Assemble.BibliographyNames qualified as Names
 import Golem.Assemble.BibliographyRanges
 import Golem.Assemble.BibliographyStyle
-import Golem.Bibliography (CslDate (..), CslEntry (ceId), CslName (..), EntryPart)
+import Golem.Bibliography (CslDate (..), CslEntry (ceId, ceType), CslName (..), EntryPart)
 import Golem.Bibliography.Csl
 import Golem.Doc.Citation (CitePiece (..))
 import Golem.Doc.IR (Locator (..), LocatorLabel (..), LocatorValue (..), locatorLabelName)
@@ -22,7 +22,7 @@ formatBibliographyRecord = formatBibliographyRecordWithSuffix ""
 -- | The scope supplies the disambiguation suffix; number notation precedes it.
 formatBibliographyRecordWithSuffix :: Text -> BibliographyStyle d -> Int -> CslRecord -> Either Text [EntryPart]
 formatBibliographyRecordWithSuffix suffix style number record = do
-  entry <- maybe (Left "文献種別の書式がありません") Right (bibliographyTypeFor (fromMaybe "" (recordText "type" record)) style)
+  entry <- maybe (Left "文献種別の書式がありません") Right (bibliographyTypeFor (fromMaybe "" (ceType (recordEntry record))) style)
   sources <- maybe (Left "文献種別の pieces がありません") Right (btPieces entry)
   fragments <- recordFragments suffix False style number Nothing record sources
   pure (bibliographyEntryParts (btCharStyles entry) fragments)
@@ -35,13 +35,20 @@ formatBibliographyCitationWith = formatBibliographyCitationWithSuffix ""
 
 -- | Only author-year styles use their explicit year template (root ADR 0470).
 formatBibliographyYearCitationWithSuffix :: Text -> BibliographyStyle d -> Int -> Maybe Locator -> CslRecord -> Either Text [CitePiece]
-formatBibliographyYearCitationWithSuffix suffix style = formatBibliographyCitationWithSuffix suffix selected
-  where
-    selected = if bsCitationMode style == Just "author-year" then style {bsCitation = bsCitationYear style} else style
+formatBibliographyYearCitationWithSuffix suffix style
+  | bsCitationMode style == Just "author-year" = formatBibliographyCitationSelecting btcCitationYear bsCitationYear suffix style
+  | otherwise = formatBibliographyCitationWithSuffix suffix style
 
 formatBibliographyCitationWithSuffix :: Text -> BibliographyStyle d -> Int -> Maybe Locator -> CslRecord -> Either Text [CitePiece]
-formatBibliographyCitationWithSuffix suffix style number location record = do
-  sources <- maybe (Left "citation がありません") Right (bsCitation style)
+formatBibliographyCitationWithSuffix = formatBibliographyCitationSelecting btcCitation bsCitation
+
+formatBibliographyCitationSelecting :: (BibliographyTypeCitations -> Maybe [Text]) -> (BibliographyStyle d -> Maybe [Text]) -> Text -> BibliographyStyle d -> Int -> Maybe Locator -> CslRecord -> Either Text [CitePiece]
+formatBibliographyCitationSelecting typeTemplate globalTemplate suffix style number location record = do
+  let selected = do
+        kind <- bibliographyTypeNameFor (fromMaybe "" (ceType (recordEntry record))) style
+        templates <- Map.lookup kind (bsTypeCitations style)
+        typeTemplate templates
+  sources <- maybe (Left "citation がありません") Right (selected <|> globalTemplate style)
   fragments <- recordFragments suffix (bsCitationMode style `elem` [Just "numeric", Just "author-year"]) style number location record sources
   pure
     [ case fragment of

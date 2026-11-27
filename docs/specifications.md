@@ -9426,6 +9426,14 @@ HTML と EPUB の引用の印は、`<span class="cite">` の中に、括弧、�
 
 選んだ自作の宣言は、通常の CLI の PDF、HTML、EPUB、テキストの引用と一覧に適用する。
 本の言語で印全体の囲みと区切りを、文献の言語で個々の引用、名前、位置ラベルと一覧の書式を解決する（[root ADR 0475](adr/0475-complete-bibliography-declarations-and-citation-delimiters.md)）。
+種類の表と言語別の宣言の選択には、CSL の文字列の `type` と `language` を使い、それ以外は指定なしとして扱う。
+種類ごとの `citation` と `citation-year` は、通常の引用と年だけの引用の書式を上書きする（[root ADR 0480](adr/0480-complete-bibliography-sorting-and-conditional-formats.md)）。
+一致する種類の表が無ければ `types.default` を選ぶ。
+表が無い場合と、選んだ表で項目を省いた場合は、全体の同名の書式を使う。
+明示した空配列ではその書式の片を出力せず、全体の書式へ戻さない。
+種類ごとの指定があっても、全体の `citation` と、`author-year` モードの全体の `citation-year` は必須にする。
+種類の表の `pieces` も必須とし、一覧の無い本で引用だけに使う表には `pieces = []` を書く。
+種類ごとの `subsequent` も読み取り、未使用のものも含めて書式の構文と必要な名前の設定を検査する。
 `locator-positions` と `locator-delimiters` は、位置の 26 種類ごとにラベルの前後と区切りを指定する（[root ADR 0480](adr/0480-complete-bibliography-sorting-and-conditional-formats.md)）。
 位置は `before` ならラベル、区切り、値の順、`after` なら値、区切り、ラベルの順で組み、省略時は `before` と U+0020 一つにする。
 空文字列と空白をそのまま保持し、ラベルの文字から配置や区切りを推測しない。
@@ -9436,6 +9444,14 @@ HTML と EPUB の引用の印は、`<span class="cite">` の中に、括弧、�
 `citation-sort = "year"` は、一つの印の文献を発行年の古い順に動かし、各キーの位置、前置きと後置きも一緒に動かす。
 比較には `issued` の `date-parts` の数値年を使う。
 `issued.literal` と年の無い文献は、数値年のある文献より前に置き、その中では入力順を保つ。
+`citation-sort = "author-year"` は、第一著者のキー、年、入力順で一つの印の文献を並べる。
+第一著者の `golem-sort-key` を使い、無い場合と空白だけの場合は名前からキーを作る。
+名前の `literal` の値があればその値を使い、個人名では姓と名を `names.author.part-delimiter` でつなぐ。
+有効な著者名が無い場合は空のキーを使う。
+キーを小文字にし、ラテン文字の発音区別符号を除いて比べる。
+名前の区切りは文献の言語、順序の指定は本の言語から選ぶ。
+同じキーの中では、年の無い文献と `issued.literal` の文献を数値年のある文献より前に置き、年不明どうしと同年の文献は入力順を保つ。
+位置、前置きと後置きも文献と一緒に動かし、この指定だけでは G03306 を出さない。
 `[cite キー form=year]` は、`author-year` では `citation-year` の片で組み、ほかのモードでは通常の引用と同じになる。
 位置、前置き、後置きと年の接尾辞は、年だけの引用でも保つ。
 `issued.literal` の文字列も年の値として使い、暦を推測したり、ほかの暦へ換算したりしない。
@@ -9454,6 +9470,8 @@ IEEE の書籍と論文と章の三つの一次資料例と、ほかの三つの
 
 宣言を扱うライブラリ API は golem-assemble にある（[root ADR 0470](adr/0470-bibliography-styles-by-name-and-by-declaration.md)）。
 `Golem.Assemble.BibliographyStyle.bibliographyTypeFor` は文献種別に合う宣言を選び、その種別の宣言が無い場合だけ、明示した `types.default` を使う。
+型付きの宣言では、一覧の片と文字スタイルは従来の `BibliographyType` と `bsTypes` に保ち、種類ごとの引用の三つの書式は `bsTypeCitations` に保持する。
+TOML の同じ種類の表から読み、一覧と引用の表の選択には `bibliographyTypeNameFor` を共用する。
 
 引用の引数を扱うライブラリ API の `Golem.Eval.CitationArgument.decodeCitationArgument` は、位置の 26 種類と文字列の前置きと後置きを型付きの値に変換する。
 通常の `cite` は、この API で位置と文字列の前置きと後置きを読む。

@@ -42,10 +42,12 @@ bibliographyRequiredChecks name use style =
       if needsAuthorKey
         then require ["names", "author", "part-delimiter"] (maybe False (isJust . bnPartDelimiter) (Map.lookup "author" (bsNames style)))
         else []
-    typeIssues = concat [require ["types", kind, "pieces"] (isJust (btPieces value)) | (kind, value) <- Map.toList (bsTypes style)]
+    typeIssues =
+      concat [require ["types", kind, "pieces"] (isJust (btPieces value)) | (kind, value) <- Map.toList (bsTypes style)]
+        <> concat [require ["types", kind, "pieces"] False | kind <- Map.keys (bsTypeCitations style), Map.notMember kind (bsTypes style)]
     usedTypes = concat [require ["types", kind] (isJust (bibliographyTypeFor kind style)) | kind <- fromMaybe [] (buListTypes use)]
     fields texts = concat [either (const []) bibliographyPieceFields (parseBibliographyPiece bibliographyFields text) | text <- texts]
-    citationFields = fields (fromMaybe [] (bsCitation style) <> fromMaybe [] (bsCitationYear style) <> fromMaybe [] (bsSubsequent style))
+    citationFields = fields (fromMaybe [] (bsCitation style) <> fromMaybe [] (bsCitationYear style) <> fromMaybe [] (bsSubsequent style) <> concat [values | entry <- Map.elems (bsTypeCitations style), Just values <- [btcCitation entry, btcCitationYear entry, btcSubsequent entry]])
     listFields = fields (concatMap (fromMaybe [] . btPieces) (Map.elems (bsTypes style)) <> maybe [] pure (bsLabel style))
     allFields = citationFields <> listFields
     citeAuthor = if bsCitationMode style `elem` [Just "numeric", Just "author-year"] then "short" else "author"

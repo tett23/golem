@@ -47,12 +47,13 @@ import Data.Text.Encoding qualified as TE
 import Data.Text.Unsafe (lengthWord8)
 import Data.Time.Calendar (showGregorian, toGregorian)
 import Golem.Assemble
+import Golem.Assemble.BibliographyNames qualified as BibNames
 import Golem.Assemble.BibliographyRecords (formatBibliographyCitationWithSuffix, formatBibliographyRecordWithSuffix, formatBibliographyYearCitationWithSuffix)
-import Golem.Assemble.BibliographySort (bibliographyYearSuffixes)
+import Golem.Assemble.BibliographySort (authorSortKey, bibliographyYearSuffixes)
 import Golem.Assemble.BibliographyStyle qualified as Bib
 import Golem.Assemble.CitationFormats (joinBibliographyCitations)
 import Golem.Bibliography (CslDate (..), CslEntry (..), CslName (..), EntryPart, formatEntry)
-import Golem.Bibliography.Csl (CslJsonError (..), CslRecord, decodeCslRecords, recordDate, recordEntry, recordText)
+import Golem.Bibliography.Csl (CslJsonError (..), CslPerson (..), CslRecord, decodeCslRecords, recordDate, recordEntry, recordNames)
 import Golem.Doc.Citation (CitePiece (..))
 import Golem.Doc.IR
 import Golem.Emet (Export (..), Handlers (..), Kind (..), Program, programExports)
@@ -252,7 +253,7 @@ resolveBibliographyRecords style fid manifest records book = case selected of
      in (book, [diagnostic "G03006" Error sp ("引用の位置 " <> label <> " のラベルがありません。参考文献のスタイルを宣言して指定します") | (label, sp) <- Map.toList missing])
   Right (Just declaration) ->
     let language = mdLanguage (manifestMetadata manifest)
-        effectiveFor record = either (Left . T.intercalate ", ") Right (Bib.bibliographyForLanguages language (fromMaybe language (recordText "language" record)) declaration)
+        effectiveFor record = either (Left . T.intercalate ", ") Right (Bib.bibliographyForLanguages language (fromMaybe language (ceLanguage (recordEntry record))) declaration)
         usedKeys = Set.fromList ([citKey item | (_, items) <- bookCitationItems book, item <- items] <> [key | (_, entries) <- bookBibliographies book, (key, _) <- entries])
         requiredProblems =
           nub
@@ -280,11 +281,25 @@ resolveBibliographyRecords style fid manifest records book = case selected of
           pure ((at, key), parts)
         mark (sp, items) = do
           global <- either (Left . T.intercalate ", ") Right (Bib.bibliographyForLanguage language declaration)
-          let ordered = case Bib.bsCitationSort global of
-                Just "year" -> sortOn citationYear items
-                _ -> items
+          ordered <- case Bib.bsCitationSort global of
+            Just "year" -> pure (sortOn citationYear items)
+            Just "author-year" -> do
+              keys <- traverse citationAuthorYear items
+              pure (map snd (sortOn fst (zip keys items)))
+            _ -> pure items
           values <- traverse (citation sp) ordered
           pure (sp, [(items, joinBibliographyCitations (fromMaybe "" (Bib.bsCitationPrefix global)) (fromMaybe "" (Bib.bsCitationSuffix global)) (fromMaybe "" (Bib.bsCitationDelimiter global)) values)])
+        citationAuthorYear item = do
+          record <- maybe (Left "文献キーがありません") Right (Map.lookup (citKey item) records)
+          effective <- effectiveFor record
+          surnameSeparator <- maybe (Left "names.author.part-delimiter がありません") Right (Map.lookup "author" (Bib.bsNames effective) >>= Bib.bnPartDelimiter)
+          let (sortName, sortReading) = case recordNames "author" record of
+                CslPerson person reading : _ ->
+                  ( Just (case person of PersonalName family given -> BibNames.PersonalName family given; LiteralName literal -> BibNames.LiteralName literal),
+                    reading
+                  )
+                [] -> (Nothing, Nothing)
+          pure (authorSortKey surnameSeparator sortReading sortName, citationYear item)
         citationYear item = case Map.lookup (citKey item) records >>= recordDate "issued" of
           Just (DateParts year _ _) -> Just year
           _ -> Nothing

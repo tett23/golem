@@ -2,6 +2,7 @@ module BibliographyStyleSpec (tests) where
 
 import Data.Map.Strict qualified as Map
 import Data.Text (Text)
+import Data.Text qualified as T
 import Golem.Assemble.BibliographyStyle qualified as Bib
 import Golem.Project.Style
 import Golem.Syntax
@@ -60,6 +61,32 @@ tests =
              mapM_
                (\setting -> codes (locatorDeclaration <> setting <> "\n") @?= ["G03006"])
                ["locator-positions={unknown='before'}", "locator-positions={page='middle'}", "locator-positions={page=true}", "locator-delimiters={unknown=''}", "locator-delimiters={page=false}"]
+         ]
+      <> [ testCase "root ADR 0480 I3: type tables accept every citation template and explicit empty arrays" $
+             mapM_ (\template -> readable (locatorDeclaration <> "[bibliography.styles.mine.types.book]\npieces=[]\ncitation=" <> template <> "\ncitation-year=" <> template <> "\nsubsequent=" <> template <> "\n")) ["[]", "['{title}']"],
+           testCase "root ADR 0480 I3: a partial language type inherits its mandatory pieces" $
+             readable (locatorDeclaration <> "[bibliography.styles.mine.types.book]\npieces=[]\ncitation=['base']\n[bibliography.styles.mine.languages.ja.types.book]\ncitation=['Japanese']\ncitation-year=[]\nsubsequent=[]\n"),
+           testCase "root ADR 0480 I3: type templates retain explicit empty arrays including subsequent" $ do
+             value <- declaration (locatorDeclaration <> "[bibliography.styles.mine.types.book]\npieces=[]\ncitation=['book']\ncitation-year=[]\nsubsequent=['short']\n")
+             Map.lookup "book" (Bib.bsTypeCitations value) @?= Just (Bib.BibliographyTypeCitations (Just ["book"]) (Just []) (Just ["short"]))
+             Map.lookup "book" (Bib.bsTypes value) @?= Just (Bib.BibliographyType (Just []) Map.empty),
+           testCase "root ADR 0480 I3: typed templates do not replace mandatory global templates" $ do
+             codes (T.replace "citation=[]\n" "" locatorDeclaration <> "[bibliography.styles.mine.types.book]\npieces=[]\ncitation=[]\n") @?= ["G03006"]
+             codes (T.replace "citation-mode='numeric'" "citation-mode='author-year'" locatorDeclaration <> "[bibliography.styles.mine.types.book]\npieces=[]\ncitation-year=[]\n") @?= ["G03006"],
+           testCase "root ADR 0480 I3: citation-only type declarations still require pieces" $
+             codes (locatorDeclaration <> "[bibliography.styles.mine.types.book]\ncitation=[]\n") @?= ["G03006"],
+           testCase "root ADR 0480 I3: every unused type citation template is syntax checked" $
+             mapM_ (\key -> codes (locatorDeclaration <> "[bibliography.styles.mine.types.unused]\npieces=[]\n" <> key <> "=['{typo}']\n") @?= ["G03304"]) ["citation", "citation-year", "subsequent"],
+           testCase "root ADR 0480 I3: unused type citation templates require their short names" $
+             mapM_
+               ( \key -> case parseStyle (FileId 0) (locatorDeclaration <> "[bibliography.styles.mine.types.unused]\npieces=[]\n" <> key <> "=['{author}']\n") of
+                   Right _ -> assertFailure "missing short-name declarations were accepted"
+                   Left diagnostics -> assertBool (show diagnostics) (any (\d -> "names.short.delimiter" `T.isInfixOf` diagMessage d) diagnostics)
+               )
+               ["citation", "citation-year", "subsequent"]
+         ]
+      <> [ testCase "root ADR 0480 I4: author-year citation order accepts an explicit empty author separator" $
+             readable (T.replace "citation-sort='written'" "citation-sort='author-year'" locatorDeclaration <> "[bibliography.styles.mine.names.author]\npart-delimiter=''\n")
          ]
       <> [ testCase ("root ADR 0470 I7: invalid declaration value " <> show value) $
              codes ("[bibliography.styles.mine]\n" <> value <> "\n") @?= ["G03006"]
