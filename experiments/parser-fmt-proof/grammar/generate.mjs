@@ -709,6 +709,17 @@ if (!fragment && ast) {
       if (rule.alts.length === expected.length &&
           rule.alts.every((alt, index) => describeItems(alt.items) === expected[index])) continue;
     }
+    // BlockRemainderTotal checks the complete item/fence sequence, including
+    // the parameterized inline run and optional closing chunk.
+    if ((rule.name === 'ListItem' || rule.name === 'Div') && rule.templateParams.length === 0 &&
+        rule.alts.length === 1 && rule.alts[0].action?.trim() === '()' && rule.alts[0].constructor === null) {
+      const params = rule.name === 'ListItem' ? ['ind', 'ordered'] : ['ind'];
+      const shape = rule.name === 'ListItem'
+        ? 'Ind(ind) ListMark(ordered) Ws Inline(col ind + 2)+ (Nl / !.) ItemTail(col ind + 2)'
+        : 'Ind(ind) DivMark Sp (Nl / !.) DivBlocks(fenced ind) (BlankLines? Ind(ind) DivMark Sp (Nl / !.))?';
+      if (rule.params.length === params.length && rule.params.every((param, index) => param === params[index]) &&
+          describeItems(rule.alts[0].items) === shape) continue;
+    }
     if (rule.name === 'Ind' && indentFullyProved) continue;
     if (rule.name === 'StringLit' && stringSupported && alternatives[0] === escape &&
         rule.params.length === 0 && rule.templateParams.length === 0 && rule.alts.length === 1 &&
