@@ -779,7 +779,6 @@ splitInitialText is = case graphemeClusters (T.concat (catMaybes (takeWhile isJu
       Color _ _ xs -> concatMap segments xs
       Lang _ _ xs -> concatMap segments xs
       Link _ _ xs -> concatMap segments xs
-      Resolved _ _ _ xs -> concatMap segments xs
       Kenten _ _ xs -> concatMap segments xs
       IndexMark {} -> []
       ProofComment {} -> []

@@ -3293,7 +3293,9 @@ data Composed = Composed
     cActualIndents :: Maybe [Sp],
     -- | the lines occupied by a drop cap and their extra inset (root ADR 0465)
     cDropInset :: Maybe (Int, Sp),
-    cDropPrefix :: Int
+    cDropPrefix :: Int,
+    -- | extra start inset retaining the initial beside a varying exclusion
+    cDropCorrections :: [Sp]
   }
 
 {- | The environment in which the units of the body are set (docs/adr/0173):
@@ -3565,8 +3567,8 @@ sidenotes and index marks. A unit in a box is composed and broken as with
 hanging-punctuation = false: its edge is the inner edge of the box, not the
 type area (docs/adr/0279).
 -}
-composeUnit :: FlowEnv -> Map Int Sp -> (Int -> Sp) -> Unit -> Composed
-composeUnit fe widths lineWidth u =
+composeUnit :: FlowEnv -> Map Int Sp -> (Int -> Sp) -> (Int -> Sp) -> Unit -> Composed
+composeUnit fe widths lineWidth lineStart u =
   let boxed = isJust (uBox u)
       env = unitTextEnv fe u
       params
@@ -3578,7 +3580,8 @@ composeUnit fe widths lineWidth u =
       capComposition = dropComposition fe u
       (textItems0, anchors0) = maybe (composeInlines env (uInlines u)) (\(_, _, its, as) -> (its, as)) capComposition
       inset = (\(n, cut, _, _) -> (n, cut)) <$> capComposition
-      actualWidth k = lineWidth k - dropInsetAt inset k
+      corrections = dropStartCorrections (maybe 0 fst inset) lineStart
+      actualWidth k = lineWidth k - dropInsetAt inset k - dropCorrectionAt corrections k
       {- numbered per page, the mark of a note at the end of a chapter is one
       box of the reserved width (docs/adr/0383); one box too when its
       number is set flat (docs/adr/0381) -}
@@ -3592,7 +3595,7 @@ composeUnit fe widths lineWidth u =
       items = marker <> textItems
       breaks = A.breakAligned (unitAlign u) (adjustedParams (uStyle u) (case uKind u of UHeading {} -> Nothing; _ -> uParaStyle u) params) actualWidth items
       lines' = padDropLines (maybe 0 fst inset) actualWidth (brLines breaks)
-   in Composed lines' (unitNotes fe u anchors) (unitSidenotes fe u shift anchors) (unitMarks fe u shift anchors) anchors items shift (brPositions breaks) 0 False Nothing inset (maybe 0 (\(_, _, its, _) -> length (takeWhile (\case Box 0 _ -> True; _ -> False) its)) capComposition)
+   in Composed lines' (unitNotes fe u anchors) (unitSidenotes fe u shift anchors) (unitMarks fe u shift anchors) anchors items shift (brPositions breaks) 0 False Nothing inset (maybe 0 (\(_, _, its, _) -> length (takeWhile (\case Box 0 _ -> True; _ -> False) its)) capComposition) corrections
 
 {- | The environment the text of a unit is composed in: a unit in a box
 with hanging-punctuation = false (docs/adr/0279).
@@ -3618,6 +3621,20 @@ dropInsetAt :: Maybe (Int, Sp) -> Int -> Sp
 dropInsetAt inset k = case inset of
   Just (n, width) | k < n -> width
   _ -> 0
+
+{- | The initial is kept clear of the greatest start exclusion in its rows.
+The same start edge then protects it from every adjacent body row,
+including a row after a short figure ends (root ADR 0465 I4).
+-}
+dropStartCorrections :: Int -> (Int -> Sp) -> [Sp]
+dropStartCorrections n start =
+  let starts = [start k | k <- [0 .. n - 1]]
+      widest = maximum (0 : starts)
+   in map (widest -) starts
+
+-- | No extra inset after the initial's rows.
+dropCorrectionAt :: [Sp] -> Int -> Sp
+dropCorrectionAt corrections k = fromMaybe 0 (listToMaybe (drop k corrections))
 
 -- | Short drop-cap paragraphs reserve the empty rows of the initial (root ADR 0465).
 padDropLines :: Int -> (Int -> Sp) -> [Line] -> [Line]
@@ -4178,13 +4195,15 @@ composeBeside fe widths unitAt i pf = go (i + 1) 0 0
       | Just u@Unit {uKind = UPara _, uRules = (Nothing, Nothing), uBox = Nothing} <- Map.lookup j unitAt,
         sameItem u = do
           -- the exclusion and the frames of wrap around, the larger on each side (root ADR 0456)
-          let taken k =
-                let (s, e) = besideCut fe i j offset k
-                    narrow = if narrowed u distance k then besideTake fe ex u offset distance k else 0
-                 in if exSide ex == WrapStart then max narrow s + e else s + max narrow e
+          let lineCuts =
+                [ let (s, e) = besideCut fe i j offset k
+                      narrow = if narrowed u distance k then besideTake fe ex u offset distance k else 0
+                   in if exSide ex == WrapStart then (max narrow s, e) else (s, max narrow e)
+                | k <- [0 ..]
+                ]
               -- each line's width once: the line breaking asks for it again and again (root ADR 0464)
-              lineWidths = [feMeasure fe - taken k - unitLineIndent pageFace (uKind u) k - unitEndIndent (uKind u) | k <- [0 ..]]
-          c <- forceComposed (composeUnit fe widths (lineWidths !!) u)
+              lineWidths = [feMeasure fe - uncurry (+) (lineCuts !! k) - unitLineIndent pageFace (uKind u) k - unitEndIndent (uKind u) | k <- [0 ..]]
+          c <- forceComposed (composeUnit fe widths (lineWidths !!) (fst . (lineCuts !!)) u)
           ((j, (c, offset)) :) <$> go (j + 1) (offset + length (cLines c)) (distance + fromIntegral (length (cLines c)) * unitPitch u)
       | free, Just u <- Map.lookup j unitAt, Just controls <- besideControlFlow u = go (j + 1) offset (distance + sum [gap | FSpace gap <- controls])
       | otherwise = pure []
@@ -4472,7 +4491,7 @@ numberedLines fe nextId u c indentOf =
             let (cap, rest) = splitAt (cDropPrefix c) (lineItems l)
              in l {lineItems = [case item of { Box w box -> Box w box {bcPadStart = bcPadStart box - shiftOf k l}; _ -> item } | item <- cap] <> rest}
         | otherwise = l
-      set = Map.fromList [(lid, SetLine (capAtEdge k l) size (maybe (indentOf k + dropInsetAt (cDropInset c) k) (!! k) (cActualIndents c) + shiftOf k l) (Map.findWithDefault [] k noteLines) (Map.findWithDefault [] k sidenoteLinesOf) (unitSpine u)) | (k, (lid, l)) <- zip [0 ..] (zip ids ls)]
+      set = Map.fromList [(lid, SetLine (capAtEdge k l) size (maybe (indentOf k + dropInsetAt (cDropInset c) k + dropCorrectionAt (cDropCorrections c) k) (!! k) (cActualIndents c) + shiftOf k l) (Map.findWithDefault [] k noteLines) (Map.findWithDefault [] k sidenoteLinesOf) (unitSpine u)) | (k, (lid, l)) <- zip [0 ..] (zip ids ls)]
    in (boxes, set)
 
 {- | A rule of a paragraph or heading for pagination (golem-driver ADR
@@ -4698,7 +4717,10 @@ numberFigure fe cu i u (pf, ferrs, _, fmarks) nb = case pfExclusion pf of
                 any (\k -> if free && isJust (cActualIndents c) then lineTarget (cLines c !! k) <= 0 else feMeasure fe - (if narrowed j off distance k then takes j off distance k else 0) - unitLineIndent fs (uKind (unitAt Map.! j)) k - unitEndIndent (uKind (unitAt Map.! j)) <= 0) [0 .. length (cLines c) - 1]
               ]
             (nextId', allBoxes, sets, wrappedBefore) = foldl go (nextId + 1, [], Map.empty, Map.empty) parasAt
-            narrowCount = if free then length (takeWhile id [narrowed j off distance k | (j, c, off, distance, _) <- parasAt, k <- [0 .. length (cLines c) - 1]]) else exLines ex
+            naturalCount = if free then length (takeWhile id [narrowed j off distance k | (j, c, off, distance, _) <- parasAt, k <- [0 .. length (cLines c) - 1]]) else exLines ex
+            starts = scanl (+) 0 [length (cLines c) | (_, c, _, _, _) <- parasAt]
+            initialEnd = maximum (naturalCount : [at + n | ((_, c, _, _, _), at) <- zip parasAt starts, at < naturalCount, Just (n, _) <- [cDropInset c]])
+            narrowCount = if free then naturalCount else initialEnd
             (beside, continued) = splitAt narrowCount allBoxes
             extent = if free then pfExclusionLength pf else fromIntegral (exLines ex) * pagePitch
          in nb
@@ -4985,7 +5007,8 @@ buildFlow inp geom fonts images prev assumed = do
   _ <- mapper (\(_, (pf, _, _, _)) -> evaluate (length (show (map (lineRatio . ptLine) (pfCaption pf))))) (Map.toList figures)
   -- the lines under the frames of wrap around are shorter by their cuts (root ADR 0438)
   let cutWidth i k = maybe 0 (uncurry (+)) (Map.lookup i (asCuts assumed) >>= Map.lookup k)
-  singles <- Map.fromList . zip (map fst rest) <$> mapper (\(i, u) -> maybe (forceComposed (composeUnit fe widths (\k -> unitLineWidth fe (uKind u) k - cutWidth i k) u)) pure (reused cuSingles i)) rest
+      startCut i k = maybe 0 fst (Map.lookup i (asCuts assumed) >>= Map.lookup k)
+  singles <- Map.fromList . zip (map fst rest) <$> mapper (\(i, u) -> maybe (forceComposed (composeUnit fe widths (\k -> unitLineWidth fe (uKind u) k - cutWidth i k) (startCut i) u)) pure (reused cuSingles i)) rest
   tables <- Map.fromList <$> mapper (\(i, fid, st, l, t) -> maybe (let r = composeTable fe i fid st l t in forceTable r >> pure (i, r)) (pure . (i,)) (reused cuTables i)) tableUnits
   -- Numbering is pure and can be repeated for an uncommitted physical
   -- paragraph trial without reshaping its source or changing a snapshot.
@@ -5137,7 +5160,7 @@ rebreakComposed fe u width start source =
   let boxed = isJust (uBox u)
       params = if boxed then (feParams fe) {pProtrusion = compProtrusion (stComposition (piStyle (feInput fe)))} else feParams fe
       result = A.breakAligned (unitAlign u) (adjustedParams (uStyle u) (case uKind u of UHeading {} -> Nothing; _ -> uParaStyle u) params) width (drop start (cItems source))
-   in source {cLines = brLines result, cBreakPositions = map (+ start) (brPositions result), cItemStart = start, cReflowed = True, cActualIndents = Nothing, cDropInset = Nothing}
+   in source {cLines = brLines result, cBreakPositions = map (+ start) (brPositions result), cItemStart = start, cReflowed = True, cActualIndents = Nothing, cDropInset = Nothing, cDropCorrections = []}
 
 itemAfterBreak :: Composed -> Int -> Int
 itemAfterBreak source index = skip (index + 1) (drop (index + 1) (cItems source))
@@ -5265,10 +5288,13 @@ causalFreeFlow inp geom fe units widths jobs initialBuilt = jobsFrom Nothing Not
           narrowed k = (page, column) == (actualPage, actualColumn) && intersects (rowExtent (physicalParagraphOrigin at + fromIntegral k * pitch) pitch face) (origin, end)
           indent k = unitLineIndent (pgFontSize geom) (uKind unit) (countBefore + k)
           dropCut k = dropInsetAt (cDropInset source) (countBefore + k)
-          width k = feMeasure fe - (if narrowed k then exclusionWidth k else 0) - indent k - unitEndIndent (uKind unit) - dropCut k
+          initialRows = maybe 0 (subtract countBefore . fst) (cDropInset source)
+          startTake k = if pfWrap pf == Just WrapStart && narrowed k then exclusionWidth k else 0
+          corrections = dropStartCorrections initialRows startTake
+          width k = feMeasure fe - (if narrowed k then exclusionWidth k else 0) - indent k - unitEndIndent (uKind unit) - dropCut k - dropCorrectionAt corrections k
           rebroken = rebreakComposed fe unit width start source
-          tailComposed = rebroken {cLines = padDropLines (maybe 0 (subtract countBefore . fst) (cDropInset source)) width (cLines rebroken)}
-          tailIndents = [indent k + dropCut k + if pfWrap pf == Just WrapStart && narrowed k then exclusionWidth k else 0 | k <- [0 .. length (cLines tailComposed) - 1]]
+          tailComposed = rebroken {cLines = padDropLines initialRows width (cLines rebroken)}
+          tailIndents = [indent k + dropCut k + startTake k + dropCorrectionAt corrections k | k <- [0 .. length (cLines tailComposed) - 1]]
        in (tailComposed, tailIndents)
     probeNext job pf origin region index later built cursor wanted = case later of
       [] ->

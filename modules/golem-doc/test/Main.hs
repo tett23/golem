@@ -466,6 +466,9 @@ dropInitialTests =
       testCase "root ADR 0465 I5: ruby and tate-chu-yoko are not text initials" $ do
         result [Ruby sp () [RubySegment [Text sp "漢"] (Just "かん")], Text sp "後"] @?= Nothing
         result [Tcy sp "12", Text sp "月"] @?= Nothing,
+      testCase "root ADR 0465 I5: references remain non-text after they resolve" $ do
+        result [Ref sp RefTitle "h"] @?= Nothing
+        result [Resolved sp RefTitle "h" [Text sp "題"]] @?= Nothing,
       testCase "root ADR 0465 I2: text wrappers are copied on both parts" $ do
         case splitInitialText [CharStyle sp "lead" [Text sp "abc"]] of
           Just ([CharStyle _ a _], [CharStyle _ b _]) -> (a, b) @?= ("lead", "lead")
