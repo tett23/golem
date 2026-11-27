@@ -9354,6 +9354,8 @@ HTML と EPUB の引用の印は、`<span class="cite">` の中に、括弧、�
 
 引用の引数を扱うライブラリ API の `Golem.Eval.CitationArgument.decodeCitationArgument` は、位置の 26 種類と文字列の前置きと後置きを型付きの値に変換する。
 `cite` の `page` の値も、この API で読む。
+`validateCitationLocatorArguments` は、名前と値の位置を持つ引数列について、位置の種類の競合と重複、未知の引数名、不正な位置の値を入力順に検査する。
+この検査 API は通常の CLI には接続していない。
 
 書式は、項目ごとに和文の項目か欧文の項目かで変わる。
 項目の `language` があれば、その主の副タグ（最初の `-` の前を英小文字にしたもの）が `ja` のとき和文の項目とし、それ以外は欧文の項目とする。

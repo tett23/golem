@@ -4787,9 +4787,10 @@ IR の整数の欄は 64 ビットの符号付き整数に限るので、その�
 位置は、式ならその範囲の式、語と文字列なら引数である。
 
 `lines` と `highlight` の引数に直接書いた範囲の式（`lines=[= 3...0 - 1]`）は、端を自然数として調べてから向きを調べるので、負の端は [G02103](#g02103) になる。
+ライブラリ API `validateCitationLocatorArguments` へ逆順の範囲の値を直接渡した場合も、その値の位置で報告する。
 
 - メッセージ: `範囲の始め <a> が終わり <b> より大きくなっています`
-- 段階とモジュール: 評価（golem-eval の `Golem.Eval.Expr`、`Golem.Eval.File`）
+- 段階とモジュール: 評価（golem-eval の `Golem.Eval.Expr`、`Golem.Eval.File`、`Golem.Eval.CitationArgument`）
 - ADR: [docs/adr/0113](adr/0113-closed-range-literal.md)、[docs/adr/0135](adr/0135-range-words-read-as-range-expressions.md)
 
 ### 主な原因
@@ -5955,6 +5956,7 @@ page には頁の数、範囲、文字列を書きます
 `[cite ...]` の `page` の値が、頁として読めない（[docs/adr/0266](adr/0266-citation-locators-and-multiple-keys.md)）。
 頁は、0 以上の整数（`page=5`）、0 以上の端を持つ範囲（`page=5...7`）、空でない文字列（`page=xii`、`page="5f."`）である。
 空の文字列、負の数、整数でない数、負の端を持つ範囲、真偽値、`nil`、配列、連想配列はこのコードになり、引用は出力に何も置かない。
+ライブラリ API `validateCitationLocatorArguments` でも同じ値を検査し、その値の位置で報告する。
 
 - メッセージ: `page には頁の数、範囲、文字列を書きます: <値>`
 - 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
@@ -6988,6 +6990,111 @@ outline は wrap のある図版にだけ使います
 
 複数の段落やブロックを渡す範囲を `:::` で囲む。
 一段落の内部で行を改める場合は、行末に `\` を書く。
+## G02295
+
+cite には位置の種類を一つだけ書きます
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+一つの引用に、`page` と `chapter` など、異なる位置の種類を二つ以上指定した。
+最初とは異なる種類を指定した引数の名前の位置に、一つずつ出す。
+この検査は、golem-eval のライブラリ API `validateCitationLocatorArguments` が行う。
+通常の CLI の `cite` は、この検査 API を呼び出さない。
+
+- メッセージ: `cite には位置の種類を一つだけ書きます: <名前>`
+- 段階とモジュール: 引用の引数値の検証（golem-eval の `Golem.Eval.CitationArgument`）
+- ADR: [root ADR 0385](adr/0385-bibliography-and-citation-styles.md)、[root ADR 0470](adr/0470-bibliography-styles-by-name-and-by-declaration.md)
+
+### 主な原因
+
+- `page=5 chapter=2` のように、位置の種類を併記した。
+
+### 直し方
+
+その引用に必要な位置の種類を一つだけ残す。
+
+## G02296
+
+cite に同じ位置の種類を二度書いています
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+一つの引用に、同じ位置の種類を二度以上指定した。
+二度目からの引数の名前の位置に、一つずつ出す。
+この検査は、golem-eval のライブラリ API `validateCitationLocatorArguments` が行う。
+通常の CLI の `cite` は、この検査 API を呼び出さない。
+
+- メッセージ: `cite に同じ位置の種類を二度書いています: <名前>`
+- 段階とモジュール: 引用の引数値の検証（golem-eval の `Golem.Eval.CitationArgument`）
+- ADR: [root ADR 0385](adr/0385-bibliography-and-citation-styles.md)、[root ADR 0470](adr/0470-bibliography-styles-by-name-and-by-declaration.md)
+
+### 主な原因
+
+- `chapter=2 chapter=3` のように、同じ位置の種類を繰り返した。
+
+### 直し方
+
+位置の種類は一度だけ書く。
+範囲を指定するなら、`chapter=2...3` のように書く。
+
+## G02297
+
+cite の名前付き引数に書けない名前です
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+引用の名前付き引数に、CSL の 26 種類の位置と `prefix`、`suffix`、`form` のどれでもない名前を渡した。
+未知の名前の引数ごとに、その名前の位置に出す。
+この検査は、golem-eval のライブラリ API `validateCitationLocatorArguments` が行う。
+通常の CLI の `cite` は、この検査 API を呼び出さない。
+
+- メッセージ: `cite の名前付き引数に書けない名前です: <名前>`
+- 段階とモジュール: 引用の引数値の検証（golem-eval の `Golem.Eval.CitationArgument`）
+- ADR: [root ADR 0385](adr/0385-bibliography-and-citation-styles.md)、[root ADR 0470](adr/0470-bibliography-styles-by-name-and-by-declaration.md)
+
+### 主な原因
+
+- `page` を `pages` と書くなど、引数名の綴りを誤った。
+
+### 直し方
+
+位置の種類は `page`、`chapter` などの CSL の名前で書く。
+
+## G02298
+
+位置には数、範囲、文字列を書きます
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+`page` 以外の位置の値が、0 以上の整数、0 以上の端を持つ範囲、空でない文字列のどれでもない。
+不正な値ごとに、その値の位置に出す。
+`page` の不正な値は従来の [G02148](#g02148)、範囲の始めが終わりを超える場合は [G02106](#g02106) になる。
+この検査は、golem-eval のライブラリ API `validateCitationLocatorArguments` が行う。
+通常の CLI の `cite` は、この検査 API を呼び出さない。
+
+- メッセージ: `<名前> には位置の数、範囲、文字列を書きます: <値>`
+- 段階とモジュール: 引用の引数値の検証（golem-eval の `Golem.Eval.CitationArgument`）
+- ADR: [root ADR 0385](adr/0385-bibliography-and-citation-styles.md)、[root ADR 0470](adr/0470-bibliography-styles-by-name-and-by-declaration.md)
+
+### 主な原因
+
+- `chapter=-1`、`chapter=""` などの値を渡した。
+
+### 直し方
+
+位置の値を、`2`、`2...3`、`xii` のように書く。
 
 ## G03001
 
