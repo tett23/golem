@@ -2598,7 +2598,23 @@ HTML と EPUB は版面の段組みを出力せず、CSS の `columns` も `colu
 
 ### 縦組みの数の表記
 
-`number-text` は自然数、整数、有理数を受け付け、`Number` は正確な有理数と任意の表記を持つ（[root ADR 0478](adr/0478-accept-rational-values-in-number-text.md)）。
+明示した縦中横の意味論 IR は、文字列と数値を共通の `Tcy` ノードで表す（[root ADR 0479](adr/0479-treat-tate-chu-yoko-as-a-japanese-character.md)）。
+中身は原綴りを保つ `TcyLiteral Text` か、正確な値を保つ `TcyNumber Rational` である。
+`##1:tcy##` と `[number-text 1 style=tcy]` は、位置を除いて同じ `TcyNumber` の IR を作る。
+`Number` の `StyleTcy` は許さず、生成時に `TcyNumber` へ変える。
+表記を省いた `Number` が本の設定から縦中横に決まった場合も、出力へ渡す箱は同じにする。
+
+縦中横の箱は、外側の文字クラスと禁則の判定では通常の漢字一字として扱う。
+既定では和文と縦中横の間、および縦中横どうしの間に和欧混植の四分アキを入れない。
+外側の欧文や約物との間は、和文一字に隣接する既存の規則を使う。
+中身の数字や約物のクラスを、外側の空きや改行制御へ漏らさない。
+明示したトラッキングとアキ、注の呼出印を前の字に付ける規則は保つ。
+HTML と EPUB は中身を根拠に空白や余白を加えず、既存の `letter-spacing` を保つ。
+
+横組みの PDF では、文字列の `TcyLiteral` は既存の一字分の箱、`TcyNumber` は通常の数値の文字列として出す。
+テキストは文字列の原綴りと、数値に対する既存の整数の漢数字の規則を保つ。
+
+`number-text` は自然数、整数、有理数を受け付け、縦中横を明示しない `Number` は正確な有理数と任意の表記を持つ（[root ADR 0478](adr/0478-accept-rational-values-in-number-text.md)）。
 `##0.10:tcy##` と `[number-text 0.10 style=tcy]` は、位置を除く全フィールドが同じ IR を作る。
 既約な分子は符号付き 64 ビット整数、分母は 1 以上 9223372036854775807 以下に限り、範囲外は G02091 とする。
 引用符付きの文字列は数値へ変換しない。
