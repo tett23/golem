@@ -607,6 +607,8 @@ cabal test all
 `applyBibliographyNames` は、呼出側の明示したオプションに、宣言で書いた名前のキーだけを重ねる。
 数で渡したページ範囲は、`Golem.Assemble.BibliographyRanges` が明示した `full` または `minimal` と区切り文字列で組む。
 ラテン文字のソートキーは `Golem.Unicode.Latin` が Unicode 17.0.0 の表から作る。
+`authorNeedsSortKeyWarning` は、一覧に載せるか、著者順で並べるか、並べ替えのキーがあるかと第一著者の姓から、警告が必要かを返す。
+姓の漢字・かなの判定は `Golem.Unicode.Script` が Unicode 17.0.0 の Script の表を使って行う。
 一次資料の書誌例 4 件と、その例を組む宣言は `modules/golem-project/test/fixtures/bibliography/` にある。
 
 依存のバージョンは `cabal.project.freeze` で固定している。

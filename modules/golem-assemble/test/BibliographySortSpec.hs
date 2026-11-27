@@ -1,5 +1,6 @@
 module BibliographySortSpec (tests) where
 
+import Control.Monad (forM_)
 import Data.Map.Strict qualified as Map
 import Data.Text qualified as T
 import Golem.Assemble.BibliographyNames (BibliographyName (..))
@@ -18,7 +19,26 @@ tests :: TestTree
 tests =
   testGroup
     "bibliography sorting"
-    [ testCase "root ADR 0470 I4: same-author-year groups receive suffixes in key order" $
+    [ testCase "root ADR 0470 I7: unkeyed Han and kana surnames need a warning" $
+        forM_ ["山田", "やまだ", "ヤマダ", "ﾔﾏﾀﾞ", "𠮷田", "Smith山田"] $ \family ->
+          assertBool (show family) (authorNeedsSortKeyWarning True ["author", "year"] Nothing (Just (PersonalName (Just family) Nothing))),
+      testCase "root ADR 0470 I7: other scripts and emoji do not need a reading warning" $
+        forM_ ["Smith", "김", "Παπα", "🙂"] $ \family ->
+          assertBool (show family) (not (authorNeedsSortKeyWarning True ["author"] Nothing (Just (PersonalName (Just family) Nothing)))),
+      testCase "root ADR 0470 I7: an explicit reading avoids the warning" $
+        assertBool "reading" (not (authorNeedsSortKeyWarning True ["author"] (Just "yamada") (Just (PersonalName (Just "山田") Nothing)))),
+      testCase "root ADR 0470 I7: no bibliography or no author sort avoids the warning" $ do
+        let author = Just (PersonalName (Just "山田") Nothing)
+        authorNeedsSortKeyWarning False ["author"] Nothing author @?= False
+        authorNeedsSortKeyWarning True ["citation"] Nothing author @?= False,
+      testCase "root ADR 0470 I7: given names, literal names and an absent author are not surnames" $ do
+        authorNeedsSortKeyWarning True ["author"] Nothing (Just (PersonalName (Just "Smith") (Just "太郎"))) @?= False
+        authorNeedsSortKeyWarning True ["author"] Nothing (Just (LiteralName "研究会")) @?= False
+        authorNeedsSortKeyWarning True ["author"] Nothing Nothing @?= False,
+      testCase "root ADR 0470 I7: blank readings are missing just as in the CSL reader" $
+        forM_ [Nothing, Just "", Just "  "] $ \reading ->
+          assertBool (show reading) (authorNeedsSortKeyWarning True ["author"] reading (Just (PersonalName (Just "山田") Nothing))),
+      testCase "root ADR 0470 I4: same-author-year groups receive suffixes in key order" $
         bibliographyYearSuffixes [("b", "same" :: String), ("a", "same")] @?= Map.fromList [("a", "a"), ("b", "b")],
       testCase "root ADR 0470 I4: separate author-year groups are numbered independently" $
         bibliographyYearSuffixes [("b", 2020 :: Int), ("a", 2020), ("d", 2021), ("c", 2021)] @?= Map.fromList [("a", "a"), ("b", "b"), ("c", "a"), ("d", "b")],
