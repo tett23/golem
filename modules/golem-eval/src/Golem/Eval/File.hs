@@ -63,6 +63,7 @@ import Golem.Doc.Url (UrlProblem (..), checkUrl, linkElements, urlProblemMessage
 import Golem.Doc.Validate (langTagMessage)
 import Golem.Eval.Analysis (analyse)
 import Golem.Eval.Builtin
+import Golem.Eval.CitationArgument (CitationArgument (..), decodeCitationArgument)
 import Golem.Eval.Expr
 import Golem.Eval.Functions
 import Golem.Eval.Number (exactText)
@@ -3856,12 +3857,8 @@ cite ctx sp args = do
     keyOf = \case
       VString k -> Just k
       _ -> Nothing
-    pageOf = \case
-      VNat n -> Just (LocNumber (toInteger n))
-      VInt n | n >= 0 -> Just (LocNumber n)
-      VRat q | denominator q == 1, q >= 0 -> Just (LocNumber (numerator q))
-      VRange a b | a >= 0 -> Just (LocRange a b)
-      VString t | not (T.null t) -> Just (LocText t)
+    pageOf value = case decodeCitationArgument "page" value of
+      Just (CitationLocator (Locator LocatorPage location)) -> Just location
       _ -> Nothing
 
 {- | Each cites slot contains one single-key cite (root ADR 0385).

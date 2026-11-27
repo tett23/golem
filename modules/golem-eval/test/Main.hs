@@ -2,6 +2,7 @@ module Main (main) where
 
 import BlockBodySpec qualified
 import BuiltinSpec qualified
+import CitationArgumentSpec qualified
 import CiteSpec qualified
 import DeferredSpec qualified
 import DiagnosticSitesSpec qualified
@@ -36,4 +37,4 @@ import Test.Tasty
 import VarsSpec qualified
 
 main :: IO ()
-main = enterPackageDirectory >> defaultMain (testGroup "golem-eval" [NumberStyleShorthandSpec.tests, ParagraphBlocksSpec.tests, ExprSpec.tests, FileSpec.tests, FigureOutlineSpec.tests, RegexStyleSpec.tests, OperatorSpec.tests, DeferredSpec.tests, DiagnosticSitesSpec.tests, BuiltinSpec.tests, TableSpec.tests, TableAttributesSpec.tests, NoteSpec.tests, CiteSpec.tests, IndexKindSpec.tests, RationalSpec.tests, NaturalSpec.tests, RangeSpec.tests, FunctionSpec.tests, ImportListSpec.tests, ImportAliasSpec.tests, OverrideImportSpec.tests, OverrideAllSpec.tests, VarsSpec.tests, LinkSpec.tests, LangSpec.tests, ShySpec.tests, ExceptionsSpec.tests, ParagraphStyleControlsSpec.tests, StyleArgumentsSpec.tests, BlockBodySpec.tests, FollowOnSpec.tests])
+main = enterPackageDirectory >> defaultMain (testGroup "golem-eval" [NumberStyleShorthandSpec.tests, ParagraphBlocksSpec.tests, ExprSpec.tests, FileSpec.tests, FigureOutlineSpec.tests, RegexStyleSpec.tests, OperatorSpec.tests, DeferredSpec.tests, DiagnosticSitesSpec.tests, BuiltinSpec.tests, TableSpec.tests, TableAttributesSpec.tests, NoteSpec.tests, CitationArgumentSpec.tests, CiteSpec.tests, IndexKindSpec.tests, RationalSpec.tests, NaturalSpec.tests, RangeSpec.tests, FunctionSpec.tests, ImportListSpec.tests, ImportAliasSpec.tests, OverrideImportSpec.tests, OverrideAllSpec.tests, VarsSpec.tests, LinkSpec.tests, LangSpec.tests, ShySpec.tests, ExceptionsSpec.tests, ParagraphStyleControlsSpec.tests, StyleArgumentsSpec.tests, BlockBodySpec.tests, FollowOnSpec.tests])

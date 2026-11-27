@@ -582,6 +582,9 @@ cabal test all
 `[cites: [cite a page=5]|[cite b page=7]]` は、文献ごとの頁を一つの引用の印にまとめる（[root ADR 0385](docs/adr/0385-bibliography-and-citation-styles.md)）。
 各スロットには単一キーの `cite` を一つ置き、同じキーを二度書くと、そのキーの位置で G02147 になる。
 
+引用の引数を扱うライブラリ API の `Golem.Eval.CitationArgument.decodeCitationArgument` は、位置の 26 種類と文字列の前置き・後置きを型付きの値に変換する。
+`cite` の `page` の値も、この API で読む。
+
 参考文献の宣言の差し込み片を扱うライブラリ API は、golem-assemble の `Golem.Assemble.BibliographyFormats` にある（[root ADR 0470](docs/adr/0470-bibliography-styles-by-name-and-by-declaration.md)）。
 差し込み片のテストは `cabal test golem-assemble-test --test-options='-p /0470/'` で実行する。
 宣言向けの書誌データは `Golem.Bibliography.Csl.decodeCslRecords` で読み、編者、DOI、名前の並べ替えのキーなどを保持する。
