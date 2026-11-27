@@ -7,6 +7,8 @@ module Golem.Assemble.BibliographyFormats
   ( BibliographyPiece,
     parseBibliographyPiece,
     renderBibliographyPieces,
+    BibliographyFragment (..),
+    renderBibliographyFragments,
   )
 where
 
@@ -42,26 +44,39 @@ Empty values count as missing. Values are literal text, never formats.
 An integer uses the requested notation; other values stay as written.
 -}
 renderBibliographyPieces :: (Text -> Maybe Text) -> [BibliographyPiece] -> Either Text Text
-renderBibliographyPieces value = fmap T.concat . traverse render
+renderBibliographyPieces value = fmap (T.concat . map text) . renderBibliographyFragments value
+  where
+    text (BibliographyLiteral t) = t
+    text (BibliographyField _ t) = t
+
+-- | Literal punctuation, or a formatted value retaining its field identity.
+data BibliographyFragment = BibliographyLiteral !Text | BibliographyField !Text !Text
+  deriving stock (Eq, Show)
+
+renderBibliographyFragments :: (Text -> Maybe Text) -> [BibliographyPiece] -> Either Text [BibliographyFragment]
+renderBibliographyFragments value = fmap concat . traverse render
   where
     present name = value name >>= \t -> if T.null t then Nothing else Just t
     render (BibliographyPiece pieces)
-      | any missing pieces = Right ""
-      | otherwise = T.concat <$> traverse substitute pieces
+      | any missing pieces = Right []
+      | otherwise = concat <$> traverse substitute pieces
     missing = \case
       PLit _ -> False
       PText (name, optional) -> not optional && isNothing (present name)
       PNumber (name, optional) _ -> not optional && isNothing (present name)
     substitute = \case
-      PLit t -> Right t
-      PText (name, _) -> Right (fromMaybe "" (present name))
+      PLit t -> Right (literal t)
+      PText (name, _) -> Right (field name (fromMaybe "" (present name)))
       PNumber (name, _) notation -> case present name of
-        Nothing -> Right ""
+        Nothing -> Right []
         Just t -> case (notation, integer t) of
           (Just n, Just k) -> case writeNumber n k of
-            Just result -> Right result
+            Just result -> Right (field name result)
             Nothing -> Left ("差し込み {" <> name <> "} の数を " <> notationName n <> " で表せません: " <> t)
-          _ -> Right t
+          _ -> Right (field name t)
     integer t = case TR.signed TR.decimal t of
       Right (n, rest) | T.null rest -> Just (n :: Integer)
       _ -> Nothing
+
+    literal t = [BibliographyLiteral t | not (T.null t)]
+    field name t = [BibliographyField name t | not (T.null t)]

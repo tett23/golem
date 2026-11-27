@@ -9,7 +9,22 @@ import Test.Tasty.HUnit
 tests :: TestTree
 tests =
   testGroup "bibliography declaration pieces" $
-    [ testCase "root ADR 0470 I3: all required and optional presence combinations" $
+    [ testCase "root ADR 0470 I8: fragment rendering preserves notation errors" $
+        assertBool "Roman 4000 must report the same error" (isLeft (fragments [("volume", "4000")] ["{volume:upper-roman}"])),
+      testCase "root ADR 0470 I3: fragment values remain literal text" $
+        fragments [("title", "{URL}")] ["{title}"] @?= Right [BibliographyField "title" "{URL}"],
+      testCase "root ADR 0470 I3: fragments retain fields separately from punctuation" $
+        fragments [("title", "題"), ("URL", "https://example.org")] ["{title}. ", "{URL}"]
+          @?= Right [BibliographyField "title" "題", BibliographyLiteral ". ", BibliographyField "URL" "https://example.org"],
+      testCase "root ADR 0470 I3: omitted fragment pieces retain no punctuation" $
+        fragments [("title", "題")] ["{title}", " ({volume})"] @?= Right [BibliographyField "title" "題"],
+      testCase "root ADR 0470 I8: numeric fragments keep their original field name" $
+        fragments [("volume", "12")] ["第{volume:kanji}巻"] @?= Right [BibliographyLiteral "第", BibliographyField "volume" "十二", BibliographyLiteral "巻"],
+      testCase "root ADR 0470 I3: optional absent fragment fields do not produce empty nodes" $
+        fragments [] ["a{title?}b"] @?= Right [BibliographyLiteral "a", BibliographyLiteral "b"],
+      testCase "root ADR 0470 I3: empty fragments have no output nodes" $
+        fragments [] [""] @?= Right [],
+      testCase "root ADR 0470 I3: all required and optional presence combinations" $
         mapM_
           ( \(a, b) -> do
               let values = [("title", "T") | a] <> [("volume", "2") | b]
@@ -60,3 +75,6 @@ render :: [Text] -> [(Text, Text)] -> [Text] -> Either Text Text
 render names values pieces = do
   parsed <- traverse (parseBibliographyPiece names) pieces
   renderBibliographyPieces (`lookup` values) parsed
+
+fragments :: [(Text, Text)] -> [Text] -> Either Text [BibliographyFragment]
+fragments values source = traverse (parseBibliographyPiece ["title", "URL", "volume"]) source >>= renderBibliographyFragments (`lookup` values)
