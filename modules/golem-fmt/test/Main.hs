@@ -276,6 +276,45 @@ tests =
         formatted "##36##\n" @?= "##36##\n"
         formatted "[number-text 36]\n" @?= "[number-text 36]\n"
         formatted "\\##1##\n" @?= "\\##1##\n",
+      testCase "golem-parser ADR 0014 I5: styled shorthands and explicit commands retain their own spelling" $
+        mapM_
+          ( \source -> do
+              assertBool ("formattable: " <> show source) (isFormatted (format source))
+              let once = formatted source
+              once @?= source
+              astFingerprint once @?= astFingerprint source
+              formatted once @?= once
+              formatted (formatted once) @?= once
+          )
+          [ "##0:tcy####47:kanji####804:kanji-digits##\n",
+            "##23:custom## [number-text 23 style=custom]\n",
+            "##23:future9-style##\n",
+            "# 第##47:kanji##章\n\n本文##23:tcy##。\n",
+            "| ##47:tcy## | [number-text 47 style=tcy] |\n|---|---|\n| ##804:kanji-digits## | ##23:kanji## |\n"
+          ],
+      testCase "golem-parser ADR 0014 I3, I5: code and escaped styled shorthands survive repeated formatting" $
+        mapM_
+          ( \source -> do
+              assertBool ("formattable: " <> show source) (isFormatted (format source))
+              let once = formatted source
+              once @?= source
+              astFingerprint once @?= astFingerprint source
+              formatted once @?= once
+          )
+          [ "[code: ##47:tcy##]\n",
+            "```\n##47:tcy##\n##804:kanji-digits##\n```\n",
+            "\\##47:tcy##\n"
+          ],
+      testCase "golem-parser ADR 0014 I4, I5: formatting retains malformed bodies for evaluation diagnostics" $
+        mapM_
+          ( \source -> do
+              assertBool ("formattable: " <> show source) (isFormatted (format source))
+              let once = formatted source
+              once @?= source
+              astFingerprint once @?= astFingerprint source
+              formatted once @?= once
+          )
+          ["##047:tcy##\n", "##47:##\n", "##47::tcy##\n", "##47: tcy##\n", "##47:Tcy##\n", "##47:tcy\n"],
       -- golem-parser ADR 0013
       testCase "**[...] after a keyword argument is formatted" $
         case format "[f k=v **[h]]\n" of

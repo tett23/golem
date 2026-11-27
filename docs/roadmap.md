@@ -52,7 +52,6 @@ v0.1.0-rc4 と v1.0.0 のどちらで扱うかは、まだ決めていない。
 ### 記法と設定の値
 
 - **一段落一ブロックの正規化（未実装）**：本体の束縛とスタイルの適用より前に段落を一ブロックずつにし、複数段落への一括適用は `:::` で明示する。字下げだけの複数ブロック本体と、G01031 の判定も改める（[root ADR 0473](adr/0473-normalize-paragraph-blocks-before-body-binding.md)）。
-- **数の糖衣構文の表記指定（未実装）**：`##1:tcy##` などの表記名を `number-text` の `style` 引数へ直接渡し、原稿位置を除く意味論 IR を一致させる（[golem-parser ADR 0014](golem-parser/adr/0014-number-shorthand-with-an-explicit-style.md)）。
 - **上書きできない基礎的な命令の用語と基準（未決）**：上書きすると基礎的なことができなくなる命令のほかは上書きできてよい、とメンテナーは決めた（2026-11-26）。どの命令を基礎的とするかの用語と基準を決め、[root ADR 0471](adr/0471-override-built-in-commands-except-mechanisms-and-frames.md) の二つの種類を、その基準で決め直す。
 - **ルビの区切りの記法（仕様を検討中）**：ルビの親文字と読みは `/` で区切るが、`/` は原稿の地の文の字でもあるので、ルビの中だけ `/` と書く例外になっている（[golem-parser ADR 0010](golem-parser/adr/0010-ruby-slash-escape-and-table-cell-breaks.md)）。式の値の中の `/` は区切りにならないなど、パースの例外が増えている。区切りの記法を、ほかの記法と同じ規則で読める形に改める。記法が変わるので v1.0.0 までに仕様を決める。
 
