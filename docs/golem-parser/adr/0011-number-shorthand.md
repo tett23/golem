@@ -1,6 +1,6 @@
 # ADR 0011: 数の糖衣構文 `##…##`
 
-Status: superseded [{"part":"表記指定を認めない記法、評価、G02078 の条件","by":["docs/golem-parser/adr/0014-number-shorthand-with-an-explicit-style.md"]}]
+Status: superseded [{"part":"表記指定を認めない記法、評価、G02078 の条件","by":["docs/golem-parser/adr/0014-number-shorthand-with-an-explicit-style.md"]},{"part":"小数点を拒む条件と Number の値の型","by":["docs/adr/0478-accept-rational-values-in-number-text.md"]}]
 
 ## 文脈
 

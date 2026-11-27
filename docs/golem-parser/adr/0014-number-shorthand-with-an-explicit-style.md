@@ -1,6 +1,6 @@
 # ADR 0014: 数の糖衣構文に表記を指定する
 
-Status: accepted
+Status: superseded [{"part":"小数点を拒む条件と Number の値の型","by":["docs/adr/0478-accept-rational-values-in-number-text.md"]}]
 
 ## 文脈
 

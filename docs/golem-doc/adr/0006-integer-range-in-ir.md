@@ -1,6 +1,6 @@
 # ADR 0006: 意味論 IR の大きな整数
 
-Status: accepted
+Status: superseded [{"part":"Number の値の欄を int64 とする条件","by":["docs/adr/0478-accept-rational-values-in-number-text.md"]}]
 
 ## 文脈
 
