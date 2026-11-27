@@ -19,6 +19,7 @@ library
     Golem.Assemble
     Golem.Assemble.CitationFormats
     Golem.Assemble.BibliographyRanges
+    Golem.Assemble.BibliographyNoteContext
     Golem.Assemble.BibliographyRecords
     Golem.Assemble.BibliographySort
     Golem.Assemble.BibliographyNames
@@ -46,7 +47,7 @@ test-suite golem-assemble-test
   type:             exitcode-stdio-1.0
   hs-source-dirs:   test
   main-is:          Main.hs
-  other-modules:    WriterNotesSpec BibliographyRangesSpec Bibliography0475Spec BibliographyFormatsSpec BibliographyNamesSpec BibliographySortSpec BibliographyStyleSpec AssembleSpec IndexSpec ListMarkersSpec NumberingSpec TableNumberSpec
+  other-modules:    WriterNotesSpec BibliographyNoteContextSpec BibliographyRangesSpec Bibliography0475Spec BibliographyFormatsSpec BibliographyNamesSpec BibliographySortSpec BibliographyStyleSpec AssembleSpec IndexSpec ListMarkersSpec NumberingSpec TableNumberSpec
   build-depends:
     , base
     , containers
