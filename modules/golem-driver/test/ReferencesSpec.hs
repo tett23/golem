@@ -267,6 +267,16 @@ bibliographyFormatTests =
           result <- build (defaultOptions tmp) {optTargets = Just [TargetText]}
           assertEqual "no errors" [] (filter isError (brDiagnostics result))
           length [() | d <- brDiagnostics result, diagCode d == DiagnosticCode "G03306"] @?= if listed then 1 else 0,
+    testCase "root ADR 0470 I7: missing author keys are deduplicated by name across language delimiters" $
+      forM_ [False, True] $ \differentGiven ->
+        let source = "[{\"id\":\"a\",\"title\":\"A\",\"language\":\"ja\",\"author\":[{\"family\":\"山田\",\"given\":\"太郎\"}]},{\"id\":\"b\",\"title\":\"B\",\"language\":\"en\",\"author\":[{\"family\":\"山田\",\"given\":\"" <> (if differentGiven then "次郎" else "太郎") <> "\"}]}]"
+         in withBibProject "bibliography = [\"refs.json\"]" "[cite a] [cite b]\n\n@bibliography\n" [("refs.json", TE.encodeUtf8 source)] $ \tmp -> do
+              let declaration = T.replace ".types.book]" ".types.default]" (T.replace "pieces=['DOI {DOI}.']" "pieces=['{title}']" (T.replace "sort=['citation']" "sort=['author']" customBibliographyDeclaration)) <> "\n[bibliography.styles.custom.names.author]\npart-delimiter=''\n[bibliography.styles.custom.languages.en.names.author]\npart-delimiter=', '\n"
+              TIO.appendFile (tmp </> "style.toml") declaration
+              TIO.appendFile (tmp </> "manifest.toml") "[targets.text]\n"
+              result <- build (defaultOptions tmp) {optTargets = Just [TargetText]}
+              assertEqual "no errors" [] (filter isError (brDiagnostics result))
+              length [() | d <- brDiagnostics result, diagCode d == DiagnosticCode "G03306"] @?= if differentGiven then 2 else 1,
     testCase "root ADR 0470 I5: shared-span first notes retain S1 identity, page renumbering and non-page-local fallbacks" $
       forM_ [("page", False), ("book", False), ("page", True)] $ \(numbering, endnotes) -> do
         result <- withMiniInput fakeProvider miniManifest (replaceIn "lines = 30" "lines = 5" horizontalStyle <> "\n[notes]\nnumbering='" <> numbering <> "'\n") "seed" [] $ \input geom fonts -> do

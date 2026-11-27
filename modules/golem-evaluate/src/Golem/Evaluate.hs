@@ -36,7 +36,7 @@ import Data.Bifunctor (first)
 import Data.ByteString qualified as BS
 import Data.ByteString.Lazy qualified as BL
 import Data.Either (fromRight, lefts, rights)
-import Data.List (nub, sort, sortOn)
+import Data.List (nub, nubBy, sort, sortOn)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (catMaybes, fromMaybe, isNothing, listToMaybe)
@@ -307,9 +307,10 @@ resolveBibliographyRecords style fid manifest records book = case selected of
           pure ((\case Abs amount -> BibliographyIndentSp (unSp amount); Zw ratio -> BibliographyIndentZw ratio) <$> Bib.bsHangingIndent controls)
         warnings =
           [ diagnostic "G03306" Warning (mkSpan fid 0 0) ("著者名 " <> name <> " に並べ替えのキー（golem-sort-key）がありません。符号位置の順で並べます")
-          | name <-
-              nub
-                [ case person of Just (BibNames.PersonalName family given) -> T.intercalate separator (catMaybes [family, given]); Just (BibNames.LiteralName text) -> text; Nothing -> ""
+          | (_, name) <-
+              nubBy
+                (\(left, _) (right, _) -> left == right)
+                [ (person, case person of Just (BibNames.PersonalName family given) -> T.intercalate separator (catMaybes [family, given]); Just (BibNames.LiteralName text) -> text; Nothing -> "")
                 | (Just _, entries) <- bookBibliographies book,
                   (key, _) <- entries,
                   Just record <- [Map.lookup key records],
