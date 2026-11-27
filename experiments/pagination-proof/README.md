@@ -1705,7 +1705,15 @@ golem-typeset はコードの行を脚注なしで作り（`Flow.hs:3870`）、g
    実装の `keepPhysicalNext` に対応する `waitForPrior` の保持では、要求の行数と判定が状態に依存しても、位置を戻さないことを導く。
    `root_adr0352_i3_trial_wrap_rest_put_line` は、この不変条件から次の段の前提を導く。
    `beginWrap` が返す状態には図版のスロットがあるため空でなく、`root_adr0352_i3_initial_trial_wrap_rest_put_line` は最初の試しについて両方の前提を導く。
-   ただし、`parts` の内部のすべての再帰呼び出しにこの不変条件を接続する証明は残る。
+   `WrapCalls.lean` は、除外領域内の段に局所のテキストがあることも `WrapReady` で表す。
+   ここでのテキストは `textSlots` が数えるもので、回り込み図版のスロットも含む。
+   `beginWrap` が返す状態は `WrapReady` を満たす。
+   `partsEntrySafe` は `parts` と同じ分岐と減少尺度で再帰し、各再帰呼び出しの入力が `WrapReady` を満たすことを表す。
+   `root_adr0352_i3_parts_entry_safe` は、改行器や保持の関数を問わず、この入力条件からすべての再帰入力の安全性を導く。
+   各入力では `root_adr0352_i3_safe_parts_entry_trial` が `trialWrapRest_putLine` の両方の前提を導く。
+   保持が実装と同じ `waitForPrior` の形なら、成功した `parts` の出力も `WrapReady` を満たす。
+   `check-wrap-call-shape.sh` は、終端の戻り値を真に置き換えた `parts` の分岐が、この述語の分岐と一致することを確かめる。
+   ただし、`causalFreeFlow` のすべての呼び出し元が `parts` に渡す状態について、この初期条件を導く接続は残る。
 
 これらを終えるまで Alloy の定期実行と既存の参照を維持する。
 終えたときは、Alloy の定期実行を終え、規則やモデルを変えたときにローカルの Lean で検証し直す手順を CONTRIBUTING に書く。
@@ -1734,6 +1742,8 @@ sh experiments/pagination-proof/check.sh
 `WholeNotes.lean` と `PhysicalNotes.lean` も、`Whole.olean` と `Physical.olean` を読み込んで検査する。
 `PhysicalDrain.lean` は、`PhysicalNotes.olean` を作ってから、それを読み込んで検査する。
 `WrapPosition.lean` は、`Physical.olean` を読み込み、除外領域と段の位置について証明を検査する。
+`WrapCalls.lean` は、`WrapPosition.olean` を読み込み、各再帰入力の除外領域と非空性を検査する。
+`check-wrap-call-shape.sh` は、`Physical.lean` の `parts` と入口の述語の分岐を比較する。
 `CausalFirstIds.lean` は、採番の算術部分だけをほかのモデルを読み込まずに検査する。
 `WholeOrder.lean` は `WholeNotes.olean` を読み込み、ほかの検査と並んで検査し、最後にその結果を待つ。
 `WholeRules.lean` は `Whole.olean` を読み込み、同じくほかの検査と並んで検査する。

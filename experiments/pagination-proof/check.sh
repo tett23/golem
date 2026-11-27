@@ -299,8 +299,17 @@ if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|implemented_by|exte
   echo "unproved or unchecked Lean declaration in $wrapPosition" >&2
   exit 1
 fi
-LEAN_PATH="$tmp" "$lean" "$wrapPosition"
+LEAN_PATH="$tmp" "$lean" -o "$tmp/WrapPosition.olean" "$wrapPosition"
 echo "a wrap is outside the next column after beginWrap and successful forward parts"
+
+wrapCalls=$root/experiments/pagination-proof/WrapCalls.lean
+if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|implemented_by|extern|native_decide)([^A-Za-z_]|$)' "$wrapCalls"; then
+  echo "unproved or unchecked Lean declaration in $wrapCalls" >&2
+  exit 1
+fi
+sh "$root/experiments/pagination-proof/check-wrap-call-shape.sh"
+LEAN_PATH="$tmp" "$lean" "$wrapCalls"
+echo "every recursive parts entry preserves its wrap position and nonempty active column"
 
 # Only the arithmetic component of the retry's first-ID premise is
 # proved here; the connection to the complete rebuild/parts model remains.
