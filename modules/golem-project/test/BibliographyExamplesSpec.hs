@@ -30,7 +30,9 @@ tests =
     "primary bibliography examples"
     ( [example name | name <- ["ieee", "vancouver", "sist02", "unified-linguistics"]]
         <> [ testCase "root ADR 0470 I8: an explicit numeric month overrides the declared month label" $
-               verifyExample "ieee" (T.replace "{month?}" "{month?:kanji} ") (T.replace "Oct. " "十 ")
+               verifyExample "ieee" (T.replace "{month?}" "{month?:kanji} ") (T.replace "Oct. " "十 "),
+             testCase "root ADR 0470 I6: an unlisted type uses the explicit default without changing its example" $
+               verifyExample "vancouver" (T.replace ".types.article-journal]" ".types.default]") id
            ]
     )
 
@@ -81,7 +83,7 @@ verifyExample name changeDeclaration changeExpected = do
       pure ([("year", T.pack (show year))] <> monthField <> [("day", T.pack (show number)) | Just number <- [day]])
     _ -> failure "example must have an issued date-parts value"
   entryType <- require "entry type" (Json.recordText "type" record)
-  entry <- require "explicit entry type declaration" (Map.lookup entryType (Decl.bsTypes declaration))
+  entry <- require "explicit entry type declaration" (Decl.bibliographyTypeFor entryType declaration)
   pieces <- require "explicit pieces" (Decl.btPieces entry)
   let authorField = Names.formatBibliographyNames format (map person (Json.recordNames "author" record))
       fields = Map.fromList ([("author", authorField), ("page", uncurry (formatBibliographyRange mode delimiter) endpoints)] <> date <> editorFields)

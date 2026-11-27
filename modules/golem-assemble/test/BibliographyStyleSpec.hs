@@ -43,7 +43,15 @@ tests :: TestTree
 tests =
   testGroup
     "bibliography declaration overlays"
-    [ testCase "root ADR 0470 I2: scalar overlays retain explicit empty, zero and false values" $ do
+    [ testCase "root ADR 0470 I2: an explicit type wins over types.default" $
+        bibliographyTypeFor "book" withDefault @?= Map.lookup "book" (bsTypes base),
+      testCase "root ADR 0470 I2: an unknown type uses the explicit default declaration" $
+        bibliographyTypeFor "report" withDefault @?= Just fallback,
+      testCase "root ADR 0470 I2: a known empty type does not inherit default pieces" $
+        bibliographyTypeFor "report" (withDefault {bsTypes = Map.insert "report" (BibliographyType (Just []) Map.empty) (bsTypes withDefault)}) @?= Just (BibliographyType (Just []) Map.empty),
+      testCase "root ADR 0470 I2: no type and no default leaves the type unresolved" $
+        bibliographyTypeFor "report" base @?= Nothing,
+      testCase "root ADR 0470 I2: scalar overlays retain explicit empty, zero and false values" $ do
         let merged = overlayBibliographyStyle base override
         bsCitationMode merged @?= Just "author-year"
         bsCitation merged @?= Just []
@@ -68,3 +76,10 @@ tests =
       testCase "root ADR 0470 I2: declaration overlay composition is associative" $
         mapM_ (\(a, b, c) -> overlayBibliographyStyle (overlayBibliographyStyle a b) c @?= overlayBibliographyStyle a (overlayBibliographyStyle b c)) [(a, b, c) | a <- [emptyBibliographyStyle, base, override], b <- [emptyBibliographyStyle, base, override], c <- [emptyBibliographyStyle, base, override]]
     ]
+
+-- Defaults here are explicit test declarations, never application defaults.
+fallback :: BibliographyType
+fallback = BibliographyType (Just ["{author}", "{title}"]) (Map.singleton "title" "italic")
+
+withDefault :: BibliographyStyle Int
+withDefault = base {bsTypes = Map.insert "default" fallback (bsTypes base)}
