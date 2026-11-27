@@ -1,7 +1,7 @@
 module ReferencesSpec (refPageNumeralTests, indexTests, bibliographyFormatTests, tableTests, columnWidthTests, tocTests, indexColumnTests, urlBreakTests) where
 
 import Codec.Archive.Zip (findEntryByPath, fromEntry, toArchive)
-import Control.Monad (forM_, zipWithM_)
+import Control.Monad (forM_, when, zipWithM_)
 import Data.ByteString qualified as BS
 import Data.ByteString.Char8 qualified as BC
 import Data.ByteString.Lazy qualified as BL
@@ -11,15 +11,15 @@ import Data.Maybe (mapMaybe)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Text.IO qualified as TIO
-import Golem.Assemble (IndexGroup (..), IndexLocator (..), IndexSection (..), citationPiecesFor)
+import Golem.Assemble (Book (..), IndexGroup (..), IndexLocator (..), IndexSection (..), citationPiecesFor)
 import Golem.Bibliography (EntryPart (..), entryText, formatEntry)
 import Golem.Bibliography.Csl (recordEntry, recordText)
-import Golem.Doc.Citation (citationText)
-import Golem.Doc.IR (Block (..), BlockBody (..), CiteItem (..), Document (..), Inline, InlineF (..), citeItem)
+import Golem.Doc.Citation (CitePiece (..), citationText)
+import Golem.Doc.IR (Block (..), BlockBody (..), CiteItem (..), Document (..), Inline, InlineF (..), citeItem, noteBody)
 import Golem.Driver
 import Golem.Eval.File (EvalResult (..))
 import Golem.Evaluate (loadBibliographyRecords)
-import Golem.Layout.KnuthPlass (AdjustOrder (..), BoxContent (..), Item (..), Line (..), glueRatio, noLeaf, placeLine)
+import Golem.Layout.KnuthPlass (AdjustOrder (..), BoxContent (..), Item (..), Line (..), MarkBox (..), MarkNumber (..), glueRatio, noLeaf, placeLine)
 import Golem.Layout.Look (Look (..), noBoxSource, plainLook)
 import Golem.Layout.PageLabel (PageLabel (..), plainLabel)
 import Golem.Layout.Paginate (ColumnSetAt (..), PageOut, PageOutAt (..), Slotted (..), labelPages, markPages)
@@ -30,7 +30,7 @@ import Golem.Project (Project (..), ProjectFailure (..))
 import Golem.Project.Files (diskFiles)
 import Golem.Project.Style (parseStyle)
 import Golem.Syntax
-import Golem.Typeset (IndexLine (..), PdfLayout (..), SetLine (..), TocGeometry (..), TocPage (..), bibliographyLines, indexLineInlines, indexLines, layoutPdf, tocPage)
+import Golem.Typeset (IndexLine (..), PdfInput (..), PdfLayout (..), SetLine (..), TocGeometry (..), TocPage (..), bibliographyLines, indexLineInlines, indexLines, layoutPdf, layoutPdfUnnumbered, tocPage)
 import Support
 import System.Directory (createDirectoryIfMissing, doesDirectoryExist)
 import System.FilePath ((</>))
@@ -267,6 +267,31 @@ bibliographyFormatTests =
           result <- build (defaultOptions tmp) {optTargets = Just [TargetText]}
           assertEqual "no errors" [] (filter isError (brDiagnostics result))
           length [() | d <- brDiagnostics result, diagCode d == DiagnosticCode "G03306"] @?= if listed then 1 else 0,
+    testCase "root ADR 0470 I5: shared-span first notes retain S1 identity, page renumbering and non-page-local fallbacks" $
+      forM_ [("page", False), ("book", False), ("page", True)] $ \(numbering, endnotes) -> do
+        result <- withMiniInput fakeProvider miniManifest (replaceIn "lines = 30" "lines = 5" horizontalStyle <> "\n[notes]\nnumbering='" <> numbering <> "'\n") "seed" [] $ \input geom fonts -> do
+          let original = piBook input
+              fid = case bookDocs original of Document file _ : _ -> file; _ -> FileId 0
+              target = mkSpan fid 0 1
+              citation = mkSpan fid 2 3
+              note = if endnotes then Endnote else Note
+              filler = concat (replicate 7 [Text target "あ", LineBreak target])
+              content = [Text target "始", note target 1 Nothing (noteBody target [Text target "first"]), LineBreak target] <> filler <> [Text target "次", note target 2 Nothing (noteBody target [Text target "second"]), LineBreak target, Text citation "参[", Cite citation [citeItem "a"], Text citation "/", Cite citation [citeItem "b"], Text citation "]"]
+              pieces = Map.singleton citation [([citeItem "a"], [CiteNoteNumber target 1 (Just "kanji") (Just "一")]), ([citeItem "b"], [CiteNoteNumber target 2 (Just "kanji") (Just "二")])]
+              book = original {bookDocs = [Document fid [Block target Nothing Nothing (Paragraph Nothing content)]], bookCitationPieces = pieces}
+              deferred layout = [(mnNumber number, bcText box) | sl <- Map.elems (plLines layout), Box _ box <- lineItems (slLine sl), Just mark <- [bcMark box], Just number@CiteNoteMarkNumber {} <- [mbNumber mark]]
+              calls layout = length [() | sl <- Map.elems (plLines layout), Box _ box <- lineItems (slLine sl), Just mark <- [bcMark box], Just number <- [mbNumber mark], mnCall number]
+              text layout = T.concat [bcText box | sl <- Map.elems (plLines layout), Box _ box <- lineItems (slLine sl)]
+              pageLocal = numbering == "page" && not endnotes
+          unnumbered <- layoutPdfUnnumbered input {piBook = book} geom fonts >>= either (assertFailure . show) pure
+          deferred unnumbered @?= if pageLocal then [(1, "一"), (2, "二")] else []
+          numberedLayout <- layoutPdf input {piBook = book} geom fonts >>= either (assertFailure . show) pure
+          assertBool "notes reach separate physical pages" (length (gridPages numberedLayout) >= 2)
+          deferred numberedLayout @?= if pageLocal then [(1, "一"), (1, "一")] else []
+          assertBool "the reference text keeps its resolved or ordinary form" ((if pageLocal then "参[一/一]" else "参[一/二]") `T.isInfixOf` text numberedLayout)
+          calls numberedLayout @?= calls unnumbered
+          when pageLocal $ calls numberedLayout @?= 2
+        either (assertFailure . show) pure result,
     testCase "root ADR 0470 I2: relative hanging indent retains font units without a PDF grid" $
       withBibProject "bibliography = [\"refs.json\"]" "[cite a]\n\n@bibliography\n" [("refs.json", abcJson)] $ \tmp -> do
         let declaration = T.replace ".types.book]" ".types.default]" (T.replace "pieces=['DOI {DOI}.']" "pieces=['{title}']" (T.replace "hanging-indent='0pt'" "hanging-indent='1.5zw'" customBibliographyDeclaration))

@@ -3397,7 +3397,7 @@ flowEnv inp geom fonts assumed = fe
 
 -- | The composition of a look; citations show their numbers (golem-driver ADR 0007).
 lookEnv :: FlowEnv -> Look -> ComposeEnv
-lookEnv fe lk = (composeEnv (bookLanguage (feInput fe)) (piStyle (feInput fe)) (feGeom fe) (feFonts fe) (feAssumed fe) lk) {ceCiteNumber = citeNumber (piBook (feInput fe)), ceCitePieces = resolvedCitationPieces (piBook (feInput fe)), ceCiteLink = citeLink (piBook (feInput fe)), ceSourceAt = feSourceAt fe, ceMarkReserve = feMarkReserve fe, cePageOf = labelPageOf (piBook (feInput fe)) (feAssumed fe), ceNoteRefOf = \l -> feMarkReserve fe >> pageNumberedNote (piBook (feInput fe)) l}
+lookEnv fe lk = (composeEnv (bookLanguage (feInput fe)) (piStyle (feInput fe)) (feGeom fe) (feFonts fe) (feAssumed fe) lk) {ceCiteNumber = citeNumber (piBook (feInput fe)), ceCitePieces = resolvedCitationPieces (piBook (feInput fe)), ceCiteLink = citeLink (piBook (feInput fe)), ceSourceAt = feSourceAt fe, ceMarkReserve = feMarkReserve fe, cePageOf = labelPageOf (piBook (feInput fe)) (feAssumed fe), ceNoteRefOf = \l -> feMarkReserve fe >> pageNumberedNote (piBook (feInput fe)) l, ceCiteNoteRefOf = case feMarkReserve fe of Nothing -> \_ _ -> Nothing; Just _ -> pageNumberedCiteNote (piBook (feInput fe))}
 
 {- | The page of a label (docs/adr/0260): of the block it is on, or of the
 mark of the note it is on, followed as an index mark by its span (root
@@ -3417,6 +3417,16 @@ pageNumberedNote book l = case Map.lookup l (bookLabels book) >>= ltNote of
   Just (NoteTarget FootnoteChannel n) -> Just (ChannelNote, n)
   Just (NoteTarget SidenoteChannel n) -> Just (ChannelSidenote, n)
   _ -> Nothing
+
+{- | A bibliography first-note target by its source and S1 number (root
+ADR 0470). Page-local footnotes have unique book numbers (root ADR 0383),
+including when a plugin emits several at one source. Endnotes are not
+numbered per page and must not use this reservation.
+-}
+pageNumberedCiteNote :: Book -> SrcSpan -> Int -> Maybe (NoteChannel, Int)
+pageNumberedCiteNote book =
+  let targets = Map.fromList [((sp, n), (ChannelNote, n)) | (ChannelNote, n, sp) <- bookNoteSites book]
+   in \sp n -> Map.lookup (sp, n) targets
 
 -- | The label of each note that has one, by the span of the note (root ADR 0422).
 noteLabelSpans :: Book -> Map SrcSpan Text

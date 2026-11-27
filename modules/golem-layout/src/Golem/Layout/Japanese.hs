@@ -246,8 +246,8 @@ data ComposeEnv = ComposeEnv
     numbered per page; a [ref-number] to it reserves the widest number of
     the channel and the layout numbers it again. Nothing for any other label
     -} ceNoteRefOf :: Text -> Maybe (NoteChannel, Int),
-    -- | The first note targeted by a bibliography number, only for page-local numbering.
-    ceCiteNoteRefOf :: SrcSpan -> Maybe (NoteChannel, Int)
+    -- | The first note by source and S1 number; a plugin may share one source among notes. Only page-local targets resolve.
+    ceCiteNoteRefOf :: SrcSpan -> Int -> Maybe (NoteChannel, Int)
   }
 
 -- | The mark of a sidenote in the text: its number, ※ or nothing.
@@ -304,7 +304,7 @@ defaultComposeEnv fs =
       ceTextEdges = (False, False),
       ceMarkReserve = Nothing,
       ceNoteRefOf = const Nothing,
-      ceCiteNoteRefOf = const Nothing
+      ceCiteNoteRefOf = \_ _ -> Nothing
     }
   where
     defaultAdvance c
@@ -1116,14 +1116,14 @@ citeTextPieces :: ComposeEnv -> Look -> [CitePiece] -> [Piece]
 citeTextPieces env lk pieces = case break special pieces of
   (plain, []) -> ordinary plain
   (plain, CiteLocatorFormatted label delimiter value after : rest) -> ordinary plain <> [PLocator lk label delimiter value after (locatorPieces lk label delimiter value after)] <> citeTextPieces env lk rest
-  (plain, CiteNoteNumber target _ notation _ : rest)
-    | Just (channel, number) <- ceCiteNoteRefOf env target ->
+  (plain, CiteNoteNumber target numberInBook notation _ : rest)
+    | Just (channel, number) <- ceCiteNoteRefOf env target numberInBook ->
         let metadata = CiteNoteMarkNumber channel number False True notation
          in ordinary plain <> [PMark lk lk (citeNoteNumberParts notation number) 0 0 (Just metadata)] <> citeTextPieces env lk rest
   (plain, _) -> ordinary plain
   where
     special CiteLocatorFormatted {} = True
-    special (CiteNoteNumber target _ _ _) = isJust (ceCiteNoteRefOf env target)
+    special (CiteNoteNumber target numberInBook _ _) = isJust (ceCiteNoteRefOf env target numberInBook)
     special _ = False
     ordinary plain = [hold (at' 0) p | (at', p) <- textPiecesAt lk (citationText plain)]
       where

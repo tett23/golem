@@ -360,7 +360,7 @@ firstNoteEnv :: Bool -> Position -> Maybe Text -> Int -> Int -> NoteChannel -> C
 firstNoteEnv vertical scriptPosition notation n count channel =
   let base = envOf vertical plain
       width c = if c <= '\x7f' then 1 / 2 else 1
-   in base {ceLook = (ceLook base) {lkPosition = scriptPosition}, ceAdvance = const width, ceWordAdvance = \_ -> sum . map width . T.unpack, ceCitePieces = \_ _ -> Just [CiteText "前掲注(", CiteNoteNumber sp n notation (Just (firstNoteText notation n)), CiteText ")"], ceCiteNoteRefOf = \_ -> Just (channel, n), ceMarkReserve = Just (if channel == ChannelNote then (count, 0) else (0, count))}
+   in base {ceLook = (ceLook base) {lkPosition = scriptPosition}, ceAdvance = const width, ceWordAdvance = \_ -> sum . map width . T.unpack, ceCitePieces = \_ _ -> Just [CiteText "前掲注(", CiteNoteNumber sp n notation (Just (firstNoteText notation n)), CiteText ")"], ceCiteNoteRefOf = \_ _ -> Just (channel, n), ceMarkReserve = Just (if channel == ChannelNote then (count, 0) else (0, count))}
 
 firstNoteBox :: ComposeEnv -> IO (Sp, BoxContent, MarkNumber)
 firstNoteBox env = case [(w, c, mn) | Box w c <- fst (composeInlines env [citeOf Nothing]), Just mb <- [bcMark c], Just mn <- [mbNumber mb]] of
@@ -368,7 +368,7 @@ firstNoteBox env = case [(w, c, mn) | Box w c <- fst (composeInlines env [citeOf
   found -> assertFailure (show (length found) <> " reference boxes")
 
 ordinaryNumber :: ComposeEnv -> Text -> [Item]
-ordinaryNumber env text = fst (composeInlines env {ceCitePieces = \_ _ -> Just [CiteText text], ceCiteNoteRefOf = const Nothing} [citeOf Nothing])
+ordinaryNumber env text = fst (composeInlines env {ceCitePieces = \_ _ -> Just [CiteText text], ceCiteNoteRefOf = \_ _ -> Nothing} [citeOf Nothing])
 
 firstNoteTests :: [TestTree]
 firstNoteTests =
@@ -399,7 +399,7 @@ firstNoteTests =
         bcEdgeEnd updated @?= bcEdgeEnd c,
     testCase "root ADR 0470 I5: the first-note target identity selects its current number instead of the citation source or stale text" $ do
       let target = mkSpan (FileId 9) 70 80
-          env = (firstNoteEnv False PositionNormal (Just "kanji") 12 60 ChannelNote) {ceCitePieces = \_ _ -> Just [CiteNoteNumber target 12 (Just "kanji") (Just "十二")], ceCiteNoteRefOf = \source -> if source == target then Just (ChannelSidenote, 17) else Nothing, ceMarkReserve = Just (0, 60)}
+          env = (firstNoteEnv False PositionNormal (Just "kanji") 12 60 ChannelNote) {ceCitePieces = \_ _ -> Just [CiteNoteNumber target 12 (Just "kanji") (Just "十二")], ceCiteNoteRefOf = \source _ -> if source == target then Just (ChannelSidenote, 17) else Nothing, ceMarkReserve = Just (0, 60)}
       (_, c, mn) <- firstNoteBox env
       mnChannel mn @?= ChannelSidenote
       mnNumber mn @?= 17
@@ -416,7 +416,7 @@ firstNoteTests =
       assertBool "the Arabic fallback fits the reserve" (sum [width | Box width _ <- ordinaryNumber env "60"] <= w),
     testCase "root ADR 0470 I5: a non-page-local value keeps the existing text items including its surrounding text" $
       forM_ [(vertical, notation) | vertical <- [False, True], notation <- [Nothing, Just "kanji", Just "circled", Just "ordinal-en"]] $ \(vertical, notation) -> do
-        let env = (firstNoteEnv vertical PositionNormal notation 12 25 ChannelNote) {ceCiteNoteRefOf = const Nothing}
+        let env = (firstNoteEnv vertical PositionNormal notation 12 25 ChannelNote) {ceCiteNoteRefOf = \_ _ -> Nothing}
             text = "前掲注(" <> firstNoteText notation 12 <> ")"
         map keyOf (fst (composeInlines env [citeOf Nothing])) @?= map keyOf (ordinaryNumber env text),
     testCase "root ADR 0470 I5: a one-number reserve preserves ordinary outside spacing and explicit tracking" $
@@ -439,7 +439,7 @@ citeBreakTests =
     "the label of a page kept with its value (docs/adr/0277)"
     [ testGroup "first-note reserve" firstNoteTests,
       testCase "root ADR 0470 I5: a deferred first-note number reserves a renumberable reference box" $ do
-        let env = (envOf True plain) {ceCitePieces = \_ _ -> Just [CiteNoteNumber sp 12 Nothing (Just "12")], ceCiteNoteRefOf = \_ -> Just (ChannelNote, 12), ceMarkReserve = Just (25, 0)}
+        let env = (envOf True plain) {ceCitePieces = \_ _ -> Just [CiteNoteNumber sp 12 Nothing (Just "12")], ceCiteNoteRefOf = \_ _ -> Just (ChannelNote, 12), ceMarkReserve = Just (25, 0)}
             references = [mn | Box _ c <- fst (composeInlines env [citeOf Nothing]), Just mb <- [bcMark c], Just mn <- [mbNumber mb]]
         length references @?= 1,
       testCase "root ADR 0480 I2: formatted locators preserve the value look and internal candidates" $
