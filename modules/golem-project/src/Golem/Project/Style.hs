@@ -183,11 +183,13 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Golem.Assemble (NoteNumbering (..))
+import Golem.Assemble.BibliographyStyle qualified as Bib
 import Golem.Assemble.Formats (Braces (..), FormatCause (..), FormatError (..), Legacy (..), MarkFormat (..), NumberSlotName (..), Piece (..), Slot (..), arabic, defaultMarkFormat, notationName, parseFormat, parseHeadingNumberFormatText, parseMarkFormat, parseNumberFormatText, unknownSlot)
 import Golem.Assemble.ListMarkers (NumberFormat, parseNumberFormat, parseNumberFormatLegacy)
 import Golem.Assemble.Numbering (TitlePiece (..))
 import Golem.Length (Sp (..))
 import Golem.Length qualified as L
+import Golem.Project.Bibliography qualified as BibParser
 import Golem.Project.Feature
 import Golem.Project.Manifest (codedMessage, decodeStrictBy, decodeStrictTableWith, decodeStrictWith, failAtCode, maxNaturalInt, naturalIntOf, naturalOf, positionSpan, readTomlTable)
 import Golem.Project.PathData (Path (..), PathDataError (..), SubPath (..), pathUnit, readOutlinePath, readStylePath)
@@ -2111,6 +2113,7 @@ data Style = Style
     stAkiSets :: !(Map Text AkiSetDef),
     -- | [index]: the columns of the index (docs/adr ADR 0025)
     stIndex :: !(Maybe IndexStyle),
+    stBibliography :: !(Bib.Bibliography Dim),
     -- | [code] and [code.colors] (golem-driver ADR 0023)
     stCode :: !CodeStyle,
     -- | [hidden-folio] (golem-driver ADR 0021)
@@ -2164,6 +2167,7 @@ defaultStyle =
       stLists = defaultListStyle,
       stAkiSets = Map.empty,
       stIndex = Nothing,
+      stBibliography = Bib.defaultBibliography,
       stCode = defaultCodeStyle,
       stHiddenFolio = defaultHiddenFolio
     }
@@ -3309,6 +3313,7 @@ instance FromValue Style where
           (n : _) -> inKey n (failAt (keyPosition v n) (T.unpack (akiError ("組み込みのアキ量のセットと同じ名前です。based-on で引き継いだ別の名前のセットを作ります: " <> n))))
           [] -> pure sets
     index <- fmap (\(IndexSec ix) -> ix) <$> optKey "index"
+    bibliography <- fromMaybe Bib.defaultBibliography <$> optKeyOf "bibliography" (BibParser.bibliographyOf (fmap (\(DimV dimension) -> dimension) . fromValue))
     CodeSec code <- fromMaybe (CodeSec defaultCodeStyle) <$> optKey "code"
     let hiddenDefault = defaultHiddenFolio {hfEnabled = maybe True ((/= SinglePage) . pageLayout) page}
     hidden <- fmap (fromMaybe hiddenDefault) . optKeyOf "hidden-folio" $ \v -> do
@@ -3360,6 +3365,7 @@ instance FromValue Style where
           stLists = lists,
           stAkiSets = akiSets,
           stIndex = index,
+          stBibliography = bibliography,
           stCode = code,
           stHiddenFolio = hidden
         }
@@ -3719,6 +3725,7 @@ styleChecks owner s =
     <> markPositionChecks s
     <> endnoteChecks s
     <> dropFitChecks s
+    <> BibParser.bibliographyChecks (stBibliography s)
     <> [("G03302", "", styleKeys ["headings", T.pack (show level), "paragraph-style"], "見出しの paragraph-style が指す段落スタイル " <> name <> " がありません") | (level, h) <- Map.toAscList (stHeadings s), Just name <- [hsParagraphStyle h], Map.notMember name (stParaStyles s)]
 
 {- | G03301 (root ADR 0466): a paragraph style that has drop-lines and
@@ -4634,6 +4641,7 @@ styleSchema =
       ("fonts", NNamed (Just FontRoles) (NTable [("ja", str), ("latin", str), ("features", features), ("punctuation-proportional", bool), ("instance", str), ("axes", NNamed Nothing numberNode), ("generic-family", enum (map fst genericFamilyValues)), ("ja-license", str), ("latin-license", str)])),
       ("character-styles", NNamed (Just CharStyles) charStyleNode),
       ("paragraph-styles", NNamed (Just ParaStyles) paraStyleNode),
+      ("bibliography", BibParser.bibliographySchema),
       ("separators", NNamed Nothing separatorNode),
       ("headings", NNamed Nothing headingNode),
       ("composition", compositionNode),
