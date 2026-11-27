@@ -359,6 +359,20 @@ fi
 LEAN_PATH="$tmp" "$lean" "$chosenSourceProgress"
 echo "root ADR 0352 I4: chosen fresh-suffix breaks and partial trials discharge the modeled source-progress guard"
 
+# Check the caller-derived positive cutoffs and the complete front retry rank.
+retryPrefix=$root/experiments/pagination-proof/RetryPrefix.lean
+if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|implemented_by|extern|native_decide)([^A-Za-z_]|$)' "$retryPrefix"; then
+  echo "unproved or unchecked Lean declaration in $retryPrefix" >&2
+  exit 1
+fi
+sh "$root/experiments/pagination-proof/check-parts-retry-shape.sh"
+LEAN_PATH="$tmp" "$lean" "$retryPrefix"
+(cd "$root" && cabal exec -v0 -- "$runghc" -f "$ghc" -hide-all-packages -package=base -package=containers \
+  -package-id=golem-layout-0.1.0-inplace -package-id=golem-length-0.1.0-inplace \
+  experiments/pagination-proof/RetryPrefixChecks.hs)
+echo "root ADR 0352 I4: all modeled retry entries have positive cutoffs and a decreasing complete-front retry rank"
+
+
 
 
 # The boundary inputs of PhysicalBoundary.hs on Physical.lean's paginate,
