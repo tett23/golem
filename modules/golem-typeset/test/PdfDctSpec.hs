@@ -8,6 +8,7 @@ import Data.Either (isLeft)
 import Data.List (elemIndex)
 import Data.Maybe (fromMaybe)
 import Data.Word (Word8)
+import Golem.Color qualified as Color
 import Golem.Pdf qualified as P
 import Golem.Typeset.PdfDct
 import Test.Tasty
@@ -17,7 +18,9 @@ pdfDctTests :: TestTree
 pdfDctTests =
   testGroup
     "root ADR 0403 native PDF DCT samples"
-    [ testCase "root ADR 0403 I1: explicit zero preserves raw RGB samples" $ do
+    [ testCase "root ADR 0474 I4: YCbCr byte conversion agrees with JuicyPixels" $
+        mapM_ check [(y, cb, cr) | y <- samples, cb <- samples, cr <- samples],
+      testCase "root ADR 0403 I1: explicit zero preserves raw RGB samples" $ do
         d <- either (assertFailure . show) pure (decodePdfDct (spec (Just 0)) jpeg)
         BS.take 3 (P.imgData (dctImage d)) @?= BS.pack [100, 128, 128],
       testCase "root ADR 0403 I1: default three components applies YCbCr transform despite RGB component IDs" $ do
@@ -71,6 +74,9 @@ pdfDctTests =
       testCase "root ADR 0403 I2: declared dimensions must match before decoder" $ assertBool "dimensions" (isLeft (decodePdfDct (spec Nothing) {dctWidth = 65535} jpeg))
     ]
   where
+    samples = [0, 1, 16, 64, 127, 128, 192, 254, 255] :: [Word8]
+    check (y, cb, cr) = case J.convertPixel (J.PixelYCbCr8 y cb cr) of
+      J.PixelRGB8 r g b -> Color.rgb8Components (Color.ycbcr8ToRgb8 y cb cr) @?= (fromIntegral r, fromIntegral g, fromIntegral b)
     spec transform = PdfDctSpec 3 transform 8 8 (1024 * 1024)
     jpeg = withoutAdobe (BL.toStrict (Jpeg.encodeDirectJpegAtQualityWithMetadata 100 mempty (J.generateImage (\_ _ -> J.PixelRGB8 100 128 128) 8 8)))
     withoutAdobe bytes = case BS.breakSubstring (BS.pack [255, 238]) bytes of

@@ -22,6 +22,7 @@ library
     , base          >=4.20 && <4.21
     , containers    >=0.6  && <0.8
     , filepath      >=1.4  && <1.6
+    , golem-color
     , golem-assemble
     , golem-bibliography
     , golem-doc

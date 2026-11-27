@@ -458,10 +458,12 @@ colourTests =
       case ipResources p of
         ODict kvs -> lookup "ColorSpace" kvs @?= Just (ODict [("GolemSRGB", OArr [OName "ICCBased", ORef 0])])
         other -> assertFailure (show other),
-    testCase "an RGB image gets the sRGB ICCBased" $ do
+    testCase "root ADR 0474 I3: an RGB image keeps its encoded samples while gaining sRGB ICCBased" $ do
       p <- importOk 1 rgbPdf
       case lookup 5 (ipObjects p) of
-        Just (OStream d _) -> lookup "ColorSpace" d @?= Just (OArr [OName "ICCBased", ORef 0])
+        Just (OStream d samples) -> do
+          lookup "ColorSpace" d @?= Just (OArr [OName "ICCBased", ORef 0])
+          samples @?= BS.pack [255, 0, 0]
         other -> assertFailure (show other),
     testCase "RG and /DeviceRGB CS of the stroke become GolemSRGB with CS and SC" $ do
       p <- importOk 1 (classicPdf "" (onePage "<< >>" "0 1 0 RG /DeviceRGB CS 0 0 1 1 re S"))

@@ -20,6 +20,7 @@ import Data.ByteString.Builder qualified as B
 import Data.ByteString.Lazy qualified as BL
 import Data.Ratio ((%))
 import Data.Text.Encoding qualified as TE
+import Golem.Color qualified as Color
 import Golem.Pdf.Number (showRationalDigits)
 
 -- | A drawing: its width and height, and what it draws, y downwards from the top left.
@@ -72,7 +73,7 @@ fixed v = B.byteString (TE.encodeUtf8 (showRationalDigits 6 (round (v * 65536) %
 
 -- | A colour component from 0 to 255 as 0 to 1.
 component :: Int -> Int -> B.Builder
-component digits c = B.byteString (TE.encodeUtf8 (showRationalDigits digits (toInteger c % 255)))
+component digits c = B.byteString (TE.encodeUtf8 (showRationalDigits digits (Color.sampleRatio c 255)))
 
 {- | The content stream of a drawing: y turned upwards over its height,
 then each item. Fill colours use @sc@ and stroke colours @SC@ in the

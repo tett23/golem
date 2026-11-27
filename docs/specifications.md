@@ -428,6 +428,7 @@ Golem は、ある文字に当てられるスタイルのキーを狭めず、�
 ### 入力の色を自動で印刷色へ変換しない
 
 Golem は、RGB の入力の見た目を保つ目的で、その入力を CMYK に自動変換しない。
+共通の色計算モジュールは、呼出側が CMYK を必要として明示的に選ぶ場合に限り、符号化済み RGB の三成分を固定の近似式で CMYK に換算できる（[root ADR 0474](adr/0474-centralize-color-conversions-with-a-fixed-approximation.md)）。
 PDF の出力インテントが CMYK であることだけを理由に、RGB の画像や図版を CMYK 化しない。
 既存の ICC プロファイルを保持し、プロファイルのない RGB に sRGB を付ける処理は、色空間の変換とは区別する。
 HTML と EPUB では、CMYK の指定色から RGB の近似色を求める。
@@ -5076,9 +5077,9 @@ HTML と EPUB は、文字スタイルの宣言を `ruby > rt` の CSS に書き
 名前と CMYK 値の対応は、出力インテント（`style.toml` の `[color]` の `intent` に指定する ICC プロファイル）に束縛して定義する。
 Golem が想定する出力インテントは、Japan Color 2001 Coated である。
 
-色空間を換算する向きは CMYK から RGB だけであり、RGB の元の見た目に近い CMYK の値は推定しない。
-印刷を第一の媒体とするためである。
-そのため、EPUB と HTML の色は、印刷用の色を RGB に近似したものになる。
+スウォッチを HTML と EPUB に書く場合は、CMYK の値を RGB に近似する。
+別に、共通の色計算モジュールには RGB から CMYK への固定の近似があるが、色指定のない図版や出力インテントによって自動的に呼ばない。
+式と量子化は [golem-color の仕様書](golem-color/specifications.md) に定める（[root ADR 0474](adr/0474-centralize-color-conversions-with-a-fixed-approximation.md)）。
 
 PDF の文字の色（`[color スウォッチ: ...]`）は、スウォッチの CMYK の値を、そのまま DeviceCMYK のプロセスカラーとして書く（[golem-driver ADR 0004](golem-driver/adr/0004-pdf-emphasis-and-character-styles.md)）。
 RGB への変換も、特色の色空間も使わない。

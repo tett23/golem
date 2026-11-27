@@ -1,0 +1,29 @@
+cabal-version: 3.0
+name: golem-color
+version: 0.1.0
+synopsis: Pure color component conversions for Golem
+license: MIT AND BSD-3-Clause
+author: tett23
+maintainer: tett23@gmail.com
+category: Graphics
+build-type: Simple
+extra-source-files:
+  LICENSE-JuicyPixels
+  test/Exhaustive.hs
+
+library
+  hs-source-dirs: src
+  exposed-modules: Golem.Color
+  build-depends: base >=4.20 && <4.21
+  default-language: GHC2021
+  ghc-options: -Wall -Werror=incomplete-patterns -Werror
+
+test-suite golem-color-test
+  type: exitcode-stdio-1.0
+  hs-source-dirs: test
+  main-is: Main.hs
+  build-depends:
+    base >=4.20 && <4.21,
+    golem-color
+  default-language: GHC2021
+  ghc-options: -Wall -Werror=incomplete-patterns -Werror

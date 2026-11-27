@@ -2,6 +2,7 @@
 aarch64	golem-assemble-test	10
 aarch64	golem-bibliography-test	10
 aarch64	golem-cli-test	19
+aarch64	golem-color-test	10
 aarch64	golem-doc-gen-test	12
 aarch64	golem-doc-test	10
 aarch64	golem-driver-cli-test	44
@@ -42,6 +43,7 @@ aarch64	golem-wasm-test	10
 x86_64	golem-assemble-test	10
 x86_64	golem-bibliography-test	10
 x86_64	golem-cli-test	20
+x86_64	golem-color-test	10
 x86_64	golem-doc-gen-test	22
 x86_64	golem-doc-test	13
 x86_64	golem-driver-cli-test	44

@@ -23,6 +23,7 @@ import Data.Ord (comparing)
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
+import Golem.Color qualified as Color
 import Golem.Length qualified as L
 import Golem.Pdf (ColorSpace (..), ColorUse (..), FigureContent (..), ImageData (..), ImportedPage (..), Paint (..), PaintSource (..), PaintSpace (..), X4Problem (..))
 import Golem.Pdf.Rect (Rect (..))
@@ -531,7 +532,7 @@ cmyPlates r v
   where
     swatch sp cs = case (sp, mapM decimal cs) of
       (PsDeviceCmyk, Just [c, m, y, k]) ->
-        case [name | (name, (c', m', y', k')) <- Map.toList (vwSwatchesUsed v), map ((/ 100) . toRational) [c', m', y', k'] == [c, m, y, k]] of
+        case [name | (name, (c', m', y', k')) <- Map.toList (vwSwatchesUsed v), map Color.percentRatio [c', m', y', k'] == [c, m, y, k]] of
           name : _ -> name <> "、"
           [] -> ""
       _ -> ""
