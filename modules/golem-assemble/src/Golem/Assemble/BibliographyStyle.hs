@@ -15,15 +15,21 @@ module Golem.Assemble.BibliographyStyle
     bibliographyFields,
     bibliographyLocatorNames,
     bibliographyTypeFor,
+    bibliographyForLanguage,
+    bibliographyForLanguages,
     overlayBibliographyStyle,
     overlayBibliographyNames,
   )
 where
 
 import Control.Applicative ((<|>))
+import Data.Char (isAsciiUpper, toLower)
+import Data.List (sort)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
+import Data.Maybe (mapMaybe)
 import Data.Text (Text)
+import Data.Text qualified as T
 import Golem.Doc.IR (LocatorLabel (..), locatorLabelName)
 
 -- | The selected name and the writer's declarations.
@@ -39,6 +45,8 @@ data BibliographyStyle d = BibliographyStyle
     bsCitation :: !(Maybe [Text]),
     bsCitationYear :: !(Maybe [Text]),
     bsCitationDelimiter :: !(Maybe Text),
+    bsCitationPrefix :: !(Maybe Text),
+    bsCitationSuffix :: !(Maybe Text),
     bsCitationSort :: !(Maybe Text),
     bsSubsequent :: !(Maybe [Text]),
     bsNoteChannel :: !(Maybe Text),
@@ -75,6 +83,8 @@ data BibliographyNames = BibliographyNames
     bnLastDelimiter :: !(Maybe Text),
     bnMax :: !(Maybe Int),
     bnUseFirst :: !(Maybe Int),
+    bnUseLast :: !(Maybe Int),
+    bnPairDelimiter :: !(Maybe Text),
     bnEtAl :: !(Maybe Text),
     bnLabel :: !(Maybe (Text, Text))
   }
@@ -84,10 +94,10 @@ defaultBibliography :: Bibliography d
 defaultBibliography = Bibliography "golem" Map.empty
 
 emptyBibliographyStyle :: BibliographyStyle d
-emptyBibliographyStyle = BibliographyStyle Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Map.empty Map.empty Map.empty Map.empty
+emptyBibliographyStyle = BibliographyStyle Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Map.empty Map.empty Map.empty Map.empty
 
 emptyBibliographyNames :: BibliographyNames
-emptyBibliographyNames = BibliographyNames Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing
+emptyBibliographyNames = BibliographyNames Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing
 
 builtinBibliographyNames :: [Text]
 builtinBibliographyNames = ["golem", "ieee", "vancouver", "sist02", "unified-linguistics", "chicago-notes-bibliography", "chicago-author-date", "apa"]
@@ -213,6 +223,8 @@ overlayBibliographyStyle base override =
       bsCitation = bsCitation override <|> bsCitation base,
       bsCitationYear = bsCitationYear override <|> bsCitationYear base,
       bsCitationDelimiter = bsCitationDelimiter override <|> bsCitationDelimiter base,
+      bsCitationPrefix = bsCitationPrefix override <|> bsCitationPrefix base,
+      bsCitationSuffix = bsCitationSuffix override <|> bsCitationSuffix base,
       bsCitationSort = bsCitationSort override <|> bsCitationSort base,
       bsSubsequent = bsSubsequent override <|> bsSubsequent base,
       bsNoteChannel = bsNoteChannel override <|> bsNoteChannel base,
@@ -245,6 +257,8 @@ overlayBibliographyNames base override =
       bnLastDelimiter = bnLastDelimiter override <|> bnLastDelimiter base,
       bnMax = bnMax override <|> bnMax base,
       bnUseFirst = bnUseFirst override <|> bnUseFirst base,
+      bnUseLast = bnUseLast override <|> bnUseLast base,
+      bnPairDelimiter = bnPairDelimiter override <|> bnPairDelimiter base,
       bnEtAl = bnEtAl override <|> bnEtAl base,
       bnLabel = bnLabel override <|> bnLabel base
     }
@@ -255,3 +269,37 @@ No pieces or styles are inferred when neither declaration exists (root ADR 0470)
 bibliographyTypeFor :: Text -> BibliographyStyle d -> Maybe BibliographyType
 bibliographyTypeFor entryType declaration =
   Map.lookup entryType (bsTypes declaration) <|> Map.lookup "default" (bsTypes declaration)
+
+-- | Select partial language overlays; collisions retain their written keys.
+bibliographyForLanguage :: Text -> BibliographyStyle d -> Either [Text] (BibliographyStyle d)
+bibliographyForLanguage language base
+  | not (null duplicates) = Left duplicates
+  | otherwise = Right (foldl' overlayBibliographyStyle base selected)
+  where
+    written = Map.toList (bsLanguages base)
+    groups = Map.fromListWith (<>) [(asciiLower key, [key]) | (key, _) <- written]
+    duplicates = sort (concat [keys | keys <- Map.elems groups, length keys > 1])
+    normalized = Map.fromList [(asciiLower key, value) | (key, value) <- written]
+    parts = T.splitOn "-" (asciiLower language)
+    prefixes = [T.intercalate "-" (take n parts) | n <- [1 .. length parts]]
+    selected = mapMaybe (`Map.lookup` normalized) prefixes
+    asciiLower = T.map (\c -> if isAsciiUpper c then toLower c else c)
+
+-- | Resolve book-wide controls independently from record-local formatting.
+bibliographyForLanguages :: Text -> Text -> BibliographyStyle d -> Either [Text] (BibliographyStyle d)
+bibliographyForLanguages bookLanguage recordLanguage base = do
+  book <- bibliographyForLanguage bookLanguage base
+  record <- bibliographyForLanguage recordLanguage base
+  pure
+    record
+      { bsCitationMode = bsCitationMode book,
+        bsCitationDelimiter = bsCitationDelimiter book,
+        bsCitationPrefix = bsCitationPrefix book,
+        bsCitationSuffix = bsCitationSuffix book,
+        bsCitationSort = bsCitationSort book,
+        bsNoteChannel = bsNoteChannel book,
+        bsSort = bsSort book,
+        bsLanguageOrder = bsLanguageOrder book,
+        bsYearSuffix = bsYearSuffix book,
+        bsHangingIndent = bsHangingIndent book
+      }

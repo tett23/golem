@@ -6,6 +6,7 @@ selected style. Field identities remain available for per-field output styles.
 module Golem.Assemble.BibliographyFormats
   ( BibliographyPiece,
     parseBibliographyPiece,
+    bibliographyPieceFields,
     renderBibliographyPieces,
     BibliographyFragment (..),
     renderBibliographyFragments,
@@ -101,3 +102,11 @@ renderBibliographyFragmentsWith value = fmap concat . traverse render
 
     literal t = [BibliographyLiteral t | not (T.null t)]
     field name t = [BibliographyField name t | not (T.null t)]
+
+-- | Referenced fields before conditional pieces are omitted.
+bibliographyPieceFields :: BibliographyPiece -> [Text]
+bibliographyPieceFields (BibliographyPiece pieces) = concatMap field pieces
+  where
+    field (PLit _) = []
+    field (PText (name, _)) = [name]
+    field (PNumber (name, _) _) = [name]

@@ -14,6 +14,7 @@ import Data.Text qualified as T
 import Golem.Assemble.BibliographyFormats (parseBibliographyPiece)
 import Golem.Assemble.BibliographyNames (parseInitialFormat)
 import Golem.Assemble.BibliographyStyle
+import Golem.Project.BibliographyRequirements (bibliographyAllRequiredChecks)
 import Golem.Project.Manifest (maxNaturalInt)
 import Golem.Project.TomlSchema
 import Toml.Schema
@@ -34,6 +35,8 @@ declarationOf dimension languages = parseTableFromValue $ do
   citation <- optKey "citation"
   citationYear <- optKey "citation-year"
   delimiter <- optKey "citation-delimiter"
+  citationPrefix <- optKey "citation-prefix"
+  citationSuffix <- optKey "citation-suffix"
   citationSort <- enumKey "citation-sort" ["written", "year"]
   subsequent <- optKey "subsequent"
   channel <- enumKey "note-channel" ["footnote", "endnote"]
@@ -53,7 +56,7 @@ declarationOf dimension languages = parseTableFromValue $ do
   types <- fromMaybe Map.empty <$> optKeyOf "types" (namedOf typeOf)
   names <- fromMaybe Map.empty <$> optKeyOf "names" namesOf
   overrides <- if languages then fromMaybe Map.empty <$> optKeyOf "languages" (namedOf (declarationOf dimension False)) else pure Map.empty
-  pure (BibliographyStyle mode citation citationYear delimiter citationSort subsequent channel sortKeys languageOrder label indent suffix pageRange rangeDelimiter months locatorLabels types names overrides)
+  pure (BibliographyStyle mode citation citationYear delimiter citationPrefix citationSuffix citationSort subsequent channel sortKeys languageOrder label indent suffix pageRange rangeDelimiter months locatorLabels types names overrides)
 
 pairOf :: Value' l -> Matcher l (Text, Text)
 pairOf value =
@@ -82,9 +85,11 @@ nameOf short editor = parseTableFromValue $ do
   lastDelimiter <- optKey "last-delimiter"
   maximumNames <- optKeyOf "max" countOf
   useFirst <- optKeyOf "use-first" countOf
+  useLast <- optKeyOf "use-last" countOf
+  pairDelimiter <- optKey "pair-delimiter"
   etAl <- optKey "et-al"
   label <- if editor then optKeyOf "label" pairOf else pure Nothing
-  pure (BibliographyNames order partDelimiter initials initialFormat initialDelimiter delimiter lastDelimiter maximumNames useFirst etAl label)
+  pure (BibliographyNames order partDelimiter initials initialFormat initialDelimiter delimiter lastDelimiter maximumNames useFirst useLast pairDelimiter etAl label)
   where
     unlessShort action = if short then pure Nothing else action
 
@@ -101,7 +106,7 @@ enumKey key allowed = optKeyOf key $ \value -> do
 
 -- | Format and reference checks keep paths for diagnostics at each written value.
 bibliographyChecks :: Bibliography d -> [(Text, Text, [Scope], Text)]
-bibliographyChecks bibliography = selected <> concatMap declaration (Map.toList (bibStyles bibliography))
+bibliographyChecks bibliography = selected <> concatMap declaration (Map.toList (bibStyles bibliography)) <> bibliographyAllRequiredChecks bibliography
   where
     selected = [("G03303", "", [ScopeKey "bibliography", ScopeKey "style"], "参考文献のスタイル " <> bibSelected bibliography <> " がありません") | bibSelected bibliography `notElem` builtinBibliographyNames, Map.notMember (bibSelected bibliography) (bibStyles bibliography)]
     declaration (name, style) =
@@ -129,6 +134,8 @@ bibliographySchema = NTable [("style", str), ("styles", NNamed Nothing (declarat
           ("citation", strings),
           ("citation-year", strings),
           ("citation-delimiter", str),
+          ("citation-prefix", str),
+          ("citation-suffix", str),
           ("citation-sort", enumeration ["written", "year"]),
           ("subsequent", strings),
           ("note-channel", enumeration ["footnote", "endnote"]),
@@ -148,7 +155,7 @@ bibliographySchema = NTable [("style", str), ("styles", NNamed Nothing (declarat
     namesNode short editor =
       NTable $
         (if short then [] else [("order", enumeration ["family-given", "given-family", "first-family-given"]), ("part-delimiter", str), ("initials", boolean), ("initial-format", str), ("initial-delimiter", str)])
-          <> [("delimiter", str), ("last-delimiter", str), ("max", NValue LInteger), ("use-first", NValue LInteger), ("et-al", str)]
+          <> [("delimiter", str), ("last-delimiter", str), ("max", NValue LInteger), ("use-first", NValue LInteger), ("use-last", NValue LInteger), ("pair-delimiter", str), ("et-al", str)]
           <> [("label", strings) | editor]
     str = NValue LString
     strings = NArray str

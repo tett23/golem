@@ -7,6 +7,13 @@ module Golem.Assemble.BibliographyNames
   ( BibliographyName (..),
     NameOrder (..),
     NameListFormat (..),
+    NameListExtras (..),
+    nameListExtras,
+    formatShortNamesWith,
+    formatBibliographyNamesWith,
+    resolveBibliographyNames,
+    resolveBibliographyShortNames,
+    nameListProblems,
     NameFormat (..),
     InitialFormat,
     parseInitialFormat,
@@ -20,7 +27,7 @@ where
 
 import Control.Applicative ((<|>))
 import Data.Bifunctor (first)
-import Data.Maybe (fromMaybe, listToMaybe)
+import Data.Maybe (fromMaybe, isJust, listToMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Golem.Assemble.BibliographyStyle qualified as Decl
@@ -71,7 +78,10 @@ parseInitialFormat source = do
 
 -- | Full names, in their original order, with an explicit format.
 formatBibliographyNames :: NameFormat -> [BibliographyName] -> Text
-formatBibliographyNames options = formatList (nfList options) . zipWith render [0 :: Int ..] . filter present
+formatBibliographyNames options = formatList (nfList options) . renderedNames options
+
+renderedNames :: NameFormat -> [BibliographyName] -> [Text]
+renderedNames options = zipWith render [0 :: Int ..] . filter present
   where
     render _ (LiteralName literal) = literal
     render index (PersonalName family given) =
@@ -165,3 +175,82 @@ bibliographyEditorLabel (singular, plural) names = case filter present names of
   [] -> Nothing
   [_] -> Just singular
   _ -> Just plural
+
+-- | Extra resolved controls keep the original five-field constructor compatible.
+data NameListExtras = NameListExtras
+  { neUseLast :: !Int,
+    nePairDelimiter :: !(Maybe Text)
+  }
+  deriving stock (Eq, Show)
+
+nameListExtras :: Decl.BibliographyNames -> NameListExtras
+nameListExtras declaration = NameListExtras (fromMaybe 0 (Decl.bnUseLast declaration)) (Decl.bnPairDelimiter declaration)
+
+formatShortNamesWith :: NameListExtras -> NameListFormat -> [BibliographyName] -> Text
+formatShortNamesWith extras options = formatListWith extras options . filter (not . T.null . T.strip) . map short
+  where
+    short (PersonalName family _) = fromMaybe "" family
+    short (LiteralName literal) = literal
+
+formatListWith :: NameListExtras -> NameListFormat -> [Text] -> Text
+formatListWith extras options names
+  | null names = ""
+  | maybe False (length names >) (nlMax options) =
+      T.intercalate (nlDelimiter options) (take (nlUseFirst options) names)
+        <> nlEtAl options
+        <> T.intercalate (nlDelimiter options) (drop (length names - neUseLast extras) names)
+  | otherwise = joined names
+  where
+    joined [] = ""
+    joined [one] = one
+    joined [one, final] = one <> fromMaybe (nlLastDelimiter options) (nePairDelimiter extras) <> final
+    joined many = T.intercalate (nlDelimiter options) (init many) <> nlLastDelimiter options <> last many
+
+formatBibliographyNamesWith :: NameListExtras -> NameFormat -> [BibliographyName] -> Text
+formatBibliographyNamesWith extras options = formatListWith extras (nfList options) . renderedNames options
+
+-- | Resolve a complete declaration without borrowing another style's values.
+resolveBibliographyNames :: Decl.BibliographyNames -> Either Text (NameFormat, NameListExtras)
+resolveBibliographyNames declaration = do
+  (names, extras) <- resolveBibliographyShortNames declaration
+  writtenOrder <- requiredOption "order" (Decl.bnOrder declaration)
+  order <- case writtenOrder of
+    "family-given" -> Right FamilyGiven
+    "given-family" -> Right GivenFamily
+    "first-family-given" -> Right FirstFamilyGiven
+    _ -> Left "order に使えない値です"
+  initials <- requiredOption "initials" (Decl.bnInitials declaration)
+  partDelimiter <- if order == GivenFamily then Right (fromMaybe "" (Decl.bnPartDelimiter declaration)) else requiredOption "part-delimiter" (Decl.bnPartDelimiter declaration)
+  initial <- case Decl.bnInitialFormat declaration of
+    Just text -> parseInitialFormat text
+    Nothing | initials -> Left "initial-format は必須項目です"
+    -- This value is never observed when initials is false; no other style is borrowed.
+    Nothing -> parseInitialFormat "{i}"
+  initialDelimiter <- if initials then requiredOption "initial-delimiter" (Decl.bnInitialDelimiter declaration) else Right (fromMaybe "" (Decl.bnInitialDelimiter declaration))
+  pure (NameFormat order partDelimiter initials initial initialDelimiter names, extras)
+
+resolveBibliographyShortNames :: Decl.BibliographyNames -> Either Text (NameListFormat, NameListExtras)
+resolveBibliographyShortNames declaration = do
+  case nameListProblems declaration of
+    [] -> Right ()
+    (key, reason) : _ -> Left (key <> ": " <> reason)
+  delimiter <- requiredOption "delimiter" (Decl.bnDelimiter declaration)
+  lastDelimiter <- requiredOption "last-delimiter" (Decl.bnLastDelimiter declaration)
+  pure (NameListFormat delimiter lastDelimiter (Decl.bnMax declaration) (fromMaybe 0 (Decl.bnUseFirst declaration)) (fromMaybe "" (Decl.bnEtAl declaration)), nameListExtras declaration)
+
+requiredOption :: Text -> Maybe a -> Either Text a
+requiredOption key = maybe (Left (key <> " は必須項目です")) Right
+
+-- | Shared count constraints for the project checker and the canonical resolver.
+nameListProblems :: Decl.BibliographyNames -> [(Text, Text)]
+nameListProblems names =
+  let values = [("max", Decl.bnMax names), ("use-first", Decl.bnUseFirst names), ("use-last", Decl.bnUseLast names)]
+      valid number = number >= 0 && toInteger number <= 2147483647
+      bounds = [(key, "名前の数は0以上2147483647以下の整数です") | (key, Just number) <- values, not (valid number)]
+      require key supplied = [(key, "必須項目がありません") | not supplied]
+   in bounds <> case Decl.bnMax names of
+        Nothing -> [(key, "max のない名前の表に省略の指定は書けません") | (key, supplied) <- [("use-first", isJust (Decl.bnUseFirst names)), ("use-last", isJust (Decl.bnUseLast names)), ("et-al", isJust (Decl.bnEtAl names))], supplied]
+        Just limit ->
+          require "use-first" (isJust (Decl.bnUseFirst names))
+            <> require "et-al" (isJust (Decl.bnEtAl names))
+            <> [(if isJust (Decl.bnUseLast names) then "use-last" else "use-first", "先頭と末尾の保持数の合計が max を超えています") | let lastCount = fromMaybe 0 (Decl.bnUseLast names), Just firstCount <- [Decl.bnUseFirst names], all valid [limit, firstCount, lastCount], toInteger firstCount + toInteger lastCount > toInteger limit]
