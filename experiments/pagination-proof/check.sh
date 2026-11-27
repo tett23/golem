@@ -350,6 +350,16 @@ fi
 LEAN_PATH="$tmp" "$lean" "$numberedPayload"
 echo "root ADR 0352 I5: numbered composed rows preserve payload, order, split prefixes, and the existing Physical ID projection"
 
+# Derive source progress from the actual selected caption scan and partial trial.
+chosenSourceProgress=$root/experiments/pagination-proof/ChosenSourceProgress.lean
+if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|implemented_by|extern|native_decide)([^A-Za-z_]|$)' "$chosenSourceProgress"; then
+  echo "unproved or unchecked Lean declaration in $chosenSourceProgress" >&2
+  exit 1
+fi
+LEAN_PATH="$tmp" "$lean" "$chosenSourceProgress"
+echo "root ADR 0352 I4: chosen fresh-suffix breaks and partial trials discharge the modeled source-progress guard"
+
+
 
 # The boundary inputs of PhysicalBoundary.hs on Physical.lean's paginate,
 # against golem-layout's paginatePhysical (root ADR 0352).

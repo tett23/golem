@@ -1761,6 +1761,8 @@ golem-layout は区切りを 1 行以上にする（`Paginate.hs:155`）。
    `NumberedPayload.lean` は、既成行の列に採番するとき、内容と順序を保ち、その ID が既存の `PhysicalPagination.ids` の列と等しいことを導く。
    採用する先頭の行を分けた場合の一致と実装の行内容の観測は、[既成行の内容の依存調査](../../docs/research/0352-numbered-row-payload-dependencies.md) に記録する。
    異なる行列に再組版する文字列の全量の保存と、その後の配置への接続は残る。
+   `ChosenSourceProgress.lean` は、選択された改行位置を走査履歴から導き、接尾部を一部採用するモデルのソース前進の条件を導く。
+   実装の組み直し 36 接尾部と次の位置の照合 85 件、未接続の範囲を [ソースの前進の依存調査](../../docs/research/0352-chosen-source-progress-dependencies.md) に記録する。
 
 これらを終えるまで Alloy の定期実行と既存の参照を維持する。
 終えたときは、Alloy の定期実行を終え、規則やモデルを変えたときにローカルの Lean で検証し直す手順を CONTRIBUTING に書く。
@@ -1806,6 +1808,7 @@ sh experiments/pagination-proof/check.sh
 `CausalFirstIds.lean` は、採番の算術部分だけをほかのモデルを読み込まずに検査する。
 `BuiltFirstIds.lean` はその出力を読み込み、二段階の走査と 648 入力、対照の 2 件を検査する。
 `NumberedPayload.lean` は `Physical.olean` を読み込み、既成行の採番と ID の射影、分割する先頭の行の内容を検査する。
+`ChosenSourceProgress.lean` は `Pagination.olean` と `Physical.olean` を読み込み、選択された接尾部の改行位置と部分採用からソースの前進を検査する。
 `check-built-first-ids.sh` は、依存する package 環境を渡したローカルの `RUNGHC` で、export list だけを開いた一時ソースから本体の採番表を観測する。
 `WholeOrder.lean` は `WholeNotes.olean` を読み込み、ほかの検査と並んで検査し、最後にその結果を待つ。
 `WholeRules.lean` は `Whole.olean` を読み込み、同じくほかの検査と並んで検査する。
