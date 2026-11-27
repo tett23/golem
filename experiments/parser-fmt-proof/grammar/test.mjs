@@ -47,7 +47,9 @@ try {
     'root ADR 0351 I1, I2: definition list wrappers require arbitrary-input composition proofs');
   assert.doesNotMatch(strict.stderr, /^unsupported (Blocks|ItemTail|DivBlocks) choice /m,
     'root ADR 0351 I1, I2: repeated block sequences require arbitrary-input composition proofs');
-  assert.ok(baselineUnsupported <= 15, 'the full grammar model must not regress in unsupported choices');
+  assert.doesNotMatch(strict.stderr, /^unsupported File choice /m,
+    'root ADR 0351 I1, I2: file boundaries require arbitrary-input composition proofs');
+  assert.ok(baselineUnsupported <= 14, 'the full grammar model must not regress in unsupported choices');
   assert.equal(strict.status === 0, baselineUnsupported === 0,
     'strict generation succeeds exactly when every choice is supported');
   for (const line of strict.stderr.split('\n').filter(line => line.startsWith('unsupported '))) {
@@ -210,6 +212,13 @@ try {
     ['```hs key=x\nbody\n```\n', 'CodeBlock', { CodeBlock: 1, CodeLine: 1 }],
     ['- x\n  ```\n  body\n  ```\n', 'BulletList', { CodeBlock: 1, CodeLine: 1 }],
   ];
+  const fileParserCases = [
+    ['', undefined, {}], ['\n\n', undefined, {}],
+    ['one\n', 'Paragraph', { Paragraph: 1 }],
+    ['\n\none\n\n', 'Paragraph', { Paragraph: 1 }],
+    ['one\n\ntwo\n\n', 'Paragraph', { Paragraph: 2 }],
+    ['\n鰍𠮷\n\nกำ\n\n', 'Paragraph', { Paragraph: 2 }],
+  ];
   const blockSequenceParserCases = [
     ['one\n\ntwo\n\nthree\n', 'Paragraph', { Paragraph: 3 }],
     ['- lead\n', 'BulletList', { BulletList: 1, ListItem: 1, Paragraph: 0 }],
@@ -280,6 +289,7 @@ try {
     ...['1...2', '1+2...3*4', '-1...2', '1...-2', '(1+2)...(3+4)', '1...2**3',
       '1 < 2', '(1...2) == (1...2)', '1.5...2e3', '1 ... %%a%% 2'].map(expr =>
       [`[= ${expr}]\n`, 'Paragraph', 0, `RangeExpr@3..${3 + expr.length}\n`]),
+    ...fileParserCases.map(([sample, node, counts]) => [sample, node, 0, undefined, undefined, counts]),
     ...blockSequenceParserCases.map(([sample, node, counts]) => [sample, node, 0, undefined, undefined, counts]),
     ...listParserCases.map(([body, node, counts]) => [body, node, 0, undefined, undefined, counts]),
     ...blockLeafParserCases.map(([body, node, counts]) => [body, node, 0, undefined, undefined, counts]),
@@ -406,6 +416,39 @@ try {
     assert.notEqual(rejected.status, 0);
     assert.match(rejected.stderr, new RegExp(`^unsupported ${rule} choice `, 'm'),
       `root ADR 0351 I1/I2: ${name} must invalidate the block composition proof`);
+  }
+  const fileShape = 'File <- BlankLines? (&. Blocks(0) BlankLines?)?';
+  const fileMutations = [
+    ['LeadingRequired', fileShape.replace('BlankLines?', 'BlankLines')],
+    ['BodyRequired', fileShape.replace('BlankLines?)?', 'BlankLines?)')],
+    ['GuardReverse', fileShape.replace('&.', '!.')],
+    ['IndentChanged', fileShape.replace('Blocks(0)', 'Blocks(1)')],
+    ['TrailingRequired', fileShape.replace('Blocks(0) BlankLines?', 'Blocks(0) BlankLines')],
+  ];
+  for (const [name, changed] of fileMutations) {
+    assert.ok(original.includes(fileShape));
+    assert.notEqual(fileShape, changed);
+    const grammar = join(work, 'File' + name + '.hpeg');
+    writeFileSync(grammar, original.replace(fileShape, changed));
+    const rejected = spawnSync(process.execPath, [join(here, 'generate.mjs'), grammar, generated], { encoding: 'utf8' });
+    assert.notEqual(rejected.status, 0);
+    assert.match(rejected.stderr, /^unsupported File choice /m,
+      `root ADR 0351 I1, I2: ${name} must invalidate the complete File composition`);
+  }
+  const nativeFileMutations = [
+    ['LeadingRequired', 'one\n'], ['BodyRequired', ''],
+    ['GuardReverse', 'one\n'], ['TrailingRequired', 'one\n'],
+  ];
+  for (const [name, sample] of nativeFileMutations) {
+    const [, changed] = fileMutations.find(([key]) => key === name);
+    const grammar = join(work, 'NativeFile' + name + '.hpeg');
+    const input = join(work, 'native-file.gm');
+    writeFileSync(grammar, original.replace(fileShape, changed));
+    writeFileSync(input, sample);
+    const parsed = spawnSync(process.env.PEG_HS ?? 'peg-hs', ['parse', '--format', 'cst', grammar, input],
+      { encoding: 'utf8', env: { ...process.env, XDG_CACHE_HOME: join(work, 'cache') } });
+    assert.notEqual(parsed.status, 0, `root ADR 0351 I1, I2: File${name} must reject its boundary input`);
+    assert.match(parsed.stderr, /^\d+:\d+: expected /m);
   }
   const blockSequenceShapes = [
     ['Blocks', 'Block(ind) (BlankLines? &(Ind(ind) !BlankLine .) Block(ind))*'],
@@ -1382,6 +1425,31 @@ try {
     'root ADR 0351 I1, I2: actual generated list-kind mutation must refute the theorem, not imports');
   writeFileSync(generated, model);
   execFileSync(lean, ['-o', join(work, 'Generated.olean'), generated], growthEnv);
+  const fileCompositionSource = join(work, 'FileCompositionTotal.lean');
+  copyFileSync(join(here, 'FileCompositionTotal.lean'), fileCompositionSource);
+  const fileCompositionProof = spawnSync(lean, [fileCompositionSource], growthEnv);
+  assert.equal(fileCompositionProof.status, 0, fileCompositionProof.stdout + fileCompositionProof.stderr);
+  assert.doesNotMatch(fileCompositionProof.stdout + fileCompositionProof.stderr, /sorryAx|declaration uses 'sorry'/);
+  for (const [before, after] of [
+    ['.opt (.ref "BlankLines" [])', '.ref "BlankLines" []'],
+    ['.andPred (.any)', '.notPred (.any)'],
+    ['.ref "Blocks" ["0"]', '.ref "Blocks" ["1"]'],
+  ]) {
+    const changed = model.split('\n').map(line => {
+      if (!line.includes('name := "File"')) return line;
+      assert.ok(line.includes(before));
+      return line.replace(before, after);
+    }).join('\n');
+    assert.notEqual(changed, model);
+    writeFileSync(generated, changed);
+    execFileSync(lean, ['-o', join(work, 'Generated.olean'), generated], growthEnv);
+    const refuted = spawnSync(lean, [fileCompositionSource], growthEnv);
+    assert.notEqual(refuted.status, 0);
+    assert.match(refuted.stdout + refuted.stderr, /type mismatch|unsolved goals/,
+      'root ADR 0351 I1, I2: changed generated File must refute the theorem, not imports');
+  }
+  writeFileSync(generated, model);
+  execFileSync(lean, ['-o', join(work, 'Generated.olean'), generated], growthEnv);
   const blockSequenceSource = join(work, 'BlockSequenceTotal.lean');
   copyFileSync(join(here, 'BlockSequenceTotal.lean'), blockSequenceSource);
   const blockSequenceProof = spawnSync(lean, [blockSequenceSource], growthEnv);
@@ -1453,7 +1521,7 @@ try {
   assert.match(refuted.stdout + refuted.stderr, /unsolved goals/, 'the mutation must refute the theorem, not fail to load a file');
   const unsupportedChoices = [...strict.stderr.matchAll(/^unsupported [A-Za-z][A-Za-z0-9]* choice /gm)].length;
   assert.equal(unsupportedChoices, baselineUnsupported, 'strict report count must remain stable through mutation tests');
-  console.log(`grammar: source and AST rules ${emittedRuleCount}/${astRuleCount}/${sourceRuleCount}, unsupported choices ${unsupportedChoices}, positive proof modules 33, negative mutations 159, implementation parser cases ${parserCases.length}, syntax-only parser cases 1, native reserved-body entry cases ${nativeBodySamples.length}, native block-sequence traces ${blockSequenceParserCases.length}, native parser counterexamples ${3 + nativeListMutations.length + nativeDefinitionMutations.length + nativeBlockSequenceMutations.length + nativeLexicalMutations.length + nativeCompositionMutations.length + nativeExpressionMutations.length + nativeArgumentMutations.length + nativeBlockLeafMutations.length}, rejected parser cases ${rejectedParserCases.length + badDelimiterCases.length + 1 + lexicalRejectedCases.length + compositionRejectedCases.length + expressionRejectedCases.length + argumentRejectedCases.length + blockLeafRejectedCases.length}`);
+  console.log(`grammar: source and AST rules ${emittedRuleCount}/${astRuleCount}/${sourceRuleCount}, unsupported choices ${unsupportedChoices}, positive proof modules 34, negative mutations 167, implementation parser cases ${parserCases.length}, syntax-only parser cases 1, native reserved-body entry cases ${nativeBodySamples.length}, native block-sequence traces ${blockSequenceParserCases.length}, native parser counterexamples ${3 + nativeFileMutations.length + nativeListMutations.length + nativeDefinitionMutations.length + nativeBlockSequenceMutations.length + nativeLexicalMutations.length + nativeCompositionMutations.length + nativeExpressionMutations.length + nativeArgumentMutations.length + nativeBlockLeafMutations.length}, rejected parser cases ${rejectedParserCases.length + badDelimiterCases.length + 1 + lexicalRejectedCases.length + compositionRejectedCases.length + expressionRejectedCases.length + argumentRejectedCases.length + blockLeafRejectedCases.length}`);
 } finally {
   rmSync(work, { recursive: true, force: true });
 }

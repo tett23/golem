@@ -692,6 +692,12 @@ if (!fragment && ast) {
         rule.templateParams.length === 0 && rule.alts.length === 1 &&
         rule.alts[0].action?.trim() === '()' && rule.alts[0].constructor === null &&
         describeItems(rule.alts[0].items) === blockSequenceShapes.get(rule.name)) continue;
+    // FileCompositionTotal preserves optional trivia, the nonempty guard,
+    // and arbitrary child results of the exact generated File wrapper.
+    if (rule.name === 'File' && rule.params.length === 0 && rule.templateParams.length === 0 &&
+        rule.alts.length === 1 && rule.alts[0].action?.trim() === '()' &&
+        rule.alts[0].constructor === null &&
+        describeItems(rule.alts[0].items) === 'BlankLines? (&. Blocks(0) BlankLines?)?') continue;
     if (rule.name === 'Ind' && indentFullyProved) continue;
     if (rule.name === 'StringLit' && stringSupported && alternatives[0] === escape &&
         rule.params.length === 0 && rule.templateParams.length === 0 && rule.alts.length === 1 &&
