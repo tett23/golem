@@ -122,12 +122,20 @@ text (the call), not the one at the start of the body; and whether it is
 the number alone of a reference to the note (root ADR 0422), without the
 text around the number of the format of the channel.
 -}
-data MarkNumber = MarkNumber
-  { mnChannel :: !NoteChannel,
-    mnNumber :: !Int,
-    mnCall :: !Bool,
-    mnBare :: !Bool
-  }
+data MarkNumber
+  = MarkNumber
+      { mnChannel :: !NoteChannel,
+        mnNumber :: !Int,
+        mnCall :: !Bool,
+        mnBare :: !Bool
+      }
+  | CiteNoteMarkNumber
+      { mnChannel :: !NoteChannel,
+        mnNumber :: !Int,
+        mnCall :: !Bool,
+        mnBare :: !Bool,
+        mnCiteNotation :: !(Maybe Text)
+      }
   deriving stock (Eq, Show)
 
 {- | A leaf of the structure tree of the PDF (docs/adr ADR 0183): the place

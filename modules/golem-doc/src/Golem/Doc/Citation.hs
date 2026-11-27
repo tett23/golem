@@ -10,10 +10,11 @@ module Golem.Doc.Citation
 where
 
 import Data.List (sortOn)
-import Data.Maybe (isJust)
+import Data.Maybe (fromMaybe, isJust)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Golem.Doc.IR
+import Golem.Syntax.Span (SrcSpan)
 
 {- | A piece of a mark: a number and the key it stands for, text, or the
 label of a locator and its value (docs/adr/0277), which the PDF does not
@@ -22,6 +23,7 @@ break between and the HTML joins with U+00A0.
 data CitePiece
   = CiteNumber !Text !Int -- a number and the key it stands for
   | CiteReference !Text !Text -- a key and its explicitly formatted number
+  | CiteNoteNumber !SrcSpan !Int !(Maybe Text) !(Maybe Text) -- first-note identity, S1 number, notation and preformatted value (root ADR 0470)
   | CiteText !Text -- text: brackets, separators, an unnumbered key
   | CiteLocator !Text !Text -- the label of a locator and its value: "pp." "5–7"
   | CiteLocatorFormatted !Text !Text !Text !Bool -- label, literal delimiter, value, and whether the label follows (root ADR 0480)
@@ -100,6 +102,7 @@ citationText = T.concat . map piece
     piece = \case
       CiteNumber _ n -> T.pack (show n)
       CiteReference _ t -> t
+      CiteNoteNumber _ n _ value -> fromMaybe (T.pack (show n)) value
       CiteText t -> t
       CiteLocator l v -> l <> " " <> v
       CiteLocatorFormatted label delimiter value after -> if after then value <> delimiter <> label else label <> delimiter <> value

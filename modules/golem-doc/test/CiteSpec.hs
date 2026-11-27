@@ -104,7 +104,11 @@ tests :: TestTree
 tests =
   testGroup
     "citations (docs/adr/0266)"
-    [ testCase "C4 (docs/adr/0277): the text of every mark is the one before the ADR, without a locator and with one on any item" $
+    [ testCase "root ADR 0470 I5: first-note pieces retain formatted text and use the S1 number only as a placeholder" $ do
+        let target = mkSpan (FileId 0) 1 2
+        citationText [CiteText "注(", CiteNoteNumber target 12 (Just "kanji") (Just "十二"), CiteText ")"] @?= "注(十二)"
+        citationText [CiteNoteNumber target 60 (Just "circled") Nothing] @?= "60",
+      testCase "C4 (docs/adr/0277): the text of every mark is the one before the ADR, without a locator and with one on any item" $
         forM_ orders $ \ns -> do
           citationText (citationPieces (itemsOf ns)) @?= textBefore (itemsOf ns)
           forM_ locators $ \v ->

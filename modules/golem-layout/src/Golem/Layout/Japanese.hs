@@ -78,7 +78,7 @@ import Golem.Layout.Warichu (splitWarichu)
 import Golem.Length qualified as L
 import Golem.Numerals (kanji, kanjiDigits)
 import Golem.Numerals.Format (MarkFormat (..), defaultMarkFormat, parseMarkFormat)
-import Golem.Numerals.Notation (Notation, arabic, kanjiDigitsNotation, kanjiNotation, writeNumber)
+import Golem.Numerals.Notation (Notation, arabic, kanjiDigitsNotation, kanjiNotation, notationNamed, ordinalEnNotation, writeNumber)
 import Golem.Numerals.Number (renderIRNumber)
 import Golem.Project.Position (Position (..))
 import Golem.Project.Style (Dim (..), dimToSp)
@@ -245,7 +245,9 @@ data ComposeEnv = ComposeEnv
     number in the book of the note a label is on, when its channel is
     numbered per page; a [ref-number] to it reserves the widest number of
     the channel and the layout numbers it again. Nothing for any other label
-    -} ceNoteRefOf :: Text -> Maybe (NoteChannel, Int)
+    -} ceNoteRefOf :: Text -> Maybe (NoteChannel, Int),
+    -- | The first note targeted by a bibliography number, only for page-local numbering.
+    ceCiteNoteRefOf :: SrcSpan -> Maybe (NoteChannel, Int)
   }
 
 -- | The mark of a sidenote in the text: its number, ※ or nothing.
@@ -301,7 +303,8 @@ defaultComposeEnv fs =
       ceCiteLink = \_ _ -> Nothing,
       ceTextEdges = (False, False),
       ceMarkReserve = Nothing,
-      ceNoteRefOf = const Nothing
+      ceNoteRefOf = const Nothing,
+      ceCiteNoteRefOf = const Nothing
     }
   where
     defaultAdvance c
@@ -728,7 +731,7 @@ walk env st@(LeafState next cur seen) inl = case inl of
                      in (s'', NodeLink t [Text sp text] [NodeLeaf m] : after : ns, here <> ps)
               piece : rest ->
                 let (s', ns, ps) = go s rest
-                 in (s', ns, [(leafOf s, src, p) | (src, p) <- at sp (citeTextPieces lk [piece])] <> ps)
+                 in (s', ns, [(leafOf s, src, p) | (src, p) <- at sp (citeTextPieces env lk [piece])] <> ps)
          in element RoleReference (`go` pieces)
   Cite {} -> element RoleReference (\st' -> (st', [], [(leafOf st', src, p) | (src, p) <- piecesOf env inl]))
   _ -> (st, [], [(cur, src, p) | (src, p) <- piecesOf env inl])
@@ -995,7 +998,7 @@ piecesOf env inl = case inl of
   -- nothing shows; its page is followed like that of an index mark (golem-doc ADR 0007)
   ChannelItem sp _ -> at sp [PAnchor (\i -> AnchorIndex i sp (IndexEntry [] [] IndexPoint))]
   -- the mark of the default style; a key whose number is not known as itself (docs/adr/0266)
-  Cite sp is -> at sp (citeTextPieces lk (fromMaybe (citationPieces [(i, ceCiteNumber env sp (citKey i)) | i <- is]) (ceCitePieces env sp is)))
+  Cite sp is -> at sp (citeTextPieces env lk (fromMaybe (citationPieces [(i, ceCiteNumber env sp (citKey i)) | i <- is]) (ceCitePieces env sp is)))
   ProofComment {} -> []
   -- the lines of a keep style are split before they are composed (docs/adr
   -- ADR 0005); what reaches here is a hard break (docs/adr ADR 0016)
@@ -1109,14 +1112,19 @@ textPieces lk = map snd . textPiecesAt lk
 text joined, as other text, the space between the label of each locator
 and its value held (docs/adr/0277): a line does not break at it.
 -}
-citeTextPieces :: Look -> [CitePiece] -> [Piece]
-citeTextPieces lk pieces = case break formatted pieces of
+citeTextPieces :: ComposeEnv -> Look -> [CitePiece] -> [Piece]
+citeTextPieces env lk pieces = case break special pieces of
   (plain, []) -> ordinary plain
-  (plain, CiteLocatorFormatted label delimiter value after : rest) -> ordinary plain <> [PLocator lk label delimiter value after (locatorPieces lk label delimiter value after)] <> citeTextPieces lk rest
+  (plain, CiteLocatorFormatted label delimiter value after : rest) -> ordinary plain <> [PLocator lk label delimiter value after (locatorPieces lk label delimiter value after)] <> citeTextPieces env lk rest
+  (plain, CiteNoteNumber target _ notation _ : rest)
+    | Just (channel, number) <- ceCiteNoteRefOf env target ->
+        let metadata = CiteNoteMarkNumber channel number False True notation
+         in ordinary plain <> [PMark lk lk (citeNoteNumberParts notation number) 0 0 (Just metadata)] <> citeTextPieces env lk rest
   (plain, _) -> ordinary plain
   where
-    formatted CiteLocatorFormatted {} = True
-    formatted _ = False
+    special CiteLocatorFormatted {} = True
+    special (CiteNoteNumber target _ _ _) = isJust (ceCiteNoteRefOf env target)
+    special _ = False
     ordinary plain = [hold (at' 0) p | (at', p) <- textPiecesAt lk (citationText plain)]
       where
         held = IntSet.fromList (concat (snd (mapAccumL place 0 plain)))
@@ -1684,6 +1692,7 @@ scriptRanges env = go
     charsOf = \case
       PChar lk c _ -> [(lk, c)]
       PWord lk t _ _ -> [(lk, c) | c <- T.unpack t]
+      PMark _ lk parts _ _ (Just CiteNoteMarkNumber {}) -> [(lk, c) | c <- T.unpack (markPartsText parts)]
       PLocator lk label delimiter value after _ -> [(lk, c) | c <- T.unpack (citationText [CiteLocatorFormatted label delimiter value after])]
       PSpace lk _ -> [(lk, ' ')]
       PBox lk t _ _ -> [(lk, c) | c <- T.unpack t]
@@ -1695,6 +1704,7 @@ scriptRanges env = go
     settle pos glyphs = \case
       PChar lk c vs -> PChar (set lk) c vs
       PWord lk t shys ws -> PWord (set lk) t shys ws
+      PMark place lk parts ps pe number@(Just CiteNoteMarkNumber {}) -> PMark (set place) (set lk) parts ps pe number
       PLocator lk label delimiter value after inner -> PLocator (set lk) label delimiter value after inner
       PSpace lk held -> PSpace (set lk) held
       PBox lk t kind w -> PBox (set lk) t kind (if w == lkSize lk then lkSize (set lk) else w)
@@ -1854,9 +1864,21 @@ Latin text turned, a tate-chu-yoko number an em of the mark.
 markItem :: ComposeEnv -> Look -> Look -> [MarkPart] -> Sp -> Sp -> Maybe MarkNumber -> Item
 markItem env place lk parts ps pe num =
   let (txt, parts', w) = markLayout env lk parts ps pe
+      citation = case num of Just CiteNoteMarkNumber {} -> True; _ -> False
+      -- A bibliography number is ordinary citation text outside its reserved box.
+      kind
+        | citation = citeNoteBoxKind env parts'
+        | otherwise = KindNoteMark
+      afterTracking = if citation then tracking lk else 0
       -- numbered per page, the widest number the mark can take (docs/adr/0383)
       reserved = maybe w (\mn -> max w (markReserve env lk mn ps pe)) num
-   in Box reserved (BoxContent txt False 0 0 (fromEnum KindNoteMark) lk 0 0 [] ps pe (ceBoxSource env) (Just (MarkBox place parts' num)) (Leaf (ceSite env) (ceLeaf env)) (ceBoxAt env 0) Nothing)
+   in Box (reserved + afterTracking) (BoxContent txt False 0 0 (fromEnum kind) lk 0 (negate afterTracking) [] ps pe (ceBoxSource env) (Just (MarkBox place parts' num)) (Leaf (ceSite env) (ceLeaf env)) (ceBoxAt env 0) Nothing)
+
+-- | The ordinary orientation of a bibliography number, without note-call placement.
+citeNoteBoxKind :: ComposeEnv -> [(Int, Text, Sp)] -> BoxKind
+citeNoteBoxKind env parts
+  | ceVertical env && all (\(kind, _, _) -> kind == fromEnum KindRotated) parts = KindRotated
+  | otherwise = KindText
 
 {- | The text of a mark, its parts, each with the kind of its box, its
 text and where it starts along the line from the start of the box, and
@@ -1922,9 +1944,20 @@ format of its channel, or, for a reference to a note (root ADR 0422), those
 of the number alone.
 -}
 numberMarkParts :: ComposeEnv -> MarkNumber -> Int -> [MarkPart]
+numberMarkParts _ (CiteNoteMarkNumber _ _ _ _ notation) k = citeNoteNumberParts notation k
 numberMarkParts env mn k
   | mnBare mn = bareNumberParts env k
   | otherwise = channelMarkParts env (mnChannel mn) k
+
+-- | Keep the explicit bibliography notation; absence is raw Arabic, even vertically.
+citeNoteNumberParts :: Maybe Text -> Int -> [MarkPart]
+citeNoteNumberParts notation number =
+  [MarkText (fromMaybe (T.pack (show number)) formatted)]
+  where
+    formatted = do
+      name <- notation
+      selected <- if name == "ordinal-en" then Just ordinalEnNotation else notationNamed name
+      writeNumber selected (toInteger number)
 
 {- | The parts of a number alone, as the text sets a number of no style
 ('numberPieces'): in horizontal text its Arabic numerals, in vertical text
@@ -1944,10 +1977,11 @@ width the one it reserved. Any other box is as it is.
 -}
 renumberMark :: ComposeEnv -> (NoteChannel -> Int -> Int) -> BoxContent -> BoxContent
 renumberMark env numberOf c = case bcMark c of
-  Just mb@(MarkBox _ _ (Just num@(MarkNumber ch n _ _))) ->
-    let n' = numberOf ch n
+  Just mb@(MarkBox _ _ (Just num)) ->
+    let n' = numberOf (mnChannel num) (mnNumber num)
         (txt, parts', _) = markLayout env (bcLook c) (numberMarkParts env num n') (bcPadStart c) (bcPadEnd c)
-     in c {bcText = txt, bcMark = Just mb {mbParts = parts', mbNumber = Just num {mnNumber = n'}}}
+        tag = case num of CiteNoteMarkNumber {} -> fromEnum (citeNoteBoxKind env parts'); _ -> bcTag c
+     in c {bcText = txt, bcTag = tag, bcMark = Just mb {mbParts = parts', mbNumber = Just num {mnNumber = n'}}}
   _ -> c
 
 {- | The mark at the start of the body of a note or a sidenote numbered per

@@ -228,6 +228,12 @@ citeLinkTests =
         let mark = Block (mkSpan fidA 0 1) Nothing Nothing (Paragraph Nothing [Cite (mkSpan fidA 0 1) [CiteItem "k" (Just (Locator LocatorPage (LocRange 5 7))) [] []]])
         bodyA cfg0 (assembled [[mark], [bib fidB 0]])
           @?= "<p><span class=\"cite\">[<a href=\"b.xhtml#cite-k\">1</a>, pp.\xA0\&5\x2013\&7]</span></p>\n",
+      testCase "root ADR 0470 I5: first-note pieces keep preformatted text and ordinary escaping" $ do
+        let mark = para 0 [Cite (at 1) [citeItem "k"]]
+            body given = bodyA cfg0 (assembled [[mark], [bib fidB 0]]) {bookCitationPieces = Map.singleton (at 1) [([citeItem "k"], [CiteNoteNumber (at 5) 12 (Just "kanji") given])]}
+        body (Just "十二") @?= "<p><span class=\"cite\">十二</span></p>\n"
+        body (Just "<n>&") @?= "<p><span class=\"cite\">&lt;n&gt;&amp;</span></p>\n"
+        body Nothing @?= "<p><span class=\"cite\">12</span></p>\n",
       testCase "root ADR 0480 I2: literal gaps hold only their joining graphemes" $ do
         let mark = para 0 [Cite (at 1) [citeItem "k"]]
             body label gap val labelAfter = bodyA cfg0 (assembled [[mark], [bib fidB 0]]) {bookCitationPieces = Map.singleton (at 1) [([citeItem "k"], [CiteLocatorFormatted label gap val labelAfter])]}

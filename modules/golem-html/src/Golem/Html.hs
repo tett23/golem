@@ -1249,6 +1249,7 @@ inlineBody c = \case
       let at = fst =<< Map.lookup (spanFile sp, sp) (bookCiteMarks (cBook c))
           piece = \case
             CiteText t -> [textOf t]
+            CiteNoteNumber _ n _ value -> [textOf (fromMaybe (tshow n) value)]
             -- U+00A0: the browser does not break between the label of a page and its value (docs/adr/0277)
             CiteLocator l v -> [textOf (l <> "\xA0" <> v)]
             CiteLocatorFormatted label delimiter value after ->
