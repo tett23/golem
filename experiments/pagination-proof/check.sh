@@ -374,6 +374,17 @@ LEAN_PATH="$tmp" "$lean" --run "$cboundary" premises > "$tmp/causal-premises" ||
 }
 echo "every run of a figure places the lines of runLines in the $causalInputs manuscripts"
 
+# Instantiate stanza's hold and display-row fallback before using its cursor.
+LEAN_PATH="$tmp" "$lean" -o "$tmp/CausalBoundary.olean" "$cboundary"
+causalStanza=$root/experiments/pagination-proof/CausalStanza.lean
+if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|implemented_by|extern|native_decide)([^A-Za-z_]|$)' "$causalStanza"; then
+  echo "unproved or unchecked Lean declaration in $causalStanza" >&2
+  exit 1
+fi
+LEAN_PATH="$tmp" "$lean" "$causalStanza"
+echo "causal stanza hold and display-row fallback preserve wrap cursor readiness"
+
+
 # The values of the evaluation of Golem.Layout.KnuthPlass (badness,
 # fitness, line demerits, cumulative widths, the demerits of the chosen
 # breaks and the ratio, overflow, glyph expansion and target of each line,
