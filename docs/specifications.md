@@ -670,6 +670,10 @@ golem-doc はこの三つに依存せず、golem-bibliography と golem-numerals
 必須の値が無い片は句読点ごと省き、`?` のある差し込みは値だけを省く。
 数として読めない値には数の表記を当てず、そのまま書く。
 
+宣言向けの書誌データは、golem-bibliography の `decodeCslRecords` で読み、`recordText`、`recordNames`、`recordDate` から欄を引く（[root ADR 0470](adr/0470-bibliography-styles-by-name-and-by-declaration.md)）。
+編者と DOI などの欄、名前ごとの `golem-sort-key` も保持する。
+既定の書式で使う `decodeCslJson` と `recordEntry` の項目の形、読み込む順、不正な文字の検査は従来と同じである。
+
 ### golem-evaluate と golem-driver
 
 プロジェクトの評価は golem-evaluate が、書き出しは golem-driver が持つ（[root ADR 0434](adr/0434-split-evaluation-from-golem-driver.md)）。
