@@ -18,11 +18,12 @@ as other text, which the composition of the citation then was.
 -}
 module CiteBreakEnum (citeBreakTests, citePrDepth) where
 
+import Control.Monad (forM_)
 import Data.Maybe (mapMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Fixtures (fs, sp)
-import Golem.Doc.Citation (citationPieces, citationText)
+import Golem.Doc.Citation (CitePiece (..), citationPieces, citationText)
 import Golem.Doc.IR qualified as IR
 import Golem.Layout.Japanese
 import Golem.Layout.KnuthPlass
@@ -344,7 +345,15 @@ citeBreakTests :: TestTree
 citeBreakTests =
   testGroup
     "the label of a page kept with its value (docs/adr/0277)"
-    [ testCase "C1: no line ends with the label of a page, in lines of 8 to 14 em, horizontal and vertical" $
+    [ testCase "root ADR 0480 I2: explicitly formatted locator units do not split in horizontal or vertical lines" $
+        forM_ [(vertical, width, prefix, unit) | vertical <- [False, True], width <- [1 .. 12 :: Int], prefix <- [0 .. 6], unit <- ["5頁", "5 頁", "pp. 5–7", "5–7 | 頁"]] $ \(vertical, width, prefix, unit) -> do
+          let env = (envOf vertical plain) {ceCitePieces = \_ _ -> Just [CiteText "(", CiteLocatorFormatted unit, CiteText ")"]}
+              its = fst (composeInlines env [txt (T.replicate prefix "あ"), citeOf Nothing, txt "い"])
+              laidOut = brLines (breakParagraph defaultParams (const (fromIntegral width * fs)) its)
+              textOf line = T.concat [bcText content | Box _ content <- lineItems line]
+              compact = T.filter (/= ' ')
+          assertBool (show (vertical, width, prefix, unit, map textOf laidOut)) (any (T.isInfixOf (compact unit) . compact . textOf) laidOut),
+      testCase "C1: no line ends with the label of a page, in lines of 8 to 14 em, horizontal and vertical" $
         inLines locatedMarks (\its _ br -> c1Items its <> c1Lines (brLines br)),
       testCase "C1: before the ADR, the marks of the unit tests broke after the label in some of these lines"
         $ assertBool "no input broke after the label"

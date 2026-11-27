@@ -53,10 +53,12 @@ declarationOf dimension languages = parseTableFromValue $ do
     values <- fromValue value
     if length values == 12 then pure values else failAt (valueAnn value) "months は12個の文字列の配列です"
   locatorLabels <- fromMaybe Map.empty <$> optKeyOf "locator-labels" (namedOf pairOf)
+  locatorPositions <- fromMaybe Map.empty <$> optKeyOf "locator-positions" (namedOf (enumOf "locator-positions" ["before", "after"]))
+  locatorDelimiters <- fromMaybe Map.empty <$> optKeyOf "locator-delimiters" (namedOf fromValue)
   types <- fromMaybe Map.empty <$> optKeyOf "types" (namedOf typeOf)
   names <- fromMaybe Map.empty <$> optKeyOf "names" namesOf
   overrides <- if languages then fromMaybe Map.empty <$> optKeyOf "languages" (namedOf (declarationOf dimension False)) else pure Map.empty
-  pure (BibliographyStyle mode citation citationYear delimiter citationPrefix citationSuffix citationSort subsequent channel sortKeys languageOrder label indent suffix pageRange rangeDelimiter months locatorLabels types names overrides)
+  pure (BibliographyStyle mode citation citationYear delimiter citationPrefix citationSuffix citationSort subsequent channel sortKeys languageOrder label indent suffix pageRange rangeDelimiter months locatorLabels locatorPositions locatorDelimiters types names overrides)
 
 pairOf :: Value' l -> Matcher l (Text, Text)
 pairOf value =
@@ -100,7 +102,10 @@ countOf value = case value of
   _ -> failAt (valueAnn value) "名前の数は0以上の整数です"
 
 enumKey :: Text -> [Text] -> ParseTable l (Maybe Text)
-enumKey key allowed = optKeyOf key $ \value -> do
+enumKey key allowed = optKeyOf key (enumOf key allowed)
+
+enumOf :: Text -> [Text] -> Value' l -> Matcher l Text
+enumOf key allowed value = do
   text <- fromValue value
   if text `elem` allowed then pure text else failAt (valueAnn value) (T.unpack (key <> " に使えない値です: " <> text))
 
@@ -148,6 +153,8 @@ bibliographySchema = NTable [("style", str), ("styles", NNamed Nothing (declarat
           ("range-delimiter", str),
           ("months", strings),
           ("locator-labels", NTable [(label, strings) | label <- bibliographyLocatorNames]),
+          ("locator-positions", NTable [(label, enumeration ["before", "after"]) | label <- bibliographyLocatorNames]),
+          ("locator-delimiters", NTable [(label, str) | label <- bibliographyLocatorNames]),
           ("types", NNamed Nothing (NTable [("pieces", strings), ("char-styles", NNamed Nothing (NValue (LRef CharStyles)))])),
           ("names", NTable [("author", namesNode False False), ("editor", namesNode False True), ("short", namesNode True False)])
         ]

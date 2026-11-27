@@ -1102,16 +1102,21 @@ text joined, as other text, the space between the label of each locator
 and its value held (docs/adr/0277): a line does not break at it.
 -}
 citeTextPieces :: Look -> [CitePiece] -> [Piece]
-citeTextPieces lk pieces = [hold (at' 0) p | (at', p) <- textPiecesAt lk (citationText pieces)]
+citeTextPieces lk pieces = case break formatted pieces of
+  (plain, []) -> ordinary plain
+  (plain, piece : rest) -> ordinary plain <> textPieces lk {lkNoBreak = True} (citationText [piece]) <> citeTextPieces lk rest
   where
-    -- the index in the text of each space between a label and its value
-    held = IntSet.fromList (concat (snd (mapAccumL place 0 pieces)))
-    place i piece = case piece of
-      CiteLocator l v -> (i + T.length l + 1 + T.length v, [i + T.length l])
-      _ -> (i + T.length (citationText [piece]), [])
-    hold i = \case
-      PSpace l _ | IntSet.member i held -> PSpace l True
-      p -> p
+    formatted CiteLocatorFormatted {} = True
+    formatted _ = False
+    ordinary plain = [hold (at' 0) p | (at', p) <- textPiecesAt lk (citationText plain)]
+      where
+        held = IntSet.fromList (concat (snd (mapAccumL place 0 plain)))
+        place i piece = case piece of
+          CiteLocator l v -> (i + T.length l + 1 + T.length v, [i + T.length l])
+          _ -> (i + T.length (citationText [piece]), [])
+        hold i = \case
+          PSpace l _ | IntSet.member i held -> PSpace l True
+          p -> p
 
 -- | The soft hyphen, U+00AD (docs/adr ADR 0272).
 softHyphen :: Char

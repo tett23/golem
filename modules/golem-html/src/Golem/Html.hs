@@ -1251,6 +1251,7 @@ inlineBody c = \case
             CiteText t -> [textOf t]
             -- U+00A0: the browser does not break between the label of a page and its value (docs/adr/0277)
             CiteLocator l v -> [textOf (l <> "\xA0" <> v)]
+            CiteLocatorFormatted text -> [el "span" [("style", "white-space: pre")] [textOf text]]
             CiteNumber k n -> reference k (tshow n)
             CiteReference k text -> reference k text
           reference key text = case bibliographyHome (cBook c) sp of

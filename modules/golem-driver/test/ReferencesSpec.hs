@@ -357,6 +357,23 @@ bibliographyFormatTests =
               map diagCode errors @?= [DiagnosticCode "G03006"]
               assertBool (show errors) (all (T.isInfixOf "names.author.part-delimiter" . diagMessage) errors)
             else assertEqual "explicit empty Japanese separator" [] errors,
+    testCase "root ADR 0480 I2: explicit locator placement and spacing reach all text outputs" $
+      forM_ [(position, delimiter) | position <- ["before", "after"], delimiter <- ["", " ", "  ", " | "]] $ \(position, delimiter) ->
+        withBibProject "bibliography = [\"refs.json\"]" "本文[cite a page=5]。\n" [("refs.json", abcJson)] $ \tmp -> do
+          let base = fst (T.breakOn "[bibliography.styles.custom.types.book]" customBibliographyDeclaration)
+              expected = if position == "before" then "頁" <> delimiter <> "5" else "5" <> delimiter <> "頁"
+          TIO.appendFile (tmp </> "style.toml") (T.replace "citation=['ref-{number}']" "citation=['{locator}']" base <> "locator-labels={page=['頁','頁']}\nlocator-positions={page='" <> position <> "'}\nlocator-delimiters={page='" <> delimiter <> "'}\n")
+          TIO.appendFile (tmp </> "manifest.toml") "[targets.text]\n[targets.epub]\n"
+          result <- build (defaultOptions tmp) {optTargets = Just [TargetHtml, TargetText, TargetEpub]}
+          assertEqual "no errors" [] (filter isError (brDiagnostics result))
+          text <- TIO.readFile (tmp </> "build/text/horizontal/a.txt")
+          assertBool (T.unpack text) (("(" <> expected <> ")") `T.isInfixOf` text)
+          html <- TIO.readFile (tmp </> "build/html/a.html")
+          assertBool (T.unpack html) (expected `T.isInfixOf` html)
+          assertBool "explicit locator stays together" ("white-space: pre" `T.isInfixOf` html)
+          archive <- toArchive <$> BL.readFile (tmp </> "build/epub/book.epub")
+          let xhtml = maybe "" (TE.decodeUtf8 . BL.toStrict . fromEntry) (findEntryByPath "OEBPS/a.xhtml" archive)
+          assertBool (T.unpack xhtml) (expected `T.isInfixOf` xhtml),
     testCase "root ADR 0475 I1: no list needs no entry type declaration" $
       withBibProject "bibliography = [\"refs.json\"]" "本文[cite a]。\n" [("refs.json", abcJson)] $ \tmp -> do
         TIO.appendFile (tmp </> "style.toml") (fst (T.breakOn "[bibliography.styles.custom.types.book]" customBibliographyDeclaration))

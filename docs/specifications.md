@@ -9409,7 +9409,7 @@ HTML と EPUB の参考文献の項目の `id` は、本の全体で一意にす
 
 HTML と EPUB の引用の印は、`<span class="cite">` の中に、括弧、区切り、位置の文字列と、番号ごとのリンクを置く（[golem-html ADR 0003](golem-html/adr/0003-cite-links-across-files.md)、[docs/adr/0266](adr/0266-citation-locators-and-multiple-keys.md)）。
 リンクの行き先は、その印が載る一覧の、その文献の項目の `id` である（`<span class="cite">[<a href="#cite-knuth1981">1</a>, p.&#xA0;5]</span>`）。
-頁の文言と値のあいだは U+00A0 である（[docs/adr/0277](adr/0277-keep-the-page-label-of-a-citation-mark-with-its-value.md)）。
+既定の書式では、頁の文言と値のあいだは U+00A0 である（[docs/adr/0277](adr/0277-keep-the-page-label-of-a-citation-mark-with-its-value.md)）。
 例の `&#xA0;` は説明のための書き方で、出力には実体参照ではなく U+00A0 の文字を書く。
 まとめた範囲の途中の番号（`[1–3]` の 2）は、文字に出ないのでリンクを持たない。
 一覧が別のファイルにあれば、そのファイルへの相対リンク（HTML では `../chapters/99.html#cite-knuth1981`、EPUB では `../chapters/99.xhtml#cite-knuth1981` など）にする。
@@ -9426,6 +9426,13 @@ HTML と EPUB の引用の印は、`<span class="cite">` の中に、括弧、�
 
 選んだ自作の宣言は、通常の CLI の PDF、HTML、EPUB、テキストの引用と一覧に適用する。
 本の言語で印全体の囲みと区切りを、文献の言語で個々の引用、名前、位置ラベルと一覧の書式を解決する（[root ADR 0475](adr/0475-complete-bibliography-declarations-and-citation-delimiters.md)）。
+`locator-positions` と `locator-delimiters` は、位置の 26 種類ごとにラベルの前後と区切りを指定する（[root ADR 0480](adr/0480-complete-bibliography-sorting-and-conditional-formats.md)）。
+位置は `before` ならラベル、区切り、値の順、`after` なら値、区切り、ラベルの順で組み、省略時は `before` と U+0020 一つにする。
+空文字列と空白をそのまま保持し、ラベルの文字から配置や区切りを推測しない。
+二つの表にその種類のキーが無い場合は、従来の出力を保つ。
+ラベルが空でなければ、HTML と EPUB はラベルと値のあいだに U+00A0 を使い、空のラベルでは区切りを追加しない。
+どちらかの表にその種類のキーを書いた場合は、HTML と EPUB でも区切りの文字列をそのまま使う。
+文献の言語の宣言で上書きし、未知の種類や位置、文字列でない区切りは G03006 にする。
 `citation-sort = "year"` は、一つの印の文献を発行年の古い順に動かし、各キーの位置、前置きと後置きも一緒に動かす。
 比較には `issued` の `date-parts` の数値年を使う。
 `issued.literal` と年の無い文献は、数値年のある文献より前に置き、その中では入力順を保つ。

@@ -59,6 +59,8 @@ data BibliographyStyle d = BibliographyStyle
     bsRangeDelimiter :: !(Maybe Text),
     bsMonths :: !(Maybe [Text]),
     bsLocatorLabels :: !(Map Text (Text, Text)),
+    bsLocatorPositions :: !(Map Text Text),
+    bsLocatorDelimiters :: !(Map Text Text),
     bsTypes :: !(Map Text BibliographyType),
     bsNames :: !(Map Text BibliographyNames),
     bsLanguages :: !(Map Text (BibliographyStyle d))
@@ -94,7 +96,7 @@ defaultBibliography :: Bibliography d
 defaultBibliography = Bibliography "golem" Map.empty
 
 emptyBibliographyStyle :: BibliographyStyle d
-emptyBibliographyStyle = BibliographyStyle Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Map.empty Map.empty Map.empty Map.empty
+emptyBibliographyStyle = BibliographyStyle Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Map.empty Map.empty Map.empty Map.empty Map.empty Map.empty
 
 emptyBibliographyNames :: BibliographyNames
 emptyBibliographyNames = BibliographyNames Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing
@@ -237,6 +239,8 @@ overlayBibliographyStyle base override =
       bsRangeDelimiter = bsRangeDelimiter override <|> bsRangeDelimiter base,
       bsMonths = bsMonths override <|> bsMonths base,
       bsLocatorLabels = Map.union (bsLocatorLabels override) (bsLocatorLabels base),
+      bsLocatorPositions = Map.union (bsLocatorPositions override) (bsLocatorPositions base),
+      bsLocatorDelimiters = Map.union (bsLocatorDelimiters override) (bsLocatorDelimiters base),
       bsTypes = Map.unionWith overlayType (bsTypes base) (bsTypes override),
       bsNames = Map.unionWith overlayBibliographyNames (bsNames base) (bsNames override),
       bsLanguages = Map.unionWith overlayBibliographyStyle (bsLanguages base) (bsLanguages override)

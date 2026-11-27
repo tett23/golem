@@ -47,7 +47,16 @@ formatBibliographyCitationWithSuffix suffix style number location record = do
     [ case fragment of
         BibliographyField "number" value | value == T.pack (show number) -> CiteNumber (ceId (recordEntry record)) number
         BibliographyField "number" value -> CiteReference (ceId (recordEntry record)) value
-        BibliographyField "locator" value | Just label <- citationLocatorLabel style location, not (T.null label) -> CiteLocator label value
+        BibliographyField "locator" value
+          | Just label <- citationLocatorLabel style location,
+            Just at <- location ->
+              let kind = locatorLabelName (locLabel at)
+                  position = Map.findWithDefault "before" kind (bsLocatorPositions style)
+                  delimiter = Map.findWithDefault " " kind (bsLocatorDelimiters style)
+                  explicit = Map.member kind (bsLocatorPositions style) || Map.member kind (bsLocatorDelimiters style)
+               in if not explicit
+                    then if T.null label then CiteText value else CiteLocator label value
+                    else CiteLocatorFormatted (if position == "after" then value <> delimiter <> label else label <> delimiter <> value)
         BibliographyField _ value -> CiteText value
         BibliographyLiteral value -> CiteText value
     | fragment <- fragments

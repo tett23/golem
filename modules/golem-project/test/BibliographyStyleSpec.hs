@@ -47,6 +47,20 @@ tests =
              readable ("[bibliography]\nstyle = '" <> name <> "'\n")
          | name <- ["golem", "ieee", "vancouver", "sist02", "unified-linguistics", "chicago-notes-bibliography", "chicago-author-date", "apa"]
          ]
+      <> [ testCase ("root ADR 0480 I2: explicit locator position " <> show (label, position)) $
+             mapM_
+               (\delimiter -> readable (locatorDeclaration <> "locator-positions={" <> label <> "='" <> position <> "'}\nlocator-delimiters={" <> label <> "='" <> delimiter <> "'}\n"))
+               ["", " ", " | "]
+         | label <- Bib.bibliographyLocatorNames,
+           position <- ["before", "after"]
+         ]
+      <> [ testCase "root ADR 0480 I2: locator overrides use the same explicit keys" $
+             readable (locatorDeclaration <> "locator-positions={page='before'}\nlocator-delimiters={page=' '}\n[bibliography.styles.mine.languages.ja]\nlocator-positions={page='after'}\nlocator-delimiters={page=''}\n"),
+           testCase "root ADR 0480 I2: invalid locator settings report G03006" $
+             mapM_
+               (\setting -> codes (locatorDeclaration <> setting <> "\n") @?= ["G03006"])
+               ["locator-positions={unknown='before'}", "locator-positions={page='middle'}", "locator-positions={page=true}", "locator-delimiters={unknown=''}", "locator-delimiters={page=false}"]
+         ]
       <> [ testCase ("root ADR 0470 I7: invalid declaration value " <> show value) $
              codes ("[bibliography.styles.mine]\n" <> value <> "\n") @?= ["G03006"]
          | value <- ["citation-mode = 'unknown'", "citation = 'wrong'", "citation-sort = 'author'", "note-channel = 'sidenote'", "sort = ['unknown']", "hanging-indent = '-1pt'", "months = ['Jan.']", "unknown = true"]
@@ -70,3 +84,6 @@ declaration :: Text -> IO (Bib.BibliographyStyle Dim)
 declaration input = case parseStyle (FileId 0) input of
   Right style -> maybe (assertFailure "missing declaration" >> fail "missing declaration") pure (Map.lookup "mine" (Bib.bibStyles (stBibliography style)))
   Left diagnostics -> assertFailure (show diagnostics) >> fail "declaration did not read"
+
+locatorDeclaration :: Text
+locatorDeclaration = "[bibliography.styles.mine]\ncitation-mode='numeric'\ncitation=[]\ncitation-delimiter=''\ncitation-sort='written'\nsort=[]\nhanging-indent='0pt'\nyear-suffix=false\npage-range='full'\nrange-delimiter='–'\n"
