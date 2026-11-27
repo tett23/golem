@@ -98,6 +98,7 @@ paths "empty input" true
 paths "an ADR" false docs/adr/0009-ci-speed.md
 paths "Markdown at the root" false README.md CONTRIBUTING.en.md
 paths "docs only" false docs/specifications.md docs/golem-pdf/adr/0005-producer.md
+paths "a cited bibliography research note" false docs/research/bibliography-styles.md
 paths "docs and a module" true docs/specifications.md modules/golem-font/src/Golem/Font.hs
 paths "a workflow" true .github/workflows/ci.yml
 paths "a script" true scripts/determinism.sh
@@ -538,6 +539,9 @@ if grep -q 'docs/new.md' "$WORK/err"; then ok; else ng "docs-refs: the document 
 printf -- '-- docs/adr/0001-x.md\nmain = readFile "../../docs/diagnostics.md"\n' >"$R/modules/x/test/Main.hs"
 run docs_refs "$R"
 expect "docs-refs: an ADR and a listed document" 0
+printf -- '-- Examples are transcribed in docs/research/bibliography-styles.md\nmain = readFile "test/fixtures/bibliography/ieee.toml"\n' >"$R/modules/x/test/Main.hs"
+run docs_refs "$R"
+expect "docs-refs: bibliography provenance is a citation, not a build input" 0
 # a path built from "docs" needs the annotation (docs/adr/0069)
 printf 'main = readFile ("../.." </> "docs" </> "new.md")\n' >"$R/modules/x/test/Main.hs"
 run docs_refs "$R"
