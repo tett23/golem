@@ -86,7 +86,10 @@ tests :: TestTree
 tests =
   testGroup
     "golem-text"
-    [ testCase "root ADR 0478 I2, I4: rational text is normalized and integer vertical TCY stays kanji" $ do
+    [ testCase "root ADR 0470 I2: bibliography styles retain their text in plain output" $
+        renderBibliography (Map.fromList [("k", [EntryStyled "italic" [EntryText "Title"], EntryText ". ", EntryStyled "bold" [EntryUrl "https://example.org"]])]) [("k", 1)]
+          @?= [("a.txt", "[1] Title. https://example.org\n")],
+      testCase "root ADR 0478 I2, I4: rational text is normalized and integer vertical TCY stays kanji" $ do
         let values = [Tcy (sp 0) (TcyNumber (1 % 10)), Text (sp 0) " ", Tcy (sp 0) (TcyNumber 1)]
             bodies = [Block (sp 0) Nothing Nothing (Paragraph Nothing values)]
         renderVariant Horizontal "ja" "{title}" bodies @?= ["0.1 1"]

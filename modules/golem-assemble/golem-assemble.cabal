@@ -29,6 +29,7 @@ library
     , base          >=4.20 && <4.21
     , bytestring    >=0.11 && <0.13
     , containers    >=0.6  && <0.8
+    , golem-bibliography
     , golem-doc
     , golem-numerals
     , golem-syntax
@@ -47,6 +48,7 @@ test-suite golem-assemble-test
     , base
     , containers
     , golem-assemble
+    , golem-bibliography
     , golem-doc
     , golem-numerals
     , golem-syntax

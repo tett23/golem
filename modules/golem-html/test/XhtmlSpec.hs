@@ -882,6 +882,10 @@ tests =
           page = maybe "" bodyOf (lookup "a.xhtml" (sitePages site))
        in (T.count "<a href=\"https://example.com/\">" page, T.isInfixOf "<a href=\"https://example.com/\">例</a></h1>" page) @?= (1, True),
     -- golem-doc ADR 0005
+    testCase "root ADR 0470 I2: bibliography character styles wrap only their fields" $
+      let book = (bookOf [Block (at 5) Nothing Nothing (ChannelOutput BibliographyOutput)]) {bookBibliographies = [(Just (fidA, at 5), [("k", 1)])]}
+          cfg = cfg0 {hcBibliography = Map.singleton "k" [EntryStyled "italic" [EntryText "Title"], EntryText ". ", EntryStyled "bold" [EntryUrl "https://example.org"]]}
+       in bodyA cfg book @?= "<ol class=\"bibliography\">\n<li id=\"cite-k\"><span class=\"cs-italic\">Title</span>. <span class=\"cs-bold\"><a class=\"cs-url\" href=\"https://example.org\">https://example.org</a></span></li>\n</ol>\n",
     testCase "a URL of http or https in the bibliography is a link of class cs-url; another is a span" $
       let book =
             (bookOf [para 0 [Cite (at 1) [citeItem "a"], Cite (at 2) [citeItem "b"]], Block (at 5) Nothing Nothing (ChannelOutput BibliographyOutput)])
