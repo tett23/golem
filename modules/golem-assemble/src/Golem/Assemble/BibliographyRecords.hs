@@ -1,5 +1,5 @@
 -- | Resolve a CSL record through an explicit declaration (root ADR 0470).
-module Golem.Assemble.BibliographyRecords (formatBibliographyRecord, formatBibliographyCitation, formatBibliographyCitationWith) where
+module Golem.Assemble.BibliographyRecords (formatBibliographyRecord, formatBibliographyRecordWithSuffix, formatBibliographyCitation, formatBibliographyCitationWith, formatBibliographyCitationWithSuffix) where
 
 import Control.Applicative ((<|>))
 import Data.Map.Strict qualified as Map
@@ -17,19 +17,26 @@ import Golem.Doc.Citation (CitePiece (..))
 import Golem.Doc.IR (Locator (..), LocatorLabel (..), LocatorValue (..), locatorLabelName)
 
 formatBibliographyRecord :: BibliographyStyle d -> Int -> CslRecord -> Either Text [EntryPart]
-formatBibliographyRecord style number record = do
+formatBibliographyRecord = formatBibliographyRecordWithSuffix ""
+
+-- | The scope supplies the disambiguation suffix; number notation precedes it.
+formatBibliographyRecordWithSuffix :: Text -> BibliographyStyle d -> Int -> CslRecord -> Either Text [EntryPart]
+formatBibliographyRecordWithSuffix suffix style number record = do
   entry <- maybe (Left "文献種別の書式がありません") Right (bibliographyTypeFor (fromMaybe "" (recordText "type" record)) style)
   sources <- maybe (Left "文献種別の pieces がありません") Right (btPieces entry)
-  fragments <- recordFragments False style number Nothing record sources
+  fragments <- recordFragments suffix False style number Nothing record sources
   pure (bibliographyEntryParts (btCharStyles entry) fragments)
 
 formatBibliographyCitation :: BibliographyStyle d -> Int -> CslRecord -> Either Text [CitePiece]
 formatBibliographyCitation style number = formatBibliographyCitationWith style number Nothing
 
 formatBibliographyCitationWith :: BibliographyStyle d -> Int -> Maybe Locator -> CslRecord -> Either Text [CitePiece]
-formatBibliographyCitationWith style number location record = do
+formatBibliographyCitationWith = formatBibliographyCitationWithSuffix ""
+
+formatBibliographyCitationWithSuffix :: Text -> BibliographyStyle d -> Int -> Maybe Locator -> CslRecord -> Either Text [CitePiece]
+formatBibliographyCitationWithSuffix suffix style number location record = do
   sources <- maybe (Left "citation がありません") Right (bsCitation style)
-  fragments <- recordFragments (bsCitationMode style `elem` [Just "numeric", Just "author-year"]) style number location record sources
+  fragments <- recordFragments suffix (bsCitationMode style `elem` [Just "numeric", Just "author-year"]) style number location record sources
   pure
     [ case fragment of
         BibliographyField "number" value | value == T.pack (show number) -> CiteNumber (ceId (recordEntry record)) number
@@ -40,8 +47,8 @@ formatBibliographyCitationWith style number location record = do
     | fragment <- fragments
     ]
 
-recordFragments :: Bool -> BibliographyStyle d -> Int -> Maybe Locator -> CslRecord -> [Text] -> Either Text [BibliographyFragment]
-recordFragments shortAuthor style number location record sources = do
+recordFragments :: Text -> Bool -> BibliographyStyle d -> Int -> Maybe Locator -> CslRecord -> [Text] -> Either Text [BibliographyFragment]
+recordFragments suffix shortAuthor style number location record sources = do
   pieces <- traverse (parseBibliographyPiece bibliographyFields) sources
   let fields = concatMap bibliographyPieceFields pieces
   located <- case location of
@@ -59,7 +66,8 @@ recordFragments shortAuthor style number location record sources = do
       value key notation
         | key == "month", Just _ <- notation = numericMonth
         | otherwise = fromMaybe (recordText key record) (Map.lookup key derived)
-  renderBibliographyFragmentsWith value pieces
+  fragments <- renderBibliographyFragmentsWith value pieces
+  pure [case fragment of BibliographyField "year" text -> BibliographyField "year" (text <> suffix); _ -> fragment | fragment <- fragments]
   where
     people key = [case name of PersonalName family given -> Names.PersonalName family given; LiteralName literal -> Names.LiteralName literal | CslPerson name _ <- recordNames key record]
     names fields key

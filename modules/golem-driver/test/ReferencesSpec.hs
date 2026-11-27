@@ -277,6 +277,30 @@ bibliographyFormatTests =
         archive <- toArchive <$> BL.readFile (tmp </> "build/epub/book.epub")
         let xhtml = maybe "" (TE.decodeUtf8 . BL.toStrict . fromEntry) (findEntryByPath "OEBPS/a.xhtml" archive)
         assertBool (T.unpack xhtml) ("&lt;a&gt;&amp;[cite x]ref-" `T.isInfixOf` xhtml),
+    testCase "root ADR 0470 I4: same-author years receive key-ordered suffixes after number notation" $
+      forM_ [False, True] $ \languageOverride ->
+        let records = "[{\"id\":\"z\",\"type\":\"book\",\"language\":\"en\",\"title\":\"Z\",\"author\":[{\"family\":\"Author\",\"given\":\"One\"}],\"issued\":{\"date-parts\":[[1988]]}},{\"id\":\"a\",\"type\":\"book\",\"language\":\"en\",\"title\":\"A\",\"author\":[{\"family\":\"Author\",\"given\":\"One\"}],\"issued\":{\"date-parts\":[[1988]]}},{\"id\":\"unused\",\"type\":\"book\",\"author\":[{\"family\":\"Author\",\"given\":\"One\"}],\"issued\":{\"date-parts\":[[1988]]}}]"
+         in withBibProject "bibliography = [\"refs.json\"]" "[cite z] [cite a]\n\n@bibliography\n" [("refs.json", records)] $ \tmp -> do
+              let base = T.replace "citation=['ref-{number}']" "citation=['{year:kanji-digits}']" (T.replace "pieces=['DOI {DOI}.']" "pieces=['{title} {year:kanji-digits}.']" customBibliographyDeclaration)
+                  declaration = if languageOverride then base <> "\n[bibliography.styles.custom.languages.ja]\nyear-suffix=true\n" else T.replace "year-suffix=false" "year-suffix=true" base
+              TIO.appendFile (tmp </> "style.toml") declaration
+              TIO.appendFile (tmp </> "manifest.toml") "[targets.text]\n"
+              result <- build (defaultOptions tmp) {optTargets = Just [TargetText]}
+              assertEqual "no errors" [] (map diagCode (filter isError (brDiagnostics result)))
+              output <- TIO.readFile (tmp </> "build/text/horizontal/a.txt")
+              assertBool (T.unpack output) (all (`T.isInfixOf` output) ["(一九八八b) (一九八八a)", "Z 一九八八b.", "A 一九八八a."])
+              -- Separate bibliography scopes do not disambiguate each other.
+              TIO.writeFile (tmp </> "a.gm") "[cite z]\n\n@bibliography\n\n[cite a]\n\n@bibliography\n"
+              scoped <- build (defaultOptions tmp) {optTargets = Just [TargetText]}
+              assertEqual "scoped errors" [] (map diagCode (filter isError (brDiagnostics scoped)))
+              scopedText <- TIO.readFile (tmp </> "build/text/horizontal/a.txt")
+              T.count "(一九八八)" scopedText @?= 2
+              -- An uncited peer does not make a single cited work ambiguous.
+              TIO.writeFile (tmp </> "a.gm") "[cite z]\n\n@bibliography\n"
+              single <- build (defaultOptions tmp) {optTargets = Just [TargetText]}
+              assertEqual "single errors" [] (map diagCode (filter isError (brDiagnostics single)))
+              singleText <- TIO.readFile (tmp </> "build/text/horizontal/a.txt")
+              T.count "(一九八八)" singleText @?= 1,
     testCase "root ADR 0470: citation year order keeps locators and affixes on their keys" $
       forM_ [False, True] $ \languageOverride ->
         let records = "[{\"id\":\"a\",\"language\":\"en\",\"issued\":{\"date-parts\":[[1990]]}},{\"id\":\"b\",\"language\":\"en\",\"issued\":{\"date-parts\":[[1970]]}},{\"id\":\"c\",\"language\":\"en\",\"issued\":{\"date-parts\":[[1985]]}}]"

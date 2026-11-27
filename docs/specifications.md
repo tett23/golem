@@ -9371,10 +9371,13 @@ HTML と EPUB の引用の印は、`<span class="cite">` の中に、括弧、�
 選んだ自作の宣言は、通常の CLI の PDF、HTML、EPUB、テキストの引用と一覧に適用する。
 本の言語で印全体の囲みと区切りを、文献の言語で個々の引用、名前、位置ラベルと一覧の書式を解決する（[root ADR 0475](adr/0475-complete-bibliography-declarations-and-citation-delimiters.md)）。
 `citation-sort = "year"` は、一つの印の文献を発行年の古い順に動かし、各キーの位置、前置きと後置きも一緒に動かす。
+`year-suffix = true` は、一つの一覧の範囲で引用する文献の著者列と年を比べ、同じ組の文献にキーの順で `a`、`b` を付ける。
+接尾辞は `{year}` の数の表記の後に付き、引用と一覧で同じものを使う。
+別の一覧の範囲と、引用しない文献は、この割り当てに加えない。
 前置きと後置きは差し込みやマークアップとして読み直さず、HTML と EPUB では文字をエスケープする。
 漢数字などで組んだ番号も、対応する一覧へのリンクを保つ。
 一覧を置かない本では、一覧の文献種別の書式を要しない。
-注の引用、年だけの引用、同著者同年の接尾辞、一覧の並べ替えとラベルとぶら下げ字下げ、同梱のスタイルは実装途中である。
+注の引用、年だけの引用、一覧の並べ替えとラベルとぶら下げ字下げ、同梱のスタイルは実装途中である。
 
 宣言を扱うライブラリ API は golem-assemble にある（[root ADR 0470](adr/0470-bibliography-styles-by-name-and-by-declaration.md)）。
 `Golem.Assemble.BibliographyStyle.bibliographyTypeFor` は文献種別に合う宣言を選び、その種別の宣言が無い場合だけ、明示した `types.default` を使う。
