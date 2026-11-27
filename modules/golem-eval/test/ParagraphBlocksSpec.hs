@@ -11,7 +11,7 @@ import Golem.Eval.Functions
 import Golem.Parser (parseAst)
 import Golem.Parser.AST qualified as A
 import Golem.Parser.SourceSettings
-import Golem.Project.Style (LineBreaks (..), noLocalStyles, parseStyle)
+import Golem.Project.Style (LineBreaks (..), noLocalStyles, paraLineBreaks, parseStyle)
 import Golem.Syntax
 import Support
 import Test.Tasty
@@ -180,8 +180,24 @@ tests =
         case map blockBody (blocks c source) of
           [FigureBlock figure, Paragraph Nothing [Text _ "Ordinary paragraph"]] -> figCaption figure @?= []
           other -> assertFailure (show other),
+      testCase "root ADR 0468 I2, root ADR 0473 I1 I6: a heading advances styles across normalized line paragraphs" $
+        headingNext "# Sample heading\n\nAlpha\nBeta\nGamma\n",
+      testCase "root ADR 0468 I2, root ADR 0473 I1 I6: a generated heading supplies the next style to normalized following paragraphs" $
+        headingNext (withFunctions "@sample.heading\n\nAlpha\nBeta\nGamma\n"),
+      testCase "root ADR 0468 I2, root ADR 0473 I1 I6: an empty generated command preserves a heading's pending style" $
+        headingNext (withFunctions "# Sample heading\n\n@sample.empty\n\nAlpha\nBeta\nGamma\n"),
       testCase "root ADR 0473 I6: next-style advances once per separate paragraph" $ do
         let style = either (error . show) id (parseStyle (FileId 9) "[paragraph-styles.lead]\nnext-style=\"after\"\n[paragraph-styles.after]\n")
             c = ctx {ctxStyle = style, ctxLocalStyles = noLocalStyles, ctxParaStyles = Map.fromList [("body", JoinLines), ("lead", JoinLines), ("after", JoinLines)]}
         map (fmap styleRefName) (styles c "@style lead\nAlpha\nBeta\nGamma\n") @?= [Just "lead", Just "after", Nothing]
     ]
+
+-- Heading next-style and paragraph normalization share the same state transition.
+headingNext :: Text -> Assertion
+headingNext source = do
+  let style = either (error . show) id (parseStyle (FileId 9) "[paragraph-styles.h]\nnext-style=\"first\"\n[paragraph-styles.first]\nline-breaks=\"keep\"\nnext-style=\"after\"\n[paragraph-styles.after]\n[headings.1]\nparagraph-style=\"h\"\n")
+      c = ctx {ctxStyle = style, ctxFunctions = functions, ctxParaStyles = paraLineBreaks style}
+      result = blocks c source
+  codes c source @?= []
+  map (fmap styleRefName) (styles c source) @?= [Just "first", Just "after", Nothing]
+  texts result @?= ["Alpha", "Beta", "Gamma"]

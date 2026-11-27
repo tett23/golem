@@ -249,6 +249,7 @@ HTML と EPUB は、既定ではフォントのファイルを同梱せず、役
 見出しは `[headings.<階層>]` の `font` の役割の書体と `size` の大きさで組み、行の格子にそろえて置く。
 `font` が `[fonts]` にない役割を指す場合はエラーになる。
 見出しを行取りの中の前、中央、後ろのどこに寄せるかは、`block-align` で選べる。
+`[headings.<階層>]` の `paragraph-style` には段落スタイルの名前を書け、行送り、次の段落のスタイル、先頭の文字スタイル、行揃え、OpenType features、字取りを見出しに当てられる（[root ADR 0468](docs/adr/0468-paragraph-styles-for-headings-and-lists.md)）。
 見出しの番号と題のあいだの区切りの文字列は `[headings.<階層>]` の `number-title-separator` で選べ、目次、柱、PDF のしおりもその区切りを使う（[Golem ADR 0372](docs/adr/0372-number-title-separator.md)）。
 図版、コードブロック、表のキャプションの区切りは、段落スタイル `caption` の `number-title-separator` で選べる。
 番号と題の並べ方は、同じ場所の `title-format` に `{title}（{number}）` のような書式で書け、`[metadata]`、`[vars]`、ファイルの変数も差し込める（[root ADR 0463](docs/adr/0463-title-formats-for-numbered-headings-and-captions.md)）。
@@ -291,6 +292,8 @@ PDF の柱とノンブルに当てる文字スタイルは、マスターペー�
 台本専用の固定値は設けない。
 
 `next-style` は次の段落の段落スタイルを、`initial-style` は段落の先頭の一字の文字スタイルを決め、`opening-indent = "half"` は始め括弧類で始まる段落の字下げを PDF、HTML、EPUB で半角減らす（[ADR 0374](./docs/adr/0374-paragraph-style-controls.md)、[root ADR 0469](./docs/adr/0469-opening-indent-in-html-and-epub.md)）。
+見出しでは、`[headings.<階層>]` の `paragraph-style` に結び付けた段落スタイルの `next-style` が、直後の段落に当たる（[root ADR 0468](docs/adr/0468-paragraph-styles-for-headings-and-lists.md)）。
+段落と見出しのどちらから次スタイルが決まっても、`keep` で別の段落を結合せず、一段落一ブロックを保つ（[root ADR 0473](docs/adr/0473-normalize-paragraph-blocks-before-body-binding.md)）。
 `fit-characters` は一行の段落を指定の字数分の幅に組み、字のあいだに同じ空きを配る（字取り、[root ADR 0466](./docs/adr/0466-fit-characters.md)）。
 
 文字の詰めと送りも、スタイルで指定する。

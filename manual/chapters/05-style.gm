@@ -928,6 +928,7 @@ regex-styles = [
 
 @listing style.toml lines=55...68
 
+- [code: paragraph-style]：見出しに当てる段落スタイルの名前です。行送り、次の段落のスタイル、題の先頭の文字スタイル、行揃え、OpenType features、字取りが当たります。書体、大きさ、改ページ、罫線、題の書式は、見出しのキーで決めます。
 - [code: font]、[code: size]：フォントの役割と文字の大きさです。
 - [code: number]：番号の書式です。[code: {n}] がその階層の番号、[code: {n:kanji}] が漢数字の番号、[code: {1}] から [code: {5}] が上の階層の番号になります。上の階層の番号なので、[code: \[headings.3\]] には [code: {1}] と [code: {2}] だけを書けます。縦組みの本なら [code: "第{n:kanji}章"] で「第三章」のように組めます。[code: number-title-separator] を書かなければ、番号と題のあいだには、日本語の本では全角の空白が、英語の本では半角の空白が入ります。書式の末尾に [code: "Chapter {n}: "] のように空白を書けば、区切りは足しません。
 - [code: lines]：見出しが占める行の数（行取り）の最小の値です。1 以上の整数を書きます。

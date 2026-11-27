@@ -61,7 +61,21 @@ tests :: TestTree
 tests =
   testGroup
     "paragraph style controls (docs/adr/0374)"
-    [ nextStyleTests,
+    [ testCase "root ADR 0468 I2: a heading supplies next-style to its next paragraph" $ do
+        let s = styleOf "[paragraph-styles.h]\nnext-style = \"first\"\n[paragraph-styles.first]\n[headings.1]\nparagraph-style = \"h\"\n"
+        map fst (paragraphs s "# 題\n\n本文\n\n次\n") @?= [Just "first", Nothing],
+      testCase "root ADR 0468 I2: initial-style decorates the title without changing its text" $ do
+        let s = styleOf "[character-styles.initial]\n[paragraph-styles.h]\ninitial-style = \"initial\"\n[headings.1]\nparagraph-style = \"h\"\n"
+        [map shape is | Heading _ _ is <- resultBodies (evalResult (ctxOf s) "# 題名\n")] @?= [["<initial:題>", "名"]],
+      testCase "root ADR 0468 I2: heading initial-style keeps a ZWJ grapheme together" $ do
+        let s = styleOf "[character-styles.initial]\n[paragraph-styles.h]\ninitial-style = \"initial\"\n[headings.1]\nparagraph-style = \"h\"\n"
+        [map shape is | Heading _ _ is <- resultBodies (evalResult (ctxOf s) "# 👩\x200d💻題\n")] @?= [["<initial:👩\x200d💻>", "題"]],
+      testCase "root ADR 0468 I4: style bodies preserve a list item's explicitly written style" $ do
+        let s = styleOf "[paragraph-styles.small]\n"
+            result = resultBodies (evalResult (ctxOf s) "@style small\n  - 一\n  - 二\n\n    @style body\n    三\n")
+            refs = [st | BulletList items <- result, item <- items, Block {blockBody = Paragraph st _} <- itemBlocks item]
+        refs @?= [Just "small", Just "small", Nothing],
+      nextStyleTests,
       initialStyleTests,
       keyTests
     ]

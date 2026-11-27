@@ -74,7 +74,6 @@ v0.1.0-rc4 と v1.0.0 のどちらで扱うかは、まだ決めていない。
   - **HTML と EPUB のキャプションと傍注の段落の組み方（未決）**：`caption` と `sidenote` の字下げ、`space-between`、`line-breaks` は、PDF だけに当たる。HTML と EPUB の `figcaption` と傍注の CSS には、書体と大きさだけを書く。ADR は部品の内幅と行数で組み方を決め、HTML と EPUB に触れていない。CSS にも出すかを決める。 [Golem ADR 0367](adr/0367-caption-sidenote-paragraphs.md)。
 - **段落スタイルの拡張（未実装）**：[root ADR 0374](adr/0374-paragraph-style-controls.md) のうち `next-style`、`initial-style`、`opening-indent` と、[root ADR 0397](adr/0397-paragraph-line-pitch-and-dimensional-spacing.md) が変更した行送りを除く部分を、機能ごとの ADR に分けた。
   - **ドロップキャップ（未実装）**：`drop-lines` と `drop-gap`。 [root ADR 0465](adr/0465-drop-caps.md)。今の `drop-lines` は、値の検査と、`fit-characters` との併用の誤り（G03301、[root ADR 0466](adr/0466-fit-characters.md)）のためにだけ読む。
-  - **見出しとリストへの段落スタイル（未実装）**：`[headings.<階層>]` の `paragraph-style` と、本体の形の `@style` のリスト。 [root ADR 0468](adr/0468-paragraph-styles-for-headings-and-lists.md)。`paragraph-style` で結び付けた見出しへの `fit-characters` の適用（[root ADR 0466](adr/0466-fit-characters.md)）も、この実装で行う。
 
 - **縦中横とルビの内部の字間**：縦中横の中の文字、ルビの親文字と読みのそれぞれに、書き手が字間を指定できるようにする。外側の箱どうしのトラッキングは [Golem ADR 0370](adr/0370-tracking-inline-boxes.md) で扱う。
 

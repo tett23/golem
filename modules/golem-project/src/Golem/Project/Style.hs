@@ -99,6 +99,8 @@ module Golem.Project.Style
     builtinAkiSetNames,
     lineBreaksValues,
     HeadingStyle (..),
+    headingParaName,
+    headingParaStyle,
     HeadingBlockAlign (..),
     NotesPlacement (..),
     noteStyleFor,
@@ -1244,9 +1246,33 @@ data HeadingStyle = HeadingStyle
     -- | the string between the number and the title of a heading (Golem ADR 0372)
     hsNumberTitleSeparator :: !(Maybe Text),
     -- | the format of a numbered heading (root ADR 0463)
-    hsTitleFormat :: !(Maybe [TitleFormatPart])
+    hsTitleFormat :: !(Maybe [TitleFormatPart]),
+    -- | The paragraph style supplying the allowed heading keys (root ADR 0468).
+    hsParagraphStyle :: !(Maybe Text)
   }
   deriving stock (Eq, Show)
+
+-- | A heading's valid paragraph style; a missing reference falls back (root ADR 0468).
+headingParaName :: Style -> Int -> Maybe Text
+headingParaName style level = do
+  h <- Map.lookup level (stHeadings style)
+  name <- hsParagraphStyle h
+  if Map.member name (stParaStyles style) then Just name else Nothing
+
+-- | Only the paragraph keys a heading may use (root ADR 0468).
+headingParaStyle :: Style -> Int -> Maybe ParaStyleDef
+headingParaStyle style level = do
+  name <- headingParaName style level
+  d <- paraStyle style (Just name)
+  pure
+    noParaDef
+      { psLinePitch = psLinePitch d,
+        psNextStyle = psNextStyle d,
+        psInitialStyle = psInitialStyle d,
+        psAlign = psAlign d,
+        psFeatures = psFeatures d,
+        psFitCharacters = psFitCharacters d
+      }
 
 -- | The physical unit that retains book parts (root ADR 0377 and 0401).
 data KeepParts = KeepColumn | KeepPage | KeepSpread
@@ -2692,7 +2718,8 @@ instance FromValue HeadingStyle where
     separator <- optKey "number-title-separator"
     format <- optKeyOf "title-format" titleFormatOf
     align <- enumKey "block-align" (map fst headingBlockAlignValues)
-    pure (HeadingStyle f s n (pb == Just "recto") ls (join rb) (join ra) (fromMaybe HeadingCenter (align >>= flip lookup headingBlockAlignValues)) separator format)
+    paragraph <- optKey "paragraph-style"
+    pure (HeadingStyle f s n (pb == Just "recto") ls (join rb) (join ra) (fromMaybe HeadingCenter (align >>= flip lookup headingBlockAlignValues)) separator format paragraph)
 
 instance FromValue RubyStyleDef where
   fromValue = parseTableFromValue $ do
@@ -3605,8 +3632,9 @@ parseStyle fid src = do
       (resolved, values) <- either (Left . pure) Right (resolveStyleValues fid src tab)
       (,values) <$> either (Left . map akiCode) Right (decodeStrictTableWith styleSchema codeAt fid src resolved)
   let s = sited s0 {stIndex = (\ix -> ix {ixColumnsAt = columnsAt}) <$> stIndex s0, stLayoutValues = names}
-  -- the same code and message once, at the path that comes first (golem-project ADR 0008)
-  case nubBy (\(c, _, m) (c', _, m') -> (c, m) == (c', m')) [(code, path, m) | (code, _, path, m) <- styleChecks "style.toml の" s] of
+  -- the same code and message once, at the path that comes first (golem-project ADR 0008);
+  -- missing heading references are per value instead (root ADR 0468 I5)
+  case nubBy (\(c, path, m) (c', path', m') -> (c, m) == (c', m') && (c /= "G03302" || path == path')) [(code, path, m) | (code, _, path, m) <- styleChecks "style.toml の" s] of
     [] -> Right s
     ds -> Left [(diagnostic code Error (at path) m) {diagFacts = factsOf s code} | (code, path, m) <- ds]
   where
@@ -3691,6 +3719,7 @@ styleChecks owner s =
     <> markPositionChecks s
     <> endnoteChecks s
     <> dropFitChecks s
+    <> [("G03302", "", styleKeys ["headings", T.pack (show level), "paragraph-style"], "見出しの paragraph-style が指す段落スタイル " <> name <> " がありません") | (level, h) <- Map.toAscList (stHeadings s), Just name <- [hsParagraphStyle h], Map.notMember name (stParaStyles s)]
 
 {- | G03301 (root ADR 0466): a paragraph style that has drop-lines and
 fit-characters, through based-on, once for each such style, at its
@@ -4665,7 +4694,8 @@ styleSchema =
         ]
     headingNode =
       NTable
-        [ ("font", ref FontRoles),
+        [ ("paragraph-style", ref ParaStyles),
+          ("font", ref FontRoles),
           ("size", dim),
           ("number", str),
           ("number-title-separator", str),

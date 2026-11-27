@@ -75,7 +75,7 @@ import Golem.Parser.Read (checkTableText)
 import Golem.Parser.SourceSettings
 import Golem.Project.Imports (ImportForm (..), ImportSite (..), ListedName (..), importNames, importSite, importsOf)
 import Golem.Project.Paths (PathError (..), normalizeRelative, pathErrorMessage)
-import Golem.Project.Style (Dim (..), LineBreaks (..), LocalStyles (..), LocalValue (..), ParaStyleDef (..), Sp (..), Style (stOutlines, stPrintingsFormat), StyleKind (..), checkLocalStyles, kentenShapeNames, localStyleDefWithValues, noLocalStyles, paraLineBreaks, paraStyleKeys, paraStyleWith, parseAki, parseDim, renderPrintingTemplate, withLocalStyles)
+import Golem.Project.Style (Dim (..), LineBreaks (..), LocalStyles (..), LocalValue (..), ParaStyleDef (..), Sp (..), Style (stOutlines, stPrintingsFormat), StyleKind (..), checkLocalStyles, headingParaStyle, kentenShapeNames, localStyleDefWithValues, noLocalStyles, paraLineBreaks, paraStyleKeys, paraStyleWith, parseAki, parseDim, renderPrintingTemplate, withLocalStyles)
 import Golem.Syntax
 import Golem.Syntax.LanguageTag (isLanguageTag)
 import Golem.Syntax.Sha256 (sha256)
@@ -490,11 +490,12 @@ nextStyledFrom ctx style = go
       A.Located _ (A.Attributed cmds (Just (A.Located _ (A.Paragraph _)))) -> not (any (\c -> isStyleCommand isBuiltin c || isBreakCommand isBuiltin c || isSettingCommand c) cmds)
       _ -> False
 
--- | The next paragraph style follows the last emitted block; empty output leaves it alone.
+-- | The last emitted paragraph or heading supplies the next paragraph style; empty output leaves it alone.
 followingStyle :: Style -> Maybe Text -> [Block] -> Maybe Text
 followingStyle style previous out = case reverse out of
   [] -> previous
   Block {blockBody = Paragraph st _} : _ -> paraStyleWith style (styleRefNameOf st) (maybe [] refValues st) >>= psNextStyle
+  Block {blockBody = Heading level _ _} : _ -> headingParaStyle style level >>= psNextStyle
   _ -> Nothing
 
 -- | The synthetic built-in @style cannot be overridden by a source command.
