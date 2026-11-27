@@ -1,9 +1,9 @@
 -- | Resolve a CSL record through an explicit declaration (root ADR 0470).
-module Golem.Assemble.BibliographyRecords (formatBibliographyLabelWithSuffix, formatBibliographyRecord, formatBibliographyRecordWithSuffix, formatBibliographyCitation, formatBibliographyCitationWith, formatBibliographyCitationWithSuffix, formatBibliographyYearCitationWithSuffix, formatBibliographySubsequentCitationWithSuffix) where
+module Golem.Assemble.BibliographyRecords (formatBibliographyLabelWithSuffix, formatBibliographyRecord, formatBibliographyRecordWithSuffix, formatBibliographyCitation, formatBibliographyCitationWith, formatBibliographyCitationWithSuffix, formatBibliographyYearCitationWithSuffix, formatBibliographySubsequentCitationWithSuffix, formatBibliographyDeferredSubsequentCitationWithSuffix) where
 
 import Control.Applicative ((<|>))
 import Data.Map.Strict qualified as Map
-import Data.Maybe (fromMaybe)
+import Data.Maybe (fromMaybe, isJust)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Read qualified as TR
@@ -11,10 +11,12 @@ import Golem.Assemble.BibliographyFormats
 import Golem.Assemble.BibliographyNames qualified as Names
 import Golem.Assemble.BibliographyRanges
 import Golem.Assemble.BibliographyStyle
+import Golem.Assemble.Formats (Notation, notationName, writeNumber)
 import Golem.Bibliography (CslDate (..), CslEntry (ceId, ceType), CslName (..), EntryPart)
 import Golem.Bibliography.Csl
 import Golem.Doc.Citation (CitePiece (..))
 import Golem.Doc.IR (Locator (..), LocatorLabel (..), LocatorValue (..), locatorLabelName)
+import Golem.Syntax.Span (SrcSpan)
 
 -- | Labels use the same record fields and number notation as entry pieces.
 formatBibliographyLabelWithSuffix :: Text -> BibliographyStyle d -> Int -> CslRecord -> Either Text Text
@@ -57,16 +59,28 @@ formatBibliographySubsequentCitationWithSuffix suffix firstNote style
   | bsCitationMode style == Just "note" = formatBibliographyCitationSelecting btcSubsequent (\declaration -> bsSubsequent declaration <|> bsCitation declaration) (Just firstNote) suffix style
   | otherwise = formatBibliographyCitationWithSuffix suffix style
 
+-- | Preserve first-note identity for a caller that resolves page-local numbering later.
+formatBibliographyDeferredSubsequentCitationWithSuffix :: Text -> (SrcSpan, Int) -> BibliographyStyle d -> Int -> Maybe Locator -> CslRecord -> Either Text [CitePiece]
+formatBibliographyDeferredSubsequentCitationWithSuffix suffix target@(_, firstNote) style
+  | bsCitationMode style == Just "note" = formatBibliographyCitationSelectingWith (Just target) btcSubsequent (\declaration -> bsSubsequent declaration <|> bsCitation declaration) (Just (toInteger firstNote)) suffix style
+  | otherwise = formatBibliographyCitationWithSuffix suffix style
+
 formatBibliographyCitationSelecting :: (BibliographyTypeCitations -> Maybe [Text]) -> (BibliographyStyle d -> Maybe [Text]) -> Maybe Integer -> Text -> BibliographyStyle d -> Int -> Maybe Locator -> CslRecord -> Either Text [CitePiece]
-formatBibliographyCitationSelecting typeTemplate globalTemplate firstNote suffix style number location record = do
+formatBibliographyCitationSelecting = formatBibliographyCitationSelectingWith Nothing
+
+formatBibliographyCitationSelectingWith :: Maybe (SrcSpan, Int) -> (BibliographyTypeCitations -> Maybe [Text]) -> (BibliographyStyle d -> Maybe [Text]) -> Maybe Integer -> Text -> BibliographyStyle d -> Int -> Maybe Locator -> CslRecord -> Either Text [CitePiece]
+formatBibliographyCitationSelectingWith target typeTemplate globalTemplate firstNote suffix style number location record = do
   let selected = do
         kind <- bibliographyTypeNameFor (fromMaybe "" (ceType (recordEntry record))) style
         templates <- Map.lookup kind (bsTypeCitations style)
         typeTemplate templates
   sources <- maybe (Left "citation がありません") Right (selected <|> globalTemplate style)
-  fragments <- recordFragments suffix (bsCitationMode style `elem` [Just "numeric", Just "author-year"]) firstNote style number location record sources
+  fragments <- recordFragmentsDeferring (\name -> name == "first-note" && isJust target) suffix (bsCitationMode style `elem` [Just "numeric", Just "author-year"]) firstNote style number location record sources
   pure
     [ case fragment of
+        BibliographyField "first-note" _
+          | Just (targetSpan, n) <- target ->
+              CiteNoteNumber targetSpan n (notationName <$> notation) (maybe (Just (T.pack (show n))) (\selectedNotation -> writeNumber selectedNotation (toInteger n)) notation)
         BibliographyField "number" value | value == T.pack (show number) -> CiteNumber (ceId (recordEntry record)) number
         BibliographyField "number" value -> CiteReference (ceId (recordEntry record)) value
         BibliographyField "locator" value
@@ -81,11 +95,15 @@ formatBibliographyCitationSelecting typeTemplate globalTemplate firstNote suffix
                     else CiteLocatorFormatted label delimiter value (position == "after")
         BibliographyField _ value -> CiteText value
         BibliographyLiteral value -> CiteText value
-    | fragment <- fragments
+    | (fragment, notation) <- fragments
     ]
 
 recordFragments :: Text -> Bool -> Maybe Integer -> BibliographyStyle d -> Int -> Maybe Locator -> CslRecord -> [Text] -> Either Text [BibliographyFragment]
-recordFragments suffix shortAuthor firstNote style number location record sources = do
+recordFragments suffix shortAuthor firstNote style number location record sources =
+  map fst <$> recordFragmentsDeferring (const False) suffix shortAuthor firstNote style number location record sources
+
+recordFragmentsDeferring :: (Text -> Bool) -> Text -> Bool -> Maybe Integer -> BibliographyStyle d -> Int -> Maybe Locator -> CslRecord -> [Text] -> Either Text [(BibliographyFragment, Maybe Notation)]
+recordFragmentsDeferring defer suffix shortAuthor firstNote style number location record sources = do
   pieces <- traverse (parseBibliographyPiece bibliographyFields) sources
   let fields = concatMap bibliographyPieceFields pieces
   located <- case location of
@@ -103,8 +121,8 @@ recordFragments suffix shortAuthor firstNote style number location record source
       value key notation
         | key == "month", Just _ <- notation = numericMonth
         | otherwise = fromMaybe (recordText key record) (Map.lookup key derived)
-  fragments <- renderBibliographyFragmentsWith value pieces
-  pure [case fragment of BibliographyField "year" text -> BibliographyField "year" (text <> suffix); _ -> fragment | fragment <- fragments]
+  fragments <- renderBibliographyFragmentsDeferring defer value pieces
+  pure [(case fragment of BibliographyField "year" text -> BibliographyField "year" (text <> suffix); _ -> fragment, notation) | (fragment, notation) <- fragments]
   where
     people key = [case name of PersonalName family given -> Names.PersonalName family given; LiteralName literal -> Names.LiteralName literal | CslPerson name _ <- recordNames key record]
     names fields key

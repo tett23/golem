@@ -4,11 +4,12 @@ import Control.Applicative ((<|>))
 import Control.Monad (forM_)
 import Data.Map.Strict qualified as Map
 import Data.Text qualified as T
-import Golem.Assemble.BibliographyRecords (formatBibliographyCitationWith, formatBibliographySubsequentCitationWithSuffix)
+import Golem.Assemble.BibliographyRecords (formatBibliographyCitationWith, formatBibliographyDeferredSubsequentCitationWithSuffix, formatBibliographySubsequentCitationWithSuffix)
 import Golem.Assemble.BibliographyStyle
 import Golem.Bibliography.Csl qualified as Json
-import Golem.Doc.Citation (citationText)
+import Golem.Doc.Citation (CitePiece (..), citationText)
 import Golem.Doc.IR (Locator (..), LocatorLabel (LocatorPage), LocatorValue (..), locatorLabelName)
+import Golem.Syntax.Span (FileId (..), mkSpan)
 import Test.Tasty
 import Test.Tasty.HUnit
 
@@ -122,7 +123,53 @@ locatorFailure message = assertFailure message >> fail message
 
 subsequentTests :: [TestTree]
 subsequentTests =
-  [ testCase "root ADR 0470 I5: raw CSL cannot supply the derived first-note outside a subsequent note" $ do
+  [ testCase "root ADR 0470 I5: deferred first-note slots keep their identity, separate notations and surrounding literals" $ do
+      records <- either (locatorFailure . show) pure (Json.decodeCslRecords "[{\"id\":\"a\",\"first-note\":99}]")
+      record <- case records of [one] -> pure one; _ -> locatorFailure "one record required"
+      let target = mkSpan (FileId 7) 30 40
+          declaration = locatorStyle {bsCitationMode = Just "note", bsSubsequent = Just ["({first-note:kanji})/{first-note:ordinal-en}/{first-note}"]}
+      formatBibliographyDeferredSubsequentCitationWithSuffix "" (target, 12) declaration 1 Nothing record
+        @?= Right [CiteText "(", CiteNoteNumber target 12 (Just "kanji") (Just "十二"), CiteText ")/", CiteNoteNumber target 12 (Just "ordinal-en") (Just "12th"), CiteText "/", CiteNoteNumber target 12 Nothing (Just "12")],
+    testCase "root ADR 0470 I5: an initially unwritable deferred first-note retains its notation instead of failing early" $ do
+      records <- either (locatorFailure . show) pure (Json.decodeCslRecords "[{\"id\":\"a\"}]")
+      record <- case records of [one] -> pure one; _ -> locatorFailure "one record required"
+      let target = mkSpan (FileId 7) 30 40
+          declaration = locatorStyle {bsCitationMode = Just "note", bsSubsequent = Just ["{first-note:circled}"]}
+      formatBibliographyDeferredSubsequentCitationWithSuffix "" (target, 60) declaration 1 Nothing record @?= Right [CiteNoteNumber target 60 (Just "circled") Nothing]
+      assertBool "the old formatter still reports its range error" (either (const True) (const False) (formatBibliographySubsequentCitationWithSuffix "" 60 declaration 1 Nothing record)),
+    testCase "root ADR 0470 I5: deferred templates keep conditional omission, optional fields and an explicit empty template" $ do
+      records <- either (locatorFailure . show) pure (Json.decodeCslRecords "[{\"id\":\"a\"}]")
+      record <- case records of [one] -> pure one; _ -> locatorFailure "one record required"
+      let target = mkSpan (FileId 7) 30 40
+          declaration = locatorStyle {bsCitationMode = Just "note", bsSubsequent = Just ["{title}{first-note:circled}", "{first-note?:kanji}", "{!first-note}wrong", "{!DOI}({first-note})"]}
+      formatBibliographyDeferredSubsequentCitationWithSuffix "" (target, 60) declaration 1 Nothing record
+        @?= Right [CiteNoteNumber target 60 (Just "kanji") (Just "六十"), CiteText "(", CiteNoteNumber target 60 Nothing (Just "60"), CiteText ")"]
+      formatBibliographyDeferredSubsequentCitationWithSuffix "" (target, 60) declaration {bsSubsequent = Just []} 1 Nothing record @?= Right [],
+    testCase "root ADR 0470 I5: deferred selection retains type and global fallbacks including empty templates" $ do
+      records <- either (locatorFailure . show) pure (Json.decodeCslRecords "[{\"id\":\"a\",\"type\":\"book\"}]")
+      record <- case records of [one] -> pure one; _ -> locatorFailure "one record required"
+      let target = mkSpan (FileId 7) 30 40
+      forM_ [(tables, typed, later, initial) | tables <- [[], ["book"], ["default"], ["book", "default"]], typed <- choices "typed{first-note:kanji}", later <- choices "subsequent{first-note}", initial <- choices "initial{first-note:ordinal-en}"] $ \(tables, typed, later, initial) -> do
+        let selected = case tables of [] -> Nothing; first : _ -> Just first
+            metadata kind = emptyBibliographyTypeCitations {btcSubsequent = if Just kind == selected then typed else Just ["wrong"]}
+            declaration = locatorStyle {bsCitationMode = Just "note", bsCitation = initial, bsSubsequent = later, bsTypes = Map.fromList [(kind, BibliographyType (Just []) Map.empty) | kind <- tables], bsTypeCitations = Map.fromList [(kind, metadata kind) | kind <- tables]}
+            actual = formatBibliographyDeferredSubsequentCitationWithSuffix "" (target, 3) declaration 1 Nothing record
+        fmap citationText actual @?= fmap citationText (formatBibliographySubsequentCitationWithSuffix "" 3 declaration 1 Nothing record)
+        case actual of
+          Right pieces -> assertBool "surviving fields retain identity" (all (\case CiteText text -> not ("三" `T.isInfixOf` text || "3" `T.isInfixOf` text); _ -> True) pieces)
+          Left _ -> pure (),
+    testCase "root ADR 0470 I5: deferred first-note does not defer other range errors or accept an unknown notation" $ do
+      records <- either (locatorFailure . show) pure (Json.decodeCslRecords "[{\"id\":\"a\",\"edition\":60}]")
+      record <- case records of [one] -> pure one; _ -> locatorFailure "one record required"
+      let target = mkSpan (FileId 7) 30 40
+          declaration = locatorStyle {bsCitationMode = Just "note"}
+      forM_ ["{first-note}/{edition:circled}", "{first-note:unknown}"] $ \source -> do
+        let selected = declaration {bsSubsequent = Just [source]}
+        formatBibliographyDeferredSubsequentCitationWithSuffix "" (target, 12) selected 1 Nothing record @?= formatBibliographySubsequentCitationWithSuffix "" 12 selected 1 Nothing record
+      forM_ ["numeric", "author-year"] $ \mode -> do
+        let selected = declaration {bsCitationMode = Just mode, bsCitation = Just ["{number}"], bsSubsequent = Just ["{first-note}"]}
+        formatBibliographyDeferredSubsequentCitationWithSuffix "" (target, 12) selected 1 Nothing record @?= formatBibliographyCitationWith selected 1 Nothing record,
+    testCase "root ADR 0470 I5: raw CSL cannot supply the derived first-note outside a subsequent note" $ do
       records <- either (locatorFailure . show) pure (Json.decodeCslRecords "[{\"id\":\"a\",\"first-note\":99}]")
       record <- case records of [one] -> pure one; _ -> locatorFailure "one record required"
       forM_ ["note", "numeric", "author-year"] $ \mode -> do
