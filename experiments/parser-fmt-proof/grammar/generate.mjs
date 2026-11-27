@@ -720,6 +720,16 @@ if (!fragment && ast) {
       if (rule.params.length === params.length && rule.params.every((param, index) => param === params[index]) &&
           describeItems(rule.alts[0].items) === shape) continue;
     }
+    // The recovery modules prove ordered dispatch, the outer body scan and
+    // the actual nested bracket alternative without assuming child results.
+    if (rule.name === 'SkippedReserved' && rule.params.length === 0 && rule.templateParams.length === 0 &&
+        rule.alts.length === 4 && rule.alts.every(alt => alt.action?.trim() === '()' && alt.constructor === null)) {
+      const shapes = ["'[!' ReservedBracketBody ']'", "'[!'", "'@!' (![\\n] .)*", "'..'"];
+      if (rule.alts.every((alt, index) => describeItems(alt.items) === shapes[index])) continue;
+    }
+    if (rule.name === 'ReservedBracketBody' && rule.params.length === 0 && rule.templateParams.length === 0 &&
+        rule.alts.length === 1 && rule.alts[0].action?.trim() === '()' && rule.alts[0].constructor === null &&
+        describeItems(rule.alts[0].items) === "('\\\\' ![\\n] . / '%%' (!'%%' ![\\n] .)* '%%' / '[' ReservedBracketBody ']' / ![\\[\\]\\\\\\n] .)*") continue;
     if (rule.name === 'Ind' && indentFullyProved) continue;
     if (rule.name === 'StringLit' && stringSupported && alternatives[0] === escape &&
         rule.params.length === 0 && rule.templateParams.length === 0 && rule.alts.length === 1 &&

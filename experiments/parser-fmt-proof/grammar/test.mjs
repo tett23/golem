@@ -53,7 +53,9 @@ try {
     'root ADR 0351 I1, I2: command body dispatch requires arbitrary-input composition proofs');
   assert.doesNotMatch(strict.stderr, /^unsupported (ListItem|Div) choice /m,
     'root ADR 0351 I1, I2: list items and fenced blocks require arbitrary-input composition proofs');
-  assert.ok(baselineUnsupported <= 9, 'the full grammar model must not regress in unsupported choices');
+  assert.doesNotMatch(strict.stderr, /^unsupported (SkippedReserved|ReservedBracketBody) choice /m,
+    'root ADR 0351 I1, I2: recovery dispatch and nested-body composition require arbitrary-input proofs');
+  assert.ok(baselineUnsupported <= 6, 'the full grammar model must not regress in unsupported choices');
   assert.equal(strict.status === 0, baselineUnsupported === 0,
     'strict generation succeeds exactly when every choice is supported');
   for (const line of strict.stderr.split('\n').filter(line => line.startsWith('unsupported '))) {
@@ -962,7 +964,7 @@ try {
   }
   // Expose the actual existing rule, without replacing it with a handwritten
   // recovery grammar. These are entry-rule CST checks, not valid manuscripts.
-  const nativeBodyGrammar = original.replace('%syntax\n', '%syntax\n%entry ReservedBracketBody\n');
+  const nativeBodyGrammar = original.replace('%syntax\n', '%syntax\n%entry ReservedBracketBody\n%entry SkippedReserved\n');
   assert.notEqual(nativeBodyGrammar, original);
   const nativeBodyPath = join(work, 'NativeReservedBody.hpeg');
   writeFileSync(nativeBodyPath, nativeBodyGrammar);
@@ -989,6 +991,109 @@ try {
   assert.match(nativeBodyRejected.stdout + nativeBodyRejected.stderr, /^1:3: expected /m,
     'the native counterexample must fail at the internal bracket, not while compiling the parser');
 
+  // Both entries expose committed recovery rules, not replacement grammars.
+  // Expected suffixes are model fixtures; entry success additionally needs EOF.
+  const recoveryFixtures = [
+    ['[!a]', ''], ['[!a[b]c]', ''], ['[!%%]text%%]', ''], ['[!鰍𠮷]', ''],
+    [String.raw`[!\]x]`, ''], ['[!]', ''], ['[!', ''], ['@!', ''], ['@!abc', ''], ['@!กำ', ''], ['..', ''],
+    ['', null], ['@!a\n', '\n'], ['[!abc', 'abc'], ['...', '.'],
+  ];
+  const nestedBodyCases = [
+    ['', 1], ['abc', 1], ['a[b]c', 2], ['[a[b]c]d', 3],
+    ['%%]text%%', 1], [String.raw`\]x`, 1], ['鰍𠮷[กำ]', 2],
+  ];
+  const bodyEntryRejectedCases = ['\n', ']', '['];
+  for (const [sample, suffix] of recoveryFixtures) {
+    const input = join(work, 'recovery-entry.gm');
+    writeFileSync(input, sample);
+    const parsed = spawnSync(process.env.PEG_HS ?? 'peg-hs',
+      ['parse', '--entry', 'SkippedReserved', '--format', 'cst', nativeBodyPath, input],
+      { encoding: 'utf8', env: { ...process.env, XDG_CACHE_HOME: join(work, 'cache') } });
+    assert.equal(parsed.status === 0, suffix === '', parsed.stdout + parsed.stderr);
+    if (suffix === '') assert.match(parsed.stdout, new RegExp(`^SkippedReserved@0\\.\\.${Buffer.byteLength(sample)}$`, 'm'));
+    else assert.match(parsed.stderr, /^\d+:\d+: expected /m);
+  }
+  for (const [sample, count] of nestedBodyCases) {
+    const input = join(work, 'nested-body.gm');
+    writeFileSync(input, sample);
+    const parsed = spawnSync(process.env.PEG_HS ?? 'peg-hs',
+      ['parse', '--entry', 'ReservedBracketBody', '--format', 'cst', nativeBodyPath, input],
+      { encoding: 'utf8', env: { ...process.env, XDG_CACHE_HOME: join(work, 'cache') } });
+    assert.equal(parsed.status, 0, parsed.stderr);
+    assert.match(parsed.stdout, new RegExp(`^ReservedBracketBody@0\\.\\.${Buffer.byteLength(sample)}$`, 'm'));
+    assert.equal([...parsed.stdout.matchAll(/^(?: +)?ReservedBracketBody@/gm)].length, count);
+  }
+  for (const sample of bodyEntryRejectedCases) {
+    const input = join(work, 'rejected-body-entry.gm');
+    writeFileSync(input, sample);
+    const parsed = spawnSync(process.env.PEG_HS ?? 'peg-hs',
+      ['parse', '--entry', 'ReservedBracketBody', '--format', 'cst', nativeBodyPath, input],
+      { encoding: 'utf8', env: { ...process.env, XDG_CACHE_HOME: join(work, 'cache') } });
+    assert.notEqual(parsed.status, 0);
+    assert.match(parsed.stderr, /^\d+:\d+: expected /m);
+  }
+  const recoveryShape = String.raw`SkippedReserved <- '[!' ReservedBracketBody ']' { () }
+                 / '[!' { () }
+                 / '@!' (![\n] .)* { () }
+                 / '..' { () }`;
+  const recoveryReversed = String.raw`SkippedReserved <- '[!' { () }
+                 / '[!' ReservedBracketBody ']' { () }
+                 / '@!' (![\n] .)* { () }
+                 / '..' { () }`;
+  const recoveryMutations = [
+    ['RecoveryOpen', recoveryShape.replace("'[!' Reserved", "'[?' Reserved"), '[!a]'],
+    ['RecoveryClose', recoveryShape.replace("ReservedBracketBody ']'", "ReservedBracketBody '}'"), '[!a]'],
+    ['RecoveryPrefix', recoveryShape.replace("\n                 / '[!' { () }", ''), '[!'],
+    ['RecoveryOrder', recoveryReversed, '[!a]'],
+    ['RecoveryLinePlus', recoveryShape.replace(')*', ')+'), '@!'],
+    ['RecoveryLineGuard', recoveryShape.replace(String.raw`![\n]`, String.raw`&[\n]`), '@!abc'],
+    ['RecoveryLineChar', recoveryShape.replace(String.raw`![\n] .`, String.raw`![\n] 'X'`), '@!abc'],
+    ['RecoveryRange', recoveryShape.replace("/ '..'", "/ '...'"), '..'],
+  ];
+  const bodyShape = original.slice(original.indexOf('ReservedBracketBody <-'));
+  assert.ok(bodyShape.startsWith('ReservedBracketBody <-'));
+  const reorderedBodyLines = bodyShape.split('\n');
+  const commentIndex = reorderedBodyLines.findIndex(line => line.includes("/ '%%'"));
+  const plainIndex = reorderedBodyLines.findIndex(line => line.includes(String.raw`/ ![\[\]\\\n]`));
+  assert.ok(commentIndex >= 0 && plainIndex >= 0);
+  [reorderedBodyLines[commentIndex], reorderedBodyLines[plainIndex]] = [reorderedBodyLines[plainIndex], reorderedBodyLines[commentIndex]];
+  const bodyCompositionMutations = [
+    ['BodyPlus', bodyShape.replace(')* { () }', ')+ { () }'), ''],
+    ['BodyEscape', bodyShape.replace(String.raw`'\\' ![\n] .`, String.raw`'\\' &[\n] .`), String.raw`\a`],
+    ['BodyOpen', bodyShape.replace("'[' ReservedBracketBody", "'{' ReservedBracketBody"), '[a]'],
+    ['BodyClose', bodyShape.replace("ReservedBracketBody ']'", "ReservedBracketBody '}'"), '[a]'],
+    ['BodyReference', bodyShape.replace("'[' ReservedBracketBody ']'", "'[' Word ']'"), '[a[b]]'],
+    ['BodyPlainGuard', bodyShape.replace(String.raw`![\[\]\\\n]`, String.raw`&[\[\]\\\n]`), 'abc'],
+    ['BodyPlainChar', bodyShape.replace(String.raw`![\[\]\\\n] .`, String.raw`![\[\]\\\n] 'X'`), 'abc'],
+    ['BodyOrder', reorderedBodyLines.join('\n'), '%%]text%%'],
+  ];
+  for (const [rule, before, mutations] of [
+    ['SkippedReserved', recoveryShape, recoveryMutations],
+    ['ReservedBracketBody', bodyShape, bodyCompositionMutations],
+  ]) {
+    for (const [name, after, sample] of mutations) {
+      assert.ok(original.includes(before));
+      assert.notEqual(before, after);
+      const grammar = join(work, name + '.hpeg');
+      writeFileSync(grammar, original.replace(before, after));
+      const rejected = spawnSync(process.execPath, [join(here, 'generate.mjs'), grammar, generated], { encoding: 'utf8' });
+      assert.notEqual(rejected.status, 0);
+      assert.match(rejected.stderr, new RegExp(`^unsupported ${rule} choice `, 'm'));
+      writeFileSync(grammar, nativeBodyGrammar.replace(before, after));
+      const input = join(work, 'native-recovery-counterexample.gm');
+      writeFileSync(input, sample);
+      const parsed = spawnSync(process.env.PEG_HS ?? 'peg-hs', ['parse', '--entry', rule, '--format', 'cst', grammar, input],
+        { encoding: 'utf8', env: { ...process.env, XDG_CACHE_HOME: join(work, 'cache') } });
+      assert.notEqual(parsed.status, 0, `root ADR 0351: ${name} must reject its native entry counterexample`);
+      assert.match(parsed.stderr, /^\d+:\d+: expected /m,
+        'recovery mutation must fail on input, not while compiling its grammar');
+    }
+  }
+  const recoveryModelCases = [
+    ...recoveryFixtures.map(([sample, suffix]) => ['SkippedReserved', sample, suffix]),
+    ...nestedBodyCases.map(([sample]) => ['ReservedBracketBody', sample, '']),
+    ...bodyEntryRejectedCases.map(sample => ['ReservedBracketBody', sample, sample]),
+  ];
   const nativeExpressionMutations = [
     ['CallNamespaceMany', '[= foo.bar.baz(1)]\n', true, { CallExpr: 1, ExprIdent: 3 }],
     ['CallRequiredArgs', '[= foo()]\n', false],
@@ -1583,6 +1688,89 @@ try {
   copyFileSync(join(here, 'PlusComposition.lean'), plusCompositionSource);
   const plusCompositionProof = spawnSync(lean, ['-o', join(work, 'PlusComposition.olean'), plusCompositionSource], growthEnv);
   assert.equal(plusCompositionProof.status, 0, plusCompositionProof.stdout + plusCompositionProof.stderr);
+  const unboundSequenceSource = join(work, 'UnboundSequenceTotal.lean');
+  const unboundSequenceCanonical = readFileSync(join(here, 'UnboundSequenceTotal.lean'), 'utf8');
+  writeFileSync(unboundSequenceSource, unboundSequenceCanonical);
+  const unboundSequenceProof = spawnSync(lean, ['-o', join(work, 'UnboundSequenceTotal.olean'), unboundSequenceSource], growthEnv);
+  assert.equal(unboundSequenceProof.status, 0, unboundSequenceProof.stdout + unboundSequenceProof.stderr);
+  assert.doesNotMatch(unboundSequenceProof.stdout + unboundSequenceProof.stderr, /sorryAx|declaration uses 'sorry'/);
+  const droppedTail = unboundSequenceCanonical.replace('follow read items rest', '.ok (some rest)');
+  assert.notEqual(droppedTail, unboundSequenceCanonical);
+  writeFileSync(unboundSequenceSource, droppedTail);
+  const brokenUnboundSequence = spawnSync(lean, [unboundSequenceSource], growthEnv);
+  assert.notEqual(brokenUnboundSequence.status, 0);
+  assert.match(brokenUnboundSequence.stdout + brokenUnboundSequence.stderr, /type mismatch|unsolved goals/);
+  writeFileSync(unboundSequenceSource, unboundSequenceCanonical);
+  const recoverySources = ['RecoveryDispatchTotal', 'ReservedBodyCompositionTotal'].map(name => join(work, name + '.lean'));
+  for (const source of recoverySources) {
+    copyFileSync(join(here, source.slice(source.lastIndexOf('/') + 1)), source);
+    const proof = spawnSync(lean, [source], growthEnv);
+    assert.equal(proof.status, 0, proof.stdout + proof.stderr);
+    assert.doesNotMatch(proof.stdout + proof.stderr, /sorryAx|declaration uses 'sorry'/);
+  }
+  for (const [rule, before, after] of [
+    ['SkippedReserved', '.lit "[!" "\'[!\'", .ref', '.lit "[?" "\'[?\'", .ref'],
+    ['SkippedReserved', '.lit "]" "\']\'"', '.lit "}" "\'}\'"'],
+    ['SkippedReserved', '.star', '.plus'],
+    ['SkippedReserved', null, null],
+    ['ReservedBracketBody', '.star', '.plus'],
+    ['ReservedBracketBody', '.ref "ReservedBracketBody" []', '.ref "Word" []'],
+    ['ReservedBracketBody', '.lit "[" "\'[\'"', '.lit "{" "\'{\'"'],
+    ['ReservedBracketBody', '.lit "]" "\']\'"', '.lit "}" "\'}\'"'],
+  ]) {
+    const changed = model.split('\n').map(line => {
+      if (!line.includes(`name := "${rule}"`)) return line;
+      if (before !== null) {
+        assert.ok(line.includes(before));
+        return line.replace(before, after);
+      }
+      const swapped = line.replace(/alts := \[(\{.*?\}), (\{.*?\}), (\{.*\})\] \}/, 'alts := [$2, $1, $3] }');
+      assert.notEqual(swapped, line);
+      return swapped;
+    }).join('\n');
+    assert.notEqual(changed, model);
+    writeFileSync(generated, changed);
+    execFileSync(lean, ['-o', join(work, 'Generated.olean'), generated], growthEnv);
+    const target = recoverySources[rule === 'SkippedReserved' ? 0 : 1];
+    const refuted = spawnSync(lean, [target], growthEnv);
+    assert.notEqual(refuted.status, 0);
+    assert.match(refuted.stdout + refuted.stderr, /type mismatch|unsolved goals/,
+      'changed actual recovery AST must refute its theorem, not imports');
+  }
+  const recoveryMetadataControls = ['SkippedReserved', 'ReservedBracketBody'];
+  for (const rule of recoveryMetadataControls) {
+    const changed = model.split('\n').map(line => line.includes(`name := "${rule}"`)
+      ? line.replaceAll(/line := (\d+)/g, (_, value) => `line := ${Number(value) + 17}`)
+        .replaceAll('some " () "', 'some "  ()  "') : line).join('\n');
+    assert.notEqual(changed, model);
+    writeFileSync(generated, changed);
+    execFileSync(lean, ['-o', join(work, 'Generated.olean'), generated], growthEnv);
+    const target = recoverySources[rule === 'SkippedReserved' ? 0 : 1];
+    const preserved = spawnSync(lean, [target], growthEnv);
+    assert.equal(preserved.status, 0, preserved.stdout + preserved.stderr);
+    assert.doesNotMatch(preserved.stdout + preserved.stderr, /sorryAx|declaration uses 'sorry'/);
+  }
+  writeFileSync(generated, model);
+  execFileSync(lean, ['-o', join(work, 'Generated.olean'), generated], growthEnv);
+  const recoveryFixtureSource = join(work, 'RecoveryNativeFixtures.lean');
+  const fixtureItems = recoveryModelCases.map(([rule, sample, suffix]) =>
+    `(${JSON.stringify(rule)}, ${JSON.stringify(sample)}, ${suffix === null ? 'none' : 'some ' + JSON.stringify(suffix)})`).join(',\n    ');
+  writeFileSync(recoveryFixtureSource, `import PegModelTest
+open PegModel
+#eval do
+  let fixtures : List (String × String × Option String) := [${fixtureItems}]
+  for (rule, source, expected) in fixtures do
+    let got := recognizeEnv Generated.pegGrammar [] 256 (.ref rule []) source.toList
+    let agrees := match got, expected with
+      | .ok none, none => true
+      | .ok (some rest), some suffix => rest == suffix.toList
+      | _, _ => false
+    unless agrees do throw (IO.userError s!"recovery fixture mismatch {repr source}: {repr got}")
+  IO.println s!"model/native recovery fixtures: {fixtures.length} outcomes matched"
+`);
+  const recoveryFixtureCheck = spawnSync(lean, [recoveryFixtureSource], growthEnv);
+  assert.equal(recoveryFixtureCheck.status, 0, recoveryFixtureCheck.stdout + recoveryFixtureCheck.stderr);
+  assert.match(recoveryFixtureCheck.stdout, new RegExp(`model/native recovery fixtures: ${recoveryModelCases.length} outcomes matched`));
   const blockRemainderSource = join(work, 'BlockRemainderTotal.lean');
   copyFileSync(join(here, 'BlockRemainderTotal.lean'), blockRemainderSource);
   const blockRemainderProof = spawnSync(lean, [blockRemainderSource], growthEnv);
@@ -1768,7 +1956,7 @@ try {
   assert.match(refuted.stdout + refuted.stderr, /unsolved goals/, 'the mutation must refute the theorem, not fail to load a file');
   const unsupportedChoices = [...strict.stderr.matchAll(/^unsupported [A-Za-z][A-Za-z0-9]* choice /gm)].length;
   assert.equal(unsupportedChoices, baselineUnsupported, 'strict report count must remain stable through mutation tests');
-  console.log(`grammar: source and AST rules ${emittedRuleCount}/${astRuleCount}/${sourceRuleCount}, unsupported choices ${unsupportedChoices}, positive proof modules 36, negative mutations 202, metadata-only AST controls ${metadataOnlyAstControls.length}, implementation parser cases ${parserCases.length}, syntax-only parser cases 1, native legacy-body syntax cases ${legacyBodyParserCases.length}, native unclosed-fence syntax cases 1, native reserved-body entry cases ${nativeBodySamples.length}, native block-sequence traces ${blockSequenceParserCases.length}, native parser counterexamples ${3 + nativeBlockRemainderMutations.length + nativeBodyDispatchMutations.length + nativeFileMutations.length + nativeListMutations.length + nativeDefinitionMutations.length + nativeBlockSequenceMutations.length + nativeLexicalMutations.length + nativeCompositionMutations.length + nativeExpressionMutations.length + nativeArgumentMutations.length + nativeBlockLeafMutations.length}, rejected parser cases ${emptyItemRejectedCases.length + rejectedParserCases.length + badDelimiterCases.length + 1 + lexicalRejectedCases.length + compositionRejectedCases.length + expressionRejectedCases.length + argumentRejectedCases.length + blockLeafRejectedCases.length}`);
+  console.log(`grammar: source and AST rules ${emittedRuleCount}/${astRuleCount}/${sourceRuleCount}, unsupported choices ${unsupportedChoices}, positive proof modules 39, negative mutations 227, metadata-only AST controls ${metadataOnlyAstControls.length + recoveryMetadataControls.length}, implementation parser cases ${parserCases.length}, syntax-only parser cases 1, native legacy-body syntax cases ${legacyBodyParserCases.length}, native unclosed-fence syntax cases 1, native reserved-body entry cases ${nativeBodySamples.length}, native recovery-entry cases ${recoveryFixtures.length + nestedBodyCases.length}, model/native recovery fixtures ${recoveryModelCases.length}, native block-sequence traces ${blockSequenceParserCases.length}, native parser counterexamples ${3 + recoveryMutations.length + bodyCompositionMutations.length + nativeBlockRemainderMutations.length + nativeBodyDispatchMutations.length + nativeFileMutations.length + nativeListMutations.length + nativeDefinitionMutations.length + nativeBlockSequenceMutations.length + nativeLexicalMutations.length + nativeCompositionMutations.length + nativeExpressionMutations.length + nativeArgumentMutations.length + nativeBlockLeafMutations.length}, rejected parser cases ${recoveryFixtures.filter(([, suffix]) => suffix !== "").length + bodyEntryRejectedCases.length + emptyItemRejectedCases.length + rejectedParserCases.length + badDelimiterCases.length + 1 + lexicalRejectedCases.length + compositionRejectedCases.length + expressionRejectedCases.length + argumentRejectedCases.length + blockLeafRejectedCases.length}`);
 } finally {
   rmSync(work, { recursive: true, force: true });
 }

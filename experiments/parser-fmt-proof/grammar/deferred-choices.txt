@@ -7,6 +7,3 @@ BlockCommand choice 2: Ind(ind) At Ident Arguments Sp (Nl / !.) b:CommandBody(in
 Table choice 1: h:TableRow(ind) Nl (TableDelimiter(ind))^table_delimiter TableBodyRow(ind, h)* (!(Nl Ind(ind) Pipe))^table_row (Nl / !.)
 TableBodyRow choice 1: Nl r:TableRow(ind) (&{ r == h })^table_cells
 TableRow choice 1: Ind(ind) cs:TableCellAndPipe+ Pipe Sp RowBreak?
-SkippedReserved choice 1: '[!' ReservedBracketBody ']'
-ReservedBracketBody choice 1: ('\\' ![\n] . / '%%' (!'%%' ![\n] .)* '%%' / '[' ReservedBracketBody ']' / ![\[\]\\\n] .)*
-ReservedBracketBody choice 2: '[' ReservedBracketBody ']'
