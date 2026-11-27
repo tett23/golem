@@ -1,0 +1,27 @@
+# NLM Samples of Formatted References, primary example transcribed in docs/research/bibliography-styles.md.
+# https://www.nlm.nih.gov/bsd/uniform_requirements.html
+# This fixture covers only this transcribed article, not a complete bundled style.
+# The explicit name bound is the example author count, not a publication-wide rule.
+[bibliography]
+style = 'example'
+[bibliography.styles.example]
+citation-mode = 'numeric'
+citation = ['[{number}]']
+sort = ['citation']
+page-range = 'minimal'
+range-delimiter = '-'
+months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+[bibliography.styles.example.names.author]
+order = 'family-given'
+part-delimiter = ' '
+initials = true
+initial-format = '{i}'
+initial-delimiter = ''
+delimiter = ', '
+last-delimiter = ', '
+max = 3
+use-first = 3
+et-al = ''
+[bibliography.styles.example.types.article-journal]
+pieces = ['{author}', '. {title}', '. {container-title}', '. {year}', ' {month}', ' {day}', ';{volume}', '({issue})', ':{page}', '.']
+char-styles = {  }

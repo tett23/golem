@@ -3,6 +3,7 @@ module BibliographyNamesSpec (tests) where
 import Data.Either (isLeft)
 import Data.Text qualified as T
 import Golem.Assemble.BibliographyNames
+import Golem.Assemble.BibliographyStyle qualified as Decl
 import Test.Tasty
 import Test.Tasty.HUnit
 
@@ -24,7 +25,30 @@ tests :: TestTree
 tests =
   testGroup
     "bibliography names"
-    [ testCase "root ADR 0470 I6: IEEE author initials from the primary-source example" $
+    [ testCase "root ADR 0470 I6: editor labels distinguish one and three editors" $ do
+        bibliographyEditorLabel ("ed.", "eds.") [name "Pavlenko" "Aneta"] @?= Just "ed."
+        bibliographyEditorLabel ("ed.", "eds.") [name "A" "One", name "B" "Two", name "C" "Three"] @?= Just "eds.",
+      testCase "root ADR 0470 I3: absent and empty editors have no label" $ do
+        bibliographyEditorLabel ("ed.", "eds.") [] @?= Nothing
+        bibliographyEditorLabel ("ed.", "eds.") [LiteralName "", name "" ""] @?= Nothing,
+      testCase "root ADR 0470 I2: an empty name declaration retains the explicit base" $
+        applyBibliographyNames id style Decl.emptyBibliographyNames @?= Right style,
+      testCase "root ADR 0470 I2: a full name declaration overrides every written option" $ do
+        let declaration = Decl.emptyBibliographyNames {Decl.bnOrder = Just "family-given", Decl.bnPartDelimiter = Just "", Decl.bnInitials = Just False, Decl.bnInitialFormat = Just "{i}", Decl.bnInitialDelimiter = Just "", Decl.bnDelimiter = Just "; ", Decl.bnLastDelimiter = Just " & ", Decl.bnMax = Just 2, Decl.bnUseFirst = Just 1, Decl.bnEtAl = Just "others"}
+            initials = either (error . show) id (parseInitialFormat "{i}")
+            expected = NameFormat FamilyGiven "" False initials "" (NameListFormat "; " " & " (Just 2) 1 " / others")
+        applyBibliographyNames (" / " <>) style declaration @?= Right expected,
+      testCase "root ADR 0470 I2: explicit zero, false and empty name values survive application" $
+        applyBibliographyNames id style Decl.emptyBibliographyNames {Decl.bnInitials = Just False, Decl.bnPartDelimiter = Just "", Decl.bnMax = Just 0, Decl.bnUseFirst = Just 0, Decl.bnDelimiter = Just ""}
+          @?= Right style {nfInitials = False, nfPartDelimiter = "", nfList = list {nlMax = Just 0, nlUseFirst = 0, nlDelimiter = ""}},
+      testCase "root ADR 0470 I2: et-al preparation is explicit and applied only when written" $ do
+        applyBibliographyNameList (" " <>) list Decl.emptyBibliographyNames {Decl.bnEtAl = Just "et al."} @?= list {nlEtAl = " et al."}
+        applyBibliographyNameList ("!" <>) list Decl.emptyBibliographyNames @?= list,
+      testCase "root ADR 0470 I7: an invalid written name order is rejected" $
+        assertBool "unknown order" (isLeft (applyBibliographyNames id style Decl.emptyBibliographyNames {Decl.bnOrder = Just "reversed"})),
+      testCase "root ADR 0470 I7: a written initial format is parsed before application" $
+        assertBool "unknown initial slot" (isLeft (applyBibliographyNames id style Decl.emptyBibliographyNames {Decl.bnInitialFormat = Just "{unknown}"})),
+      testCase "root ADR 0470 I6: IEEE author initials from the primary-source example" $
         formatBibliographyNames style [name "Chiampi" "M. M.", name "Zilberti" "L. L."] @?= "M. M. Chiampi and L. L. Zilberti",
       testCase "root ADR 0470 I6: Vancouver author initials from the primary-source example" $ do
         let initials = either (error . show) id (parseInitialFormat "{i}")

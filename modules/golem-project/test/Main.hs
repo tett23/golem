@@ -1,5 +1,6 @@
 module Main (main) where
 
+import BibliographyExamplesSpec qualified
 import BibliographyStyleSpec qualified
 import ColophonSpec qualified
 import Control.Exception (evaluate)
@@ -1014,6 +1015,7 @@ tests =
             (Map.lookup 1 (stHeadings st) >>= hsSize) @?= Just (Abs (16 * 65536)),
       TitleFormatSpec.tests,
       FitCharactersSpec.tests,
+      BibliographyExamplesSpec.tests,
       BibliographyStyleSpec.tests,
       VarsSpec.tests,
       testCase "dimensions" $ do

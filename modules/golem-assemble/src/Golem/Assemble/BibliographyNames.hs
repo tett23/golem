@@ -10,15 +10,20 @@ module Golem.Assemble.BibliographyNames
     NameFormat (..),
     InitialFormat,
     parseInitialFormat,
+    applyBibliographyNames,
+    applyBibliographyNameList,
+    bibliographyEditorLabel,
     formatBibliographyNames,
     formatShortNames,
   )
 where
 
+import Control.Applicative ((<|>))
 import Data.Bifunctor (first)
 import Data.Maybe (fromMaybe, listToMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
+import Golem.Assemble.BibliographyStyle qualified as Decl
 import Golem.Assemble.Formats (Braces (..), Piece (..), Slot (..), formatReason, parseFormat, unknownSlot)
 import Golem.Unicode.Grapheme (graphemeClusters)
 
@@ -120,3 +125,43 @@ formatList options names =
     joined [one] = one
     joined [one, final] = one <> nlLastDelimiter options <> final
     joined (one : rest) = one <> nlDelimiter options <> joined rest
+
+{- | Apply written name keys to caller-supplied complete options. The
+caller also supplies how a raw et-al value becomes the complete suffix.
+Omission separators and joining after truncation remain caller decisions.
+-}
+applyBibliographyNames :: (Text -> Text) -> NameFormat -> Decl.BibliographyNames -> Either Text NameFormat
+applyBibliographyNames prepareSuffix base declaration = do
+  order <- case Decl.bnOrder declaration of
+    Nothing -> Right (nfOrder base)
+    Just "family-given" -> Right FamilyGiven
+    Just "given-family" -> Right GivenFamily
+    Just "first-family-given" -> Right FirstFamilyGiven
+    Just unknown -> Left ("名前の順を解釈できません: " <> unknown)
+  initials <- maybe (Right (nfInitialFormat base)) parseInitialFormat (Decl.bnInitialFormat declaration)
+  pure
+    base
+      { nfOrder = order,
+        nfPartDelimiter = fromMaybe (nfPartDelimiter base) (Decl.bnPartDelimiter declaration),
+        nfInitials = fromMaybe (nfInitials base) (Decl.bnInitials declaration),
+        nfInitialFormat = initials,
+        nfInitialDelimiter = fromMaybe (nfInitialDelimiter base) (Decl.bnInitialDelimiter declaration),
+        nfList = applyBibliographyNameList prepareSuffix (nfList base) declaration
+      }
+
+applyBibliographyNameList :: (Text -> Text) -> NameListFormat -> Decl.BibliographyNames -> NameListFormat
+applyBibliographyNameList prepareSuffix base declaration =
+  base
+    { nlDelimiter = fromMaybe (nlDelimiter base) (Decl.bnDelimiter declaration),
+      nlLastDelimiter = fromMaybe (nlLastDelimiter base) (Decl.bnLastDelimiter declaration),
+      nlMax = Decl.bnMax declaration <|> nlMax base,
+      nlUseFirst = fromMaybe (nlUseFirst base) (Decl.bnUseFirst declaration),
+      nlEtAl = maybe (nlEtAl base) prepareSuffix (Decl.bnEtAl declaration)
+    }
+
+-- | Select an explicit singular/plural label by the valid editor count.
+bibliographyEditorLabel :: (Text, Text) -> [BibliographyName] -> Maybe Text
+bibliographyEditorLabel (singular, plural) names = case filter present names of
+  [] -> Nothing
+  [_] -> Just singular
+  _ -> Just plural
