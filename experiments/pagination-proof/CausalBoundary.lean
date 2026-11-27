@@ -1570,19 +1570,32 @@ def inputs : List (String × Ms × Nat) :=
     [2, 3].bind fun w => [3, 4, 5, 6].bind fun lines => lists.map fun items =>
       (s!"{w} {lines} {mode} [{" ".intercalate (items.map Item.name)}]", ⟨w, u, units false items, wants false items⟩, lines))
 
+/-- root ADR 0352 I3, I4: the repeated control boundaries of
+    CausalBoundary.hs, including empty input and unsuccessful layouts. -/
+def controlInputs : List (String × Ms × Nat) :=
+  let cases : List (List Item) := [[], [.k], [.k, .k, .k]] ++
+    ([0, 1, 3].bind fun count =>
+      let ks := List.replicate count Item.k
+      [ks ++ [.p 5], [.p 12] ++ ks ++ [.p 25], [.v [5, 25]] ++ ks ++ [.p 5],
+        [.q 5] ++ ks ++ [.v [5, 25]], [.p 5] ++ ks])
+  [2, 3].bind fun w => [1, 2, 3, 4, 5, 6].bind fun lines => cases.map fun items =>
+    (s!"{w} {lines} [{" ".intercalate (items.map Item.name)}]", ⟨w, .column, units true items, wants true items⟩, lines)
+
 end CausalBoundary
 
 /-- The pages of the manuscripts, or, with `premises`, the manuscripts
     where a run does not place `runLines` and their number. -/
 def main (args : List String) : IO UInt32 := do
   let out ← IO.getStdout
+  let controls ← IO.getEnv "CAUSAL_MODE"
+  let inputs := if controls == some "controls" then CausalBoundary.controlInputs else CausalBoundary.inputs
   if args == ["premises"] then
-    let failed := CausalBoundary.inputs.filter (fun (_, m, lines) => CausalBoundary.premiseFailures m lines)
+    let failed := inputs.filter (fun (_, m, lines) => CausalBoundary.premiseFailures m lines)
     for (name, _, _) in failed do
       out.putStrLn s!"runLines fails: {name}"
-    out.putStrLn s!"{CausalBoundary.inputs.length} manuscripts, {failed.length} where a run does not place runLines"
+    out.putStrLn s!"{inputs.length} manuscripts, {failed.length} where a run does not place runLines"
     return (if failed.isEmpty then 0 else 1)
-  for (name, m, lines) in CausalBoundary.inputs do
+  for (name, m, lines) in inputs do
     out.putStrLn name
     for l in CausalBoundary.output m lines do
       out.putStrLn l
