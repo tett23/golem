@@ -3795,6 +3795,30 @@ docdeps "not JSON" 2 "$WORK/bad.json"
 run doc_deps
 expect "doc-deps: no argument" 2
 
+# ---------------------------------------------------------------- color-deps.sh
+# The plan must contain exactly one local golem-color library, with base alone
+# as its direct dependency (root ADR 0474 I6).
+cat >"$WORK/color-plan.json" <<'EOF'
+{"install-plan":[
+  {"id":"base-4.20","pkg-name":"base","style":"global","component-name":"lib","depends":[]},
+  {"id":"golem-pdf-0.1.0-inplace","pkg-name":"golem-pdf","style":"local","component-name":"lib","depends":["base-4.20"]},
+  {"id":"golem-color-0.1.0-inplace","pkg-name":"golem-color","style":"local","component-name":"lib","depends":["base-4.20"]},
+  {"id":"golem-color-test","pkg-name":"golem-color","style":"local","component-name":"test:golem-color-test","depends":["base-4.20","golem-color-0.1.0-inplace"]}
+]}
+EOF
+: >"$WORK/in"
+run sh "$HERE/color-deps.sh" "$WORK/color-plan.json"
+expect "root ADR 0474 I6: base-only golem-color library" 0 ""
+jq '(."install-plan"[] | select(.id == "golem-color-0.1.0-inplace") | .depends) += ["golem-pdf-0.1.0-inplace"]' "$WORK/color-plan.json" >"$WORK/color-reverse.json"
+run sh "$HERE/color-deps.sh" "$WORK/color-reverse.json"
+expect "root ADR 0474 I6: reverse output dependency fails" 1 ""
+jq '."install-plan" |= map(select(.id != "golem-color-0.1.0-inplace"))' "$WORK/color-plan.json" >"$WORK/color-missing.json"
+run sh "$HERE/color-deps.sh" "$WORK/color-missing.json"
+expect "root ADR 0474 I6: missing library fails" 1 ""
+jq '."install-plan" += [( ."install-plan"[] | select(.id == "golem-color-0.1.0-inplace"))]' "$WORK/color-plan.json" >"$WORK/color-duplicate.json"
+run sh "$HERE/color-deps.sh" "$WORK/color-duplicate.json"
+expect "root ADR 0474 I6: duplicate library fails" 1 ""
+
 # ---------------------------------------------------------------- wasm-freeze.sh
 # (docs/adr/0199 section 6, docs/adr/0202 section 2)
 
@@ -5423,8 +5447,9 @@ CC=$HERE/testdata/ci-checks
   printf 'needs\t%s\n' parser-fmt-proofs parser-fmt-manuscripts
 } | LC_ALL=C sort >"$WORK/before"
 run sh "$HERE/ci-checks.sh" "$CI_YML"
-# the step of cabal sdist all is a check added after the ADR (root ADR 0452)
-grep -vF -e 'same-plan.sh' -e 'cabal sdist all' "$WORK/out" >"$WORK/a1" 2>/dev/null
+# The plan and sdist checks, and the golem-color dependency check and suite,
+# were added after this ADR (root ADR 0452, root ADR 0474).
+grep -vF -e 'same-plan.sh' -e 'cabal sdist all' -e 'color-deps.sh' -e 'golem-color:test:golem-color-test' "$WORK/out" >"$WORK/a1" 2>/dev/null
 if [ "$CODE" = 0 ] && diff "$WORK/before" "$WORK/a1" >"$WORK/a1.diff"; then ok; else
   ng "ADR 0395 A1: the checks of a pull request are those of the commit before the ADR, on the same architectures"
   sed 's/^/  /' "$WORK/a1.diff" 2>/dev/null | head -40

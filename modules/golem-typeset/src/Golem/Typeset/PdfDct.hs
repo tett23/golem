@@ -20,6 +20,7 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Vector.Storable qualified as V
 import Data.Word (Word8)
+import Golem.Color qualified as Color
 import Golem.Pdf qualified as P
 import Golem.Typeset.JpegFrames (checkJpegFrames)
 
@@ -87,7 +88,7 @@ decodePdfDct spec bytes = do
   image <- case decoded of
     J.ImageY8 p | components == 1 -> pure (unpack P.CsGray p)
     J.ImageRGB8 p | components == 3 && transform == 0 -> pure (unpack P.CsRgb p)
-    J.ImageYCbCr8 p | components == 3 && transform == 1 -> pure (unpack P.CsRgb (J.convertImage p :: J.Image J.PixelRGB8))
+    J.ImageYCbCr8 p | components == 3 && transform == 1 -> pure (unpack P.CsRgb (J.pixelMap ycbcr p))
     J.ImageCMYK8 p | components == 4 -> pure (unpack P.CsCmyk (if transform == 0 then p else J.pixelMap ycck p))
     _ -> Left "PDF の JPEG 復号結果の画素形式が一致しません"
   unless (P.imgWidth image == width && P.imgHeight image == height) (Left "PDF の JPEG 復号結果の寸法が一致しません")
@@ -121,8 +122,12 @@ decodePdfDct spec bytes = do
     strip start ((a, b, replacement) : rest) = BS.take (a - start) (BS.drop start bytes) : replacement : strip b rest
     -- Unlike standalone Adobe normalization, PDF DCT preserves K and returns
     -- complemented YCbCr-to-RGB channels before the separate Decode array.
-    ycck (J.PixelCMYK8 y cb cr k) = case J.convertPixel (J.PixelYCbCr8 y cb cr) of
-      J.PixelRGB8 r g b -> J.PixelCMYK8 (255 - r) (255 - g) (255 - b) k
+    ycbcr (J.PixelYCbCr8 y cb cr) =
+      let (r, g, b) = Color.rgb8Components (Color.ycbcr8ToRgb8 y cb cr)
+       in J.PixelRGB8 (fromIntegral r) (fromIntegral g) (fromIntegral b)
+    ycck (J.PixelCMYK8 y cb cr k) =
+      let (c, m, yellow, black) = Color.cmyk8Components (Color.ycck8ToCmyk8 y cb cr k)
+       in J.PixelCMYK8 (fromIntegral c) (fromIntegral m) (fromIntegral yellow) (fromIntegral black)
 
 unpack :: (J.PixelBaseComponent pixel ~ Word8) => P.ColorSpace -> J.Image pixel -> P.ImageData
 unpack color pixels =

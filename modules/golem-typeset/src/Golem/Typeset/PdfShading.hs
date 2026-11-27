@@ -33,6 +33,7 @@ import Data.Ratio (denominator, numerator, (%))
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
+import Golem.Color qualified as Color
 import Golem.Pdf qualified as P
 
 type Obj = P.ObjOf P.ObjNum
@@ -129,7 +130,7 @@ fnPositions :: Fn -> [[Rational]]
 fnPositions = \case
   Fn0 _ _ bits decode _ samples ->
     let top = 2 ^ bits - 1
-     in transpose [[d0 + fromInteger s * (d1 - d0) / top | s <- column] | ((d0, d1), column) <- zip decode samples]
+     in transpose [[Color.decodeRange d0 d1 top s | s <- column] | ((d0, d1), column) <- zip decode samples]
   Fn2 _ c0 c1 _ _ _ -> [c0, c1]
   Fn3 _ functions _ -> concatMap fnPositions functions
   Fn4 -> []
@@ -194,7 +195,7 @@ mapFunction output maps fn = case fn of
     P.ODict (replaceAll fields ([("Functions", P.OArr (map (mapFunction output maps) functions))] <> [("Range", nums (concat [sorted (apply m a) (apply m b) | m <- maps])) | Just ranges <- [range], let (a, b) = ranges !! output]) [])
   Fn4 -> P.ONull
   where
-    apply (a, b) v = a * v + b
+    apply = Color.affine
     sorted x y = [min x y, max x y]
 
 -- | An exponential function whose every output is the given colour.
@@ -349,7 +350,7 @@ readMesh kind fields components body = do
 meshPositions :: Mesh -> [[Rational]]
 meshPositions mesh =
   let top = 2 ^ meshComponentBits mesh - 1 :: Integer
-   in [[d0 + fromInteger s * (d1 - d0) / fromInteger top | ((d0, d1), s) <- zip (meshColourDecode mesh) colour] | record <- meshRecords mesh, colour <- recordColours record]
+   in [[Color.decodeRange d0 d1 top s | ((d0, d1), s) <- zip (meshColourDecode mesh) colour] | record <- meshRecords mesh, colour <- recordColours record]
 
 {- | The data whose colours are four copies of the sample of one output, and
 the colour Decode pairs mapped by each map (a_k, b_k).
@@ -357,7 +358,7 @@ the colour Decode pairs mapped by each map (a_k, b_k).
 writeMesh :: Int -> [(Rational, Rational)] -> Mesh -> ([(Rational, Rational)], ByteString)
 writeMesh output maps mesh =
   let (d0, d1) = meshColourDecode mesh !! output
-      decode = [(a * d0 + b, a * d1 + b) | (a, b) <- maps]
+      decode = [(Color.affine one d0, Color.affine one d1) | one <- maps]
       fieldsOf record =
         [(meshFlagBits mesh, f) | Just f <- [recordFlag record]]
           <> [(meshCoordinateBits mesh, c) | c <- recordCoordinates record]

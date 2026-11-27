@@ -19,6 +19,7 @@ import Data.Map.Strict qualified as Map
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
+import Golem.Color qualified as Color
 import Golem.Length.Decimal (showRationalDigits)
 import Golem.Pdf qualified as P
 import Golem.Pdf.Object qualified as O
@@ -124,7 +125,7 @@ drawingImportedPage drawing =
 recolorFigure :: Cmyk -> P.FigureContent -> P.FigureContent
 recolorFigure swatch figure@(P.SvgFigure drawing)
   | Set.null used = figure
-  | all gray (Set.toList used) = paint (\(r, _, _) -> rgbTone swatch (fromIntegral r / 255))
+  | all gray (Set.toList used) = paint (\(r, _, _) -> rgbTone swatch (Color.sampleRatio (fromIntegral r) 255))
   | Set.size used == 1 = paint (const (rgbTone swatch 0))
   | otherwise = figure
   where

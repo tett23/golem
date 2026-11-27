@@ -55,6 +55,7 @@ import Golem.Assemble
 import Golem.Assemble.ListMarkers
 import Golem.Assemble.Numbering (formatSeparator, formatTitle, titleSeparator)
 import Golem.Bibliography (EntryPart (..))
+import Golem.Color qualified as Color
 import Golem.Doc.Citation (CitePiece (..), citationPieces)
 import Golem.Doc.FigureWidth (FigureWidth (..), parseFigureWidth)
 import Golem.Doc.IR
@@ -380,11 +381,9 @@ cssString = T.concatMap $ \case
   c | c < ' ' || c == '\DEL' -> "\\" <> T.pack (showHex (fromEnum c) "") <> " "
   c -> T.singleton c
 
--- | The naive conversion: screen colours are an approximation of print.
+-- | The existing screen approximation, shared with screen PDF.
 cmykToRgb :: (Int, Int, Int, Int) -> (Int, Int, Int)
-cmykToRgb (c, m, y, k) =
-  let ch v = round (255 * (1 - fromIntegral v / 100 :: Rational) * (1 - fromIntegral k / 100))
-   in (ch c, ch m, ch y)
+cmykToRgb = Color.cmykPercentToRgb8
 
 data Ctx = Ctx
   { cCfg :: HtmlConfig,
