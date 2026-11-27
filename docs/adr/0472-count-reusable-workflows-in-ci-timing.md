@@ -1,6 +1,6 @@
 # ADR 0472: CI の時間の計測で再利用ワークフローのジョブも数える
 
-Status: proposed
+Status: accepted-pending
 
 ## 文脈
 

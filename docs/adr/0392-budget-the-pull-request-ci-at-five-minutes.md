@@ -1,6 +1,6 @@
 # ADR 0392: プルリクエストの CI の時間を 5 分の予算にする
 
-Status: superseded [{"by":["docs/adr/0424-fix-the-low-findings-of-the-audit-that-need-an-adr.md"],"part":"予算の番号","kind":"supplement"}]
+Status: superseded [{"by":["docs/adr/0424-fix-the-low-findings-of-the-audit-that-need-an-adr.md"],"part":"予算の番号","kind":"supplement"},{"part":"CI の依存関係の読み方と再利用ワークフローの時間の計測","by":["docs/adr/0472-count-reusable-workflows-in-ci-timing.md"],"kind":"supplement"}]
 
 ## 文脈
 
