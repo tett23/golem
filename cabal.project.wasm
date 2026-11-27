@@ -13,6 +13,7 @@
 packages:
   modules/golem-assemble
   modules/golem-bibliography
+  modules/golem-color
   modules/golem-doc
   modules/golem-driver
   modules/golem-emet

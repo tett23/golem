@@ -1,6 +1,6 @@
 # ADR 0474: 色の計算を独立モジュールへ集め、固定の高速な近似を使う
 
-Status: accepted-pending
+Status: accepted
 
 ## 文脈
 

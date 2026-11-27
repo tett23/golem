@@ -75,6 +75,7 @@ import Data.Map.Strict qualified as Map
 import Data.Maybe (catMaybes, isJust)
 import Data.Ratio ((%))
 import Data.Text (Text)
+import Golem.Color qualified as Color
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import GHC.Conc (par, pseq)
@@ -111,14 +112,10 @@ data Swatch = Swatch !Int !Int !Int !Int
   deriving stock (Eq, Show)
 
 {- | A swatch on the screen (root ADR 0431): each of R, G and B from 0 to
-255, as golem-html's cmykToRgb gives it to HTML and EPUB. A copy, so that
-golem-pdf does not depend on golem-html; the tests of root ADR 0431 I4
-compare the two.
+255, using the shared approximation without a dependency on golem-html.
 -}
 cmykToRgb :: (Int, Int, Int, Int) -> (Int, Int, Int)
-cmykToRgb (c, m, y, k) =
-  let ch v = round (255 * (1 - fromIntegral v / 100 :: Rational) * (1 - fromIntegral k / 100))
-   in (ch c, ch m, ch y)
+cmykToRgb = Color.cmykPercentToRgb8
 
 {- | How a styled glyph run is drawn (golem-driver ADR 0004): horizontal
 scaling in permille, turned for vertical writing, a slant (0 for none)
@@ -503,11 +500,11 @@ markBuilder fontNames imageNames formNames = mark
       Image i (Rect x y w h) ->
         "q " <> num w <> " 0 0 " <> num h <> sp <> num x <> sp <> num y <> " cm /Im" <> B.intDec (Map.findWithDefault 0 i imageNames) <> " Do Q" <> nl
       SetColor (Swatch c m y k) ->
-        let vs = mconcat [ratio (toInteger v % 100) <> sp | v <- [c, m, y, k]]
+        let vs = mconcat [ratio (Color.percentRatio v) <> sp | v <- [c, m, y, k]]
          in vs <> "k " <> vs <> "K" <> nl
       -- the components in the digits of the other numbers of the content (root ADR 0431)
       SetRgbColor r g b ->
-        let vs = mconcat [ratio (toInteger v % 255) <> sp | v <- [r, g, b]]
+        let vs = mconcat [ratio (Color.sampleRatio v 255) <> sp | v <- [r, g, b]]
          in "/GolemSRGB cs " <> vs <> "sc /GolemSRGB CS " <> vs <> "SC" <> nl
       StyledGlyphRun (RunStyle scale rotated slant stroke) f size gs ->
         let matrix

@@ -22,6 +22,7 @@ import Data.Text.Encoding qualified as TE
 import Golem.Pdf qualified as P
 import Golem.Typeset.Ccitt (CcittParams (..), decodeCcitt)
 import Golem.Typeset.FigureColor (Cmyk, RasterAnalysis (..), RasterKind (..))
+import Golem.Color qualified as Color
 import Golem.Typeset.PdfDct (DctSamples (..), PdfDctSpec (..), decodePdfDct)
 import Golem.Typeset.PdfShading qualified as S
 
@@ -530,7 +531,7 @@ operationSpace resources (operator, args) state
             P.CsGray -> GraySpace
             P.CsCmyk -> CmykSpace
             _ -> RgbSpace
-          colour bytes = case map (\w -> fromIntegral w % 255) (BS.unpack bytes) of
+          colour bytes = case map (\w -> Color.sampleRatio (fromIntegral w) 255) (BS.unpack bytes) of
             [g] -> Gray g
             [r, g, b] -> Rgb r g b
             [c, m, y, k] -> CmykColor c m y k
@@ -751,7 +752,7 @@ devicePdfImage scope resources key fields state = do
           Right (expandSamples (fromInteger width) (fromInteger height) (fromInteger bits) sampleComponents ranges palette components bytes, reservedExpansion)
       | reversed -> do
           inverted <- charge (BS.length bytes) decoded
-          Right (BS.map (255 -) bytes, inverted)
+          Right (BS.map Color.invert8 bytes, inverted)
       | otherwise -> Right (bytes, decoded)
   (alpha, masked) <- pdfImageAlpha width height bits sampleComponents bytes fields sampled
   let outputBits = if bits == 16 || maybe False ((== 16) . P.alphaBits) alpha then 16 else 8
@@ -820,7 +821,7 @@ exactSpace resources = go Set.empty
               let ranges = exactRanges space
                   components = length ranges
               if BS.length bytes < (highest + 1) * components then Left indexedInvalid else Right ()
-              entries <- traverse (\i -> exactColor space [low + fromIntegral byte * (top - low) / 255 | ((low, top), byte) <- zip ranges (BS.unpack (BS.take components (BS.drop (i * components) bytes)))]) [0 .. highest]
+              entries <- traverse (\i -> exactColor space [Color.decodeRange low top 255 (toInteger byte) | ((low, top), byte) <- zip ranges (BS.unpack (BS.take components (BS.drop (i * components) bytes)))]) [0 .. highest]
               Right (Just (IndexedSpace entries, read'))
             _ -> Right Nothing
         _ -> do
@@ -853,7 +854,7 @@ exactColor :: Space -> [Rational] -> Either Text Color
 exactColor space values = case space of
   CieSpace family key ranges | length ranges == length values -> Right (cieColor family key ranges values)
   RangedSpace base ranges | length ranges == length values -> rangedColor base ranges values
-  _ -> case (space, map (clip (0, 1)) values) of
+  _ -> case (space, map (Color.clipRange (0, 1)) values) of
     (GraySpace, [g]) -> Right (Gray g)
     (RgbSpace, [r, g, b]) -> Right (Rgb r g b)
     (CmykSpace, [c, m, y, k]) -> Right (CmykColor c m y k)
@@ -900,11 +901,11 @@ exactPdfImage space key fields state = do
       rowBytes = fromInteger ((width * toInteger components * bits + 7) `div` 8) :: Int
       table = maybe Map.empty (Map.fromList . zip [0 ..]) palette
       samplesOf pixel = [packedSample bytes rowBytes depth (pixel `mod` w * components + channel) (pixel `div` w) | channel <- [0 .. components - 1]]
-      valueOf (low, high) sample = low + fromIntegral sample * (high - low) / fromIntegral maximum'
+      valueOf (low, high) sample = Color.decodeRange low high maximum' (toInteger sample)
       colourOf samples = case palette of
         Just _ -> case zip decode samples of
           [(range, sample)] ->
-            let index = max 0 (min (Map.size table - 1) (fromInteger (floor (valueOf range sample + 1 / 2))))
+            let index = max 0 (min (Map.size table - 1) (fromInteger (Color.nearestHalfUp (valueOf range sample))))
              in maybe (Left "PDF 図版の色の索引が不正です") Right (Map.lookup index table)
           _ -> Left "PDF 図版の色の索引が不正です"
         Nothing -> exactColor space (zipWith valueOf decode samples)
@@ -923,12 +924,12 @@ exactPdfImage space key fields state = do
         Just mattes -> do
           let samples = samplesOf pixel
               (a, top') = opacity pixel
-              level = toInteger a % toInteger top' :: Rational
+              level = Color.sampleRatio a top'
               key' = samples <> [a]
           case Map.lookup key' cache of
             Just colour -> Right (colour, cache)
             Nothing -> do
-              colour <- exactColor space [mv + (valueOf range sample - mv) / level | (mv, range, sample) <- zip3 mattes decode samples]
+              colour <- exactColor space [Color.unmatte mv (valueOf range sample) level | (mv, range, sample) <- zip3 mattes decode samples]
               Right (colour, Map.insert key' colour cache)
       classify !pixel !kind cache
         | pixel == total || kind == Multicolor = Right (kind, cache)
@@ -947,8 +948,8 @@ exactPdfImage space key fields state = do
     else do
       let (c, m, y, k) = figureSwatch state
           top = 2 ^ outputBits - 1 :: Integer
-          inksOf colour = if kind == Grayscale then inkValues (figureSwatch state) colour else [fromIntegral s / 100 | s <- [c, m, y, k]]
-          encode colour = BS.pack (concatMap (\ink -> let v = round (fromIntegral top * ink) :: Integer in if outputBits == 16 then [fromInteger (v `shiftR` 8), fromInteger (v .&. 255)] else [fromInteger v]) (inksOf colour))
+          inksOf colour = if kind == Grayscale then inkValues (figureSwatch state) colour else map Color.percentRatio [c, m, y, k]
+          encode colour = BS.pack (concatMap (\ink -> let v = Color.quantizeEven (fromInteger top) ink in if outputBits == 16 then [fromIntegral (v `shiftR` 8), fromIntegral (v .&. 255)] else [fromIntegral v]) (inksOf colour))
           pixelBytes (cache, encoded, acc) pixel = do
             let samples = samplesOf pixel
             (colour, cache') <- lookupColour cache samples
@@ -1244,17 +1245,17 @@ expandSamples width height bits sampleComponents ranges palette components raw =
       Just _ -> components
       Nothing -> if bits == 16 then 2 else 1
     nearest :: Rational -> Integer
-    nearest value = floor (value + 1 / 2)
-    mapped (low, high) sample = low + fromIntegral sample * (high - low) / fromIntegral maximum'
+    nearest value = Color.nearestHalfUp value
+    mapped (low, high) sample = Color.decodeRange low high (toInteger maximum') (toInteger sample)
     entry range sample = case palette of
       Just (highest, table) ->
         let index = fromInteger (max 0 (min (toInteger highest) (nearest (mapped range sample))))
          in BS.take components (BS.drop (index * components) table)
       Nothing ->
-        let clipped = max 0 (min 1 (mapped range sample))
+        let clipped = Color.clampUnit (mapped range sample)
          in if bits == 16
-              then let v = nearest (clipped * 65535) in BS.pack [fromInteger (v `shiftR` 8), fromInteger (v .&. 255)]
-              else BS.singleton (fromInteger (nearest (clipped * 255)))
+              then let v = Color.quantizeHalfUp 65535 clipped in BS.pack [fromIntegral (v `shiftR` 8), fromIntegral (v .&. 255)]
+              else BS.singleton (fromIntegral (Color.quantizeHalfUp 255 clipped))
     tables = [BS.concat [entry range sample | sample <- [0 .. maximum']] | range <- ranges]
     slice channel sample = BS.take entryBytes (BS.drop (sample * entryBytes) (tables !! channel))
     rawSample pixel channel =
@@ -1337,7 +1338,7 @@ pdfImageAlpha width height imageBits components raw fields state = case lookup "
             if reversed
               then do
                 reserved <- charge (BS.length bytes) decoded
-                Right (Just (P.Alpha (fromInteger bits) (BS.map (255 -) bytes)), reserved)
+                Right (Just (P.Alpha (fromInteger bits) (BS.map Color.invert8 bytes)), reserved)
               else Right (Just (P.Alpha (fromInteger bits) bytes), decoded)
           else do
             let depth = fromInteger bits
@@ -1430,7 +1431,7 @@ explicitMaskAlpha width height imageFields reference state = do
             then Right (Just (P.Alpha 1 bytes), decoded)
             else do
               reserved <- charge (BS.length bytes) decoded
-              Right (Just (P.Alpha 1 (BS.map (255 -) bytes)), reserved)
+              Right (Just (P.Alpha 1 (BS.map Color.invert8 bytes)), reserved)
         else do
           let rowBytes = fromInteger ((maskWidth + 7) `div` 8)
               -- A sample paints where its Decode-mapped value is 0.
@@ -1667,7 +1668,7 @@ parseColor (CieSpace family key ranges) args = do
   if length values == length ranges then Right (cieColor family key ranges values) else Left "PDF 図版の色の成分数が不正です"
 parseColor space args = do
   values <- maybe (Left "PDF 図版の色の成分を読めません") Right (traverse decimal args)
-  let clipped = map (max 0 . min 1) values
+  let clipped = map Color.clampUnit values
   case (space, clipped) of
     (GraySpace, [g]) -> Right (Gray g)
     (RgbSpace, [r, g, b]) -> Right (Rgb r g b)
@@ -1712,13 +1713,10 @@ initialColor = \case
   -- The initial pattern paints nothing.
   PatternSpace _ -> Right (PatternColor "" Nothing Nothing)
 
-clip :: (Rational, Rational) -> Rational -> Rational
-clip (low, high) = max low . min high
-
 -- Range maps an ICCBased component to 0 to 1 before the device rules apply.
 rangedColor :: Space -> [(Rational, Rational)] -> [Rational] -> Either Text Color
 rangedColor base ranges values =
-  let unit = [(clip range value - low) / (high - low) | (range@(low, high), value) <- zip ranges values]
+  let unit = [Color.normalizeRangeClipped range value | (range, value) <- zip ranges values]
    in case (base, unit) of
         (GraySpace, [g]) -> Right (Gray g)
         (RgbSpace, [r, g, b]) -> Right (Rgb r g b)
@@ -1729,12 +1727,12 @@ rangedColor base ranges values =
 -- conversion; equal values in one space are one colour (root ADR 0425).
 cieColor :: CieFamily -> Text -> [(Rational, Rational)] -> [Rational] -> Color
 cieColor family key ranges values =
-  let clipped = zipWith clip ranges values
+  let clipped = zipWith Color.clipRange ranges values
       neutral = case (family, clipped) of
         (CalGrayFamily, [g]) -> Just g
         (CalRgbFamily, [r, g, b]) | r == g && g == b -> Just r
         -- An ICCBased Lab Range may exceed 0 to 100; L* stays within it.
-        (LabFamily, [l, 0, 0]) -> Just (clip (0, 100) l / 100)
+        (LabFamily, [l, 0, 0]) -> Just (Color.labNeutralGray l)
         _ -> Nothing
    in Cie key clipped neutral
 
@@ -1829,14 +1827,15 @@ paint swatch source isStroke = BC.unwords (map (TE.encodeUtf8 . P.showRationalDi
 
 -- | The four inks that a colour of a converted figure paints.
 inkValues :: Cmyk -> Color -> [Rational]
-inkValues (c, m, y, k) source =
-  let amount = case source of
-        Gray g -> 1 - g
-        Rgb r g b | r == g && g == b -> 1 - g
-        CmykColor a b d e | a == b && b == d -> 1 - (1 - a) * (1 - e)
-        Cie _ _ (Just g) -> 1 - g
-        _ -> 1
-   in [fromIntegral component / 100 * amount | component <- [c, m, y, k]]
+inkValues swatch source =
+  let brightness = case source of
+        Gray g -> g
+        Rgb r g b | r == g && g == b -> g
+        CmykColor a b d e | a == b && b == d -> Color.neutralCmykGrayRaw a e
+        Cie _ _ (Just g) -> g
+        _ -> 0
+      (c, m, y, k) = Color.tintPercent swatch brightness
+   in [c, m, y, k]
 
 -- Function-based shadings (root ADR 0425) ---------------------------------
 
@@ -2096,18 +2095,17 @@ analyzeShading value state0 = do
         Nothing -> all (and . zipWith inside ranges) outputs
       backgroundWithin = maybe True (and . zipWith inside ranges) background
       zeros = all (all (== 0) . valuesOf)
-      normalized (low, high) = (1 / (high - low), negate low / (high - low))
       gray = case space of
         GraySpace -> Just (S.Gray 0 1 0)
         CieSpace CalGrayFamily _ _ -> Just (S.Gray 0 1 0)
-        RangedSpace GraySpace [range] -> Just (uncurry (S.Gray 0) (normalized range))
+        RangedSpace GraySpace [range] -> Just (uncurry (S.Gray 0) (Color.rangeToUnitMap range))
         RgbSpace | equalOutputs -> Just (S.Gray 0 1 0)
         CieSpace CalRgbFamily _ _ | equalOutputs -> Just (S.Gray 0 1 0)
-        RangedSpace RgbSpace (range : rest) | equalOutputs, all (== range) rest -> Just (uncurry (S.Gray 0) (normalized range))
-        CieSpace LabFamily _ _ | zeros [1, 2] -> Just (S.Gray 0 (1 / 100) 0)
-        CmykSpace | zeros [0, 1, 2] -> Just (S.Gray 3 (-1) 1)
+        RangedSpace RgbSpace (range : rest) | equalOutputs, all (== range) rest -> Just (uncurry (S.Gray 0) (Color.rangeToUnitMap range))
+        CieSpace LabFamily _ _ | zeros [1, 2] -> Just (S.Gray 0 Color.labNeutralShadingSlope 0)
+        CmykSpace | zeros [0, 1, 2] -> Just (uncurry (S.Gray 3) (Color.blackRangeToGrayMap (0, 1)))
         RangedSpace CmykSpace [(l0, _), (l1, _), (l2, _), (low, high)]
-          | and [all (== l) (valuesOf i) | (i, l) <- zip [0, 1, 2] [l0, l1, l2]] -> Just (S.Gray 3 (negate 1 / (high - low)) (1 + low / (high - low)))
+          | and [all (== l) (valuesOf i) | (i, l) <- zip [0, 1, 2] [l0, l1, l2]] -> Just (uncurry (S.Gray 3) (Color.blackRangeToGrayMap (low, high)))
         _ -> Nothing
       equalOutputs = allSame definitions && maybe True allSame background
       linear = if lined && within && backgroundWithin then gray else Nothing
@@ -2172,7 +2170,7 @@ spaceRanges = \case
   PatternSpace _ -> []
   RangedSpace _ ranges -> ranges
   -- L* also stays within 0 to 100, which an ICCBased Range may exceed.
-  CieSpace LabFamily _ ((low, high) : rest) -> (max 0 low, min 100 high) : rest
+  CieSpace LabFamily _ (range : rest) -> Color.labLightnessRange range : rest
   CieSpace _ _ ranges -> ranges
 
 -- | A shading value as a colour, without clipping it to the space.
@@ -2181,7 +2179,7 @@ rawColor space values = case (space, values) of
   (GraySpace, [g]) -> Right (Gray g)
   (RgbSpace, [r, g, b]) -> Right (Rgb r g b)
   (CmykSpace, [c, m, y, k]) -> Right (CmykColor c m y k)
-  (RangedSpace base ranges, _) | length ranges == length values -> rawColor base [(v - low) / (high - low) | ((low, high), v) <- zip ranges values]
+  (RangedSpace base ranges, _) | length ranges == length values -> rawColor base [Color.normalizeRange range v | (range, v) <- zip ranges values]
   (CieSpace family key ranges, _) | length ranges == length values -> Right (cieColor family key (map (const (-(10 ^ (30 :: Int)), 10 ^ (30 :: Int))) ranges) values)
   _ -> Left "PDF 図版のシェーディングの色の成分数が不正です"
 
@@ -2196,10 +2194,10 @@ convertShading (c, m, y, k) shading =
         Nothing -> P.ODict (kept <> replaced)
         Just body -> P.OStream (kept <> replaced) (fromMaybe body newBody)
   where
-    inks = [fromIntegral component / 100 | component <- [c, m, y, k]] :: [Rational]
-    apply (a, b) v = a * v + b
+    inks = map Color.percentRatio [c, m, y, k] :: [Rational]
+    apply = Color.affine
     grayMaps = case shadingGray shading of
-      Just (S.Gray output alpha beta) | allGray shading -> Just (output, [(negate (s * alpha), s * (1 - beta)) | s <- inks])
+      Just (S.Gray output alpha beta) | allGray shading -> Just (output, Color.shadingTintMap (c, m, y, k) alpha beta)
       _ -> Nothing
     -- A mesh without a function repeats the samples of one output; its
     -- coordinate Decode pairs stay as written.

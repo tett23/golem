@@ -45,6 +45,7 @@ import Data.Maybe (catMaybes, fromMaybe, isJust, isNothing, listToMaybe)
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
+import Golem.Color qualified as Color
 import Golem.Svg.Colors (namedColor)
 import Golem.Svg.Css
 import Golem.Svg.Number
@@ -405,8 +406,8 @@ color current v0 =
   let v = T.strip v0
    in if
         | v == "currentColor" -> current
-        | Just h <- T.stripPrefix "#" v, T.all isHex h, [r, g, b] <- map (\c -> 17 * hexDigit c) (T.unpack h) -> Just (Color r g b)
-        | Just h <- T.stripPrefix "#" v, T.length h == 6, T.all isHex h -> let pair i = 16 * hexDigit (T.index h i) + hexDigit (T.index h (i + 1)) in Just (Color (pair 0) (pair 2) (pair 4))
+        | Just h <- T.stripPrefix "#" v, T.all isHex h, [r, g, b] <- map (Color.hexNibbleTo8 . hexDigit) (T.unpack h) -> Just (Color r g b)
+        | Just h <- T.stripPrefix "#" v, T.length h == 6, T.all isHex h -> let pair i = Color.hexPairTo8 (hexDigit (T.index h i)) (hexDigit (T.index h (i + 1))) in Just (Color (pair 0) (pair 2) (pair 4))
         | Just inner <- T.stripPrefix "rgb(" v >>= T.stripSuffix ")" ->
             case map T.strip (T.splitOn "," inner) of
               [r, g, b] -> Color <$> component r <*> component g <*> component b
@@ -420,11 +421,9 @@ color current v0 =
       | isDigit c = fromEnum c - fromEnum '0'
       | otherwise = fromEnum (toLower c) - fromEnum 'a' + 10
     component t
-      | Just p <- T.stripSuffix "%" t = clamp . round . (* 255) . (/ 100) <$> parseNumber p
-      | T.all isDigit t && not (T.null t) = clamp . round <$> parseNumber t
+      | Just p <- T.stripSuffix "%" t = Color.percentageToRgb8 <$> parseNumber p
+      | T.all isDigit t && not (T.null t) = Color.clampRgb8 . round <$> parseNumber t
       | otherwise = Nothing
-    clamp :: Integer -> Int
-    clamp = fromInteger . max 0 . min 255
 
 -- | A length in CSS px: a number, alone or with px.
 lengthPx :: Text -> Maybe Rational

@@ -23,10 +23,11 @@ import Data.Bits (shiftR, (.&.))
 import Data.ByteString qualified as BS
 import Data.ByteString.Lazy qualified as BL
 import Data.Maybe (isJust)
-import Data.Ratio (denominator, numerator, (%))
+import Data.Ratio (denominator, numerator)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Vector.Storable qualified as V
+import Golem.Color qualified as Color
 import Golem.Pdf qualified as P
 import Golem.Pdf.Object (ObjOf (..))
 import Golem.Typeset.JpegFrames (JpegFrameInfo (..), checkJpegFrames, inspectJpegFrames, maxColorBytes)
@@ -153,10 +154,10 @@ recolorRaster swatch original = do
       let bits = if P.imgBits image == 16 || maybe False ((== 16) . P.alphaBits) (P.imgAlpha image) then 16 else 8
           maximumSample = 2 ^ bits - 1 :: Int
           pixels = P.imgWidth image * P.imgHeight image
-          shade pixel = if kind == Grayscale then 1 - grayValue (pixelAt image pixel) else 1
-          components pixel = let (c, m, y, k) = swatch; d = shade pixel / 100 in (fromIntegral c * d, fromIntegral m * d, fromIntegral y * d, fromIntegral k * d)
+          brightness pixel = if kind == Grayscale then grayValue (pixelAt image pixel) else 0
+          components pixel = Color.tintPercent swatch (brightness pixel)
           component pixel channel = case components pixel of (c, m, y, k) -> [c, m, y, k] !! channel
-          sample pixel channel = fromInteger (round (fromIntegral maximumSample * component pixel channel) :: Integer) :: Int
+          sample pixel channel = Color.quantizeEven maximumSample (component pixel channel)
           byteAt i =
             let sampleIndex = if bits == 16 then i `div` 2 else i
                 value = sample (sampleIndex `div` 4) (sampleIndex `mod` 4)
@@ -164,10 +165,11 @@ recolorRaster swatch original = do
           size = pixels * 4 * (bits `div` 8)
           bytes = fst (BS.unfoldrN size (\i -> Just (byteAt i, i + 1)) 0)
           converted = image {P.imgBits = bits, P.imgColor = P.CsCmyk, P.imgIcc = Nothing, P.imgData = bytes, P.imgDct = False, P.imgInvertedCmyk = False}
-          rgb pixel channel = case rgbComponents (components pixel) of (r, g, b) -> [r, g, b] !! channel
-          alpha pixel = maybe maximumSample (\a -> let (v, m) = alphaAt image a pixel in round (fromIntegral maximumSample * ratio v m)) (P.imgAlpha image)
-          png8 = Png.encodePng (J.Image (P.imgWidth image) (P.imgHeight image) (V.generate (pixels * 4) (\i -> if i `mod` 4 == 3 then fromIntegral (alpha (i `div` 4)) else fromIntegral (round (255 * rgb (i `div` 4) (i `mod` 4)) :: Int))) :: J.Image J.PixelRGBA8)
-          png16 = Png.encodePng (J.Image (P.imgWidth image) (P.imgHeight image) (V.generate (pixels * 4) (\i -> if i `mod` 4 == 3 then fromIntegral (alpha (i `div` 4)) else fromIntegral (round (65535 * rgb (i `div` 4) (i `mod` 4)) :: Int))) :: J.Image J.PixelRGBA16)
+          rgb8 pixel channel = case Color.rgb8OfTintPercent swatch (brightness pixel) of (r, g, b) -> [r, g, b] !! channel
+          rgb16 pixel channel = case Color.rgb16OfTintPercent swatch (brightness pixel) of (r, g, b) -> [r, g, b] !! channel
+          alpha pixel = maybe maximumSample (\a -> let (v, m) = alphaAt image a pixel in Color.quantizeEven maximumSample (ratio v m)) (P.imgAlpha image)
+          png8 = Png.encodePng (J.Image (P.imgWidth image) (P.imgHeight image) (V.generate (pixels * 4) (\i -> if i `mod` 4 == 3 then fromIntegral (alpha (i `div` 4)) else fromIntegral (rgb8 (i `div` 4) (i `mod` 4)))) :: J.Image J.PixelRGBA8)
+          png16 = Png.encodePng (J.Image (P.imgWidth image) (P.imgHeight image) (V.generate (pixels * 4) (\i -> if i `mod` 4 == 3 then fromIntegral (alpha (i `div` 4)) else fromIntegral (rgb16 (i `div` 4) (i `mod` 4)))) :: J.Image J.PixelRGBA16)
       pure (RasterAnalysis kind (Just converted), Just (BL.toStrict (if bits == 16 then png16 else png8)))
   where
     scan image i seen
@@ -183,7 +185,7 @@ recolorRaster swatch original = do
             _ -> pure Many
 
 ratio :: Int -> Int -> Rational
-ratio value maximumSample = toInteger value % toInteger maximumSample
+ratio = Color.sampleRatio
 
 isGray :: Pixel -> Bool
 isGray = \case
@@ -196,18 +198,12 @@ grayValue :: Pixel -> Rational
 grayValue = \case
   Gray g m -> ratio g m
   Rgb r _ _ m -> ratio r m
-  Cmyk c _ _ k m -> (1 - ratio c m) * (1 - ratio k m)
+  Cmyk c _ _ k m -> Color.neutralCmykGrayRaw (ratio c m) (ratio k m)
   InvalidPixel -> 1 -- only an invisible palette pixel can reach conversion
 
 -- | The CMYK tone is computed before the screen approximation, without intermediate rounding.
 rgbTone :: Cmyk -> Rational -> (Int, Int, Int)
-rgbTone (c, m, y, k) gray =
-  let d = (1 - gray) / 100
-      (r, g, b) = rgbComponents (fromIntegral c * d, fromIntegral m * d, fromIntegral y * d, fromIntegral k * d)
-   in (round (255 * r), round (255 * g), round (255 * b))
-
-rgbComponents :: (Rational, Rational, Rational, Rational) -> (Rational, Rational, Rational)
-rgbComponents (c, m, y, k) = ((1 - c) * (1 - k), (1 - m) * (1 - k), (1 - y) * (1 - k))
+rgbTone swatch brightness = Color.rgb8OfTintPercent swatch brightness
 
 checkDimensions :: P.ImageData -> Either Text ()
 checkDimensions image = do
@@ -270,4 +266,4 @@ decodeDct image = do
   unless (isJust adobe || names `notElem` ["YCc", "RGBA", "YCcA"]) (Left "JPEG の画素の形式を扱えません")
   native <- dctImage <$> decodePdfDct (PdfDctSpec components hint (P.imgWidth image) (P.imgHeight image) (fromInteger maxColorBytes)) (P.imgData image)
   let inverted = components == 4 && (isJust adobe || implicitYcck)
-  pure native {P.imgData = if inverted then BS.map (255 -) (P.imgData native) else P.imgData native}
+  pure native {P.imgData = if inverted then BS.map Color.invert8 (P.imgData native) else P.imgData native}

@@ -35,6 +35,7 @@ library
     , base              >=4.20 && <4.21
     , bytestring        >=0.11 && <0.13
     , containers        >=0.6  && <0.8
+    , golem-color
     , golem-geometry
     , golem-length
     , golem-syntax
