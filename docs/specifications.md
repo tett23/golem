@@ -9434,6 +9434,17 @@ HTML と EPUB の引用の印は、`<span class="cite">` の中に、括弧、�
 種類ごとの指定があっても、全体の `citation` と、`author-year` モードの全体の `citation-year` は必須にする。
 種類の表の `pieces` も必須とし、一覧の無い本で引用だけに使う表には `pieces = []` を書く。
 種類ごとの `subsequent` も読み取り、未使用のものも含めて書式の構文と必要な名前の設定を検査する。
+片の `{!欄}` は、同じ欄の通常の差し込みが欠落する場合だけ、条件自体を出力せずに残りを組む。
+複数の不在条件はすべてが成立する場合だけ組み、通常の必須欄が欠けた片は従来どおり省く。
+DOI と URL なら `pieces = ["https://doi.org/{DOI}", "{!DOI}{URL}"]` と書き、両方の欄があるときの URL を省ける。
+不在条件に `?` や数の表記を重ねたり、未知の欄を書いたりすると G03304 にする。
+必要な名前の表の検査も不在条件へ適用する。
+`{edition:ordinal-en}` などは、読み出した欄の文字列全体を符号付き十進整数として調べ、正整数なら先頭の 0 を省いて英語の序数にする。
+11、12、13 で終わる数は `th`、それ以外は末尾の 1、2、3 に `st`、`nd`、`rd`、ほかに `th` を付ける。
+0 と負数は G03006 にし、整数として読めない `1.5` や `2nd` などの文字列はそのまま保つ。
+表記を省いた欄を暗黙に序数へ変えず、ほかの数の表記は保つ。
+これらは通常の CLI の引用と一覧に適用し、URL のリンクと媒体ごとの文字のエスケープは既存の扱いを保つ。
+
 `locator-positions` と `locator-delimiters` は、位置の 26 種類ごとにラベルの前後と区切りを指定する（[root ADR 0480](adr/0480-complete-bibliography-sorting-and-conditional-formats.md)）。
 位置は `before` ならラベル、区切り、値の順、`after` なら値、区切り、ラベルの順で組み、省略時は `before` と U+0020 一つにする。
 空文字列と空白をそのまま保持し、ラベルの文字から配置や区切りを推測しない。
@@ -9472,6 +9483,13 @@ IEEE の書籍と論文と章の三つの一次資料例と、ほかの三つの
 `Golem.Assemble.BibliographyStyle.bibliographyTypeFor` は文献種別に合う宣言を選び、その種別の宣言が無い場合だけ、明示した `types.default` を使う。
 型付きの宣言では、一覧の片と文字スタイルは従来の `BibliographyType` と `bsTypes` に保ち、種類ごとの引用の三つの書式は `bsTypeCitations` に保持する。
 TOML の同じ種類の表から読み、一覧と引用の表の選択には `bibliographyTypeNameFor` を共用する。
+`Golem.Assemble.BibliographyRecords.formatBibliographySubsequentCitationWithSuffix` は、`note` モードの二度目以降の引用に使う書式を選ぶ API である。
+選んだ種類の `subsequent`、全体の `subsequent`、全体の `citation` の順に選び、種類の `citation` へは戻さない。
+選んだ種類があれば `types.default` の `subsequent` へは戻さず、明示した空配列は空の片として保つ。
+最初の注の表示番号は呼出側から受け取り、`{first-note}` にはこの番号を指定した数の表記で組む。
+CSL の同名の欄から最初の注番号を推測せず、通常の引用や一覧では `{first-note}` を欠落した欄として扱う。
+この API だけでは注を作成せず、注の自動生成と実際のページ別番号への接続は実装途中である。
+
 
 引用の引数を扱うライブラリ API の `Golem.Eval.CitationArgument.decodeCitationArgument` は、位置の 26 種類と文字列の前置きと後置きを型付きの値に変換する。
 通常の `cite` は、この API で位置と文字列の前置きと後置きを読む。

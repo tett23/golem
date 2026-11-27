@@ -1,5 +1,5 @@
 -- | Resolve a CSL record through an explicit declaration (root ADR 0470).
-module Golem.Assemble.BibliographyRecords (formatBibliographyRecord, formatBibliographyRecordWithSuffix, formatBibliographyCitation, formatBibliographyCitationWith, formatBibliographyCitationWithSuffix, formatBibliographyYearCitationWithSuffix) where
+module Golem.Assemble.BibliographyRecords (formatBibliographyRecord, formatBibliographyRecordWithSuffix, formatBibliographyCitation, formatBibliographyCitationWith, formatBibliographyCitationWithSuffix, formatBibliographyYearCitationWithSuffix, formatBibliographySubsequentCitationWithSuffix) where
 
 import Control.Applicative ((<|>))
 import Data.Map.Strict qualified as Map
@@ -24,7 +24,7 @@ formatBibliographyRecordWithSuffix :: Text -> BibliographyStyle d -> Int -> CslR
 formatBibliographyRecordWithSuffix suffix style number record = do
   entry <- maybe (Left "文献種別の書式がありません") Right (bibliographyTypeFor (fromMaybe "" (ceType (recordEntry record))) style)
   sources <- maybe (Left "文献種別の pieces がありません") Right (btPieces entry)
-  fragments <- recordFragments suffix False style number Nothing record sources
+  fragments <- recordFragments suffix False Nothing style number Nothing record sources
   pure (bibliographyEntryParts (btCharStyles entry) fragments)
 
 formatBibliographyCitation :: BibliographyStyle d -> Int -> CslRecord -> Either Text [CitePiece]
@@ -36,20 +36,29 @@ formatBibliographyCitationWith = formatBibliographyCitationWithSuffix ""
 -- | Only author-year styles use their explicit year template (root ADR 0470).
 formatBibliographyYearCitationWithSuffix :: Text -> BibliographyStyle d -> Int -> Maybe Locator -> CslRecord -> Either Text [CitePiece]
 formatBibliographyYearCitationWithSuffix suffix style
-  | bsCitationMode style == Just "author-year" = formatBibliographyCitationSelecting btcCitationYear bsCitationYear suffix style
+  | bsCitationMode style == Just "author-year" = formatBibliographyCitationSelecting btcCitationYear bsCitationYear Nothing suffix style
   | otherwise = formatBibliographyCitationWithSuffix suffix style
 
 formatBibliographyCitationWithSuffix :: Text -> BibliographyStyle d -> Int -> Maybe Locator -> CslRecord -> Either Text [CitePiece]
-formatBibliographyCitationWithSuffix = formatBibliographyCitationSelecting btcCitation bsCitation
+formatBibliographyCitationWithSuffix = formatBibliographyCitationSelecting btcCitation bsCitation Nothing
 
-formatBibliographyCitationSelecting :: (BibliographyTypeCitations -> Maybe [Text]) -> (BibliographyStyle d -> Maybe [Text]) -> Text -> BibliographyStyle d -> Int -> Maybe Locator -> CslRecord -> Either Text [CitePiece]
-formatBibliographyCitationSelecting typeTemplate globalTemplate suffix style number location record = do
+formatBibliographySubsequentCitationWithSuffix :: Text -> Integer -> BibliographyStyle d -> Int -> Maybe Locator -> CslRecord -> Either Text [CitePiece]
+
+{- | The caller supplies the first displayed note number after numbering.
+Page-local counters must not be guessed from a global citation number.
+-}
+formatBibliographySubsequentCitationWithSuffix suffix firstNote style
+  | bsCitationMode style == Just "note" = formatBibliographyCitationSelecting btcSubsequent (\declaration -> bsSubsequent declaration <|> bsCitation declaration) (Just firstNote) suffix style
+  | otherwise = formatBibliographyCitationWithSuffix suffix style
+
+formatBibliographyCitationSelecting :: (BibliographyTypeCitations -> Maybe [Text]) -> (BibliographyStyle d -> Maybe [Text]) -> Maybe Integer -> Text -> BibliographyStyle d -> Int -> Maybe Locator -> CslRecord -> Either Text [CitePiece]
+formatBibliographyCitationSelecting typeTemplate globalTemplate firstNote suffix style number location record = do
   let selected = do
         kind <- bibliographyTypeNameFor (fromMaybe "" (ceType (recordEntry record))) style
         templates <- Map.lookup kind (bsTypeCitations style)
         typeTemplate templates
   sources <- maybe (Left "citation がありません") Right (selected <|> globalTemplate style)
-  fragments <- recordFragments suffix (bsCitationMode style `elem` [Just "numeric", Just "author-year"]) style number location record sources
+  fragments <- recordFragments suffix (bsCitationMode style `elem` [Just "numeric", Just "author-year"]) firstNote style number location record sources
   pure
     [ case fragment of
         BibliographyField "number" value | value == T.pack (show number) -> CiteNumber (ceId (recordEntry record)) number
@@ -69,8 +78,8 @@ formatBibliographyCitationSelecting typeTemplate globalTemplate suffix style num
     | fragment <- fragments
     ]
 
-recordFragments :: Text -> Bool -> BibliographyStyle d -> Int -> Maybe Locator -> CslRecord -> [Text] -> Either Text [BibliographyFragment]
-recordFragments suffix shortAuthor style number location record sources = do
+recordFragments :: Text -> Bool -> Maybe Integer -> BibliographyStyle d -> Int -> Maybe Locator -> CslRecord -> [Text] -> Either Text [BibliographyFragment]
+recordFragments suffix shortAuthor firstNote style number location record sources = do
   pieces <- traverse (parseBibliographyPiece bibliographyFields) sources
   let fields = concatMap bibliographyPieceFields pieces
   located <- case location of
@@ -84,7 +93,7 @@ recordFragments suffix shortAuthor style number location record sources = do
         options <- Map.lookup "editor" (bsNames style)
         labels <- bnLabel options
         Names.bibliographyEditorLabel labels (people "editor")
-      derived = Map.fromList [("author", author), ("editor", editor), ("editor-label", editorLabel), ("number", Just (tshow number)), ("year", year), ("month", month), ("day", day), ("page", page), ("locator", located)]
+      derived = Map.fromList [("author", author), ("editor", editor), ("editor-label", editorLabel), ("number", Just (tshow number)), ("year", year), ("month", month), ("day", day), ("page", page), ("locator", located), ("first-note", tshow <$> firstNote)]
       value key notation
         | key == "month", Just _ <- notation = numericMonth
         | otherwise = fromMaybe (recordText key record) (Map.lookup key derived)

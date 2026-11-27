@@ -463,6 +463,36 @@ bibliographyFormatTests =
         result <- build (defaultOptions tmp) {optTargets = Just [TargetText]}
         assertEqual "no errors" [] (filter isError (brDiagnostics result))
         assertBool (show (brDiagnostics result)) (DiagnosticCode "G03306" `notElem` map diagCode (brDiagnostics result)),
+    testCase "root ADR 0480 I5, I6: conditional links and explicit ordinals reach the shared outputs" $
+      withBibProject "bibliography = [\"refs.json\"]" "[cites: [cite a]|[cite b]|[cite c]|[cite d]|[cite e]|[cite f]]\n\n@bibliography\n" [("refs.json", "[{\"id\":\"a\",\"title\":\"A\",\"DOI\":\"10.1/<a>&\",\"URL\":\"https://example.org/hidden\",\"edition\":\"1\"},{\"id\":\"b\",\"title\":\"B\",\"DOI\":\"10.1/b\",\"edition\":\"2nd\"},{\"id\":\"c\",\"title\":\"C\",\"URL\":\"https://example.org/c?q=1&x=2\",\"edition\":\"1.5\"},{\"id\":\"d\",\"title\":\"D\",\"edition\":2},{\"id\":\"e\",\"title\":\"E\",\"DOI\":\"\",\"URL\":\"\",\"edition\":12},{\"id\":\"f\",\"title\":\"F\",\"edition\":\"123456789012345678901\"}]")] $ \tmp -> do
+        let declaration = T.replace ".types.book]" ".types.default]" (T.replace "pieces=['DOI {DOI}.']" "pieces=['{title}: ', '{edition:ordinal-en}', ' doi={DOI}', '{!DOI} url={URL}', '{!DOI}{!URL} no-link']" customBibliographyDeclaration)
+            expected = ["A: 1st doi=10.1/<a>&", "B: 2nd doi=10.1/b", "C: 1.5 url=https://example.org/c?q=1&x=2", "D: 2nd no-link", "E: 12th no-link", "F: 123456789012345678901st no-link"]
+        TIO.appendFile (tmp </> "style.toml") declaration
+        TIO.appendFile (tmp </> "manifest.toml") "[targets.text]\n[targets.epub]\n"
+        result <- build (defaultOptions tmp) {optTargets = Just [TargetHtml, TargetText, TargetEpub]}
+        assertEqual "no errors" [] (filter isError (brDiagnostics result))
+        text <- TIO.readFile (tmp </> "build/text/horizontal/a.txt")
+        assertBool (T.unpack text) (all (`T.isInfixOf` text) expected)
+        html <- TIO.readFile (tmp </> "build/html/a.html")
+        archive <- toArchive <$> BL.readFile (tmp </> "build/epub/book.epub")
+        let xhtml = maybe "" (TE.decodeUtf8 . BL.toStrict . fromEntry) (findEntryByPath "OEBPS/a.xhtml" archive)
+        forM_ [html, xhtml] $ \page -> do
+          assertBool (T.unpack page) ("A: 1st doi=10.1/&lt;a&gt;&amp;" `T.isInfixOf` page)
+          assertBool (T.unpack page) ("href=\"https://example.org/c?q=1&amp;x=2\"" `T.isInfixOf` page)
+          assertBool "DOI suppresses the alternative URL" (not ("https://example.org/hidden" `T.isInfixOf` page))
+          assertBool "literal values are escaped once" (not ("&amp;lt;" `T.isInfixOf` page)),
+    testCase "root ADR 0480 I6: zero and negative string or JSON integer ordinals report G03006" $
+      forM_ ["0", "-1", "\"0\"", "\"-1\""] $ \edition ->
+        withBibProject "bibliography = [\"refs.json\"]" "[cite a]\n\n@bibliography\n" [("refs.json", "[{\"id\":\"a\",\"edition\":" <> edition <> "}]")] $ \tmp -> do
+          TIO.appendFile (tmp </> "style.toml") (T.replace ".types.book]" ".types.default]" (T.replace "pieces=['DOI {DOI}.']" "pieces=['{edition:ordinal-en}']" customBibliographyDeclaration))
+          result <- build (defaultOptions tmp) {optTargets = Just [TargetHtml]}
+          map diagCode (filter isError (brDiagnostics result)) @?= [DiagnosticCode "G03006"],
+    testCase "root ADR 0480 I5: malformed absence guards retain G03304 and required name tables retain G03006" $
+      forM_ [("{!DOI?}", "G03304"), ("{!DOI:kanji}", "G03304"), ("{!unknown}", "G03304"), ("{!author}fallback", "G03006")] $ \(piece, code) ->
+        withBibProject "bibliography = [\"refs.json\"]" "[cite a]\n\n@bibliography\n" [("refs.json", abcJson)] $ \tmp -> do
+          TIO.appendFile (tmp </> "style.toml") (T.replace ".types.book]" ".types.default]" (T.replace "pieces=['DOI {DOI}.']" ("pieces=['" <> piece <> "']") customBibliographyDeclaration))
+          result <- build (defaultOptions tmp) {optTargets = Just [TargetHtml]}
+          assertBool (show (brDiagnostics result)) (DiagnosticCode code `elem` map diagCode (filter isError (brDiagnostics result))),
     testCase "root ADR 0475 I1: no list needs no entry type declaration" $
       withBibProject "bibliography = [\"refs.json\"]" "本文[cite a]。\n" [("refs.json", abcJson)] $ \tmp -> do
         TIO.appendFile (tmp </> "style.toml") (fst (T.breakOn "[bibliography.styles.custom.types.book]" customBibliographyDeclaration))
