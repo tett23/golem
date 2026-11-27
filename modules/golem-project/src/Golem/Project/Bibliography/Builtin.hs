@@ -5,6 +5,7 @@ import Data.Map.Strict qualified as Map
 import Data.Text (Text)
 import Data.Text qualified as T
 import Golem.Assemble.BibliographyStyle
+import Golem.Project.Bibliography.Builtin.APA qualified as APA
 import Golem.Project.Bibliography.Builtin.IEEE qualified as IEEE
 import Golem.Project.Bibliography.Builtin.Sist02 qualified as Sist02
 import Golem.Project.Bibliography.Builtin.UnifiedLinguistics qualified as UnifiedLinguistics
@@ -14,6 +15,7 @@ import Golem.Syntax.Diagnostic (Diagnostic, Severity (Error), diagnostic)
 import Golem.Syntax.Span (FileId, mkSpan)
 
 bundledBibliographySource :: Text -> Maybe Text
+bundledBibliographySource "apa" = Just APA.sourceText
 bundledBibliographySource "ieee" = Just IEEE.sourceText
 bundledBibliographySource "vancouver" = Just Vancouver.sourceText
 bundledBibliographySource "sist02" = Just Sist02.sourceText

@@ -1,0 +1,75 @@
+# APA 7: the three examples are secondary transcriptions checked via Crossref.
+# Sources and exact example titles: docs/research/bibliography-styles.md, APA.
+# Name limits, ellipsis, italic fields and 0.5in hanging indent were checked
+# against APA's official handouts on 2026-11-28:
+# https://apastyle.apa.org/instructional-aids/creating-reference-list.pdf
+# https://apastyle.apa.org/instructional-aids/whats-new-7e-guide.pdf
+# https://apastyle.apa.org/instructional-aids/publication-manual-formatting-checklist.pdf
+# Complete root ADR 0470 acceptance checks remain pending.
+[bibliography]
+style = 'apa'
+
+[bibliography.styles.apa]
+citation-mode = 'author-year'
+citation = ['{author}, {year}', ', {locator}']
+citation-year = ['{year}', ', {locator}']
+citation-prefix = '('
+citation-suffix = ')'
+citation-delimiter = '; '
+citation-sort = 'author-year'
+sort = ['author', 'year', 'title']
+hanging-indent = '0.5in'
+year-suffix = true
+page-range = 'full'
+range-delimiter = '–'
+
+[bibliography.styles.apa.names.author]
+order = 'family-given'
+part-delimiter = ', '
+initials = true
+initial-format = '{i}.'
+initial-delimiter = ' '
+delimiter = ', '
+last-delimiter = ', & '
+pair-delimiter = ', & '
+max = 20
+use-first = 19
+use-last = 1
+et-al = ', . . . '
+
+[bibliography.styles.apa.names.editor]
+order = 'given-family'
+part-delimiter = ' '
+initials = true
+initial-format = '{i}.'
+initial-delimiter = ' '
+delimiter = ', '
+last-delimiter = ', & '
+pair-delimiter = ' & '
+label = ['Ed.', 'Eds.']
+
+[bibliography.styles.apa.names.short]
+delimiter = ', '
+last-delimiter = ', & '
+pair-delimiter = ' & '
+max = 2
+use-first = 1
+et-al = ' et al.'
+
+[bibliography.styles.apa.locator-labels]
+page = ['p.', 'pp.']
+
+[bibliography.styles.apa.types.book]
+pieces = ['{author} ', '({year}). ', '{title}', ' ({edition:ordinal-en} ed.)', '. {publisher}', '.', ' https://doi.org/{DOI}', '{!DOI} {URL}']
+char-styles = { title = 'italic' }
+
+[bibliography.styles.apa.types.article-journal]
+pieces = ['{author} ', '({year}). ', '{title}', '. {container-title}', ', {volume}', '({issue})', ', {page}', '.', ' https://doi.org/{DOI}', '{!DOI} {URL}']
+char-styles = { container-title = 'italic', volume = 'italic' }
+
+[bibliography.styles.apa.types.chapter]
+pieces = ['{author} ', '({year}). ', '{title}', '. In {editor}', ' ({editor-label}), ', '{container-title}', ' (pp. {page})', '. {publisher}', '.', ' https://doi.org/{DOI}', '{!DOI} {URL}']
+char-styles = { container-title = 'italic' }
+
+[bibliography.styles.apa.types.default]
+pieces = ['{author} ', '({year}). ', '{title}', '.', ' https://doi.org/{DOI}', '{!DOI} {URL}']

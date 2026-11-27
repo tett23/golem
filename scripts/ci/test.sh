@@ -1763,12 +1763,12 @@ job_lines() { awk -v j="  $1:" '$0 == j { on = 1; next } on && /^  [a-z]/ { on =
 EMBEDDED_STEP="name: Generated modules match VERSION and docs/diagnostics.md"
 if step_if "$EMBEDDED_STEP" "if: matrix.tests && matrix.suites == 'rest-a'" &&
   step_has "$EMBEDDED_STEP" "sh scripts/gen-embedded.sh" &&
-  step_has "$EMBEDDED_STEP" "git diff --exit-code modules/golem-driver/src/Golem/Driver/Version/Embedded.hs modules/golem-evaluate/src/Golem/Evaluate/Explain/Embedded.hs modules/golem-project/src/Golem/Project/Bibliography/Builtin/IEEE.hs modules/golem-project/src/Golem/Project/Bibliography/Builtin/Vancouver.hs modules/golem-project/src/Golem/Project/Bibliography/Builtin/Sist02.hs modules/golem-project/src/Golem/Project/Bibliography/Builtin/UnifiedLinguistics.hs" &&
+  step_has "$EMBEDDED_STEP" "git diff --exit-code modules/golem-driver/src/Golem/Driver/Version/Embedded.hs modules/golem-evaluate/src/Golem/Evaluate/Explain/Embedded.hs modules/golem-project/src/Golem/Project/Bibliography/Builtin/IEEE.hs modules/golem-project/src/Golem/Project/Bibliography/Builtin/Vancouver.hs modules/golem-project/src/Golem/Project/Bibliography/Builtin/Sist02.hs modules/golem-project/src/Golem/Project/Bibliography/Builtin/UnifiedLinguistics.hs modules/golem-project/src/Golem/Project/Bibliography/Builtin/APA.hs" &&
   [ "$(awk '/^      - name: / { print }' "$CI_YML" | grep -A1 -F "name: Generated parser matches the grammar" | sed -n 2p)" = "      - $EMBEDDED_STEP" ]; then ok; else
   ng "ci.yml: the step after the generated parser runs gen-embedded.sh and checks that the generated modules of golem-driver have no diff (docs/adr/0203)"
 fi
 # the format job leaves the generated modules to the script, like the parser
-for f in modules/golem-driver/src/Golem/Driver/Version/Embedded.hs modules/golem-evaluate/src/Golem/Evaluate/Explain/Embedded.hs modules/golem-project/src/Golem/Project/Bibliography/Builtin/IEEE.hs modules/golem-project/src/Golem/Project/Bibliography/Builtin/Vancouver.hs modules/golem-project/src/Golem/Project/Bibliography/Builtin/Sist02.hs modules/golem-project/src/Golem/Project/Bibliography/Builtin/UnifiedLinguistics.hs; do
+for f in modules/golem-driver/src/Golem/Driver/Version/Embedded.hs modules/golem-evaluate/src/Golem/Evaluate/Explain/Embedded.hs modules/golem-project/src/Golem/Project/Bibliography/Builtin/IEEE.hs modules/golem-project/src/Golem/Project/Bibliography/Builtin/Vancouver.hs modules/golem-project/src/Golem/Project/Bibliography/Builtin/Sist02.hs modules/golem-project/src/Golem/Project/Bibliography/Builtin/UnifiedLinguistics.hs modules/golem-project/src/Golem/Project/Bibliography/Builtin/APA.hs; do
   if job_lines format | grep -qF -- "!$f" && job_lines format | grep -qF -- "--ignore-glob=\"$f\""; then ok; else
     ng "ci.yml: fourmolu and hlint skip $f (docs/adr/0203)"
   fi
@@ -5450,7 +5450,7 @@ CC=$HERE/testdata/ci-checks
     sed 's|modules/golem-driver/src/Golem/Driver/Explain/Embedded.hs|modules/golem-evaluate/src/Golem/Evaluate/Explain/Embedded.hs|' |
     # root ADR 0470 adds its bundled declaration to the same generated-file
     # comparison. Every original file and runner is retained.
-    sed 's|git diff --exit-code modules/golem-driver/src/Golem/Driver/Version/Embedded\.hs modules/golem-evaluate/src/Golem/Evaluate/Explain/Embedded\.hs|& modules/golem-project/src/Golem/Project/Bibliography/Builtin/IEEE.hs modules/golem-project/src/Golem/Project/Bibliography/Builtin/Vancouver.hs modules/golem-project/src/Golem/Project/Bibliography/Builtin/Sist02.hs modules/golem-project/src/Golem/Project/Bibliography/Builtin/UnifiedLinguistics.hs|'
+    sed 's|git diff --exit-code modules/golem-driver/src/Golem/Driver/Version/Embedded\.hs modules/golem-evaluate/src/Golem/Evaluate/Explain/Embedded\.hs|& modules/golem-project/src/Golem/Project/Bibliography/Builtin/IEEE.hs modules/golem-project/src/Golem/Project/Bibliography/Builtin/Vancouver.hs modules/golem-project/src/Golem/Project/Bibliography/Builtin/Sist02.hs modules/golem-project/src/Golem/Project/Bibliography/Builtin/UnifiedLinguistics.hs modules/golem-project/src/Golem/Project/Bibliography/Builtin/APA.hs|'
   printf 'needs\t%s\n' parser-fmt-proofs parser-fmt-manuscripts
 } | LC_ALL=C sort >"$WORK/before"
 run sh "$HERE/ci-checks.sh" "$CI_YML"
