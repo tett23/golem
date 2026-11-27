@@ -1724,7 +1724,8 @@ sh experiments/pagination-proof/check.sh
 区切りとキャプションの実フォントの照合は golem-driver のテストの `Support.hs` を読み込むので、golem-driver のテストもビルドしておく。
 照合に使う GHC は、`dist-newstyle/cache/plan.json` の `compiler-id` から選ぶ。
 `check.sh` は `jq` でこの値を読み、対応する `runghc-<版>` に GHC のパスを渡すため、システムの既定の GHC が違う版でもよい。
-別の Cabal plan を使う場合は `CABAL_PLAN` にパスを、別の `runghc` を使う場合は `RUNGHC` にパスを指定する。
+コンパイラの版を別の plan から読む場合は `CABAL_PLAN` にパスを、別の `runghc` を使う場合は `RUNGHC` にパスを指定する。
+`CABAL_PLAN` は、`cabal exec` が使うビルド成果物を切り替えない。
 ドライバーを使う照合もローカルの package-id を明示し、同名のインストール済みライブラリと区別する。
 `check.sh` は、`Whole.olean` と `WholeNotes.olean` を作ってから、それを読み込む `Separator.lean` を検査する。
 `SeparatorBoundary.lean` は、`Boundary.olean`、`Physical.olean`、`SeparatorPhysical.olean`、`SeparatorBlocks.olean` を作った後に評価する。
