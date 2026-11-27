@@ -1056,7 +1056,8 @@ CSL-JSON は、多くの文献管理のソフトウェアが書き出せる形�
 [code: style.toml] の [code: \[bibliography\]] に [code: style = "ieee"] と書くと、IEEE の書式を選べます。
 自作のスタイル宣言では、一覧の並び方を [code: sort]、項目の頭の書式を [code: label] で指定します。
 [code: label] を省くと、項目の頭に番号を付けません。
-[code: hanging-indent] は、PDF、HTML、EPUB の一覧で、項目の二行目以降を字下げする寸法です。
+一覧の各項目の二行目以降は、[code: hanging-indent] で字下げします（PDF、HTML、EPUB）。
+[code: zw] の相対寸法は、HTML と EPUB だけを組むときも文字の大きさに合わせます。
 
 [code: @index] と [code: @bibliography] は、一冊にいくつでも書けます。
 二つ以上書くと、それぞれの一覧には、その一覧より前で、一つ前の一覧より後にある項目が載ります。
