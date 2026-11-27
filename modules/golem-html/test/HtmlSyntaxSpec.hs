@@ -8,6 +8,7 @@ import Data.Char (isAlphaNum)
 import Data.List (isPrefixOf)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
+import Data.Maybe (isNothing)
 import Data.Ratio ((%))
 import Data.Set qualified as Set
 import Data.Text (Text)
@@ -303,11 +304,20 @@ htmlSyntaxTests :: TestTree
 htmlSyntaxTests =
   testGroup
     "the HTML target in the HTML syntax (root ADR 0432)"
-    [ testCase "root ADR 0478 I2 I4: decimal HTML and XHTML use one normalized TCY span" $ do
+    [ testCase "root ADR 0478 I2, I4: decimal HTML and XHTML use one normalized TCY span" $ do
         let body = bookOf [Block (at 0) Nothing Nothing (Paragraph Nothing [Number (at 0) (1 % 10) (Just StyleTcy)])]
         mapM_
           (\site -> assertBool "one normalized whole TCY" ("<span class=\"tcy\">0.1</span>" `T.isInfixOf` T.concat (map snd (sitePages site))))
           [renderHtml (cfg0 {hcVertical = True}) ft body, renderXhtmlWithPageBreaks (cfg0 {hcVertical = True}) ft body Map.empty],
+      testCase "root ADR 0478 I4: fractional HTML and XHTML honor fixed TCY defaults and explicit overrides" $
+        forM_ [False, True] $ \vertical ->
+          forM_ ["tcy", "auto", "auto-digits", "kanji"] $ \def ->
+            forM_ [Nothing, Just StyleKanji, Just StyleKanjiDigits, Just StyleTcy] $ \style -> do
+              let cfg = cfg0 {hcVertical = vertical, hcNumberDefault = def}
+                  body = bookOf [Block (at 0) Nothing Nothing (Paragraph Nothing [Number (at 0) (1 % 10) style])]
+                  expected = vertical && (style == Just StyleTcy || (isNothing style && def == "tcy"))
+              forM_ [renderHtml cfg ft body, renderXhtmlWithPageBreaks cfg ft body Map.empty] $ \site ->
+                ("<span class=\"tcy\">0.1</span>" `T.isInfixOf` T.concat (map snd (sitePages site))) @?= expected,
       testCase "root ADR 0438 I6: the paragraphs of @frame are in an aside at the place of the command in HTML" $
         do
           forM_ (htmlPages frameSample) (uncurry assertHtmlSyntax)

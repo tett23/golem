@@ -1310,7 +1310,7 @@ codePieces lk = go 0
 numberPieces :: ComposeEnv -> Rational -> Maybe NumberStyle -> [Piece]
 numberPieces env q style
   | denominator q /= 1 =
-      if ceVertical env && style == Just StyleTcy
+      if ceVertical env && (style == Just StyleTcy || (isNothing style && ceVerticalNumbers env == VerticalFixed StyleTcy))
         then [PBox lk (renderIRNumber q) KindTcy (lkSize lk)]
         else textPieces lk (renderIRNumber q)
   | not (ceVertical env) = textPieces lk (T.pack (show n))

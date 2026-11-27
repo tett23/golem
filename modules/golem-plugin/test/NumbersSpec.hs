@@ -76,7 +76,7 @@ numberTests :: TestTree
 numberTests =
   testGroup
     "numbers between the host and a plugin (docs/adr ADR 0101)"
-    [ testCase "root ADR 0478 A2 I3: an actual Wasm plugin returns an exact rational Number" $ do
+    [ testCase "root ADR 0478 A2, I3: an actual Wasm plugin returns an exact rational Number" $ do
         let value = TTagged 30 (TList [TInt 1, TInt 3])
             inline = TList [TInt 9, TList [TInt 1, TInt 10, TInt 20], value, TInt 2]
         p <- answering (cbor (TList [TList [inline], TList []]))

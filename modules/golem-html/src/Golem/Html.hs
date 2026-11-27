@@ -1208,7 +1208,7 @@ inlineBody c = \case
   Number _ q st
     | denominator q /= 1 ->
         let value = renderIRNumber q
-         in if hcVertical (cCfg c) && st == Just StyleTcy
+         in if hcVertical (cCfg c) && (st == Just StyleTcy || (isNothing st && hcNumberDefault (cCfg c) == "tcy"))
               then [el "span" [("class", "tcy")] [textOf value]]
               else [textOf value]
     | not (hcVertical (cCfg c)) -> [textOf (renderIRNumber q)]

@@ -86,7 +86,7 @@ tests :: TestTree
 tests =
   testGroup
     "golem-text"
-    [ testCase "root ADR 0478 I2 I4: rational text is normalized and integer vertical TCY stays kanji" $ do
+    [ testCase "root ADR 0478 I2, I4: rational text is normalized and integer vertical TCY stays kanji" $ do
         let values = [Number (sp 0) (1 % 10) (Just StyleTcy), Text (sp 0) " ", Number (sp 0) 1 (Just StyleTcy)]
             bodies = [Block (sp 0) Nothing Nothing (Paragraph Nothing values)]
         renderVariant Horizontal "ja" "{title}" bodies @?= ["0.1 1"]
