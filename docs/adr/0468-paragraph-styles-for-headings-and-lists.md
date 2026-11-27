@@ -1,6 +1,6 @@
 # ADR 0468: 見出しとリストの項目に段落スタイルを結び付ける
 
-Status: accepted-pending
+Status: accepted
 
 ## 文脈
 

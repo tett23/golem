@@ -74,7 +74,7 @@ import Golem.Parser.Read (checkTableText)
 import Golem.Parser.SourceSettings
 import Golem.Project.Imports (ImportForm (..), ImportSite (..), ListedName (..), importNames, importSite, importsOf)
 import Golem.Project.Paths (PathError (..), normalizeRelative, pathErrorMessage)
-import Golem.Project.Style (Dim (..), LineBreaks (..), LocalStyles (..), LocalValue (..), ParaStyleDef (..), Sp (..), Style (stOutlines, stPrintingsFormat), StyleKind (..), checkLocalStyles, kentenShapeNames, localStyleDefWithValues, noLocalStyles, paraLineBreaks, paraStyleKeys, paraStyleWith, parseAki, parseDim, renderPrintingTemplate, withLocalStyles)
+import Golem.Project.Style (Dim (..), LineBreaks (..), LocalStyles (..), LocalValue (..), ParaStyleDef (..), Sp (..), Style (stOutlines, stPrintingsFormat), StyleKind (..), checkLocalStyles, headingParaStyle, kentenShapeNames, localStyleDefWithValues, noLocalStyles, paraLineBreaks, paraStyleKeys, paraStyleWith, parseAki, parseDim, renderPrintingTemplate, withLocalStyles)
 import Golem.Syntax
 import Golem.Syntax.LanguageTag (isLanguageTag)
 import Golem.Syntax.Sha256 (sha256)
@@ -434,6 +434,7 @@ nextStyled ctx style = go Nothing
             [] -> next
             -- the next-style of the keys of @style over that of the style (root ADR 0467)
             Block {blockBody = Paragraph st _} : _ -> paraStyleWith style (styleRefNameOf st) (maybe [] refValues st) >>= psNextStyle
+            Block {blockBody = Heading level _ _} : _ -> headingParaStyle style level >>= psNextStyle
             _ -> Nothing
       Bi.first (out <>) <$> lines' isBuiltin next' bs
     implicit isBuiltin = \case

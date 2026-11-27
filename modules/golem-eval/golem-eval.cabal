@@ -33,6 +33,7 @@ library
     , golem-parser
     , golem-project
     , golem-regex
+    , golem-unicode
     , mtl           >=2.3  && <2.4
     , golem-syntax
     , text          >=2.0  && <2.2

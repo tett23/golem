@@ -794,6 +794,8 @@ htmlConfig dev embed e book missing bib =
           then Nothing
           else Just (HtmlLists (listBullets (stLists style)) (fromMaybe (pure (defaultNumberFormat vertical)) (lsNumbers (stLists style))) (GT.tlGap (textLists style)) (lsMarkerStyle (stLists style))),
       -- the rules of headings (golem-driver ADR 0027)
+      hcHeadingStyles = htmlHeadingStyles style,
+      hcLocalHeadingStyles = Map.fromList [(fid, htmlHeadingStyles (docStyles e fid)) | fid <- Map.keys (localStylesOf e)],
       hcHeadingRules =
         Map.fromList
           [ (l, (htmlRule style <$> hsRuleBefore h, htmlRule style <$> hsRuleAfter h))

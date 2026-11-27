@@ -67,6 +67,8 @@ cfg0 =
       hcLists = Nothing,
       hcCode = HtmlCode Nothing Nothing Nothing "0.5em" Nothing "0.25pt" False Nothing Nothing Nothing Nothing Map.empty,
       hcHeadingRules = Map.empty,
+      hcHeadingStyles = Map.empty,
+      hcLocalHeadingStyles = Map.empty,
       hcNoteNotation = arabic,
       hcEndnoteNotation = arabic,
       hcEmbedFonts = True,
@@ -487,7 +489,15 @@ ruleTests =
 
 tests :: [TestTree]
 tests =
-  [ testCase "root ADR 0398 A2: text and rule separators are distinct XHTML blocks" $ do
+  [ testCase "root ADR 0468 I2: heading style has its own selector without paragraph spacing" $ do
+      let h = HtmlHeadingStyle "title" (Just "20pt") ["text-align: center"] noFeatures Nothing
+          cfg = cfg0 {hcHeadingStyles = Map.singleton 1 h}
+          book = bookOf [Block (at 1) Nothing Nothing (Heading 1 noHeadingAttrs [Text (at 1) "題名"])]
+      assertBool "heading class" ("class=\"ps-title\"" `T.isInfixOf` bodyA cfg book)
+      let rules = cssLines "h1.ps-title" cfg
+      assertBool "pitch and alignment" (any (T.isInfixOf "line-height: 20pt") rules && any (T.isInfixOf "text-align: center") rules)
+      assertBool "no padding or margin" (all (\r -> not ("padding" `T.isInfixOf` r || "margin" `T.isInfixOf` r)) rules),
+    testCase "root ADR 0398 A2: text and rule separators are distinct XHTML blocks" $ do
       let a = Block (at 1) Nothing Nothing (Separator "scene")
           b = Block (at 2) Nothing Nothing (Separator "rule")
           appearances = Map.fromList [((at 1, "scene"), SeparatorTextAppearance 1 1 "center" "＊" Nothing), ((at 2, "rule"), SeparatorRuleAppearance 1 1 "end" Nothing 19660 Nothing StrokeSolid)]

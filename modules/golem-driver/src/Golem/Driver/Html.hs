@@ -5,6 +5,7 @@ the styles into the types of golem-html, with lengths as CSS strings.
 module Golem.Driver.Html
   ( htmlCharStyles,
     htmlParaStyles,
+    htmlHeadingStyles,
     htmlAnonymousStyle,
     anonymousValues,
     htmlRule,
@@ -59,6 +60,21 @@ htmlAnonymousStyle style r =
 -- | The keys of a paragraph style without a name as @style-def reads them (root ADR 0467).
 anonymousValues :: StyleRef -> [(Text, LocalValue)]
 anonymousValues r = [(k, case v of StyleWord w -> LocalWord w; StyleString t -> LocalString t) | (k, v) <- Map.toAscList (styleRefKeys r)]
+
+-- | Selected heading styles, with no paragraph-only properties (root ADR 0468).
+htmlHeadingStyles :: Style -> Map Int HtmlHeadingStyle
+htmlHeadingStyles style =
+  Map.fromList
+    [ (level, HtmlHeadingStyle name pitch (alignDecls bindingRight (fromMaybe ParaLeftJustified (psAlign d))) (htmlFeatures Nothing Nothing Nothing Nothing (psFeatures d)) (psFitCharacters d))
+    | level <- Map.keys (stHeadings style),
+      Just name <- [headingParaName style level],
+      Just d <- [headingParaStyle style level],
+      let pitch = case psLinePitch d of
+            Just (PitchDim amount) -> Just (cssLength amount)
+            _ -> Nothing
+    ]
+  where
+    bindingRight = maybe False pageBindingRight (stPage style)
 
 -- | The paragraph styles of a style, resolved for CSS (docs/adr ADR 0005, 0006).
 htmlParaStyles :: Style -> Map Text HtmlParaStyle
