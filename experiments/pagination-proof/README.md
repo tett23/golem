@@ -713,8 +713,9 @@ G07134 は、`Physical.lean` のページの上で同じ規則（`Flow.hs:795`�
 保持の前の行アキを数えない変更は、この入力では出力が変わらない。
 原稿の末尾で区切りの後の行アキを残す変更と、改ページの前の行アキを除く変更は、この入力では出力が変わらない。
 golem-assemble の `ineffectiveBlankLines` が、その位置の行アキを単位を作る前に除くからである。
-`keep-with-next` の行数を 2 にする変更も、この入力では照合できていない。
+`keep-with-next` の行数を 2 にする変更も、この組の入力では照合できていない。
 本文の段落スタイルは段落の先頭に 2 行を求め、1 行の段落は分けられないので、1 行と 2 行の `keep-with-next` が後続の段落に同じ行数を求めるからである。
+この変更を区別する入力は、後の「区切り」の節の `split` と `split-free` に追加した。
 段が一つなので、段の番号だけが異なる分割も照合していない。
 
 [仕様](../../docs/specifications.md)は、空の段へ送っても区切りの連続、後ろのアキ、後続ブロックの最初の部分を同じ段に置けない場合に G07134 で PDF の生成を止める（1876 行）と定める。
@@ -1641,15 +1642,23 @@ golem-typeset はコードの行を脚注なしで作り（`Flow.hs:3870`）、g
 `placeKept` が段落を分けて送る場合、区切りの後ろのアキ、区切りの連続も、定理の範囲に入る（`I3_separator_chain_no_error`）。
 保持の中の `@need-lines`、区切りの前の行アキ、自由な配置は、まだ照合だけで確かめている。
 段の行数を超える保持の中の `@need-lines`（G07037）を `settleHolds` が除かないと、格子モードで 140 個、自由な配置で 152 個、箱などを含む格子モードの組で 2 個の原稿で出力が食い違った。
-`check.sh` は、区切りの原稿を八つの組で golem-typeset と照合し、すべて一致した。
+`check.sh` は、区切りの原稿を十の組で golem-typeset と照合する。
 格子モードと自由な配置の 8784 個ずつの原稿は、「区切りのモデル」の節で述べた項目の組み合わせである。
 もう二組の 8640 個ずつの原稿は、項目に箱、前後に罫線のある段落、1 行のリスト項目を足し、段の容量を 3 行か 4 行にしたもので、格子モードと自由な配置で照合した。
-残る二組の 1440 個ずつの原稿（`holds` と `holds-free`）は、保持の後の段落に `@no-page-break` を続けたもので、格子モードと自由な配置で照合した。
+保持の二組の 1440 個ずつの原稿（`holds` と `holds-free`）は、保持の後の段落に `@no-page-break` を続けたもので、格子モードと自由な配置で照合した。
 この原稿は、なしか 1 行の段落の後に、`---` か `@separator scene`、なしか `---` か `@blank-line 1`、1〜3 行の段落、`@no-page-break` を置き、最後に 1〜3 行の段落か、1 行か 2 行の段落と `@no-page-break` と同じ行数の段落を置いたもので、段の容量は 2〜5 行である。
 コードブロックを含む二組の 3136 個ずつの原稿（`code` と `code-free`）は、なしか 1 行の段落の後に、`---`、`@separator scene`、1 行か 3 行のコードブロック、1 行の段落から 1〜3 個を区切りを含めて並べ、最後に、なしか 1 行の段落か 1 行か 3 行のコードブロックを置き、コードブロックを一つ以上含むもので、段の容量は 3 行か 4 行である。
 この二組では、コードのスロットを行の id の列で書き出す。
 自由な配置では、`SeparatorPhysical.lean` の `flows` が写さないコードブロックを、`SeparatorBoundary.lean` の `freeFlows` が `FCode` に写す。
 自由な配置は、`SeparatorBoundary.hs` が `alignment = "free"` の組版の設定で選ぶ。
+
+最初と最後の部分を 1 行以上とする段落スタイルの二組（`split` と `split-free`）は、それぞれ 288 個の原稿を照合し、すべて一致した。
+段の容量は 1〜6 行で、なしか 1〜2 行の段落の後に、可視の区切りと 2〜5 行の段落を置く。
+区切り前後のアキは、既存の二通りの設定を使う。
+この入力では、区切りの後の `keep-with-next` を 1 行から 2 行へ変える誤変更を検出する。
+容量 3 行の段に本文 1 行、アキのない区切り、2 行の段落を置くと、正しい配置は最初の段に本文、区切り、段落の最初の行を置く。
+誤変更では、区切りを次の段へ送る。
+`root_adr0352_i3_separator_keep_sensitivity` は、この例の配置が誤変更の前後で異なることを、診断を除いて確かめる。
 
 照合の感度は、写した計算を一つずつ替えて確かめた。
 自由な配置では、アキを sp にせず行数のまま渡すと 696 個（箱などを含む組で 2709 個）、アキを捨てると 696 個（2658 個）、段の高さを行数と行送りの積にすると 4802 個（3403 個）、G07134 の判定を外すと 3404 個（5585 個）の入力で出力が食い違った。
@@ -1687,8 +1696,14 @@ golem-typeset はコードの行を脚注なしで作り（`Flow.hs:3870`）、g
    見出しと最初の本文行の間か後ろに図版が一つある場合の算術モデルについて、任意の原稿列の図版の位置との対応は未証明である。
    見出し列の長さと段落構造を原稿列から取り出す一般的な対応も未証明である。
 5. 照合できていない変更と、`putWrappedLine` の写しの前提。
-   「区切りのモデル」の節の `keep-with-next` の行数を 2 にする変更と、段の番号だけが異なる分割は、照合できていない。
-   `trialWrapRest_putLine` の前提のうち、回り込みの段が空でないことと、次の段が回り込みの段でないことは、`parts` の呼び出しについて示していない。
+   段の番号だけが異なる分割は、照合できていない。
+   `trialWrapRest_putLine` の前提のうち、回り込みの段が空でないことは、`parts` の呼び出しについて示していない。
+   `WrapPosition.lean` は、除外領域が現在位置より後にないことを `RegionPast` として表し、次の段が除外領域の外にあることを導く。
+   `beginWrap` が返す状態は `RegionPast` を満たし、後続を保持する処理が位置を戻さなければ、成功した `parts` の結果も満たす。
+   実装の `keepPhysicalNext` に対応する `waitForPrior` の保持では、要求の行数と判定が状態に依存しても、位置を戻さないことを導く。
+   `root_adr0352_i3_trial_wrap_rest_put_line` は、この不変条件から次の段の前提を導く。
+   `beginWrap` が返す状態には図版のスロットがあるため空でなく、`root_adr0352_i3_initial_trial_wrap_rest_put_line` は最初の試しについて両方の前提を導く。
+   ただし、`parts` の内部のすべての再帰呼び出しにこの不変条件を接続する証明は残る。
 
 これらを終えるまで Alloy の定期実行と既存の参照を維持する。
 終えたときは、Alloy の定期実行を終え、規則やモデルを変えたときにローカルの Lean で検証し直す手順を CONTRIBUTING に書く。
@@ -1711,10 +1726,11 @@ sh experiments/pagination-proof/check.sh
 `SeparatorBoundary.lean` は、`Boundary.olean`、`Physical.olean`、`SeparatorPhysical.olean`、`SeparatorBlocks.olean` を作った後に評価する。
 `WholeNotes.lean` と `PhysicalNotes.lean` も、`Whole.olean` と `Physical.olean` を読み込んで検査する。
 `PhysicalDrain.lean` は、`PhysicalNotes.olean` を作ってから、それを読み込んで検査する。
+`WrapPosition.lean` は、`Physical.olean` を読み込み、除外領域と段の位置について証明を検査する。
 `WholeOrder.lean` は `WholeNotes.olean` を読み込み、ほかの検査と並んで検査し、最後にその結果を待つ。
 `WholeRules.lean` は `Whole.olean` を読み込み、同じくほかの検査と並んで検査する。
 `WholeSlots.lean` は `Separator.olean` を読み込んで検査する。
-`SeparatorPhysical.lean` と `SeparatorBlocks.lean` も同じく読み込み、`SeparatorBoundary.lean` は環境変数 `SEPARATOR_MODE` で八つの組を一つずつ評価する。
+`SeparatorPhysical.lean` と `SeparatorBlocks.lean` も同じく読み込み、`SeparatorBoundary.lean` は環境変数 `SEPARATOR_MODE` で十の組を一つずつ評価する。
 
 書き写しの有限の照合は、`Pagination.olean` を作ってから `LEAN_PATH` に置いて `EnumerateSmall.lean` を実行する。
 

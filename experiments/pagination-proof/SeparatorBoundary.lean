@@ -28,7 +28,7 @@ namespace SeparatorBoundary
 
 /-- The items of SeparatorBoundary.hs. -/
 inductive Item where
-  | p (k : Nat) | s | t | g | b | e | n
+  | p (k : Nat) | u (k : Nat) | s | t | g | b | e | n
   /-- A paragraph of one line in a box, one with rules and an item of a
       list of one line. -/
   | x | r | l
@@ -42,6 +42,7 @@ inductive Item where
 
 def Item.name : Item → String
   | .p k => s!"P{k}"
+  | .u k => s!"U{k}"
   | .s => "S" | .t => "T" | .g => "G" | .b => "B" | .e => "E" | .n => "N" | .bk k => s!"B{k}"
   | .x => "X" | .r => "R" | .l => "L" | .nb => "K" | .c k => s!"C{k}"
 
@@ -55,6 +56,7 @@ def combos : List ((Nat × Nat) × (Nat × Nat)) := [((0, 0), (1, 2)), ((1, 1), 
 def units (c : (Nat × Nat) × (Nat × Nat)) : Nat → List Item → List Separator.Unit
   | _, [] => []
   | id, .p k :: r => .other .block [.paragraph defaultKeep (lines' id k)] (some id) :: units c (id + k) r
+  | id, .u k :: r => .other .block [.paragraph ⟨1, 1, false⟩ (lines' id k)] (some id) :: units c (id + k) r
   | id, .s :: r => .separator c.1.1 c.1.2 defaultKeep ⟨id, []⟩ :: units c (id + 1) r
   | id, .t :: r => .separator c.2.1 c.2.2 defaultKeep ⟨id, []⟩ :: units c (id + 1) r
   | id, .g :: r | id, .b :: r => .blank 1 :: units c id r
@@ -154,6 +156,13 @@ def holdManuscripts : List (List Item) :=
 def holdInputs : List (Nat × Nat × List Item) :=
   (List.range combos.length).bind fun c => [2, 3, 4, 5].bind fun capacity => holdManuscripts.map fun m => (c, capacity, m)
 
+/-- First/last keeps of one line distinguish a separator's keep of one
+    line from two (`splitInputs` of SeparatorBoundary.hs). -/
+def splitInputs : List (Nat × Nat × List Item) :=
+  (List.range combos.length).bind fun c => [1, 2, 3, 4, 5, 6].bind fun capacity =>
+    [[], [Item.p 1], [Item.p 2]].bind fun lead => [Item.s, .t].bind fun s =>
+      [2, 3, 4, 5].map fun k => (c, capacity, lead ++ [s, .u k])
+
 def Item.isCode : Item → Bool
   | .c _ => true
   | _ => false
@@ -170,7 +179,7 @@ def codeInputs : List (Nat × Nat × List Item) :=
 
 /-- The lines an item takes. -/
 def Item.lines : Item → Nat
-  | .p k => k
+  | .p k | .u k => k
   | .s | .t | .x | .r | .l => 1
   | .c k => k
   | _ => 0
@@ -245,6 +254,21 @@ def output (c capacity : Nat) (items : List Item) : List String :=
   -- SeparatorBoundary.hs does not print the rules placed
   | [] => pages.map fun p => codePageText { p with rules := [] }
   | sites => ["error " ++ " ".intercalate ((sites.map fun i => s!"G07134:{siteLine made i}").toArray.qsort (· < ·)).toList]
+
+/-- The pages of a distinguishing input, discarding diagnostics so the
+    coverage guard requires a placement difference.  Only the mutation
+    changes the one-line separator hold to two after flows are built. -/
+def splitSignature (mutate : Bool) : List String :=
+  let items := [Item.p 1, .s, .u 2]
+  let us := units ((0, 0), (1, 2)) 0 items
+  let fs := flowsOf items 3 us
+  let changed := if mutate then fs.map (fun f => match f with
+    | .keepNext 1 sp => .keepNext 2 sp | other => other) else fs
+  let final := paginate (blockEnv 3 (held us)) changed
+  final.done.reverse.map fun p => codePageText { p with rules := [], unmet := [] }
+
+def root_adr0352_i3_separator_keep_sensitivity : Bool :=
+  splitSignature false != splitSignature true
 
 
 /-! ## The free placement -/
@@ -346,6 +370,7 @@ def freePageText (p : PhysicalPagination.PageOut) : String :=
 /-- The byte length of the source of an item in SeparatorBoundary.hs. -/
 def Item.bytes : Item → Nat
   | .p k => 36 * k
+  | .u k => 13 + 36 * k
   | .s => 3 | .t => 16 | .g => 14 | .b => 13 | .e => 11 | .n => 13 | .bk _ => 13
   | .x => 13 + 30 | .r => 13 + 36 | .l => 2 + 30 | .nb => 14 | .c k => 2 * k + 7
 
@@ -386,8 +411,8 @@ def freeOutput (c capacity : Nat) (items : List Item) : List String :=
     | [] => pages.map freePageText
     | sites => ["error " ++ " ".intercalate ((sites.map fun i => s!"G07134:{siteLine made i}").toArray.qsort (· < ·)).toList]
 
-def report (blocks holds code free : Bool) (part parts : Nat) : String :=
-  let all := if blocks then blockInputs else if holds then holdInputs else if code then codeInputs else inputs
+def report (blocks holds code split free : Bool) (part parts : Nat) : String :=
+  let all := if blocks then blockInputs else if holds then holdInputs else if code then codeInputs else if split then splitInputs else inputs
   let size := (all.length + parts - 1) / parts
   String.join (((all.drop (part * size)).take size).map fun (c, capacity, items) =>
     s!"{c} {capacity} [{" ".intercalate (items.map Item.name)}]\n" ++
@@ -442,5 +467,8 @@ end SeparatorBoundary
   let part := ((← IO.getEnv "SEPARATOR_PART").getD "0").toNat!
   let parts := ((← IO.getEnv "SEPARATOR_PARTS").getD "1").toNat!
   let mode := (← IO.getEnv "SEPARATOR_MODE").getD ""
+  if mode.startsWith "split" && !SeparatorBoundary.root_adr0352_i3_separator_keep_sensitivity then
+    throw (IO.userError "root ADR 0352 I3: separator inputs do not distinguish one-line and two-line keeps")
   IO.print (SeparatorBoundary.report (mode.startsWith "blocks") (mode.startsWith "holds") (mode.startsWith "code")
+    (mode.startsWith "split")
     (mode.endsWith "free") part parts)
