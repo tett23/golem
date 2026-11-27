@@ -1,7 +1,7 @@
 module ReferencesSpec (refPageNumeralTests, indexTests, bibliographyFormatTests, tableTests, columnWidthTests, tocTests, indexColumnTests, urlBreakTests) where
 
 import Codec.Archive.Zip (findEntryByPath, fromEntry, toArchive)
-import Control.Monad (forM_, when, zipWithM_)
+import Control.Monad (forM_, unless, when, zipWithM_)
 import Data.ByteString qualified as BS
 import Data.ByteString.Char8 qualified as BC
 import Data.ByteString.Lazy qualified as BL
@@ -347,6 +347,33 @@ bibliographyFormatTests =
           either (assertFailure . show) pure result
       | (name, channel, atChapterEnd, vertical, keeps) <- [(name, channel, atChapterEnd, vertical, False) | (name, channel, atChapterEnd) <- [("footnotes", FootnoteChannel, False), ("chapter notes", FootnoteChannel, True), ("endnotes", EndnoteChannel, False)], vertical <- [False, True]] <> [("sidenotes", SidenoteChannel, False, False, False), ("kept sidenotes", SidenoteChannel, False, False, True)]
       ],
+    testCase "root ADR 0470 I5: final page-local first-note notation ranges stop PDF generation" $
+      forM_ [(50, False, True), (51, False, True), (51, True, True), (51, False, False)] $ \(targetNumber, resetPage, usePieces) -> do
+        let style = replaceIn "size = \"A5\"" "size = { width = \"841mm\", height = \"1189mm\" }" (replaceIn "lines = 30" "lines = 150" horizontalStyle) <> "\n[notes]\nnumbering='page'\n"
+        result <- withMiniInput fakeProvider miniManifest style "seed" [] $ \input geom fonts -> do
+          let original = piBook input
+              fid = case bookDocs original of Document file _ : _ -> file; _ -> FileId 0
+              target = mkSpan fid 0 1
+              citation = mkSpan fid 2 3
+              items = [citeItem "a"]
+              nodes = concat [[LineBreak target | resetPage && n == targetNumber, _ <- [1 .. 150 :: Int]] <> [Note target n Nothing (noteBody target (if n == targetNumber + 1 then [Cite citation items] else [Text target "x"]))] | n <- [1 .. targetNumber + 1]]
+              piece = CiteNoteNumber target targetNumber (Just "circled") Nothing
+              prepared = Map.singleton (NoteCitationContext target FootnoteChannel (if usePieces then targetNumber + 1 else 999) 0) (citation, items, [piece])
+              book = original {bookDocs = [Document fid [Block target Nothing Nothing (Paragraph Nothing nodes)]], bookNoteCitationPieces = prepared}
+          initial <- layoutPdfUnnumbered input {piBook = book} geom fonts >>= either (assertFailure . show) pure
+          unless resetPage (length (plPages initial) @?= 1)
+          final <- layoutPdf input {piBook = book} geom fonts
+          if targetNumber == 50 || resetPage || not usePieces
+            then do
+              layout <- either (assertFailure . show) pure final
+              let finalReferenceText = [bcText box | sl <- Map.elems (plLines layout), line <- slLine sl : concatMap snd (slNotes sl), Box _ box <- lineItems line, Just markBox <- [bcMark box], Just CiteNoteMarkNumber {} <- [mbNumber markBox]]
+              finalReferenceText @?= [if resetPage then "①" else "㊿" | usePieces]
+            else case final of
+              Left ds -> do
+                codesOf ds @?= ["G03006"]
+                map diagSpan ds @?= [mkSpan (piStyleFile input) 0 0]
+              Right _ -> assertFailure "an actual first-note number outside circled must stop the PDF"
+        either (assertFailure . show) pure result,
     testCase "root ADR 0470 I5: note-local ordinals retain deferred first-note targets during page renumbering" $ do
       result <- withMiniInput fakeProvider miniManifest (replaceIn "lines = 30" "lines = 5" horizontalStyle <> "\n[notes]\nnumbering='page'\n") "seed" [] $ \input geom fonts -> do
         let original = piBook input

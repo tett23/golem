@@ -165,7 +165,7 @@ import Golem.LayoutSpec (HiddenFolioGeometry (..), MasterGeometry (..), PageGeom
 import Golem.Length qualified as L
 import Golem.Numerals (circled)
 import Golem.Numerals.Format (renderMarkFormat)
-import Golem.Numerals.Notation (writeNumber)
+import Golem.Numerals.Notation (notationNamed, ordinalEnNotation, writeNumber)
 import Golem.Pdf qualified as P
 import Golem.Project
 import Golem.Project.Files (Files (..))
@@ -847,7 +847,7 @@ layoutFigures reuse numbered inp geom fonts figures = do
           tocPages = Map.fromList [(lid, tp) | (lid, _, tp) <- tocEntries]
           -- the page number of each entry as set, for the text of its link (docs/adr/0267)
           tocNumbers = Map.fromList [(ui, T.concat [bcText c | Box _ c <- lineItems (tpNumber tp)]) | (_, ui, tp) <- tocEntries]
-       in case pageNoteNumberDiagnostics (piStyle inp) (piBook inp) (pageNoteNumbers pages built0) <> concat [ds | (_, Left ds) <- placed] of
+       in case pageNoteNumberDiagnostics (piStyle inp) (piBook inp) (pageNoteNumbers pages built0) <> (if numbered then citationNoteNumberDiagnostics (piStyleFile inp) built else []) <> concat [ds | (_, Left ds) <- placed] of
             [] ->
               let layout0 = PdfLayout pages (bLinePitches built) (bLines built) (bFigures built) (bHeadings built) (Map.fromList [(n, ps) | (n, Right ps@(_ : _)) <- placed]) (bTableLines built) (bTables built) tocPages (bLineFiles built) (bHeadingSpans built) (bCodes built) (bNotices built <> bCaptionWarnings built <> ruledNotices (bFlow built) (bRules built) pages <> unmetWarnings (pgLinePitch geom) (maybe False ((== AlignFree) . gridAlignment) (stPage (piStyle inp) >>= pageGrid)) (`Set.member` separatorSpans built) (bHeadingNames built) (paraOfLine built) (styleAtSpan built) pages <> heldNeedNotices (bUnits built) <> softHyphenNotices inp <> (if numbered then chapterPageNoteWarnings inp (pageNoteNumbers pages built0) else [])) (bLineSpans built) (bRules built) (bSeparatorLines built) (bUnits built) (bFlowEnv built) (bTableCaptions built) (bBoxes built) (bDestAnchors built) tocNumbers Map.empty
                   -- the text frames, once, on the settled pages (root ADR 0438)
@@ -1011,6 +1011,30 @@ renumberPageNotes pages built
       other -> other
     partLine pl = pl {ptLine = line (ptLine pl)}
     setLine sl = sl {slLine = line (slLine sl), slNotes = [(k, map line ls) | (k, ls) <- slNotes sl], slSidenotes = [(sp, map partLine ls) | (sp, ls) <- slSidenotes sl]}
+
+{- | Check only composed deferred marks after the actual page numbers settle.
+An out-of-range S1 number may become representable on its final page.
+-}
+citationNoteNumberDiagnostics :: FileId -> Built -> [Diagnostic]
+citationNoteNumberDiagnostics styleFile built =
+  nubOrdOn
+    (\diagnosis -> (diagSpan diagnosis, diagMessage diagnosis))
+    [ diagnostic "G03006" Error (mkSpan styleFile 0 0) ("差し込み {first-note} の数を " <> name <> " で表せません: " <> T.pack (show number))
+    | line <- lines',
+      Box _ box <- lineItems line,
+      Just mark <- [bcMark box],
+      Just (CiteNoteMarkNumber _ number _ _ (Just name)) <- [mbNumber mark],
+      Just notation <- [if name == "ordinal-en" then Just ordinalEnNotation else notationNamed name],
+      null (writeNumber notation (toInteger number))
+    ]
+  where
+    lines' =
+      concatMap setLines (Map.elems (bLines built))
+        <> concatMap (concatMap (setLines . snd)) (Map.elems (bTableLines built))
+        <> concatMap (map ptLine . pfCaption) (Map.elems (bFigures built))
+        <> concatMap (map ptLine . ciCaption) (Map.elems (bCodes built))
+        <> concatMap (map ptLine . ccLines) (Map.elems (bTableCaptions built))
+    setLines set = slLine set : concatMap snd (slNotes set) <> concatMap (map ptLine . snd) (slSidenotes set)
 
 {- | The number each note and sidenote takes on its page (docs/adr/0383),
 by its channel and its number in the book: its place among the marks in
