@@ -1,6 +1,6 @@
 # ADR 0016: 行末の \ で段落の中の行を改める
 
-Status: superseded [{"by":["docs/adr/0049-plain-text-indent-after-hard-break.md"],"part":"プレーンテキストの強制改行の後の行の字下げ"}]
+Status: superseded [{"by":["docs/adr/0049-plain-text-indent-after-hard-break.md"],"part":"プレーンテキストの強制改行の後の行の字下げ"},{"part":"line と keep における通常改行と強制改行の同義扱い","by":["docs/adr/0473-normalize-paragraph-blocks-before-body-binding.md"],"kind":"replace"}]
 
 ## 文脈
 

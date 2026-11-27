@@ -1,6 +1,6 @@
 # ADR 0459: 続けて書いたブロックコマンドを一つのコマンドとし、字下げしない次のブロックと `:::` で囲んだブロックを本体として受け取る
 
-Status: superseded [{"part":"今の原稿で変わる出力","by":["docs/adr/0460-let-style-take-any-blocks-as-its-body.md"],"kind":"supplement"},{"part":"コマンドの種類","by":["docs/adr/0461-report-the-diagnostics-that-follow-from-another-error.md"],"kind":"replace"},{"part":"続けて書いたコマンドを一つのコマンドとして読む","by":["docs/adr/0462-breaks-in-command-bodies-and-repeated-commands.md"],"kind":"supplement"}]
+Status: superseded [{"part":"今の原稿で変わる出力","by":["docs/adr/0460-let-style-take-any-blocks-as-its-body.md"],"kind":"supplement"},{"part":"コマンドの種類","by":["docs/adr/0461-report-the-diagnostics-that-follow-from-another-error.md"],"kind":"replace"},{"part":"続けて書いたコマンドを一つのコマンドとして読む","by":["docs/adr/0462-breaks-in-command-bodies-and-repeated-commands.md"],"kind":"supplement"},{"part":"本体の段落単位、複数ブロックの字下げ本体、G01031 の判定","by":["docs/adr/0473-normalize-paragraph-blocks-before-body-binding.md"],"kind":"replace"}]
 
 ## 文脈
 
