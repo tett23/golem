@@ -698,6 +698,17 @@ if (!fragment && ast) {
         rule.alts.length === 1 && rule.alts[0].action?.trim() === '()' &&
         rule.alts[0].constructor === null &&
         describeItems(rule.alts[0].items) === 'BlankLines? (&. Blocks(0) BlankLines?)?') continue;
+    // BodyDispatchTotal keeps the old indented-body recognizer and ordered
+    // fenced/implicit body dispatch, without assuming successful children.
+    if ((rule.name === 'CommandBody' || rule.name === 'GroupBody') &&
+        rule.params.length === 1 && rule.params[0] === 'ind' && rule.templateParams.length === 0 &&
+        rule.alts.every(alt => alt.action?.trim() === '()' && alt.constructor === null)) {
+      const expected = rule.name === 'CommandBody'
+        ? ['&(Ind(col ind + 2) ![ \\t] !BlankLine .) Blocks(col ind + 2)']
+        : ['Div(ind)', '&(Ind(ind) !BlockCommandStart ![ \\t] !BlankLine) AttributedBlock(ind)'];
+      if (rule.alts.length === expected.length &&
+          rule.alts.every((alt, index) => describeItems(alt.items) === expected[index])) continue;
+    }
     if (rule.name === 'Ind' && indentFullyProved) continue;
     if (rule.name === 'StringLit' && stringSupported && alternatives[0] === escape &&
         rule.params.length === 0 && rule.templateParams.length === 0 && rule.alts.length === 1 &&
