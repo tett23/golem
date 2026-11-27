@@ -66,13 +66,27 @@ if grep -En '(^|[^A-Za-z])(sorry|admit|axiom)([^A-Za-z]|$)' "$proof"; then
 fi
 
 lean=${LEAN:-lean}
+# Match the compiler that built the project instead of the system default.
+# CABAL_PLAN and RUNGHC follow the parser proof exporter's overrides.
+plan=${CABAL_PLAN:-$root/dist-newstyle/cache/plan.json}
+compiler=$(jq -er '."compiler-id" | select(startswith("ghc-"))' "$plan")
+runghc=${RUNGHC:-runghc-${compiler#ghc-}}
+ghc=$(command -v "$compiler") || {
+  echo "missing Cabal compiler $compiler" >&2
+  exit 1
+}
+command -v "$runghc" >/dev/null || {
+  echo "missing $runghc for Cabal compiler $compiler" >&2
+  exit 1
+}
+echo "checking pagination with $compiler and $runghc"
 
 # Support.hs imports libraries directly.  Cabal's project environment
 # can register them as hidden, so expose the in-place package IDs just
 # as the standalone layout checks below do.  This also prevents picking
 # an installed copy of a library from another checkout.
 driverCheck() {
-  cabal exec -v0 -- runghc --ghc-arg=-XGHC2021 --ghc-arg=-XLambdaCase \
+  cabal exec -v0 -- "$runghc" -f "$ghc" --ghc-arg=-XGHC2021 --ghc-arg=-XLambdaCase \
     --ghc-arg=-XOverloadedStrings --ghc-arg=-XDerivingStrategies --ghc-arg=-imodules/golem-driver/test \
     -package-id=golem-assemble-0.1.0-inplace -package-id=golem-bibliography-0.1.0-inplace \
     -package-id=golem-doc-0.1.0-inplace -package-id=golem-driver-0.1.0-inplace \
@@ -211,7 +225,7 @@ while [ "$part" -lt "$parts" ]; do
   cat "$tmp/boundary-lean.$part" >> "$tmp/boundary-lean"
   part=$((part + 1))
 done
-(cd "$root" && cabal exec -v0 -- runghc -hide-all-packages -package=base \
+(cd "$root" && cabal exec -v0 -- "$runghc" -f "$ghc" -hide-all-packages -package=base \
   -package-id=golem-layout-0.1.0-inplace -package-id=golem-syntax-0.1.0-inplace -package-id=golem-length-0.1.0-inplace \
   experiments/pagination-proof/Boundary.hs) > "$tmp/boundary-haskell"
 diff -u "$tmp/boundary-haskell" "$tmp/boundary-lean"
@@ -295,7 +309,7 @@ if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|native_decide|implemented_by|exter
   echo "unchecked Lean declaration in $pboundary" >&2
   exit 1
 fi
-(cd "$root" && cabal exec -v0 -- runghc -hide-all-packages -package=base -package=containers -package=text \
+(cd "$root" && cabal exec -v0 -- "$runghc" -f "$ghc" -hide-all-packages -package=base -package=containers -package=text \
   -package-id=golem-layout-0.1.0-inplace -package-id=golem-syntax-0.1.0-inplace \
   -package-id=golem-length-0.1.0-inplace -package-id=golem-doc-0.1.0-inplace \
   -package-id=golem-project-0.1.0-inplace \
@@ -344,7 +358,7 @@ if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|native_decide|imple
   echo "unchecked Lean declaration in $values" >&2
   exit 1
 fi
-(cd "$root" && cabal exec -v0 -- runghc -hide-all-packages -package=base -package=text \
+(cd "$root" && cabal exec -v0 -- "$runghc" -f "$ghc" -hide-all-packages -package=base -package=text \
   -package-id=golem-layout-0.1.0-inplace \
   experiments/pagination-proof/CheckCaptionAssembly.hs --values) > "$tmp/caption-values"
 sed -n 's/^out //p' "$tmp/caption-values" > "$tmp/caption-haskell"
