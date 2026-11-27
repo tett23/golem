@@ -1,6 +1,6 @@
 # ADR 0125: 数を漢数字で組む見本のプラグイン kansuji
 
-Status: superseded [{"by":["docs/adr/0153-sample-plugin-codes-are-tails.md"],"part":"表のコードを後ろの部分として読むこと"}]
+Status: superseded [{"by":["docs/adr/0153-sample-plugin-codes-are-tails.md"],"part":"表のコードを後ろの部分として読むこと"},{"part":"プラグインが縦中横の数を返すノード","by":["docs/adr/0479-treat-tate-chu-yoko-as-a-japanese-character.md"],"kind":"replace"}]
 
 ## 文脈
 
