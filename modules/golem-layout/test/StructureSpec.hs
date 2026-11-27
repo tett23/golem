@@ -9,10 +9,11 @@ import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Fixtures (fs, sp)
+import Golem.Doc.Citation (CitePiece (..))
 import Golem.Doc.IR qualified as IR
 import Golem.Layout.Japanese
 import Golem.Layout.KnuthPlass
-import Golem.Layout.Look (Look (..))
+import Golem.Layout.Look (LinkTarget (..), Look (..))
 import Golem.Syntax (FileId (..), mkSpan)
 import Test.Tasty
 import Test.Tasty.HUnit
@@ -186,6 +187,11 @@ structureTests =
                 NodeLeaf 7
               ]
         leaves items @?= [("第", Leaf [7, 0] 0), ("2", Leaf [7, 0] 1), ("章", Leaf [7, 0] 2), ("「", Leaf [7, 0] 2), ("設計|せっけい", Leaf [7, 0] 4), ("」", Leaf [7, 0] 7)],
+      testCase "root ADR 0470: a formatted citation number preserves its PDF link and drawn text" $ do
+        let configured = env {ceCitePieces = \_ _ -> Just [CiteReference "a" "一"], ceCiteLink = \_ _ -> Just (LinkUri "https://example.com/a")}
+            (items, _, nodes) = composeInlinesTree configured [IR.Cite sp [IR.citeItem "a"]]
+        [drawn | NodeElem RoleReference ns <- nodes, NodeLink _ drawn _ <- ns] @?= [[txt "一"]]
+        map fst (leaves items) @?= ["一"],
       testCase "R4: a resolved reference sets the same boxes as what it holds (docs/adr/0215)" $ do
         let held = [txt "2", IR.CharStyle sp "code" [txt "x"]]
             boxes is = [(bcText c, w) | Box w c <- let (items, _, _) = composeInlinesTree env is in items]

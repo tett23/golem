@@ -13,6 +13,7 @@ import Data.Text.Read qualified as TR
 import Golem.Assemble.BibliographyFormats
 import Golem.Assemble.BibliographyNames qualified as Names
 import Golem.Assemble.BibliographyRanges
+import Golem.Assemble.BibliographyRecords (formatBibliographyRecord)
 import Golem.Assemble.BibliographyStyle qualified as Decl
 import Golem.Bibliography qualified as Csl
 import Golem.Bibliography.Csl qualified as Json
@@ -98,6 +99,8 @@ verifyExample name changeDeclaration changeExpected = do
   let parts = bibliographyEntryParts (Decl.btCharStyles entry) fragments
   expected <- TIO.readFile (path ".txt") >>= require "expected example ends with newline" . T.stripSuffix "\n"
   Csl.entryText parts @?= changeExpected expected
+  selectedParts <- either (failure . T.unpack) pure (formatBibliographyRecord declaration 1 record)
+  selectedParts @?= parts
   [(styleName, Csl.entryText body) | Csl.EntryStyled styleName body <- parts]
     @?= case name of
       "ieee" -> [("italic", "IEEE Trans. Biomed. Eng.")]

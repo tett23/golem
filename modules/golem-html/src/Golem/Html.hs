@@ -57,7 +57,7 @@ import Golem.Assemble.ListMarkers
 import Golem.Assemble.Numbering (formatSeparator, formatTitle, titleSeparator)
 import Golem.Bibliography (EntryPart (..))
 import Golem.Color qualified as Color
-import Golem.Doc.Citation (CitePiece (..), citationPieces)
+import Golem.Doc.Citation (CitePiece (..))
 import Golem.Doc.FigureWidth (FigureWidth (..), parseFigureWidth)
 import Golem.Doc.IR
 import Golem.Html.Markup (AttrValue (..), Node (..), Syntax (..), plainAttr)
@@ -851,7 +851,7 @@ blockHtml c (Block sp lbl blang body) = case body of
         [("class", "bibliography")]
         ( nl
             : concat
-              [ [el "li" [("id", citeId c (Just (spanFile sp, sp)) k)] (maybe [textOf k] (concatMap entryPart) (Map.lookup k (hcBibliography (cCfg c)))), nl]
+              [ [el "li" [("id", citeId c (Just (spanFile sp, sp)) k)] (maybe [textOf k] (concatMap entryPart) (Map.lookup k (bibliographyEntriesFor (cBook c) (Just (spanFile sp, sp)) (hcBibliography (cCfg c))))), nl]
               | (k, _) <- bibliographyAt (cBook c) sp
               ]
         ),
@@ -1251,10 +1251,12 @@ inlineBody c = \case
             CiteText t -> [textOf t]
             -- U+00A0: the browser does not break between the label of a page and its value (docs/adr/0277)
             CiteLocator l v -> [textOf (l <> "\xA0" <> v)]
-            CiteNumber k n -> case bibliographyHome (cBook c) sp of
-              Just home -> [Element "a" [("href", linkTo c home (citeId c at k))] [textOf (tshow n)]]
-              Nothing -> [textOf (tshow n)]
-       in [el "span" [("class", "cite")] (concatMap piece (citationPieces ns))]
+            CiteNumber k n -> reference k (tshow n)
+            CiteReference k text -> reference k text
+          reference key text = case bibliographyHome (cBook c) sp of
+            Just home -> [Element "a" [("href", linkTo c home (citeId c at key))] [textOf text]]
+            Nothing -> [textOf text]
+       in [el "span" [("class", "cite")] (concatMap piece (citationPiecesFor (cBook c) sp ns))]
     Nothing -> []
   ProofComment _ t -> [el "span" [("class", "proof")] [textOf t] | hcDev (cCfg c)]
   LineBreak _ -> [el "br" [] []]

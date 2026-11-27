@@ -7001,8 +7001,7 @@ cite には位置の種類を一つだけ書きます
 
 一つの引用に、`page` と `chapter` など、異なる位置の種類を二つ以上指定した。
 最初とは異なる種類を指定した引数の名前の位置に、一つずつ出す。
-この検査は、golem-eval のライブラリ API `validateCitationLocatorArguments` が行う。
-通常の CLI の `cite` は、この検査 API を呼び出さない。
+通常の CLI の `cite` とライブラリ API に適用する。
 
 - メッセージ: `cite には位置の種類を一つだけ書きます: <名前>`
 - 段階とモジュール: 引用の引数値の検証（golem-eval の `Golem.Eval.CitationArgument`）
@@ -7027,8 +7026,7 @@ cite に同じ位置の種類を二度書いています
 
 一つの引用に、同じ位置の種類を二度以上指定した。
 二度目からの引数の名前の位置に、一つずつ出す。
-この検査は、golem-eval のライブラリ API `validateCitationLocatorArguments` が行う。
-通常の CLI の `cite` は、この検査 API を呼び出さない。
+通常の CLI の `cite` とライブラリ API に適用する。
 
 - メッセージ: `cite に同じ位置の種類を二度書いています: <名前>`
 - 段階とモジュール: 引用の引数値の検証（golem-eval の `Golem.Eval.CitationArgument`）
@@ -7054,8 +7052,7 @@ cite の名前付き引数に書けない名前です
 
 引用の名前付き引数に、CSL の 26 種類の位置と `prefix`、`suffix`、`form` のどれでもない名前を渡した。
 未知の名前の引数ごとに、その名前の位置に出す。
-この検査は、golem-eval のライブラリ API `validateCitationLocatorArguments` が行う。
-通常の CLI の `cite` は、この検査 API を呼び出さない。
+通常の CLI の `cite` とライブラリ API に適用する。
 
 - メッセージ: `cite の名前付き引数に書けない名前です: <名前>`
 - 段階とモジュール: 引用の引数値の検証（golem-eval の `Golem.Eval.CitationArgument`）
@@ -7080,9 +7077,10 @@ cite の名前付き引数に書けない名前です
 
 `page` 以外の位置の値が、0 以上の整数、0 以上の端を持つ範囲、空でない文字列のどれでもない。
 不正な値ごとに、その値の位置に出す。
-`page` の不正な値は従来の [G02148](#g02148)、範囲の始めが終わりを超える場合は [G02106](#g02106) になる。
-この検査は、golem-eval のライブラリ API `validateCitationLocatorArguments` が行う。
-通常の CLI の `cite` は、この検査 API を呼び出さない。
+`page` の不正な値は従来の [G02148](#g02148) になる。
+範囲の式の逆順は、引数を検査する前に [G02106](#g02106) になる。
+ライブラリへ直接渡した範囲は、端が負ならこのコード、端が非負で逆順なら G02106 になる。
+通常の CLI の `cite` とライブラリ API に適用する。
 
 - メッセージ: `<名前> には位置の数、範囲、文字列を書きます: <値>`
 - 段階とモジュール: 引用の引数値の検証（golem-eval の `Golem.Eval.CitationArgument`）
@@ -7121,6 +7119,32 @@ cite の名前付き引数に書けない名前です
 ### 直し方
 
 `prefix="参照: "`、`suffix="!"` のように、文字列で書く。
+
+## G02300
+
+位置を指定する引用には文献を一つだけ書きます
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+`page` 以外の位置を指定した `cite` に、二つ以上の文献キーを書いた。
+どの文献の位置か決められないため、この引用を作らない。
+位置の種類を指定した名前の位置に出す。
+`page` の場合は従来の [G02149](#g02149) になる。
+
+- メッセージ: `位置を指定する cite には文献を一つだけ書きます`
+- 段階とモジュール: 引用の引数の検証（golem-eval の `Golem.Eval.File`）
+- ADR: [root ADR 0385](adr/0385-bibliography-and-citation-styles.md)、[root ADR 0470](adr/0470-bibliography-styles-by-name-and-by-declaration.md)
+
+### 主な原因
+
+- `[cite a b chapter=2]` のように書いた。
+
+### 直し方
+
+`[cites: [cite a chapter=2]|[cite b chapter=3]]` のように、文献ごとに位置を書く。
 
 ## G03001
 

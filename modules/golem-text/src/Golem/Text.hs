@@ -19,7 +19,7 @@ import Golem.Assemble
 import Golem.Assemble.ListMarkers
 import Golem.Assemble.Numbering (numberedTitleText)
 import Golem.Bibliography (EntryPart, entryText)
-import Golem.Doc.Citation (citationPieces, citationText)
+import Golem.Doc.Citation (citationText)
 import Golem.Doc.IR
 import Golem.Numerals
 import Golem.Numerals.Number (renderIRNumber)
@@ -202,7 +202,7 @@ block c ind (Block sp _ _ body) = case body of
   FrameBlock _ bs -> T.intercalate "\n\n" (filter (not . T.null) (map (block c ind) bs))
   ChannelOutput BibliographyOutput ->
     -- the entry, or the key that has none (golem-doc ADR 0004, 0005)
-    T.intercalate "\n" ["[" <> T.pack (show n) <> "] " <> maybe k entryText (Map.lookup k (cBibliography c)) | (k, n) <- bibliographyAt (cBook c) sp]
+    T.intercalate "\n" ["[" <> T.pack (show n) <> "] " <> maybe k entryText (Map.lookup k (bibliographyEntriesFor (cBook c) (Just (spanFile sp, sp)) (cBibliography c))) | (k, n) <- bibliographyAt (cBook c) sp]
   where
     -- a title with its number and the separator of the language (golem-html ADR 0002), or by the format of its level (root ADR 0463)
     numbered site level title = maybe title (\n -> let key = (spanFile site, level) in numberedTitleText (cLanguage c) (Map.lookup key (bookTitleSeparators (cBook c))) (Map.lookup key (bookTitleFormats (cBook c))) n title)
@@ -256,7 +256,7 @@ inline c = \case
   ChannelItem {} -> ""
   -- the mark of the default style; nothing when a number is not known (docs/adr/0266)
   Cite sp is -> case traverse (\i -> (,) i . Just <$> citeNumber (cBook c) sp (citKey i)) is of
-    Just ns -> citationText (citationPieces ns)
+    Just ns -> citationText (citationPiecesFor (cBook c) sp ns)
     Nothing -> ""
   ProofComment _ t -> if cProfileDev c then "【校正：" <> t <> "】" else ""
   LineBreak _ -> "\n"
