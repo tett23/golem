@@ -1,6 +1,6 @@
 # ADR 0476: 空の段にも収まらないドロップキャップは PDF の生成を止める
 
-Status: proposed
+Status: accepted-pending
 
 ## 文脈
 

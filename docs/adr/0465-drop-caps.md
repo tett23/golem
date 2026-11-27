@@ -1,6 +1,6 @@
 # ADR 0465: 段落スタイルの drop-lines でドロップキャップを組む
 
-Status: accepted-pending
+Status: superseded-pending [{"part":"空段にも収まらない場合","by":["docs/adr/0476-reject-drop-caps-that-cannot-fit-an-empty-column.md"],"kind":"supplement"}]
 
 ## 文脈
 
