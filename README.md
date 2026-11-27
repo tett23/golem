@@ -581,6 +581,8 @@ cabal test all
 
 参考文献の宣言の差し込み片を扱うライブラリ API は、golem-assemble の `Golem.Assemble.BibliographyFormats` にある（[root ADR 0470](docs/adr/0470-bibliography-styles-by-name-and-by-declaration.md)）。
 差し込み片のテストは `cabal test golem-assemble-test --test-options='-p /0470/'` で実行する。
+宣言向けの書誌データは `Golem.Bibliography.Csl.decodeCslRecords` で読み、編者、DOI、名前の並べ替えのキーなどを保持する。
+書誌データの読み取りのテストは `cabal test golem-bibliography-test` で実行する。
 
 依存のバージョンは `cabal.project.freeze` で固定している。
 このファイルを消してビルドすると、依存のバージョンが変わりうる。

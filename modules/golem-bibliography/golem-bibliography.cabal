@@ -33,8 +33,9 @@ test-suite golem-bibliography-test
   type:             exitcode-stdio-1.0
   hs-source-dirs:   test
   main-is:          Main.hs
-  other-modules:    BibliographySpec CslSpec
+  other-modules:    BibliographySpec CslSpec CslRecordSpec
   build-depends:
+    , aeson
     , base
     , bytestring
     , golem-bibliography

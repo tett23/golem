@@ -5,6 +5,14 @@ Finding and reading the files, and the diagnostics, stay in golem-driver.
 module Golem.Bibliography.Csl
   ( CslJsonError (..),
     decodeCslJson,
+    CslRecord,
+    CslPerson (..),
+    decodeCslRecords,
+    recordEntry,
+    recordValue,
+    recordText,
+    recordNames,
+    recordDate,
     cslEntry,
     cslYear,
   )
@@ -34,18 +42,64 @@ data CslJsonError
   | CslUnwritable Char T.Text Int
   deriving stock (Eq, Show)
 
+{- | A CSL item with its original fields for a declared bibliography
+style (root ADR 0470). The constructor is private so that every record
+has the same entry eligibility rules as 'cslEntry'.
+-}
+data CslRecord = CslRecord !CslEntry !J.Object
+  deriving stock (Eq, Show)
+
+-- | A personal or literal name with its explicit bibliography sort key.
+data CslPerson = CslPerson !CslName !(Maybe T.Text)
+  deriving stock (Eq, Show)
+
+-- | The existing view used by the default bibliography formatter.
+recordEntry :: CslRecord -> CslEntry
+recordEntry (CslRecord entry _) = entry
+
+{- | Reads the whole CSL array, retaining each eligible item's fields.
+Unwritable characters anywhere in the file reject it, just as in
+'decodeCslJson', including fields no selected style uses.
+-}
+decodeCslRecords :: BL.ByteString -> Either CslJsonError [CslRecord]
+decodeCslRecords source = case J.eitherDecode source of
+  Left err -> Left (CslNotJson err)
+  Right v@(J.Array xs) -> case unwritables v of
+    (c, path) : rest -> Left (CslUnwritable c path (length rest))
+    [] -> Right (mapMaybe record (V.toList xs))
+  Right _ -> Left CslNotArray
+  where
+    record v@(J.Object object) = (`CslRecord` object) <$> cslEntry v
+    record _ = Nothing
+
+-- | The original value, including fields outside the legacy entry view.
+recordValue :: T.Text -> CslRecord -> Maybe J.Value
+recordValue key (CslRecord _ object) = KM.lookup (JK.fromText key) object
+
+-- | A nonblank string or a bounded integer as text, by its CSL field name.
+recordText :: T.Text -> CslRecord -> Maybe T.Text
+recordText key (CslRecord _ object) = strOrInt key object
+
+-- | Eligible names in order, each retaining its own explicit sort key.
+recordNames :: T.Text -> CslRecord -> [CslPerson]
+recordNames key (CslRecord _ object) = case KM.lookup (JK.fromText key) object of
+  Just (J.Array names) -> mapMaybe person (V.toList names)
+  _ -> []
+  where
+    person value@(J.Object fields) = (\n -> CslPerson n (str "golem-sort-key" fields)) <$> name value
+    person _ = Nothing
+
+-- | A date with the same date-parts and literal rules as the default entry.
+recordDate :: T.Text -> CslRecord -> Maybe CslDate
+recordDate key (CslRecord _ object) = KM.lookup (JK.fromText key) object >>= date
+
 {- | The entries of a CSL-JSON array, in order; the items that are not
 entries are left out. The whole file is refused when a string or a key
 anywhere in it, read by Golem or not, has a character that cannot be
 written to the output (docs/adr/0159, docs/adr ADR 0042).
 -}
 decodeCslJson :: BL.ByteString -> Either CslJsonError [CslEntry]
-decodeCslJson s = case J.eitherDecode s of
-  Left err -> Left (CslNotJson err)
-  Right v@(J.Array xs) -> case unwritables v of
-    (c, p) : rest -> Left (CslUnwritable c p (length rest))
-    [] -> Right (mapMaybe cslEntry (V.toList xs))
-  Right _ -> Left CslNotArray
+decodeCslJson = fmap (map recordEntry) . decodeCslRecords
 
 {- | The strings and keys of a JSON value with a character that cannot be
 written, each with its first such character and its JSON Pointer (RFC
@@ -95,49 +149,64 @@ cslEntry = \case
           ceAccessed = KM.lookup "accessed" o >>= date
         }
   _ -> Nothing
-  where
-    present s = if T.null (T.strip s) then Nothing else Just s
-    str k o = case KM.lookup (JK.fromText k) o of
-      Just (J.String s) -> present s
-      _ -> Nothing
-    -- a string, or an integer as its decimal digits; a number that is not an integer is not read
-    strOrInt k o = case KM.lookup (JK.fromText k) o of
-      Just (J.String s) -> present s
-      Just (J.Number n) -> T.pack . show <$> (toBoundedInteger n :: Maybe Int)
-      _ -> Nothing
-    -- literal first; a name with neither family nor given is left out
-    name = \case
-      J.Object a -> case (str "literal" a, str "family" a, str "given" a) of
-        (Just l, _, _) -> Just (LiteralName l)
-        (_, Nothing, Nothing) -> Nothing
-        (_, f, g) -> Just (PersonalName f g)
-      _ -> Nothing
-    -- the year, month and day of the first date-parts, or else the literal
-    date = \case
-      J.Object i -> case KM.lookup "date-parts" i of
-        Just (J.Array ps)
-          | (J.Array y : _) <- V.toList ps,
-            (yv : rest) <- V.toList y,
-            Just yr <- dateYear yv ->
-              let mo = case rest of
-                    (m : _) -> datePart m
-                    [] -> Nothing
-                  dy = case rest of
-                    (_ : d : _) | Just _ <- mo -> datePart d
-                    _ -> Nothing
-               in Just (DateParts yr mo dy)
-        _ -> DateLiteral <$> str "literal" i
-      _ -> Nothing
-    -- a number, or a string of ASCII digits
-    dateYear = \case
-      J.Number n -> cslYear n
-      J.String s | Just t <- digits s, T.length t <= 15 -> Just (read (T.unpack t))
-      _ -> Nothing
-    datePart = \case
-      J.Number n -> toBoundedInteger n
-      J.String s | Just t <- digits s, T.length t <= 9 -> Just (read (T.unpack t))
-      _ -> Nothing
-    digits s = if not (T.null s) && T.all isDigit s then Just s else Nothing
+
+present :: T.Text -> Maybe T.Text
+present s = if T.null (T.strip s) then Nothing else Just s
+
+str :: T.Text -> J.Object -> Maybe T.Text
+str k o = case KM.lookup (JK.fromText k) o of
+  Just (J.String s) -> present s
+  _ -> Nothing
+
+-- a string, or an integer as its decimal digits; a number that is not an integer is not read
+strOrInt :: T.Text -> J.Object -> Maybe T.Text
+strOrInt k o = case KM.lookup (JK.fromText k) o of
+  Just (J.String s) -> present s
+  Just (J.Number n) -> T.pack . show <$> (toBoundedInteger n :: Maybe Int)
+  _ -> Nothing
+
+-- literal first; a name with neither family nor given is left out
+name :: J.Value -> Maybe CslName
+name = \case
+  J.Object a -> case (str "literal" a, str "family" a, str "given" a) of
+    (Just l, _, _) -> Just (LiteralName l)
+    (_, Nothing, Nothing) -> Nothing
+    (_, f, g) -> Just (PersonalName f g)
+  _ -> Nothing
+
+-- the year, month and day of the first date-parts, or else the literal
+date :: J.Value -> Maybe CslDate
+date = \case
+  J.Object i -> case KM.lookup "date-parts" i of
+    Just (J.Array ps)
+      | (J.Array y : _) <- V.toList ps,
+        (yv : rest) <- V.toList y,
+        Just yr <- dateYear yv ->
+          let mo = case rest of
+                (m : _) -> datePart m
+                [] -> Nothing
+              dy = case rest of
+                (_ : d : _) | Just _ <- mo -> datePart d
+                _ -> Nothing
+           in Just (DateParts yr mo dy)
+    _ -> DateLiteral <$> str "literal" i
+  _ -> Nothing
+
+-- a number, or a string of ASCII digits
+dateYear :: J.Value -> Maybe Integer
+dateYear = \case
+  J.Number n -> cslYear n
+  J.String s | Just t <- digits s, T.length t <= 15 -> Just (read (T.unpack t))
+  _ -> Nothing
+
+datePart :: J.Value -> Maybe Int
+datePart = \case
+  J.Number n -> toBoundedInteger n
+  J.String s | Just t <- digits s, T.length t <= 9 -> Just (read (T.unpack t))
+  _ -> Nothing
+
+digits :: T.Text -> Maybe T.Text
+digits s = if not (T.null s) && T.all isDigit s then Just s else Nothing
 
 {- | The year of a CSL-JSON number (docs/adr ADR 0035): Nothing from 10^15
 up, 0 below 0.1, and otherwise the number rounded. It is judged from the
