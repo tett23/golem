@@ -341,6 +341,16 @@ printf '%s\n' true > "$tmp/built-first-ids-expected"
 diff -u "$tmp/built-first-ids-expected" "$tmp/built-first-ids"
 echo "root ADR 0352 I5: two-pass owner and beside numbering preserves the rebroken paragraph's first ID; 648 boundaries and 2 counterchecks pass"
 
+# Retain the composed row payload as well as the existing Physical ID list.
+numberedPayload=$root/experiments/pagination-proof/NumberedPayload.lean
+if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|implemented_by|extern|native_decide)([^A-Za-z_]|$)' "$numberedPayload"; then
+  echo "unproved or unchecked Lean declaration in $numberedPayload" >&2
+  exit 1
+fi
+LEAN_PATH="$tmp" "$lean" "$numberedPayload"
+echo "root ADR 0352 I5: numbered composed rows preserve payload, order, split prefixes, and the existing Physical ID projection"
+
+
 # The boundary inputs of PhysicalBoundary.hs on Physical.lean's paginate,
 # against golem-layout's paginatePhysical (root ADR 0352).
 pboundary=$root/experiments/pagination-proof/PhysicalBoundary.lean

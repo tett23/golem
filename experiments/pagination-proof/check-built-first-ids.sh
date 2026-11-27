@@ -1,5 +1,6 @@
 #!/bin/sh
 # Observe the private Built table without changing production exports.
+# An optional first argument chooses another private-source observer.
 # RUNGHC must supply the project's compiler and dependency package environment.
 set -eu
 root=$(CDPATH='' cd -- "$(dirname "$0")/../.." && pwd)
@@ -17,4 +18,4 @@ awk 'body { print } /^where$/ { body = 1 }' "$root/modules/golem-typeset/src/Gol
 awk 'body { print } /^module Golem.Typeset.Flow where$/ { body = 1 }' "$tmp/Golem/Typeset/Flow.hs" >"$tmp/adapted-body"
 cmp "$tmp/original-body" "$tmp/adapted-body"
 cd "$root"
-"${RUNGHC:-runghc}" --ghc-arg="-i$tmp" --ghc-arg="-i$root/modules/golem-typeset/src" "$root/experiments/pagination-proof/BuiltFirstIds.hs"
+"${RUNGHC:-runghc}" --ghc-arg="-i$tmp" --ghc-arg="-i$root/modules/golem-typeset/src" "${1:-$root/experiments/pagination-proof/BuiltFirstIds.hs}"

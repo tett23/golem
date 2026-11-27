@@ -1758,6 +1758,9 @@ golem-layout は区切りを 1 行以上にする（`Paginate.hs:155`）。
    [成功結果の依存調査](../../docs/research/0352-parts-numbered-output-dependencies.md) に、前提、24 境界、残件を記録する。
    `BuiltFirstIds.lean` は、所有する図版の採番量も変わることを含めた二段階の走査から、現在の段落の先頭 ID の不変を導く。
    export list だけを変更した一時コピーによる採番表の観測 12 件と、全原稿への射影が残ることを [二段階の採番の依存調査](../../docs/research/0352-built-first-id-dependencies.md) に記録する。
+   `NumberedPayload.lean` は、既成行の列に採番するとき、内容と順序を保ち、その ID が既存の `PhysicalPagination.ids` の列と等しいことを導く。
+   採用する先頭の行を分けた場合の一致と実装の行内容の観測は、[既成行の内容の依存調査](../../docs/research/0352-numbered-row-payload-dependencies.md) に記録する。
+   異なる行列に再組版する文字列の全量の保存と、その後の配置への接続は残る。
 
 これらを終えるまで Alloy の定期実行と既存の参照を維持する。
 終えたときは、Alloy の定期実行を終え、規則やモデルを変えたときにローカルの Lean で検証し直す手順を CONTRIBUTING に書く。
@@ -1802,6 +1805,7 @@ sh experiments/pagination-proof/check.sh
 24 入力の有限検査は、Lean の実行結果を `check.sh` で `true` と比較する。
 `CausalFirstIds.lean` は、採番の算術部分だけをほかのモデルを読み込まずに検査する。
 `BuiltFirstIds.lean` はその出力を読み込み、二段階の走査と 648 入力、対照の 2 件を検査する。
+`NumberedPayload.lean` は `Physical.olean` を読み込み、既成行の採番と ID の射影、分割する先頭の行の内容を検査する。
 `check-built-first-ids.sh` は、依存する package 環境を渡したローカルの `RUNGHC` で、export list だけを開いた一時ソースから本体の採番表を観測する。
 `WholeOrder.lean` は `WholeNotes.olean` を読み込み、ほかの検査と並んで検査し、最後にその結果を待つ。
 `WholeRules.lean` は `Whole.olean` を読み込み、同じくほかの検査と並んで検査する。
