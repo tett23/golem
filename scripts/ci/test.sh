@@ -5057,6 +5057,12 @@ run cpath --workflow "$CPR/.github/workflows/ci.yml" "$CP/reuse.json"
 if [ "$CODE" != 0 ] && [ ! -s "$WORK/out" ]; then ok; else ng 'root ADR 0472 I5: a dependency cycle is rejected'; fi
 
 
+# A recorded revision is independent of an unreadable current checkout graph.
+cp_run "$CP/recorded-current.json" "$(cp_job ci 7)"
+jq --arg revision "$(git -C "$HERE/../.." rev-parse HEAD)" '.workflow_revision=$revision' "$CP/recorded-current.json" >"$CP/recorded-current-meta.json"
+run cpath --workflow "$CPR/.github/workflows/ci.yml" "$CP/recorded-current-meta.json"
+expect 'root ADR 0472 I1, I5: a recorded revision does not read the current invalid graph' 0 7
+
 # ---------------------------------------------------------------- the CI of pull requests under five minutes
 # (docs/adr/0395-bring-the-pull-request-ci-under-five-minutes.md)
 

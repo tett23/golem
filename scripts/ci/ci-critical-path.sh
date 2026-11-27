@@ -85,10 +85,10 @@ if [ "${1-}" = --needs ]; then
 fi
 
 # The expanded graph has zero-duration entry/exit nodes for local calls.
-GRAPH=$(sh "$HERE/ci-workflow-graph.sh" "$WORKFLOW")
-printf '%s\n' "$GRAPH" | jq -e 'has("ci")' >/dev/null || { echo "ci-critical-path: no job ci in $WORKFLOW" >&2; exit 1; }
 if [ "${1-}" = --graph ]; then
   [ $# -eq 1 ] || usage
+  GRAPH=$(sh "$HERE/ci-workflow-graph.sh" "$WORKFLOW")
+  printf '%s\n' "$GRAPH" | jq -e 'has("ci")' >/dev/null || { echo "ci-critical-path: no job ci in $WORKFLOW" >&2; exit 1; }
   printf '%s\n' "$GRAPH"
   exit 0
 fi
@@ -106,8 +106,13 @@ time_of() {
       tar -xf "$TMP/workflows.tar" -C "$source_dir"
     fi
     GRAPH=$(sh "$HERE/ci-workflow-graph.sh" "$source_dir/.github/workflows/ci.yml") || return 1
-    printf '%s\n' "$GRAPH" | jq -e 'has("ci")' >/dev/null || { echo "ci-critical-path: no job ci at $revision" >&2; return 1; }
+  else
+    if [ ! -f "$TMP/current-graph.json" ]; then
+      sh "$HERE/ci-workflow-graph.sh" "$WORKFLOW" >"$TMP/current-graph.json" || return 1
+    fi
+    GRAPH=$(cat "$TMP/current-graph.json")
   fi
+  printf '%s\n' "$GRAPH" | jq -e 'has("ci")' >/dev/null || { echo "ci-critical-path: no job ci in selected workflow" >&2; return 1; }
 
   jq -r --argjson g "$GRAPH" '
     def base: .name | split(" / ") | (.[-1] |= sub(" \\(.*$"; "")) | join(" / ");
