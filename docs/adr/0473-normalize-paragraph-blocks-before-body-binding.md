@@ -1,6 +1,6 @@
 # ADR 0473: IR の段落境界を正規化し、一段落を一ブロックにする
 
-Status: proposed
+Status: accepted-pending
 
 ## 文脈
 
