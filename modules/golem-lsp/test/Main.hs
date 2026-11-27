@@ -215,7 +215,8 @@ tests =
         ws0 <- openWorkspace root
         ws <- updateFile ws0 "b.gm" "本文。\n\n["
         map cmpLabel (completions ws "b.gm" (BS.length (TE.encodeUtf8 "本文。\n\n["))) @?= builtinInlineCommands
-        length builtinInlineCommands @?= 24
+        length builtinInlineCommands @?= 25
+        assertBool "cites" ("cites" `elem` builtinInlineCommands)
         -- [endnote] is built in, and @endnote is a block command (root ADR 0412)
         assertBool "endnote" ("endnote" `elem` builtinInlineCommands)
         map cmpLabel (completions ws "b.gm" (BS.length (TE.encodeUtf8 "本文。\n\n["))) `seq` pure ()

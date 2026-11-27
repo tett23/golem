@@ -1045,7 +1045,7 @@ CSL-JSON は、多くの文献管理のソフトウェアが書き出せる形�
 文献ごとの頁を一つの印にまとめるときは、[code: cites] の中に、[code: \|] で区切って一件ずつ書きます。
 
 ```
-[cites: [cite knuth1981 page=5]|[cite lamport1994 page=7]]
+[cites: [cite jlreq page=5]|[cite knuth1981 page=7]]
 ```
 
 この例は「\[1, p. 5; 2, p. 7]」のように組まれます。
