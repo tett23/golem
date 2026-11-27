@@ -47,10 +47,11 @@ import Data.Text.Encoding qualified as TE
 import Data.Text.Unsafe (lengthWord8)
 import Data.Time.Calendar (showGregorian, toGregorian)
 import Golem.Assemble
-import Golem.Assemble.BibliographyRecords (formatBibliographyCitationWith, formatBibliographyRecord)
+import Golem.Assemble.BibliographyRecords (formatBibliographyCitationWithSuffix, formatBibliographyRecordWithSuffix)
+import Golem.Assemble.BibliographySort (bibliographyYearSuffixes)
 import Golem.Assemble.BibliographyStyle qualified as Bib
 import Golem.Assemble.CitationFormats (joinBibliographyCitations)
-import Golem.Bibliography (CslDate (..), CslEntry (..), EntryPart, formatEntry)
+import Golem.Bibliography (CslDate (..), CslEntry (..), CslName (..), EntryPart, formatEntry)
 import Golem.Bibliography.Csl (CslJsonError (..), CslRecord, decodeCslRecords, recordDate, recordEntry, recordText)
 import Golem.Doc.Citation (CitePiece (..))
 import Golem.Doc.IR
@@ -248,10 +249,21 @@ resolveBibliographyRecords style fid manifest records book = case Map.lookup (Bi
      in (book, [diagnostic "G03006" Error sp ("引用の位置 " <> label <> " のラベルがありません。参考文献のスタイルを宣言して指定します") | (label, sp) <- Map.toList missing])
   Just declaration ->
     let language = mdLanguage (manifestMetadata manifest)
+        suffixes = Map.fromList [((at, key), suffix) | (at, entries) <- bookBibliographies book, let groups = [(key, identity) | (key, _) <- entries, Just record <- [Map.lookup key records], Just identity <- [recordIdentity record]], (key, suffix) <- Map.toList (bibliographyYearSuffixes groups)]
+        recordIdentity record = do
+          DateParts year _ _ <- ceIssued (recordEntry record)
+          let authors = ceAuthors (recordEntry record)
+              name = \case
+                PersonalName family given -> (False, family, given)
+                LiteralName text -> (True, Just text, Nothing)
+          if null authors then Nothing else Just (map name authors, year)
+        suffixFor at key effective
+          | Bib.bsYearSuffix effective == Just True = Map.findWithDefault "" (at, key) suffixes
+          | otherwise = ""
         entry at (key, number) = do
           record <- maybe (Left "文献キーがありません") Right (Map.lookup key records)
           effective <- either (Left . T.intercalate ", ") Right (Bib.bibliographyForLanguages language (fromMaybe language (recordText "language" record)) declaration)
-          parts <- formatBibliographyRecord effective number record
+          parts <- formatBibliographyRecordWithSuffix (suffixFor at key effective) effective number record
           pure ((at, key), parts)
         mark (sp, items) = do
           global <- either (Left . T.intercalate ", ") Right (Bib.bibliographyForLanguage language declaration)
@@ -267,7 +279,8 @@ resolveBibliographyRecords style fid manifest records book = case Map.lookup (Bi
           record <- maybe (Left "文献キーがありません") Right (Map.lookup (citKey item) records)
           number <- maybe (Left "引用番号がありません") Right (citeNumber book sp (citKey item))
           effective <- either (Left . T.intercalate ", ") Right (Bib.bibliographyForLanguages language (fromMaybe language (recordText "language" record)) declaration)
-          pieces <- formatBibliographyCitationWith effective number (citLocator item) record
+          let at = fst =<< Map.lookup (spanFile sp, sp) (bookCiteMarks book)
+          pieces <- formatBibliographyCitationWithSuffix (suffixFor at (citKey item) effective) effective number (citLocator item) record
           let literal inlines = [CiteText text | let text = foldMap inlineText inlines, not (T.null text)]
           pure (literal (citPrefix item) <> pieces <> literal (citSuffix item))
         marks = map mark (bookCitationItems book)

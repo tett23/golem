@@ -607,7 +607,7 @@ cabal test all
 `parseStyle` は、未選択の宣言も含めて必須キーを検査する（[root ADR 0475](docs/adr/0475-complete-bibliography-declarations-and-citation-delimiters.md)）。
 名前の先頭と末尾の保持、二人のときの区切り、言語別の上書き、引用全体の囲みを扱う API もある。
 通常の CLI は、選んだ自作の宣言から引用と一覧の共通の出力を作る。
-名前の書式、文献ごとの言語、引用全体の囲み、引用の年順、位置の英語ラベル、前置きと後置きを扱い、PDF、HTML、EPUB、テキストで使う。
+名前の書式、文献ごとの言語、引用全体の囲み、引用の年順と同著者同年の接尾辞、位置の英語ラベル、前置きと後置きを扱い、PDF、HTML、EPUB、テキストで使う。
 注の引用、年だけの引用、一覧の並べ替えとぶら下げ字下げ、同梱のスタイルは実装途中である。
 差し込み片の `renderBibliographyFragments` は、欄の値と句読点を分け、値の欄名を保持する。
 `renderBibliographyFragmentsWith` は値を引く関数に数の表記も渡し、月名と数の月を選べるようにする。
