@@ -63,6 +63,7 @@ v0.1.0-rc4 と v1.0.0 のどちらで扱うかは、まだ決めていない。
 
 ### フォント、PDF、EPUB の出力
 
+- **色の計算の独立モジュール化と RGB から CMYK への固定の近似（未実装）**：CMYK からグレースケールへの計算も含め、色の計算を共通モジュールへ集める。RGB から CMYK へは固定の近似式を 1 種類だけ使い、式、成分の範囲、丸め方、適用条件と限界を仕様書とマニュアルに記載する。厳密な色管理は外部で行う（[root ADR 0474](adr/0474-centralize-color-conversions-with-a-fixed-approximation.md)）。
 - **CFF2 の可変フォントの PDF への埋め込み（未実装）**：CFF2 の輪郭のフォントは、PDF に埋め込むと読めないので、PDF の組版で G08019 として拒む（[golem-font ADR 0003](golem-font/adr/0003-reject-cff2-fonts-in-pdf.md)）。CFF2 を CFF に変換して受け付けるのは、同梱の HarfBuzz の変換でグリフが崩れたので、HarfBuzz を更新し、変換の前と後で使うすべてのグリフの描画を比べる回帰テストを通してからにする（[golem-font ADR 0001](golem-font/adr/0001-shaping-and-metrics.md)、[golem-driver ADR 0004](golem-driver/adr/0004-pdf-emphasis-and-character-styles.md)、[Golem ADR 0358](adr/0358-font-instance-selection.md)）。
 - **HTML と EPUB での可変フォントのインスタンス（未決）**：役割の `instance` と `axes` は、PDF だけが使う（[Golem ADR 0358](adr/0358-font-instance-selection.md)）。`fonts = "embed"` の HTML と EPUB はフォントのファイルをそのまま同梱するので、可変フォントの座標はブラウザーと読書環境が CSS の規則で決め、PDF と違う太さで描かれうる。CSS の `font-variation-settings` で座標を渡すか、固定したフォントを同梱するかを、ADR で決める。
 
@@ -104,7 +105,6 @@ v0.1.0-rc4 と v1.0.0 のどちらで扱うかは、まだ決めていない。
 
 v1.0.0 の後、v2 より前の minor のバージョンで扱う事項である。
 
-- **RGB から CMYK への自動変換**：v1.x で導入を検討する。着手前に別の ADR で固定の式を 1 種類だけ定め、色変換モジュールに実装する。採用した式、係数、成分の範囲、丸め方、適用条件と限界を、仕様書とマニュアルに明記する。電子書籍の表示色はデバイスに依存し、近似で足りる用途もあるため、Golem 本体には固定の近似を一つだけ許容する。式や係数、色変換用プロファイルを選ぶ機能は設けず、厳密に色を管理したい場合は Golem の外で変換した CMYK データを入力してもらう。Golem の開発がひと段落した後、厳密な色管理を別のライブラリとして作ることも検討する。導入までは RGB から CMYK への自動変換を許さない方針を保つ（[root ADR 0408](adr/0408-preserve-rgb-and-distinguish-explicit-figure-recoloring.md)）。
 - **基礎の IR と、組み込みの命令の Emet への移行**：基礎の IR を定め、組み込みの命令のほとんどを Emet に移す（間に合えば v1.0.0）。`@import` を、driver のエフェクトのインターフェースで Emet に実装できるかを調べる。 [root ADR 0471](adr/0471-override-built-in-commands-except-mechanisms-and-frames.md)。
 - **番号と題を区切る SVG**：見出しやキャプションの番号と題の間に、書き手が任意の SVG を指定できるようにする。v1 の文字列による区切りは [Golem ADR 0372](adr/0372-number-title-separator.md) で扱う。
 - **人工言語と独自方言の言語タグ**：ロジバンなどの言語や独自方言について、著者が言語タグとその扱いを設定できるようにする。たとえばロジバンは `jbo`、著者独自の日本語の方言は私用部分を持つ `ja-x-my-dialect` と表せる。表示名と組版の継承規則、標準タグと設定の優先順位、各出力に書くタグを決める。
