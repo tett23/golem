@@ -5,7 +5,7 @@
 -- Root ADR 0352: read-only private-source observation; see check-built-first-ids.sh.
 module Main where
 
-import Control.Monad (forM, forM_, replicateM, unless)
+import Control.Monad (forM, forM_, replicateM, unless, when)
 import Data.List (intercalate)
 import Data.Map.Strict qualified as Map
 import Data.Text qualified as T
@@ -19,11 +19,13 @@ import Golem.Typeset.Flow qualified as F
 import Golem.Typeset.FontProvider (golemFontProvider)
 import Golem.Typeset.Fonts (FontProvider (..), PdfInput (..))
 import System.Directory (copyFile)
+import System.Environment (lookupEnv)
 import System.FilePath ((</>))
 import System.IO.Temp (withSystemTempDirectory)
 
 main :: IO ()
 main = withSystemTempDirectory "golem-built-firsts" $ \tmp -> do
+  coverage <- (== Just "1") <$> lookupEnv "BESIDE_COVERAGE"
   TIO.writeFile (tmp </> "manifest.toml") "chapters = [\"a.gm\"]\n[metadata]\nid = \"urn:uuid:03520000-0000-4000-8000-000000000001\"\ntitle = \"0352 numbering fixture\"\nlanguage = \"ja\"\ndate = 2026-11-28\n[[metadata.creators]]\nname = \"Fixture\"\nrole = \"author\"\n[source]\nparagraph-separator = \"blank-line\"\n[targets.pdf]\n"
   TIO.writeFile (tmp </> "style.toml") "[page]\nsize = \"A5\"\nbinding = \"left\"\nwriting-mode = \"horizontal\"\n[page.grid]\nfont-size = \"10pt\"\ncharacters = 12\nlines = 30\nline-pitch = \"15pt\"\ncolumns = 1\nalignment = \"free\"\nposition = { top = \"18mm\", gutter = \"20mm\" }\n[fonts.body]\nja = \"NotoSerifJP-Regular.otf\"\n"
   TIO.writeFile (tmp </> "a.gm") ("前文です。\n\n@nonumber\n@figure tiny.jpg alt=\"fixture\" wrap=start width=3zw\n\n" <> T.replicate 25 "あ" <> "\n\n" <> T.replicate 13 "い" <> "\n\n@nonumber\n@figure tiny.jpg alt=\"second\" wrap=start width=3zw\n\n" <> T.replicate 5 "う" <> "\n")
@@ -49,7 +51,7 @@ main = withSystemTempDirectory "golem-built-firsts" $ \tmp -> do
         figure <- case [u | (_, u) <- units, F.UFigure _ <- [F.uKind u]] of
           first : _ -> pure first
           [] -> error "fixture has no figure prototype"
-        putStrLn "import BesideOwnership\nopen BesideOwnership"
+        putStrLn ((if coverage then "import BesideCoverage" else "import BesideOwnership") <> "\nopen BesideOwnership")
         let patterns = concat [replicateM n [P, C, X, M, Q] | n <- [0 .. 4]]
             maps tags =
               let pairs = zip [1 ..] tags
@@ -65,6 +67,7 @@ main = withSystemTempDirectory "golem-built-firsts" $ \tmp -> do
             actual owner tags = let (us, bs) = maps tags in F.besideParagraphs us bs owner
         count <- forM patterns $ \tags -> do
           example 1 tags (actual 0 tags)
+          when coverage (coverageExamples tags (actual 0 tags))
           forM_ [0 .. length tags] $ \splitAt -> do
             let before = take splitAt tags
                 after = drop splitAt tags
@@ -83,6 +86,23 @@ data Tag = P | C | X | M | Q deriving (Eq)
 
 example :: Int -> [Tag] -> [Int] -> IO ()
 example start tags result = putStrLn ("example : scan " <> show start <> " [" <> intercalate "," (map flags tags) <> "] = " <> show result <> " := by decide")
+  where
+    flags P = "⟨true,false⟩"
+    flags C = "⟨false,true⟩"
+    flags Q = "⟨true,true⟩"
+    flags X = "⟨false,false⟩"
+    flags M = "⟨false,false⟩"
+
+-- Every eligible row is selected, controls are skipped, and barriers stop later rows.
+coverageExamples :: [Tag] -> [Int] -> IO ()
+coverageExamples tags selected = forM_ (zip [0 ..] tags) $ \(index, tag) -> do
+  let key = index + 1
+      clear = all (\t -> t == P || t == C || t == Q) (take index tags)
+      eligible = tag == P || tag == Q
+      expected = clear && eligible
+      actual = key `elem` selected
+  unless (actual == expected) (error "beside membership differs from eligible-prefix characterization")
+  putStrLn ("example : (" <> show key <> " ∈ scan 1 [" <> intercalate "," (map flags tags) <> "]) ↔ " <> (if actual then "True" else "False") <> " := by decide")
   where
     flags P = "⟨true,false⟩"
     flags C = "⟨false,true⟩"

@@ -1767,6 +1767,8 @@ golem-layout は区切りを 1 行以上にする（`Paginate.hs:155`）。
    実装 1344 入力と、上限 0 について条件が必要な例、未完のほかの再試行の条件を [再試行の上限の依存調査](../../docs/research/0352-retry-prefix-dependencies.md) に記録する。
    `BesideOwnership.lean` は、本文を選ぶキーの範囲、順序、重複のなさと、両判定が偽の単位での区切りを導く。
    五種類の判定の 781 通りと実装の走査 8203 件の照合、任意の生成表との対応が残ることを [所有区間の依存調査](../../docs/research/0352-beside-ownership-dependencies.md) に記録する。
+   `BesideCoverage.lean` は、各キーを選ぶ必要十分条件と、区切りのない区間を連結した場合の一致を導く。
+   2930 位置の所属判定との比較と、全内容の保存までの未接続部分を [選択条件の依存調査](../../docs/research/0352-beside-coverage-dependencies.md) に記録する。
 
 これらを終えるまで Alloy の定期実行と既存の参照を維持する。
 終えたときは、Alloy の定期実行を終え、規則やモデルを変えたときにローカルの Lean で検証し直す手順を CONTRIBUTING に書く。
@@ -1815,6 +1817,7 @@ sh experiments/pagination-proof/check.sh
 `ChosenSourceProgress.lean` は `Pagination.olean` と `Physical.olean` を読み込み、選択された接尾部の改行位置と部分採用からソースの前進を検査する。
 `RetryPrefix.lean` は `Physical.olean` を読み込み、各再帰入口の上限と全行後の再試行の減少を検査する。
 `BesideOwnership.lean` は、有限のキーの走査の順序と重複のなさ、区切りでの分離を検査する。
+`BesideCoverage.lean` は `BesideOwnership.olean` を読み込み、対象のキーを選ぶ必要十分条件と区間の連結を検査する。
 `check-parts-retry-shape.sh` はその入口の述語と `parts` の分岐と引数を比べる。
 `RetryPrefixChecks.hs` はネイティブの試し置きの採用数と、同じ再試行の上限を検査する。
 `check-built-first-ids.sh` は、依存する package 環境を渡したローカルの `RUNGHC` で、export list だけを開いた一時ソースから本体の採番表を観測する。

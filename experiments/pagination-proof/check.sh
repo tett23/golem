@@ -378,8 +378,17 @@ if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|implemented_by|exte
   echo "unproved or unchecked Lean declaration in $besideOwnership" >&2
   exit 1
 fi
-"$lean" "$besideOwnership"
+"$lean" -o "$tmp/BesideOwnership.olean" "$besideOwnership"
 echo "root ADR 0352 I5: modeled side-job keys are unique, ordered, and separate across figure barriers"
+
+# All and only eligible rows before a barrier enter the side job.
+besideCoverage=$root/experiments/pagination-proof/BesideCoverage.lean
+if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|implemented_by|extern|native_decide)([^A-Za-z_]|$)' "$besideCoverage"; then
+  echo "unproved or unchecked Lean declaration in $besideCoverage" >&2
+  exit 1
+fi
+LEAN_PATH="$tmp" "$lean" "$besideCoverage"
+echo "root ADR 0352 I5: modeled side-job membership is exactly the eligible prefix, with no eligible row lost"
 
 
 
