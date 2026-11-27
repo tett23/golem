@@ -1,6 +1,8 @@
 module Main (main) where
 
+import Bibliography0475RoundtripSpec qualified
 import BibliographyExamplesSpec qualified
+import BibliographyRequirementsSpec qualified
 import BibliographyStyleSpec qualified
 import ColophonSpec qualified
 import Control.Exception (evaluate)
@@ -1015,6 +1017,8 @@ tests =
             (Map.lookup 1 (stHeadings st) >>= hsSize) @?= Just (Abs (16 * 65536)),
       TitleFormatSpec.tests,
       FitCharactersSpec.tests,
+      Bibliography0475RoundtripSpec.tests,
+      BibliographyRequirementsSpec.tests,
       BibliographyExamplesSpec.tests,
       BibliographyStyleSpec.tests,
       VarsSpec.tests,

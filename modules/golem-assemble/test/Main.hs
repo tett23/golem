@@ -1,6 +1,7 @@
 module Main (main) where
 
 import AssembleSpec qualified
+import Bibliography0475Spec qualified
 import BibliographyFormatsSpec qualified
 import BibliographyNamesSpec qualified
 import BibliographyRangesSpec qualified
@@ -15,4 +16,4 @@ import Test.Tasty
 import WriterNotesSpec qualified
 
 main :: IO ()
-main = enterPackageDirectory >> defaultMain (testGroup "golem-assemble" [WriterNotesSpec.tests, BibliographyRangesSpec.tests, BibliographyFormatsSpec.tests, BibliographyNamesSpec.tests, BibliographySortSpec.tests, BibliographyStyleSpec.tests, AssembleSpec.tests, IndexSpec.tests, ListMarkersSpec.tests, NumberingSpec.tests, TableNumberSpec.tests])
+main = enterPackageDirectory >> defaultMain (testGroup "golem-assemble" [WriterNotesSpec.tests, Bibliography0475Spec.tests, BibliographyRangesSpec.tests, BibliographyFormatsSpec.tests, BibliographyNamesSpec.tests, BibliographySortSpec.tests, BibliographyStyleSpec.tests, AssembleSpec.tests, IndexSpec.tests, ListMarkersSpec.tests, NumberingSpec.tests, TableNumberSpec.tests])

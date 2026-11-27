@@ -11,6 +11,10 @@ sort = ['citation']
 page-range = 'full'
 range-delimiter = '-'
 months = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12']
+citation-delimiter = ', '
+citation-sort = 'written'
+hanging-indent = '0pt'
+year-suffix = false
 [bibliography.styles.example.names.author]
 order = 'family-given'
 part-delimiter = ''

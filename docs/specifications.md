@@ -693,6 +693,22 @@ HTML と EPUB は欄の文字スタイルを `cs-` のクラスにし、PDF は 
 書式の誤りは値ごとの G03304、無いスタイルの選択は G03303、決まった名前の再定義は G03305 にする。
 キーの型と範囲の誤りは G03006 にする。
 
+宣言の必須キーと名前の省略の検査は `Golem.Project.BibliographyRequirements` が行う（[root ADR 0475](adr/0475-complete-bibliography-declarations-and-citation-delimiters.md)）。
+`parseStyle` は、未選択の宣言と基礎の宣言も検査し、必須キーの不足を G03006 にする。
+書いた文献種別の差し込みが名前を参照するときは、一覧の有無によらず、その名前の書式も検査する。
+実際に一覧で使う文献種別と位置ラベルの検査は、`bibliographyRequiredChecks` に使用状況を渡す API である。
+この使用状況の検査と宣言による出力は、通常 CLI にはまだ接続していない。
+
+`resolveBibliographyNames` と `resolveBibliographyShortNames` は、必須キーを検査してから、ほかのスタイルの値を借りずに名前のオプションを作る。
+`max` の省略は人数の上限なし、`use-last` の省略は 0、`pair-delimiter` の省略は `last-delimiter` と同じにする。
+上限を超えたときは、先頭と末尾の名前をそれぞれ通常の `delimiter` で組み、その間に `et-al` の文字列を一度だけ入れる。
+元の第一著者だけを姓先にする書式では、末尾の名前だけを残しても、その名前を第一著者として組み直さない。
+
+`bibliographyForLanguages` は、本の言語で引用全体の並べ方や囲みを、各文献の言語で個々の名前や差し込みを解決する API である。
+言語タグの ASCII の大文字小文字を区別せず、`ja`、`ja-JP` のように粗い指定から細かい指定へ重ねる。
+`joinBibliographyCitations` は、個々の引用を区切りで連結し、文字列の `citation-prefix` と `citation-suffix` で全体を一度だけ囲む。
+空の引用しかなければ囲みも出さず、値を原稿や HTML として読み直さない。
+
 名前の書式は `Golem.Assemble.BibliographyNames` が、解決済みのオプションを受けて組む（[root ADR 0470](adr/0470-bibliography-styles-by-name-and-by-declaration.md)）。
 姓名の順、頭文字、名前の列の区切りと人数の上限を扱い、頭文字には書記素クラスタを使う。
 省略を示す接尾の文字列は、前の空きや区切りも含め、呼出側が指定する。

@@ -11,6 +11,11 @@ citation = ['({author} {year})']
 sort = ['author', 'year', 'title']
 page-range = 'full'
 range-delimiter = '–'
+citation-delimiter = ', '
+citation-sort = 'written'
+hanging-indent = '0pt'
+year-suffix = false
+citation-year = ['({year})']
 [bibliography.styles.example.names.author]
 order = 'first-family-given'
 part-delimiter = ', '
@@ -37,3 +42,7 @@ label = ['ed.', 'eds.']
 [bibliography.styles.example.types.chapter]
 pieces = ['{author}', '. {year}', '. {title}', '. In {editor}', ' ({editor-label}), ', '{container-title}', ' ({collection-title} {collection-number})', ', {page}', '. {publisher-place}', ': {publisher}', '.']
 char-styles = { container-title = 'italic' }
+
+[bibliography.styles.example.names.short]
+delimiter = ', '
+last-delimiter = ' and '
