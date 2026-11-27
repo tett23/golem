@@ -1,0 +1,42 @@
+# Fonts are the same pinned assets used for the manuals in CI.
+[page]
+size = "A4"
+binding = "left"
+writing-mode = "horizontal"
+
+[page.grid]
+font-size = "10pt"
+characters = 24
+lines = 48
+line-pitch = "15pt"
+columns = 2
+column-gap = "2zw"
+position = { top = "20mm", gutter = "20mm" }
+
+[fonts.body]
+ja = "fonts/NotoSerifJP-Regular.otf"
+ja-license = "fonts/LICENSE-NotoSerifJP.txt"
+latin = "fonts/SourceSerif4-Regular.otf"
+latin-license = "fonts/LICENSE-SourceSerif4.md"
+
+[fonts.heading]
+ja = "fonts/NotoSansJP-Bold.otf"
+ja-license = "fonts/LICENSE-NotoSansJP.txt"
+latin = "fonts/SourceSans3-Bold.otf"
+latin-license = "fonts/LICENSE-SourceSans3.md"
+
+[headings.1]
+font = "heading"
+size = "16pt"
+[headings.2]
+font = "heading"
+size = "12pt"
+
+[paragraph-styles.body]
+first-line-indent = "1zw"
+
+[masters.body]
+folio = { position = "bottom-outside", format = "{n}" }
+
+[bibliography]
+style = "unified-linguistics"
