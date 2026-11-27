@@ -57,7 +57,9 @@ sortBibliographyEntries keys languageOrder fieldsOf =
 
 -- | An explicit reading, or family and given joined by the configured separator.
 authorSortKey :: Text -> Maybe Text -> Maybe BibliographyName -> Text
-authorSortKey separator explicit author = latinSortKey (fromMaybe (maybe "" written author) explicit)
+authorSortKey separator explicit author = latinSortKey $ case explicit of
+  Just reading | not (T.null (T.strip reading)) -> reading
+  _ -> maybe "" written author
   where
     written (LiteralName text) = text
     written (PersonalName family given) = T.intercalate separator (catMaybes [family, given])

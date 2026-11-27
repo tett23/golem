@@ -57,6 +57,11 @@ tests =
         authorSortKey " " Nothing (Just (PersonalName (Just "Kádár") Nothing)) @?= "kadar",
       testCase "root ADR 0470 I9: an explicit reading takes precedence over the name" $
         authorSortKey " " (Just "Yamada") (Just (PersonalName (Just "山田") (Just "太郎"))) @?= "yamada",
+      testCase "root ADR 0470 I9: blank readings fall back just as in CSL records and warning checks" $
+        forM_ [Nothing, Just "", Just "  "] $ \reading ->
+          authorSortKey " / " reading (Just (PersonalName (Just "Kádár") (Just "Dániel"))) @?= "kadar / daniel",
+      testCase "root ADR 0470 I9: a nonblank explicit reading retains its spaces" $
+        authorSortKey " " (Just " Yamada ") (Just (PersonalName (Just "山田") Nothing)) @?= " yamada ",
       testCase "root ADR 0470 I9: a missing reading uses the configured family-given separator" $
         authorSortKey " / " Nothing (Just (PersonalName (Just "Kádár") (Just "Dániel"))) @?= "kadar / daniel",
       testCase "root ADR 0470 I9: a literal name has a lowercase sort key" $
