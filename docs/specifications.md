@@ -9402,6 +9402,9 @@ HTML と EPUB の引用の印は、`<span class="cite">` の中に、括弧、�
 宣言を扱うライブラリ API は golem-assemble にある（[root ADR 0470](adr/0470-bibliography-styles-by-name-and-by-declaration.md)）。
 `Golem.Assemble.BibliographyStyle.bibliographyTypeFor` は文献種別に合う宣言を選び、その種別の宣言が無い場合だけ、明示した `types.default` を使う。
 
+引用の引数を扱うライブラリ API の `Golem.Eval.CitationArgument.decodeCitationArgument` は、位置の 26 種類と文字列の前置き・後置きを型付きの値に変換する。
+`cite` の `page` の値も、この API で読む。
+
 書式は、項目ごとに和文の項目か欧文の項目かで変わる。
 項目の `language` があれば、その主の副タグ（最初の `-` の前を英小文字にしたもの）が `ja` のとき和文の項目とし、それ以外は欧文の項目とする。
 `language` がなければ、題、著者、発行者のうち最初にある欄が和字（平仮名、片仮名、CJK 統合漢字とその拡張 A、CJK 互換漢字、「々」「〆」「〇」）を含むとき和文の項目とする。
