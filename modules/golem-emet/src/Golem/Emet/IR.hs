@@ -147,7 +147,7 @@ encodeInline = \case
   Kenten sp sh xs -> encodeInlines xs >>= \b -> at sp "Kenten" [maybeR str sh, b]
   Color sp c xs -> encodeInlines xs >>= \b -> at sp "Color" [str c, b]
   CharStyle sp c xs -> encodeInlines xs >>= \b -> at sp "CharStyle" [str c, b]
-  Tcy sp t -> at sp "Tcy" [str t]
+  Tcy sp t -> at sp "Tcy" [case t of TcyLiteral literal -> con "TcyLiteral" [str literal]; TcyNumber q -> con "TcyNumber" [RPrim (VRat q)]]
   Warichu sp t -> at sp "Warichu" [str t]
   Upright sp t -> at sp "Upright" [str t]
   Number sp n st -> at sp "Number" [RPrim (VRat n), maybeR numberStyle st]
@@ -381,10 +381,19 @@ inlineD cx = \case
     "Kenten" -> one2 $ \s sh xs -> Kenten s <$> maybeD strD sh <*> inlinesD cx xs
     "Color" -> one2 $ \s n xs -> Color s <$> strD n <*> inlinesD cx xs
     "CharStyle" -> one2 $ \s n xs -> CharStyle s <$> strD n <*> inlinesD cx xs
-    "Tcy" -> one1 $ \s t -> Tcy s <$> strD t
+    "Tcy" -> one1 $ \s t ->
+      Tcy s
+        <$> ( case t of
+                RCon "TcyLiteral" [literal] -> TcyLiteral <$> strD literal
+                RCon "TcyNumber" [q] -> TcyNumber <$> ratD q
+                other -> bad ("縦中横の中身ではない値です: " <> shown other)
+            )
     "Warichu" -> one1 $ \s t -> Warichu s <$> strD t
     "Upright" -> one1 $ \s t -> Upright s <$> strD t
-    "Number" -> one2 $ \s n st -> Number s <$> ratD n <*> maybeD numberStyle st
+    "Number" -> one2 $ \s n st -> do
+      q <- ratD n
+      style <- maybeD numberStyle st
+      if style == Just StyleTcy then bad "明示した縦中横は TcyNumber で表します" else pure (Number s q style)
     "Ref" -> one2 $ \s k l -> Ref s <$> refKind k <*> strD l
     "Deferred" -> one1 $ \s d -> Deferred s <$> deferred d
     "Note" -> withNumber Note

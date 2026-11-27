@@ -258,7 +258,8 @@ inline c = \case
   Kenten _ _ xs -> inlines c xs
   Color _ _ xs -> inlines c xs
   CharStyle _ _ xs -> inlines c xs
-  Tcy _ t -> t
+  Tcy _ (TcyLiteral t) -> t
+  Tcy _ (TcyNumber q) -> renderNumber (cVariant c) (cNumberDefault c) q (Just StyleTcy)
   Warichu _ t -> t
   Upright _ t -> t
   Number _ n st -> renderNumber (cVariant c) (cNumberDefault c) n st

@@ -193,11 +193,11 @@ impl Flat {
                         self.run(&s.base, false);
                     }
                 }
-                Inline::Tcy { span, text } => {
+                Inline::Tcy { span, content: golem_plugin_sdk::TcyContent::Literal(text) } => {
                     let l = self.leaf(*span, None);
                     self.chars(text, l);
                 }
-                Inline::Number { span, .. } | Inline::Ref { span, .. } | Inline::Deferred { span, .. } | Inline::Cite { span, .. } => {
+                Inline::Tcy { span, content: golem_plugin_sdk::TcyContent::Number(_), .. } | Inline::Number { span, .. } | Inline::Ref { span, .. } | Inline::Deferred { span, .. } | Inline::Cite { span, .. } => {
                     let l = self.leaf(*span, None);
                     self.items.push(Item::Unknown(l));
                 }
@@ -285,8 +285,8 @@ fn split(span: Span, text: String, edits: &[(usize, usize, Kind)]) -> Vec<Inline
             out.push(Inline::Text { span, text: text[at..*s].into() });
         }
         out.push(match k {
-            Kind::Number(n) => Inline::Number { span, value: (*n).into(), style: Some(NumberStyle::Tcy) },
-            Kind::Tcy => Inline::Tcy { span, text: text[*s..*e].into() },
+            Kind::Number(n) => Inline::Tcy { span, content: golem_plugin_sdk::TcyContent::Number((*n).into()) },
+            Kind::Tcy => Inline::Tcy { span, content: golem_plugin_sdk::TcyContent::Literal(text[*s..*e].into()) },
         });
         at = *e;
     }
@@ -423,11 +423,11 @@ mod tests {
     }
 
     fn tcy(s: &str) -> Inline {
-        Inline::Tcy { span: S, text: s.into() }
+        Inline::Tcy { span: S, content: golem_plugin_sdk::TcyContent::Literal(s.into()) }
     }
 
     fn num(n: i64) -> Inline {
-        Inline::Number { span: S, value: n.into(), style: Some(NumberStyle::Tcy) }
+        Inline::Tcy { span: S, content: golem_plugin_sdk::TcyContent::Number(n.into()) }
     }
 
     fn style(name: &str, body: Vec<Inline>) -> Inline {

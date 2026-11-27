@@ -1197,7 +1197,7 @@ inlineBody c = \case
     | Just e <- Map.lookup s (cCharStyles c) >>= hcsElement ->
         [el e [("class", "cs-" <> s) | s `notElem` ["superscript", "subscript"]] (inlines (styled s) xs)]
   CharStyle _ s xs -> [el "span" [("class", "cs-" <> s)] (inlines (styled s) xs)]
-  Tcy _ t -> [el "span" [("class", "tcy")] [textOf t]]
+  Tcy _ content -> tcyNodes (hcVertical (cCfg c)) content
   Upright _ t -> [el "span" [("class", "upright")] [textOf t]]
   Warichu _ "" -> []
   Warichu _ t ->
@@ -1209,13 +1209,13 @@ inlineBody c = \case
     | denominator q /= 1 ->
         let value = renderIRNumber q
          in if hcVertical (cCfg c) && (st == Just StyleTcy || (isNothing st && hcNumberDefault (cCfg c) == "tcy"))
-              then [el "span" [("class", "tcy")] [textOf value]]
+              then tcyNodes True (TcyNumber q)
               else [textOf value]
     | not (hcVertical (cCfg c)) -> [textOf (renderIRNumber q)]
     | otherwise -> case fromMaybe (verticalStyleOf (verticalNumbersNamed (hcNumberDefault (cCfg c))) (numerator q)) st of
         StyleKanji -> [textOf (kanji (numerator q))]
         StyleKanjiDigits -> [textOf (kanjiDigits (numerator q))]
-        StyleTcy -> [el "span" [("class", "tcy")] [textOf (renderIRNumber q)]]
+        StyleTcy -> tcyNodes True (TcyNumber q)
   Ref _ _ l -> case Map.lookup l (bookLabels (cBook c)) of
     -- a note has no title: its number, as [ref-number] gives it (root ADR 0422)
     Just t@LabelTarget {ltNote = Just _} -> [Element "a" [("href", linkTo c (ltFile t) (ltAnchor t))] (inlines c {cPageBreaks = Map.empty} (maybe [] pure (ltNumber t)))]
@@ -2152,3 +2152,11 @@ figureWidthStyle vertical width = case width >>= parseFigureWidth of
           WidthZw r -> L.emText r <> "em"
           WidthPercent r -> showRationalDigits 4 r <> "%"
      in [("style", prop <> ": " <> len <> "; max-" <> prop <> ": 100%")]
+
+-- The literal and numeric payload share the same output element.
+tcyNodes :: Bool -> TcyContent -> [Node]
+tcyNodes vertical content = case content of
+  TcyNumber _ | not vertical -> [textOf value]
+  _ -> [el "span" [("class", "tcy")] [textOf value]]
+  where
+    value = case content of TcyLiteral t -> t; TcyNumber q -> renderIRNumber q

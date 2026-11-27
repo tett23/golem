@@ -132,7 +132,8 @@ pub fn check_data(data: &Data) -> Vec<DataDiagnostic> {
 pub fn plain(xs: &[Inline]) -> String {
     xs.iter()
         .map(|x| match x {
-            Inline::Text { text, .. } | Inline::Tcy { text, .. } | Inline::Warichu { text, .. } | Inline::Upright { text, .. } => text.clone(),
+            Inline::Tcy { content: golem_plugin_sdk::TcyContent::Literal(text), .. } => text.clone(),
+            Inline::Text { text, .. } | Inline::Warichu { text, .. } | Inline::Upright { text, .. } => text.clone(),
             Inline::Ruby { segments, .. } => segments.iter().map(|s| plain(&s.base)).collect(),
             Inline::Kenten { body, .. } | Inline::Color { body, .. } | Inline::CharStyle { body, .. } | Inline::Link { body, .. } | Inline::Lang { body, .. } => plain(body),
             _ => String::new(),

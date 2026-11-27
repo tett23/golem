@@ -41,10 +41,10 @@ genInlineWith mr =
   Gen.recursive
     Gen.choice
     ( [ Text <$> genSpan <*> genText,
-        Tcy <$> genSpan <*> genText,
+        Tcy <$> genSpan <*> Gen.choice [TcyLiteral <$> genText, TcyNumber <$> genRational],
         Warichu <$> genSpan <*> genText,
         Upright <$> genSpan <*> genText,
-        Number <$> genSpan <*> ((%) <$> genInt64 <*> Gen.integral (Range.linear 1 (2 ^ (63 :: Int) - 1))) <*> Gen.maybe Gen.enumBounded,
+        Number <$> genSpan <*> genRational <*> Gen.maybe (Gen.element [StyleKanji, StyleKanjiDigits]),
         Ref <$> genSpan <*> Gen.enumBounded <*> genText,
         Deferred <$> genSpan <*> (DeferredExpr <$> genExpr),
         -- every kind of a mark, a target of one level or two (docs/adr/0265)
@@ -253,3 +253,6 @@ genTopBlock =
 -- | Every kind of an index mark, a target of one level or two (docs/adr/0265).
 genIndexKind :: Gen IndexKind
 genIndexKind = Gen.choice [pure IndexPoint, pure IndexRangeBegin, pure IndexRangeEnd, IndexSee <$> Gen.enumBounded <*> Gen.list (Range.linear 1 2) (Gen.text (Range.linear 1 8) (Gen.element ("aあ漢😀 [" :: String)))]
+
+genRational :: Gen Rational
+genRational = (%) <$> genInt64 <*> Gen.integral (Range.linear 1 (2 ^ (63 :: Int) - 1))
