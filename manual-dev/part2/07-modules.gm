@@ -119,6 +119,11 @@ golem-html は golem-project に依存せず、[code: style.toml] の値を gole
 golem-fixtures は、テストのフィクスチャの原文を Golem の原稿に変換する開発用の実行ファイルを持つ。
 golem の実行ファイルはこのパッケージに依存せず、リリースの配布物にも入らない（第[ref-number fixtures]章）。
 
+参考文献の宣言は golem-project が読み、必須キーと参照先を検査する。
+未選択の宣言も検査し、不足は G03006 にする。
+名前の先頭と末尾の保持、言語別の上書きと引用全体の囲みを扱う API は golem-assemble にある。
+宣言から通常の CLI の出力への接続は、まだ実装していない。
+
 ## 外部のコード
 
 パーサーの土台の PEG のライブラリ（peg-hs）は、別のリポジトリで開発している。[index reading="peg-hs": peg-hs]
