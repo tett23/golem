@@ -72,6 +72,7 @@ import Golem.Parser.AST qualified as A
 import Golem.Parser.Read (ReadFailure (..), checkText, readInfo, readSourceFile, readTableSource)
 import Golem.Parser.SourceSettings (SourceSettings, defaultSourceSettings)
 import Golem.Project
+import Golem.Project.Bibliography.Builtin (bundledBibliographyDeclaration)
 import Golem.Project.Files (Files (..), diskFiles)
 import Golem.Project.Paths (PathError (..), normalizeRelative, pathErrorMessage)
 import Golem.Project.Style
@@ -243,11 +244,12 @@ evaluateProjectWith files overlay profile root = do
 
 -- | Resolve list entries once, before any output (root ADR 0470).
 resolveBibliographyRecords :: Style -> FileId -> Manifest -> Map Text CslRecord -> Book -> (Book, [Diagnostic])
-resolveBibliographyRecords style fid manifest records book = case Map.lookup (Bib.bibSelected declarations) (Bib.bibStyles declarations) of
-  Nothing ->
+resolveBibliographyRecords style fid manifest records book = case selected of
+  Left problems -> (book, problems)
+  Right Nothing ->
     let missing = Map.fromListWith (\_ earlier -> earlier) [(locatorLabelName label, sp) | (sp, items) <- bookCitationItems book, item <- items, Just (Locator label _) <- [citLocator item], label /= LocatorPage]
      in (book, [diagnostic "G03006" Error sp ("引用の位置 " <> label <> " のラベルがありません。参考文献のスタイルを宣言して指定します") | (label, sp) <- Map.toList missing])
-  Just declaration ->
+  Right (Just declaration) ->
     let language = mdLanguage (manifestMetadata manifest)
         suffixes = Map.fromList [((at, key), suffix) | (at, entries) <- bookBibliographies book, let groups = [(key, identity) | (key, _) <- entries, Just record <- [Map.lookup key records], Just identity <- [recordIdentity record]], (key, suffix) <- Map.toList (bibliographyYearSuffixes groups)]
         recordIdentity record = do
@@ -288,6 +290,9 @@ resolveBibliographyRecords style fid manifest records book = case Map.lookup (Bi
      in (book {bookBibliographyEntries = Map.fromList (rights results), bookCitationPieces = Map.fromListWith (<>) (rights marks)}, [diagnostic "G03006" Error (mkSpan fid 0 0) message | message <- lefts results <> lefts marks])
   where
     declarations = stBibliography style
+    selected = case Map.lookup (Bib.bibSelected declarations) (Bib.bibStyles declarations) of
+      Just declaration -> Right (Just declaration)
+      Nothing -> bundledBibliographyDeclaration fid (Bib.bibSelected declarations)
 
 {- | The files the plugins take as data (docs/adr/0105) and the .wasm of
 the plugins of the project (docs/adr/0109), which the LSP watches with

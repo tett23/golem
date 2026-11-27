@@ -536,7 +536,7 @@ jobs:
         if: matrix.tests && matrix.suites == 'rest-a'
         run: |
           sh scripts/gen-embedded.sh
-          git diff --exit-code modules/golem-driver/src/Golem/Driver/Version/Embedded.hs modules/golem-evaluate/src/Golem/Evaluate/Explain/Embedded.hs
+          git diff --exit-code modules/golem-driver/src/Golem/Driver/Version/Embedded.hs modules/golem-evaluate/src/Golem/Evaluate/Explain/Embedded.hs modules/golem-project/src/Golem/Project/Bibliography/Builtin/IEEE.hs
       - name: Cache the fonts of the manuals (docs/adr/0022, docs/adr/0024)
         if: matrix.outputs || matrix.artifacts || matrix.env
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -1284,6 +1284,7 @@ jobs:
             !modules/golem-emet/src/Golem/Emet/Generated.hs
             !modules/golem-driver/src/Golem/Driver/Version/Embedded.hs
             !modules/golem-evaluate/src/Golem/Evaluate/Explain/Embedded.hs
+            !modules/golem-project/src/Golem/Project/Bibliography/Builtin/IEEE.hs
       # the archives of the downloads, from the cache of main; each is checked
       # by its SHA-256 before it is used (docs/adr/0243)
       - id: downloads
@@ -1305,7 +1306,7 @@ jobs:
           path: third_party/downloads
           key: ${{ steps.downloads.outputs.cache-primary-key }}
       # -j checks the files on every core of the runner (docs/adr/0037)
-      - run: '"$HOME/.local/bin/hlint" -j modules --ignore-glob="modules/golem-parser/src/Golem/Parser/Generated.hs" --ignore-glob="modules/golem-parser/test/StrippedGrammar.hs" --ignore-glob="modules/golem-emet/src/Golem/Emet/Generated.hs" --ignore-glob="modules/golem-driver/src/Golem/Driver/Version/Embedded.hs" --ignore-glob="modules/golem-evaluate/src/Golem/Evaluate/Explain/Embedded.hs"'
+      - run: '"$HOME/.local/bin/hlint" -j modules --ignore-glob="modules/golem-parser/src/Golem/Parser/Generated.hs" --ignore-glob="modules/golem-parser/test/StrippedGrammar.hs" --ignore-glob="modules/golem-emet/src/Golem/Emet/Generated.hs" --ignore-glob="modules/golem-driver/src/Golem/Driver/Version/Embedded.hs" --ignore-glob="modules/golem-evaluate/src/Golem/Evaluate/Explain/Embedded.hs" --ignore-glob="modules/golem-project/src/Golem/Project/Bibliography/Builtin/IEEE.hs"'
 
   # The sample plugins and their helper crate (docs/adr/0106): the tests of
   # the crates, and the committed plugins/wasm/*.wasm are the bytes the

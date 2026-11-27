@@ -1,0 +1,30 @@
+[
+  {
+    "id": "stein1994",
+    "type": "chapter",
+    "author": [
+      {
+        "family": "Stein",
+        "given": "L."
+      }
+    ],
+    "title": "Random patterns",
+    "container-title": "Computers and You",
+    "editor": [
+      {
+        "family": "Brake",
+        "given": "J.S."
+      }
+    ],
+    "publisher": "Wiley",
+    "publisher-place": "New York, NY, USA",
+    "issued": {
+      "date-parts": [
+        [
+          1994
+        ]
+      ]
+    },
+    "page": "55-70"
+  }
+]

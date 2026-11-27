@@ -143,7 +143,11 @@ GE=$WORK/embedded
 VMOD=$GE/modules/golem-driver/src/Golem/Driver/Version/Embedded.hs
 # the module of docs/diagnostics.md is that of golem-evaluate (root ADR 0434)
 EMOD=$GE/modules/golem-evaluate/src/Golem/Evaluate/Explain/Embedded.hs
+PMOD=$GE/modules/golem-project/src/Golem/Project/Bibliography/Builtin/IEEE.hs
+BSRC=$GE/modules/golem-project/data/bibliography/ieee.toml
 mkdir -p "$GE/scripts" "$GE/docs" "$(dirname "$VMOD")" "$(dirname "$EMOD")"
+mkdir -p "$(dirname "$PMOD")" "$(dirname "$BSRC")"
+printf '%s\n' "citation-mode = 'numeric'" >"$BSRC"
 cp "$HERE/gen-embedded.sh" "$GE/scripts/gen-embedded.sh"
 gen_em() { sh "$GE/scripts/gen-embedded.sh" "$@"; }
 printf '0.1.0-rc9\n' >"$GE/VERSION"
@@ -209,10 +213,12 @@ same_as() {
 }
 run gen_em
 expect "gen-embedded: the modules" 0
+if [ -f "$PMOD" ] && grep -qF "citation-mode = 'numeric'" "$PMOD"; then ok; else ng "root ADR 0470: embed the bundled IEEE declaration"; fi
 same_as "$GE/expected-version" "$VMOD" "gen-embedded: the module of VERSION is the one expected"
 same_as "$GE/expected-explain" "$EMOD" "root ADR 0434 I4: gen-embedded: the module of docs/diagnostics.md, in golem-evaluate, is the one expected"
 cp "$VMOD" "$GE/before-version"
 cp "$EMOD" "$GE/before-explain"
+cp "$PMOD" "$GE/before-builtin"
 run gen_em
 expect "gen-embedded: a second run" 0
 if cmp -s "$GE/before-version" "$VMOD" && cmp -s "$GE/before-explain" "$EMOD"; then ok; else ng "gen-embedded: a second run writes the same bytes"; fi
@@ -249,6 +255,18 @@ expect "gen-embedded: U+0001 in VERSION" 1
 if grep -qF "VERSION:1:" "$WORK/err" && cmp -s "$GE/before-version" "$VMOD" && cmp -s "$GE/before-explain" "$EMOD"; then ok; else ng "gen-embedded: U+0001 in VERSION names line 1 and leaves the modules as they were"; fi
 run gen_em x
 expect "gen-embedded: an argument" 2
+# A missing or unreadable new source must not replace earlier modules.
+printf '0.1.0-rc9\n' >"$GE/VERSION"
+mv "$BSRC" "$GE/builtin-source"
+run gen_em
+expect "root ADR 0470: a missing builtin source fails" 1
+if cmp -s "$GE/before-version" "$VMOD" && cmp -s "$GE/before-explain" "$EMOD" && cmp -s "$GE/before-builtin" "$PMOD"; then ok; else ng "root ADR 0470: a missing builtin source leaves all modules unchanged"; fi
+cp "$GE/builtin-source" "$BSRC"
+printf 'bad\tvalue\n' >"$BSRC"
+run gen_em
+expect "root ADR 0470: a control in the builtin source fails" 1
+if grep -qF 'modules/golem-project/data/bibliography/ieee.toml:1:' "$WORK/err"; then ok; else ng "root ADR 0470: a builtin control names its source line"; fi
+if cmp -s "$GE/before-version" "$VMOD" && cmp -s "$GE/before-explain" "$EMOD" && cmp -s "$GE/before-builtin" "$PMOD" && [ ! -e "$PMOD.tmp" ]; then ok; else ng "root ADR 0470: a builtin control leaves all modules unchanged"; fi
 
 # ---------------------------------------------------------------- fixtures/copy-fonts.sh
 
