@@ -35,7 +35,7 @@ data Column = Column Int Int Int
 
 settingsOf :: Column -> PhysicalSettings
 settingsOf (Column cap sep cols) =
-  PhysicalSettings 10 10 (Sp (fromIntegral cap)) (Sp (fromIntegral cap + 20)) (Sp (fromIntegral sep)) (ColumnSet cols 0 0 0) tall faces padding gaps bounds Nothing Set.empty noAvoid
+  PhysicalSettings 10 10 (Sp (fromIntegral cap)) (Sp (fromIntegral cap + 20)) (Sp (fromIntegral sep)) (ColumnSet cols 0 0 0) tall faces padding gaps bounds Nothing Set.empty noAvoid Map.empty
   where
     tall = Map.fromList [(i, 14) | i <- [900 .. 999]]
     faces = Map.fromList [(i, 12) | i <- [900 .. 999]]

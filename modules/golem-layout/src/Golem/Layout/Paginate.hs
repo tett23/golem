@@ -52,6 +52,7 @@ module Golem.Layout.Paginate
     paginateWithin,
     paginateHeld,
     paginateAvoiding,
+    paginateHardPrefixes,
     AvoidAt,
     noAvoid,
     clearFrom,
@@ -122,7 +123,7 @@ keptLookAhead = keptNeed . lookAheadEnv
 
 -- | A page of one column of the given grid lines.
 lookAheadEnv :: Int -> Env
-lookAheadEnv capacity = Env maxBound 1 (ColumnSet 1 0 0 0) KeepColumn Nothing capacity Set.empty noAvoid
+lookAheadEnv capacity = Env maxBound 1 (ColumnSet 1 0 0 0) KeepColumn Nothing capacity Set.empty noAvoid Map.empty
 
 {- | Lays the flow out on pages of @columns@ columns of @capacity@ grid
 lines each (docs/adr ADR 0018).
@@ -163,9 +164,13 @@ off them, the tables and code blocks broken before them as between
 columns, a table without its header row again after them.
 -}
 paginateAvoiding :: AvoidAt Int -> Set SrcSpan -> Int -> Int -> ColumnSet -> Int -> [Flow] -> [PageOut]
-paginateAvoiding avoid held maxLines separatorLines base capacity flows =
+paginateAvoiding = paginateHardPrefixes Map.empty
+
+-- | Like paginateAvoiding, retaining hard initial rows (root ADR 0476).
+paginateHardPrefixes :: Map Int (Int, SrcSpan) -> AvoidAt Int -> Set SrcSpan -> Int -> Int -> ColumnSet -> Int -> [Flow] -> [PageOut]
+paginateHardPrefixes hard avoid held maxLines separatorLines base capacity flows =
   let -- a footnote line always fits under the separator and one line of text
-      env = Env maxLines (max 1 (min separatorLines (capacity - 2))) base KeepColumn Nothing capacity held avoid
+      env = Env maxLines (max 1 (min separatorLines (capacity - 2))) base KeepColumn Nothing capacity held avoid hard
       final = closePage env (placeAll env (initialState env) flows)
       done = reverse (sDone final)
       -- controls not met in a column that made no output go with the last column
@@ -689,32 +694,38 @@ placeLines env kp0 st0 isStart0 ls0@(l0 : _) = go kp0 st0 isStart0 ls0
   where
     pid = lbId l0
     go _ st _ [] = st
-    go kp st isStart ls =
-      let n = length ls
-          k0 = fitting env st ls
-          -- a column of nothing but headings places a line as an empty one does,
-          -- when the line and a line of its notes are left room (golem-layout ADR 0019)
-          emptyish = isEmpty st || (sHeadingOnly st && roomForLine env st ls)
-          k2 = splitAtBreak kp isStart n k0
-          forced = k2 == 0 && emptyish
-          k = if forced then max 1 (min n k0) else k2
-       in if sAdjust st < 0 && isEmpty st && not (roomForLine env st ls)
-            then go kp (nextColumn env st) isStart ls
-            else
-              if kAll kp && isStart && k0 < n
-                then
-                  if isEmpty st || sHeadingOnly st
-                    then go kp {kAll = False} (addUnmet (SplitKept pid) st) isStart ls
-                    else go kp (nextColumn env st) isStart ls
-                else
-                  if k >= n
-                    then foldl' (putLine env) st ls
-                    else
-                      let short =
-                            [ShortPart FirstPart pid (kFirst kp) k | forced, isStart, k < kFirst kp]
-                              <> [ShortPart LastPart pid (kLast kp) (n - k) | forced, n - k < kLast kp]
-                          st1 = foldl' (flip addUnmet) (foldl' (putLine env) st (take k ls)) short
-                       in go kp (nextColumn env st1) (isStart && k == 0) (drop k ls)
+    go kp st isStart ls
+      | Just (required, source) <- hard,
+        k0 < required,
+        roomForLine env normal ls =
+          if isEmpty st && fitting env normal ls < required
+            then addUnmet (UnplaceablePrefix source required) st
+            else go kp (nextColumn env st) isStart ls
+      | sAdjust st < 0 && isEmpty st && not (roomForLine env st ls) = go kp (nextColumn env st) isStart ls
+      | kAll kp && isStart && k0 < n =
+          if isEmpty st || sHeadingOnly st
+            then go kp {kAll = False} (addUnmet (SplitKept pid) st) isStart ls
+            else go kp (nextColumn env st) isStart ls
+      | k >= n = foldl' (putLine env) st ls
+      | otherwise =
+          let short =
+                [ShortPart FirstPart pid (kFirst kp) k | forced, isStart, k < kFirst kp]
+                  <> [ShortPart LastPart pid (kLast kp) (n - k) | forced, n - k < kLast kp]
+              st1 = foldl' (flip addUnmet) (foldl' (putLine env) st (take k ls)) short
+           in go kp (nextColumn env st1) (isStart && k == 0) (drop k ls)
+      where
+        n = length ls
+        k0 = fitting env st ls
+        emptyish = isEmpty st || (sHeadingOnly st && roomForLine env st ls)
+        k2 = splitAtBreak kp isStart n k0
+        forced = k2 == 0 && emptyish
+        selected = if forced then max 1 (min n k0) else k2
+        -- A cut may not enter a later paragraph's hard prefix in a wrapped run.
+        k
+          | Map.null (envHardPrefixes env) = selected
+          | otherwise = minimum (selected : [offset | (offset, line) <- zip [0 ..] (take selected ls), Just (required, _) <- [Map.lookup (lbId line) (envHardPrefixes env)], selected < offset + required, offset > 0 || roomForLine env normal ls])
+        hard = listToMaybe ls >>= (\line -> Map.lookup (lbId line) (envHardPrefixes env))
+        normal = openBox ((initialState env) {sBox = sBox st})
 
 {- | The verse lines of a stanza (docs/adr/0180): a verse line is not
 broken between columns, and a column neither ends with the first verse

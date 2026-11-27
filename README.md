@@ -301,6 +301,7 @@ PDF の柱とノンブルに当てる文字スタイルは、マスターペー�
 段落と見出しのどちらから次スタイルが決まっても、`keep` で別の段落を結合せず、一段落一ブロックを保つ（[root ADR 0473](docs/adr/0473-normalize-paragraph-blocks-before-body-binding.md)）。
 `fit-characters` は一行の段落を指定の字数分の幅に組み、字のあいだに同じ空きを配る（字取り、[root ADR 0466](./docs/adr/0466-fit-characters.md)）。
 `drop-lines` は段落の先頭の一書記素を指定した行数の高さに組み、`drop-gap` はその字と本文の空きを指定する（ドロップキャップ、[root ADR 0465](./docs/adr/0465-drop-caps.md)）。
+先頭の指定行数が通常の空段にも収まらない場合は、G07145 で PDF の生成を止める（[root ADR 0476](./docs/adr/0476-reject-drop-caps-that-cannot-fit-an-empty-column.md)）。
 
 文字の詰めと送りも、スタイルで指定する。
 文字スタイルと段落スタイルの `kerning`（`metrics`、`japanese-equal-width`、`none`）、`tracking`、`proportional-metrics`、`baseline-shift` で、カーニングの方式、トラッキング、プロポーショナルメトリクス、ベースラインシフトを指定する。

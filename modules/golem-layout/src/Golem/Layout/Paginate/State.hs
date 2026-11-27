@@ -41,6 +41,7 @@ module Golem.Layout.Paginate.State
   )
 where
 
+import Data.Map.Strict (Map)
 import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.Text (Text)
@@ -68,7 +69,9 @@ data Env = Env
     after it, and with what that block keeps, as that block is placed
     -} envHeld :: !(Set SrcSpan),
     -- | the areas of each column that a block that cannot be shortened is not placed over (root ADR 0456)
-    envAvoid :: AvoidAt Int
+    envAvoid :: AvoidAt Int,
+    -- | Non-negotiable initial rows, keyed by the first line (root ADR 0476).
+    envHardPrefixes :: !(Map Int (Int, SrcSpan))
   }
 
 {- | A break not applied yet: a forced break (docs/adr ADR 0017), or the

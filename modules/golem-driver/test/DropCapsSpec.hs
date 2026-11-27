@@ -13,6 +13,7 @@ import Golem.Length (Sp (..))
 import Golem.Syntax
 import Golem.Typeset (PdfLayout (..), SetLine (..), Shaped (..), Shaping (..))
 import Support
+import System.Directory (createDirectoryIfMissing, doesFileExist)
 import System.FilePath ((</>))
 import System.IO.Temp (withSystemTempDirectory)
 import Test.Tasty
@@ -37,7 +38,12 @@ buildDiagnostics check style source = withSystemTempDirectory "golem-drop" $ \tm
 
 dropCapsTests :: [TestTree]
 dropCapsTests =
-  integrationHeadingTests
+  carriedNotePrefixTests
+    <> prefixSourceTests
+    <> prefixOutputTests
+    <> additionalPrefixTests
+    <> unplaceableDropCapsTests
+    <> integrationHeadingTests
     <> wrappedDropCapsTests
     <> wrappedInitialRowsTests
     <> [ testCase "root ADR 0465 I2, I4: three-line drop cap shortens three lines and suppresses first-line indent" $ do
@@ -152,4 +158,151 @@ integrationHeadingTests =
       (_, pl) <- layoutOk style "# 題名\n\nあ\n" []
       length (linesOf pl) @?= 4
       length [() | sl <- linesOf pl, Box _ c <- lineItems (slLine sl), lkSize (bcLook c) > fs] @?= 1
+  ]
+
+-- | A hard drop-cap prefix must not use the ordinary empty-column keep fallback.
+unplaceableDropCapsTests :: [TestTree]
+unplaceableDropCapsTests =
+  [ localOption hangTimeout $ testCase ("root ADR 0476 " <> invariant <> ": " <> label <> ", " <> T.unpack writing <> ", " <> T.unpack placement <> ", columns=" <> show (columns :: Int)) $ do
+      let base = replaceIn "columns = 1" ("columns = " <> T.pack (show columns) <> "\ncolumn-gap = \"2zw\"") $ replaceIn "line-pitch = \"15pt\"" "line-pitch = \"10pt\"" (replaceIn "lines = 30" ("lines = " <> T.pack (show (capacity :: Int))) (dropStyle "drop-lines = 3\n")) <> pitch
+          placed = if placement == "free" then replaceIn "[page.grid]" "[page.grid]\nalignment = \"free\"" base else base
+          style = replaceIn "writing-mode = \"horizontal\"" ("writing-mode = \"" <> writing <> "\"") placed
+      result <- layoutMini style (controls <> "@style title\nあ\n") []
+      if fails
+        then case result of
+          Left ds -> map diagCode (filter isError ds) @?= [DiagnosticCode "G07145"]
+          Right _ -> assertFailure "the hard initial rows were silently split"
+        else do
+          (_, layout) <- either (assertFailure . show) pure result
+          let positions = [(poNumber page, poColumn page) | page <- plPages layout, (_, SLine ident) <- poSlots page, ident >= (if label == "enlargement is local to one column" then 1 else 0), ident < (if label == "enlargement is local to one column" then 4 else 3)]
+          length positions @?= 3
+          case positions of
+            first : rest -> assertBool (show positions) (all (== first) rest)
+            [] -> assertFailure "no initial rows"
+          case expectedPage of
+            Nothing -> pure ()
+            Just n -> map fst positions @?= replicate 3 n
+  | writing <- ["horizontal", "vertical"],
+    placement <- ["grid", "free"],
+    columns <- [1, 2],
+    (label, invariant, capacity, controls, pitch, fails, expectedPage) <-
+      [ ("exactly three rows", "I1, I3", 3, "", "", False, Just 1),
+        ("one row over capacity", "I2", 2, "", "", True, Nothing),
+        ("temporarily shortened column", "I1, I3", 3, "@page-lines -1\n", "", False, Just (if columns == 2 then 1 else 2)),
+        ("temporarily enlarged column", "I1, I3", 2, "@page-lines +1\n", "", False, Just 1)
+      ]
+        <> [("enlargement is local to one column", "I2", 2, "@page-lines +1\n先\n\n", "", True, Nothing) | columns == 2]
+        <> [("own line bands exceed capacity despite a fitting initial face", "I2", 4, "", "line-pitch = \"15pt\"\n", True, Nothing) | placement == "free"]
+  ]
+
+additionalPrefixTests :: [TestTree]
+additionalPrefixTests =
+  [ localOption hangTimeout $ testCase ("root ADR 0476 " <> invariant <> ": " <> label <> ", " <> T.unpack writing <> ", " <> T.unpack placement) $ do
+      imageFiles <- if withFigure then tinyImage else pure []
+      let base = replaceIn "characters = 12" "characters = 20" $ replaceIn "line-pitch = \"15pt\"" "line-pitch = \"10pt\"" $ replaceIn "lines = 30" ("lines = " <> T.pack (show (capacity :: Int))) (dropStyle keys)
+          placed = if placement == "free" then replaceIn "[page.grid]" "[page.grid]\nalignment = \"free\"" base else base
+          style = (if withFigure then (\st -> figStyle st <> "wrap-gap = \"0pt\"\n") else id) $ replaceIn "writing-mode = \"horizontal\"" ("writing-mode = \"" <> writing <> "\"") placed
+          source = (if withFigure then "@nonumber\n@figure images/tiny.jpg alt=\"t\" wrap=start width=1zw\n\n" else "") <> "@style title\n" <> body
+      result <- layoutMini style source imageFiles
+      case expected of
+        Just code -> case result of
+          Left ds -> do
+            let errors = filter isError ds
+            if label == "joined padding makes initial too tall"
+              then do
+                assertBool (show errors) (not (null errors) && all ((== DiagnosticCode code) . diagCode) errors)
+                Map.size (Map.fromList [(diagSpan err, ()) | err <- errors]) @?= length errors
+              else map diagCode errors @?= [DiagnosticCode code]
+          Right _ -> assertFailure "the unplaceable initial prefix succeeded"
+        Nothing -> do
+          _ <- either (assertFailure . show) pure result
+          pure ()
+  | writing <- ["horizontal", "vertical"],
+    placement <- ["grid", "free"],
+    (label, invariant, capacity, keys, body, withFigure, expected) <-
+      [ ("withFigure initial one row over", "I2", 2, "drop-lines = 3\n", "あ\n", True, Just "G07145"),
+        ("padding makes initial too tall", "I2", 4, "drop-lines = 3\nbackground = \"gray\"\npadding = \"10pt\"\n[color.swatches]\ngray = { cmyk = [0, 0, 0, 10] }\n", "あ\n", False, Just "G07145"),
+        ("joined padding makes initial too tall", "I2", 4, "drop-lines = 3\nbackground = \"gray\"\npadding = \"10pt\"\n[color.swatches]\ngray = { cmyk = [0, 0, 0, 10] }\n", "あ\n\n@style title\nい\n", False, Just "G07145"),
+        ("independently impossible note retains its code", "I5", 2, "drop-lines = 3\n", "あ[note: 注]\n", False, Just (if placement == "free" then "G07130" else "G07125")),
+        ("initial rows and their own note", "I2", 4, "drop-lines = 3\n", "あ[note: 注]\n", False, Just "G07145"),
+        ("ordinary keep remains soft", "I5", 2, "keep-first-lines = 3\n", T.replicate 60 "あ" <> "\n", False, Nothing),
+        ("unsupported ruby initial remains ordinary", "I5", 2, "drop-lines = 3\n", "[ruby: あ | ア]\n", False, Nothing)
+      ]
+  ]
+
+prefixOutputTests :: [TestTree]
+prefixOutputTests =
+  [ localOption hangTimeout $
+      testCase "root ADR 0476 I4, A2: failure cleans both PDF outputs and preserves other media" $
+        withSystemTempDirectory "golem-hard-prefix-output" $ \tmp -> do
+          let manifest = miniManifest <> "\n[targets.pdf-screen]\n"
+              style rows = replaceIn "lines = 30" ("lines = " <> rows) (dropStyle "drop-lines = 3\n")
+              source = "@style title\nあ\n"
+              options = (defaultOptions tmp) {optTargets = Just [TargetPdf, TargetPdfScreen], optFonts = fakeProvider}
+          writeProject tmp manifest (style "5") source []
+          good <- build options
+          filter isError (brDiagnostics good) @?= []
+          length (brWritten good) @?= 3
+          mapM_ (\path -> doesFileExist path >>= (@?= True)) (brWritten good)
+          createDirectoryIfMissing True (tmp </> "build/html")
+          createDirectoryIfMissing True (tmp </> "build/epub")
+          BS.writeFile (tmp </> "build/html/keep.html") "keep html"
+          BS.writeFile (tmp </> "build/epub/keep.epub") "keep epub"
+          writeProject tmp manifest (style "2") source []
+          bad <- build options
+          map diagCode (filter isError (brDiagnostics bad)) @?= [DiagnosticCode "G07145"]
+          brWritten bad @?= []
+          mapM_ (\path -> doesFileExist path >>= (@?= False)) (brWritten good)
+          BS.readFile (tmp </> "build/html/keep.html") >>= (@?= "keep html")
+          BS.readFile (tmp </> "build/epub/keep.epub") >>= (@?= "keep epub"),
+    localOption hangTimeout $
+      testCase "root ADR 0476 I5, A3: web-only generation does not evaluate PDF capacity" $
+        withSystemTempDirectory "golem-hard-prefix-web" $ \tmp -> do
+          let manifest = miniManifest <> "\n[targets.html]\n[targets.epub]\n"
+              style = replaceIn "lines = 30" "lines = 2" (dropStyle "drop-lines = 3\n")
+          writeProject tmp manifest style "@style title\nあ\n" []
+          output <- build (defaultOptions tmp) {optTargets = Just [TargetHtml, TargetEpub], optFonts = fakeProvider}
+          filter isError (brDiagnostics output) @?= []
+          assertBool "web outputs were generated" (not (null (brWritten output)))
+  ]
+
+prefixSourceTests :: [TestTree]
+prefixSourceTests =
+  [ localOption hangTimeout $ testCase "root ADR 0476 I2: a later wrapped prefix reports its own paragraph" $ do
+      files <- tinyImage
+      let style = figStyle (replaceIn "characters = 12" "characters = 20" $ replaceIn "line-pitch = \"15pt\"" "line-pitch = \"10pt\"" $ replaceIn "lines = 30" "lines = 3" $ dropStyle "drop-lines = 4\n") <> "wrap-gap = \"0pt\"\n"
+          before = "@nonumber\n@figure images/tiny.jpg alt=\"t\" wrap=start width=2zw\n\nBefore.\n\n@style title\n"
+      result <- layoutMini style (before <> "A.\n") files
+      case result of
+        Right _ -> assertFailure "the later hard prefix was split"
+        Left ds -> do
+          let errors = filter isError ds
+          map diagCode errors @?= [DiagnosticCode "G07145"]
+          assertBool (show errors) (all ((>= T.length before) . spanStart . diagSpan) errors)
+  ]
+
+-- | A carried note is temporary occupancy, not the normal empty-column capacity.
+carriedNotePrefixTests :: [TestTree]
+carriedNotePrefixTests =
+  [ localOption hangTimeout $ testCase ("root ADR 0476 I1, I3: carried notes drain before the initial rows, " <> T.unpack writing <> ", " <> T.unpack placement) $ do
+      let base = replaceIn "line-pitch = \"15pt\"" "line-pitch = \"10pt\"" $ replaceIn "lines = 30" "lines = 3" $ dropStyle "drop-lines = 3\n"
+          placed = if placement == "free" then replaceIn "[page.grid]" "[page.grid]\nalignment = \"free\"" base else base
+          style = replaceIn "writing-mode = \"horizontal\"" ("writing-mode = \"" <> writing <> "\"") placed
+          source = "先[note k]。\n\n@style title\nあ\n\n@note k\n:::\n" <> T.concat ["注" <> T.pack (show i) <> "。\n\n" | i <- [1 .. 6 :: Int]] <> ":::\n"
+      (_, pl) <- layoutOk style source []
+      let initials = [ident | (ident, sl) <- Map.toList (plLines pl), Box _ box <- lineItems (slLine sl), lkSize (bcLook box) > fs]
+          positions = Map.fromList [(ident, (poNumber page, poColumn page)) | page <- plPages pl, (_, SLine ident) <- poSlots page]
+          notePages = [poNumber page | page <- plPages pl, not (null (poFootnotes page))]
+      case initials of
+        [initial] -> do
+          let prefix = map (`Map.lookup` positions) [initial, initial + 1, initial + 2]
+          case prefix of
+            Just first : rest -> do
+              assertBool (show prefix) (all (== Just first) rest)
+              assertBool (show notePages) (length notePages >= 2)
+              assertBool (show (prefix, notePages)) (all (< fst first) notePages)
+            other -> assertFailure (show other)
+        other -> assertFailure (show other)
+  | writing <- ["horizontal", "vertical"],
+    placement <- ["grid", "free"]
   ]

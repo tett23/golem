@@ -27,7 +27,7 @@ longNoteLine :: Int -> LineBox
 longNoteLine i = LineBox i [NoteBody (NoteId span0 0) 3] [] [] 0
 
 settings :: PhysicalSettings
-settings = PhysicalSettings 16 10 42 42 0 (ColumnSet 1 0 0 0) Map.empty Map.empty Map.empty Map.empty Map.empty Nothing Set.empty noAvoid
+settings = PhysicalSettings 16 10 42 42 0 (ColumnSet 1 0 0 0) Map.empty Map.empty Map.empty Map.empty Map.empty Nothing Set.empty noAvoid Map.empty
 
 span0 :: SrcSpan
 span0 = mkSpan (FileId 0) 0 0

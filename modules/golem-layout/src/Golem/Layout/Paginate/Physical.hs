@@ -70,7 +70,9 @@ data PhysicalSettings = PhysicalSettings
     -- | the spans of the keep-with-next of the visible separators (root ADR 0398 I7)
     physicalHeld :: !(Set Golem.Syntax.SrcSpan),
     -- | the areas of each column that a block that cannot be shortened is not placed over (root ADR 0456)
-    physicalAvoid :: AvoidAt Sp
+    physicalAvoid :: AvoidAt Sp,
+    -- | Non-negotiable initial rows, keyed by the first line (root ADR 0476).
+    physicalHardPrefixes :: !(Map Int (Int, Golem.Syntax.SrcSpan))
   }
 
 data PhysicalFailure
@@ -82,7 +84,16 @@ data PhysicalFailure
   | PhysicalCodeTooTall !Int
   | PhysicalBoxTooTall !Int
   | PhysicalFigureTooTall !Int
+  | PhysicalPrefixTooTall !Golem.Syntax.SrcSpan !Int
   deriving stock (Eq, Show)
+
+hardPrefixRows :: PhysicalSettings -> Int -> Int
+hardPrefixRows cfg ident = maybe 0 fst (Map.lookup ident (physicalHardPrefixes cfg))
+
+hardPrefixFailure :: PhysicalSettings -> Int -> PhysicalFailure
+hardPrefixFailure cfg ident = case Map.lookup ident (physicalHardPrefixes cfg) of
+  Just (rows, source) -> PhysicalPrefixTooTall source rows
+  Nothing -> PhysicalLineTooTall ident
 
 data PhysicalState = PhysicalState
   { psPage :: !Int,
@@ -651,25 +662,32 @@ trialParagraphPartLimit cfg region prefixLimit keep0 start0 cursor0 rows0 = do
       if pitchOf cfg firstLine > physicalCapacity cfg
         then Left (PhysicalLineTooTall (lbId firstLine))
         else
-          if kAll keep && start && count < total
+          if start && (count < hardPrefixRows cfg (lbId firstLine)) && pitchOf cfg firstLine + (if any ((> 0) . nbLines) (lbNotes firstLine) then physicalSeparator cfg + physicalPagePitch cfg else 0) <= physicalCapacity cfg
             then
-              if empty st || headingOnly st
-                then go (keep {kAll = False}) start (PhysicalCursor st {psUnmet = psUnmet st <> [SplitKept (lbId firstLine)]}) rows
-                else move
+              let required = hardPrefixRows cfg (lbId firstLine)
+               in if empty st && activeWrapEnd region st == 0 && fitting cfg (initial cfg) rows < required
+                    then Left (hardPrefixFailure cfg (lbId firstLine))
+                    else move
             else
-              if (empty st && psAdjustment st < 0 && count == 0) || (selected == 0 && not emptyish)
-                then move
-                else do
-                  let takeCount = if selected == 0 then max 1 count else selected
-                      here = take takeCount rows
-                      forced = selected == 0 && emptyish && takeCount < total
-                      short =
-                        [ShortPart FirstPart (lbId firstLine) (kFirst keep) takeCount | forced, start, takeCount < kFirst keep]
-                          <> [ShortPart LastPart (lbId firstLine) (kLast keep) (total - takeCount) | forced, total - takeCount < kLast keep]
-                      ready = fit cfg st (sum (map (pitchOf cfg) here))
-                      put s line = if activeWrapEnd region s > 0 then putWrappedLine cfg (activeWrapEnd region s) s line else putLine cfg s line
-                  placed <- foldl' (\acc line -> acc >>= \s -> put s line) (Right ready) here
-                  Right (PhysicalPlaced takeCount (PhysicalCursor placed {psUnmet = psUnmet placed <> short}) keep)
+              if kAll keep && start && count < total
+                then
+                  if empty st || headingOnly st
+                    then go (keep {kAll = False}) start (PhysicalCursor st {psUnmet = psUnmet st <> [SplitKept (lbId firstLine)]}) rows
+                    else move
+                else
+                  if (empty st && psAdjustment st < 0 && count == 0) || (selected == 0 && not emptyish)
+                    then move
+                    else do
+                      let takeCount = if selected == 0 then max 1 count else selected
+                          here = take takeCount rows
+                          forced = selected == 0 && emptyish && takeCount < total
+                          short =
+                            [ShortPart FirstPart (lbId firstLine) (kFirst keep) takeCount | forced, start, takeCount < kFirst keep]
+                              <> [ShortPart LastPart (lbId firstLine) (kLast keep) (total - takeCount) | forced, total - takeCount < kLast keep]
+                          ready = fit cfg st (sum (map (pitchOf cfg) here))
+                          put s line = if activeWrapEnd region s > 0 then putWrappedLine cfg (activeWrapEnd region s) s line else putLine cfg s line
+                      placed <- foldl' (\acc line -> acc >>= \s -> put s line) (Right ready) here
+                      Right (PhysicalPlaced takeCount (PhysicalCursor placed {psUnmet = psUnmet placed <> short}) keep)
 
 placeLines :: PhysicalSettings -> Keep -> Bool -> PhysicalState -> [LineBox] -> Either PhysicalFailure PhysicalState
 placeLines cfg keep0 start0 st0 = go keep0 start0 (PhysicalCursor st0)
@@ -1213,33 +1231,40 @@ placeBoxedParagraphWithKeeps keepMarks cfg starting ident fallbackBefore fallbac
               if firstSize + physicalSeparator cfg + physicalPagePitch cfg > physicalCapacity cfg && isJust firstNote
                 then maybe (Left (PhysicalBoxTooTall ident)) (Left . PhysicalFootnoteTooTall . nbId) firstNote
                 else
-                  if kAll keep && isStart && available < length lines'
+                  if isStart && (available < hardPrefixRows cfg (lbId first))
                     then
-                      if empty st
-                        then go (keep {kAll = False}) isStart (st {psUnmet = psUnmet st <> [SplitKept (lbId first)]}) lines'
-                        else go keep isStart (nextColumn cfg st) lines'
+                      let required = hardPrefixRows cfg (lbId first)
+                       in if empty st && fragmentSize (initial cfg) (take required lines') > physicalCapacity cfg
+                            then Left (hardPrefixFailure cfg (lbId first))
+                            else go keep isStart (nextColumn cfg st) lines'
                     else
-                      if (selected == 0 || (isJust crossing && candidateCount == 1)) && not (empty st)
-                        then go keep isStart (nextColumn cfg st) lines'
+                      if kAll keep && isStart && available < length lines'
+                        then
+                          if empty st
+                            then go (keep {kAll = False}) isStart (st {psUnmet = psUnmet st <> [SplitKept (lbId first)]}) lines'
+                            else go keep isStart (nextColumn cfg st) lines'
                         else
-                          let count = if isJust crossing && candidateCount > 1 then candidateCount - 1 else candidateCount
-                              (here, rest) = splitAt count lines'
-                              forced = selected == 0 && empty st && not (null rest)
-                              short =
-                                [ShortPart FirstPart (lbId first) (kFirst keep) count | forced, isStart, count < kFirst keep]
-                                  <> [ShortPart LastPart (lbId first) (kLast keep) (length rest) | forced, length rest < kLast keep]
-                                  <> [UnmetKeepNext span' | candidateCount == 1, empty st, spans <- maybe [] pure crossing, span' <- spans]
-                           in case (safeHead here, safeHead (reverse here)) of
-                                (Just (_, firstHere), Just (_, lastHere)) -> do
-                                  let (beforeExtra, afterExtra) = extras firstHere lastHere
-                                      ready = fit cfg st (fragmentSize st here)
-                                      origin = psUsed ready
-                                      bodyState = ready {psUsed = origin + beforeExtra, psAdjustment = psAdjustment ready - afterExtra}
-                                  placed <- foldl' (\acc (index, (gap, line)) -> acc >>= \s -> putLine cfg (s {psUsed = psUsed s + if index == (0 :: Int) then 0 else gap}) line) (Right bodyState) (zip [0 ..] here)
-                                  let end = psUsed placed + afterExtra
-                                      finished = placed {psUsed = end, psAdjustment = psAdjustment ready, psBoxes = psBoxes placed <> [BoxSegment ident origin end], psUnmet = psUnmet placed <> short}
-                                  if null rest then Right finished else go keep False (nextColumn cfg finished) rest
-                                _ -> Right st
+                          if (selected == 0 || (isJust crossing && candidateCount == 1)) && not (empty st)
+                            then go keep isStart (nextColumn cfg st) lines'
+                            else
+                              let count = if isJust crossing && candidateCount > 1 then candidateCount - 1 else candidateCount
+                                  (here, rest) = splitAt count lines'
+                                  forced = selected == 0 && empty st && not (null rest)
+                                  short =
+                                    [ShortPart FirstPart (lbId first) (kFirst keep) count | forced, isStart, count < kFirst keep]
+                                      <> [ShortPart LastPart (lbId first) (kLast keep) (length rest) | forced, length rest < kLast keep]
+                                      <> [UnmetKeepNext span' | candidateCount == 1, empty st, spans <- maybe [] pure crossing, span' <- spans]
+                               in case (safeHead here, safeHead (reverse here)) of
+                                    (Just (_, firstHere), Just (_, lastHere)) -> do
+                                      let (beforeExtra, afterExtra) = extras firstHere lastHere
+                                          ready = fit cfg st (fragmentSize st here)
+                                          origin = psUsed ready
+                                          bodyState = ready {psUsed = origin + beforeExtra, psAdjustment = psAdjustment ready - afterExtra}
+                                      placed <- foldl' (\acc (index, (gap, line)) -> acc >>= \s -> putLine cfg (s {psUsed = psUsed s + if index == (0 :: Int) then 0 else gap}) line) (Right bodyState) (zip [0 ..] here)
+                                      let end = psUsed placed + afterExtra
+                                          finished = placed {psUsed = end, psAdjustment = psAdjustment ready, psBoxes = psBoxes placed <> [BoxSegment ident origin end], psUnmet = psUnmet placed <> short}
+                                      if null rest then Right finished else go keep False (nextColumn cfg finished) rest
+                                    _ -> Right st
 
 placeBoxedStanza :: PhysicalSettings -> PhysicalState -> Int -> Sp -> Sp -> Keep -> [[LineBox]] -> Either PhysicalFailure PhysicalState
 placeBoxedStanza cfg starting ident before afterSide keep verses =
@@ -1268,61 +1293,75 @@ placeBoxedStanzaWith keepMarks keepCounts unitKeeps gaps cfg starting ident fall
           paragraphCount
             | Map.null unitKeeps = splitAtBreak keep isStart (length verses) available
             | otherwise = maximum (0 : [n | n <- [1 .. available], paragraphBreak relaxed verses n])
-       in if selected == 0 && not (empty st)
-            then go keep isStart relaxed Nothing (nextColumn cfg (seal open st)) verses
+          hard = maybe 0 (hardPrefixRows cfg . lbId) (safeHead firstVerse)
+          initialUnits = take (1 + length (takeWhile (< hard) (drop 1 (scanl (+) 0 (map length verses))))) verses
+          normal = initial cfg
+          minimumFirst = case safeHead firstVerse of
+            Nothing -> 0
+            Just line ->
+              let (before, after) = extras line line
+               in before + pitchOf cfg line + after + (if any ((> 0) . nbLines) (lbNotes line) then physicalSeparator cfg + physicalPagePitch cfg else 0)
+       in if hard > 0 && length (concat (take available verses)) < hard && minimumFirst <= physicalCapacity cfg
+            then
+              if empty st && size normal Nothing initialUnits > physicalCapacity cfg
+                then Left (hardPrefixFailure cfg (maybe 0 lbId (safeHead firstVerse)))
+                else go keep isStart relaxed Nothing (nextColumn cfg (seal open st)) verses
             else
-              if selected == 0 && paragraphCount == 0 && empty st && kAll keep && isStart
-                then go (keep {kAll = False}) isStart relaxed open (st {psUnmet = psUnmet st <> [SplitKept (maybe 0 lbId (safeHead firstVerse))]}) verses
+              if selected == 0 && not (empty st)
+                then go keep isStart relaxed Nothing (nextColumn cfg (seal open st)) verses
                 else
-                  if selected == 0 && paragraphCount == 0 && empty st && maybe False (\bounds -> kAll (bukKeep bounds) && bukParagraph bounds `notElem` relaxed) (boundsOf firstVerse)
-                    then
-                      let paragraph = maybe 0 bukParagraph (boundsOf firstVerse)
-                       in go keep isStart (paragraph : relaxed) open (st {psUnmet = psUnmet st <> [SplitKept paragraph]}) verses
+                  if selected == 0 && paragraphCount == 0 && empty st && kAll keep && isStart
+                    then go (keep {kAll = False}) isStart relaxed open (st {psUnmet = psUnmet st <> [SplitKept (maybe 0 lbId (safeHead firstVerse))]}) verses
                     else
-                      if selected == 0 && available == 0
-                        then do
-                          let unitKeep = fallbackKeep relaxed firstVerse
-                          placed <- placeBoxedParagraph cfg st ident fallbackBefore fallbackAfter unitKeep [(0, line) | line <- firstVerse]
-                          let (resumed, continuing) = reopen firstVerse placed
-                          go keep False relaxed continuing resumed (drop 1 verses)
-                        else do
-                          let count
-                                | selected > 0 = selected
-                                | paragraphCount > 0 = paragraphCount
-                                | otherwise = available
-                              (here, later) = splitAt count verses
-                              rows = concat here
-                              forced = selected == 0 && not (null later)
-                              firstId = maybe 0 lbId (safeHead firstVerse)
-                              short =
-                                ( if Map.null unitKeeps
-                                    then
-                                      [ShortPart FirstPart firstId (kFirst keep) count | forced, isStart, count < kFirst keep]
-                                        <> [ShortPart LastPart firstId (kLast keep) (length later) | forced, length later < kLast keep]
-                                    else boundaryWarnings forced verses count
-                                )
-                                  <> [UnmetKeepNext span' | forced, span' <- linkBreaks verses count]
-                          case (safeHead rows, safeHead (reverse rows)) of
-                            (Just first, Just last') -> do
-                              let (beforeExtra, afterExtra) = extras first last'
-                                  ready = fit cfg st (size st open here)
-                                  origin = maybe (psUsed ready) (bsFirst . fst) open
-                                  firstGap = if hasOpen open then Map.findWithDefault 0 (lbId first) gaps else 0
-                                  before = if hasOpen open then 0 else beforeExtra
-                                  bodyState = ready {psUsed = psUsed ready + before + firstGap, psAdjustment = psAdjustment ready - afterExtra}
-                              placed <-
-                                foldl'
-                                  ( \acc (index, verse) ->
-                                      acc >>= \s ->
-                                        let gap = if index == (0 :: Int) then 0 else maybe 0 (\line -> Map.findWithDefault 0 (lbId line) gaps) (safeHead verse)
-                                         in foldl' (\lineAcc line -> lineAcc >>= \lineState -> putLine cfg lineState line) (Right (s {psUsed = psUsed s + gap})) verse
-                                  )
-                                  (Right bodyState)
-                                  (zip [0 :: Int ..] here)
-                              let end = psUsed placed + afterExtra
-                                  finished = placed {psUsed = end, psAdjustment = psAdjustment ready, psBoxes = psBoxes placed <> [BoxSegment ident origin end], psUnmet = psUnmet placed <> short}
-                              if null later then Right finished else go keep False relaxed Nothing (nextColumn cfg finished) later
-                            _ -> Right st
+                      if selected == 0 && paragraphCount == 0 && empty st && maybe False (\bounds -> kAll (bukKeep bounds) && bukParagraph bounds `notElem` relaxed) (boundsOf firstVerse)
+                        then
+                          let paragraph = maybe 0 bukParagraph (boundsOf firstVerse)
+                           in go keep isStart (paragraph : relaxed) open (st {psUnmet = psUnmet st <> [SplitKept paragraph]}) verses
+                        else
+                          if selected == 0 && available == 0
+                            then do
+                              let unitKeep = fallbackKeep relaxed firstVerse
+                              placed <- placeBoxedParagraph cfg st ident fallbackBefore fallbackAfter unitKeep [(0, line) | line <- firstVerse]
+                              let (resumed, continuing) = reopen firstVerse placed
+                              go keep False relaxed continuing resumed (drop 1 verses)
+                            else do
+                              let count
+                                    | selected > 0 = selected
+                                    | paragraphCount > 0 = paragraphCount
+                                    | otherwise = available
+                                  (here, later) = splitAt count verses
+                                  rows = concat here
+                                  forced = selected == 0 && not (null later)
+                                  firstId = maybe 0 lbId (safeHead firstVerse)
+                                  short =
+                                    ( if Map.null unitKeeps
+                                        then
+                                          [ShortPart FirstPart firstId (kFirst keep) count | forced, isStart, count < kFirst keep]
+                                            <> [ShortPart LastPart firstId (kLast keep) (length later) | forced, length later < kLast keep]
+                                        else boundaryWarnings forced verses count
+                                    )
+                                      <> [UnmetKeepNext span' | forced, span' <- linkBreaks verses count]
+                              case (safeHead rows, safeHead (reverse rows)) of
+                                (Just first, Just last') -> do
+                                  let (beforeExtra, afterExtra) = extras first last'
+                                      ready = fit cfg st (size st open here)
+                                      origin = maybe (psUsed ready) (bsFirst . fst) open
+                                      firstGap = if hasOpen open then Map.findWithDefault 0 (lbId first) gaps else 0
+                                      before = if hasOpen open then 0 else beforeExtra
+                                      bodyState = ready {psUsed = psUsed ready + before + firstGap, psAdjustment = psAdjustment ready - afterExtra}
+                                  placed <-
+                                    foldl'
+                                      ( \acc (index, verse) ->
+                                          acc >>= \s ->
+                                            let gap = if index == (0 :: Int) then 0 else maybe 0 (\line -> Map.findWithDefault 0 (lbId line) gaps) (safeHead verse)
+                                             in foldl' (\lineAcc line -> lineAcc >>= \lineState -> putLine cfg lineState line) (Right (s {psUsed = psUsed s + gap})) verse
+                                      )
+                                      (Right bodyState)
+                                      (zip [0 :: Int ..] here)
+                                  let end = psUsed placed + afterExtra
+                                      finished = placed {psUsed = end, psAdjustment = psAdjustment ready, psBoxes = psBoxes placed <> [BoxSegment ident origin end], psUnmet = psUnmet placed <> short}
+                                  if null later then Right finished else go keep False relaxed Nothing (nextColumn cfg finished) later
+                                _ -> Right st
 
     hasOpen = isJust
     seal Nothing st = st
@@ -1352,15 +1391,23 @@ placeBoxedStanzaWith keepMarks keepCounts unitKeeps gaps cfg starting ident fall
       | otherwise =
           let cut = length (concat (take n verses))
            in [span' | (index, line) <- zip [0 ..] (concat verses), index < cut, Just wanted <- [Map.lookup (lbId line) keepCounts], wanted > cut - index - 1, span' <- Map.findWithDefault [] (lbId line) keepMarks]
-    paragraphBreak relaxed verses n = case boundary verses n of
-      Nothing -> True
-      Just (a, b) ->
-        let keep = bukKeep a
-            firstCount = bukIndex a + 1
-            lastCount = bukCount b - bukIndex b
-         in (not (kAll keep) || bukParagraph a `elem` relaxed)
-              && (not (atGroupStart verses a) || firstCount >= kFirst keep)
-              && lastCount >= kLast keep
+    hardLegal verses n
+      | Map.null (physicalHardPrefixes cfg) = True
+      | otherwise =
+          let rows = concat verses
+              cut = length (concat (take n verses))
+           in and [cut >= offset + required | (offset, line) <- zip [0 ..] (take cut rows), Just (required, _) <- [Map.lookup (lbId line) (physicalHardPrefixes cfg)]]
+    paragraphBreak relaxed verses n
+      | not (hardLegal verses n) = False
+      | otherwise = case boundary verses n of
+          Nothing -> True
+          Just (a, b) ->
+            let keep = bukKeep a
+                firstCount = bukIndex a + 1
+                lastCount = bukCount b - bukIndex b
+             in (not (kAll keep) || bukParagraph a `elem` relaxed)
+                  && (not (atGroupStart verses a) || firstCount >= kFirst keep)
+                  && lastCount >= kLast keep
     boundaryWarnings forced verses n = case boundary verses n of
       Just (a, b)
         | forced ->
