@@ -22,6 +22,7 @@ module Golem.Numerals.Notation
     aiueoNotation,
     asterisksNotation,
     noteSymbolsNotation,
+    ordinalEnNotation,
   )
 where
 
@@ -47,6 +48,8 @@ data Rule
     Repeat !Text
   | -- | a function that writes 0 and up
     Function (Integer -> Text)
+  | -- | a function with an explicit inclusive lower bound
+    FunctionFrom !Integer (Integer -> Text)
 
 -- | A row of the table: its name and its rule.
 data Notation = Notation
@@ -135,6 +138,21 @@ DAGGER, PILCROW SIGN, SECTION SIGN, DOUBLE VERTICAL LINE and NUMBER SIGN.
 noteSymbolsNotation :: Notation
 noteSymbolsNotation = Notation "note-symbols" (Fixed ["*", "\x2020", "\x2021", "\x00B6", "\x00A7", "\x2016", "#"])
 
+{- | Positive English ordinals for bibliography fields (root ADR 0480).
+This row is not in the common table: only bibliography formats opt in.
+-}
+ordinalEnNotation :: Notation
+ordinalEnNotation = Notation "ordinal-en" (FunctionFrom 1 ordinal)
+  where
+    ordinal n = T.pack (show n) <> suffix n
+    suffix n
+      | n `mod` 100 `elem` [11, 12, 13] = "th"
+      | otherwise = case n `mod` 10 of
+          1 -> "st"
+          2 -> "nd"
+          3 -> "rd"
+          _ -> "th"
+
 {- | The smallest number a notation writes and the largest, Nothing for no
 largest: both from the data of its row.
 -}
@@ -146,6 +164,7 @@ notationRange n = case notationRule n of
   Fixed syms -> (1, Just (toInteger (length syms)))
   Repeat _ -> (1, Nothing)
   Function _ -> (0, Nothing)
+  FunctionFrom lo _ -> (lo, Nothing)
 
 -- | A number in a notation; Nothing outside its range.
 writeNumber :: Notation -> Integer -> Maybe Text
@@ -158,6 +177,7 @@ writeNumber n k
       Fixed syms -> syms !! fromInteger (k - 1)
       Repeat s -> T.replicate (fromInteger k) s
       Function f -> f k
+      FunctionFrom _ f -> f k
   where
     (lo, hi) = notationRange n
     positional ds m =
