@@ -682,6 +682,16 @@ if (!fragment && ast) {
         rule.templateParams.length === 0 && rule.alts.length === 1 &&
         rule.alts[0].action?.trim() === '()' && rule.alts[0].constructor === null &&
         describeItems(rule.alts[0].items) === definitionShapes.get(rule.name)) continue;
+    // BlockSequenceTotal proves the complete guarded repetition wrappers.
+    const blockSequenceShapes = new Map([
+      ['Blocks', 'Block(ind) (BlankLines? &(Ind(ind) !BlankLine .) Block(ind))*'],
+      ['ItemTail', '(BlankLines? &(Ind(ind) ![ \\t] !BlankLine .) Block(ind))*'],
+      ['DivBlocks', '(BlankLines? !(Ind(ind) DivLine) &(Ind(ind) ![ \\t] !BlankLine .) Block(ind))*'],
+    ]);
+    if (blockSequenceShapes.has(rule.name) && rule.params.length === 1 && rule.params[0] === 'ind' &&
+        rule.templateParams.length === 0 && rule.alts.length === 1 &&
+        rule.alts[0].action?.trim() === '()' && rule.alts[0].constructor === null &&
+        describeItems(rule.alts[0].items) === blockSequenceShapes.get(rule.name)) continue;
     if (rule.name === 'Ind' && indentFullyProved) continue;
     if (rule.name === 'StringLit' && stringSupported && alternatives[0] === escape &&
         rule.params.length === 0 && rule.templateParams.length === 0 && rule.alts.length === 1 &&
