@@ -440,8 +440,18 @@ if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|implemented_by|exte
   exit 1
 fi
 sh "$root/experiments/pagination-proof/check-parts-offset-shape.sh"
-LEAN_PATH="$tmp" "$lean" "$partsOffsetEntries"
+LEAN_PATH="$tmp" "$lean" -o "$tmp/PartsOffsetEntries.olean" "$partsOffsetEntries"
 echo "root ADR 0352 I5: every modeled parts entry preserves the text offset"
+
+# Connect those reached offsets to the concrete breaker's numbering.
+partsNumberedEntries=$root/experiments/pagination-proof/PartsNumberedEntries.lean
+if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|implemented_by|extern|native_decide)([^A-Za-z_]|$)' "$partsNumberedEntries"; then
+  echo "unproved or unchecked Lean declaration in $partsNumberedEntries" >&2
+  exit 1
+fi
+sh "$root/experiments/pagination-proof/check-parts-numbered-shape.sh"
+LEAN_PATH="$tmp" "$lean" "$partsNumberedEntries"
+echo "root ADR 0352 I5: every reached concrete parts entry has sequential line IDs"
 
 
 # The values of the evaluation of Golem.Layout.KnuthPlass (badness,
