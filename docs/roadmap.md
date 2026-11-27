@@ -70,7 +70,7 @@ v1.0.0 のリリースまでに、次の項目を扱う。
 - **組版の自由の原則に反する箇所**：仕様書の「設計原則」の「組版の自由」に反し、スタイルを当てる手段のない文字を直す（[ADR 0177](adr/0177-note-mark-style-and-numerals.md) の「原則に反する今の箇所」）。それぞれ、組むものの範囲と既定の見た目を決め直す必要があるので、別々の ADR で直す。網羅したとは言えず、読んだ範囲で見つけたものである。
   - **HTML と EPUB のキャプションと傍注の段落の組み方（未決）**：`caption` と `sidenote` の字下げ、`space-between`、`line-breaks` は、PDF だけに当たる。HTML と EPUB の `figcaption` と傍注の CSS には、書体と大きさだけを書く。ADR は部品の内幅と行数で組み方を決め、HTML と EPUB に触れていない。CSS にも出すかを決める。 [Golem ADR 0367](adr/0367-caption-sidenote-paragraphs.md)。
 - **段落スタイルの拡張（未実装）**：[root ADR 0374](adr/0374-paragraph-style-controls.md) のうち `next-style`、`initial-style`、`opening-indent` と、[root ADR 0397](adr/0397-paragraph-line-pitch-and-dimensional-spacing.md) が変更した行送りを除く部分を、機能ごとの ADR に分けた。
-  - **ドロップキャップ（未実装）**：`drop-lines` と `drop-gap`。 [root ADR 0465](adr/0465-drop-caps.md)。今の `drop-lines` は、値の検査と、`fit-characters` との併用の誤り（G03301、[root ADR 0466](adr/0466-fit-characters.md)）のためにだけ読む。 空段にも収まらない先頭部分は、PDF の生成を止める（[root ADR 0476](adr/0476-reject-drop-caps-that-cannot-fit-an-empty-column.md)）。
+  - **ドロップキャップの保持と容量不足エラー（未実装）**：先頭の指定行数を分けず、空段にも収まらなければ G07145 で PDF の生成を止める（[root ADR 0476](adr/0476-reject-drop-caps-that-cannot-fit-an-empty-column.md)）。
 
 - **縦中横とルビの内部の字間**：縦中横の中の文字、ルビの親文字と読みのそれぞれに、書き手が字間を指定できるようにする。外側の箱どうしのトラッキングは [Golem ADR 0370](adr/0370-tracking-inline-boxes.md) で扱う。
 
@@ -191,6 +191,7 @@ v3 の GUI は、次の原則に従って作る。
 実装は終わり、自動のテストも通っているが、ADR が求める手作業の確かめがまだ残っている項目をここにまとめる。
 確かめたら、結果を実装のプルリクエストか `docs/audits/` の記録に書き、この一覧から消す。
 
+- **ドロップキャップの見本**：[root ADR 0465](adr/0465-drop-caps.md) の A1（横組みの欧文、横組みの和文、縦組みの和文の三つの見本を PDF で組み、字の大きさと脇の行をメンテナーが目で確かめる）が残っている。見本は `modules/golem-driver/test/fixtures/specimens/drop-caps/` の三つのプロジェクトである。
 - **輪郭に沿う回り込みの見本**：[root ADR 0464](adr/0464-wrap-text-along-figure-outlines.md) の A1（円と星形の輪郭の図版を回り込ませた見本を PDF で組み、本文が輪郭から `wrap-gap` 離れて沿っていることを目で確かめる）が残っている。見本は、golem-driver のテストのデータ `modules/golem-driver/test/fixtures/specimens/outlines/` であり、フォントを写してから `golem build` で組む。
 - **閉じたパスのテキストフレームの見本**：[root ADR 0437](adr/0437-paths-and-the-box-model.md) の A1（円と星形の閉じたパスのテキストフレームを持つ見本を組み、文字が形の内側に置かれていることを PDF で目で確かめる）が残っている。見本は、見た目の回帰テストの入力 `specimens-frames` の 3 ページ目（マスターページ `shapes` の円と星形のフレーム）である。
 - **テキストフレームの見本**：[root ADR 0438](adr/0438-place-text-frames-anywhere-on-a-page.md) の A1（扉の飾りの文と回り込むフレーム（マスターページが置くフレーム）と、章の引用（`@frame`）を持つ見本を組み、フレームの位置と本文の回り込みを PDF で目で確かめる）が残っている。見本は、見た目の回帰テストの入力 `specimens-frames` の 1 ページ目と 2 ページ目である。
@@ -234,6 +235,7 @@ v1 より後のバージョンのための事項には、そのバージョン�
 
 以下は、レビューで個別の結論が出ていない設計上の選択である。
 各 ADR に書いた方式を出発点とし、変更を決めた場合は、その ADR の状態に従って決定を記録する。
+
 
 - **換算ページ数と実際の折り返し**：換算に使う 1 行文字数と 1 ページ行数を任意に指定できること、本文をマスターフレームに限定することは決まった。換算時に実際の版面の折り返しを引き継ぐかは未決である。現案は段落と明示改行を保ち、指定した字数で折り返し直す。[Golem ADR 0355](adr/0355-manuscript-statistics.md)
 

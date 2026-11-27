@@ -3164,7 +3164,8 @@ PDF の合成の太字の線の幅は、和文で文字の大きさの 1/80、�
 | `next-style`、`initial-style` | 次の段落の段落スタイルと、段落の先頭の一字の文字スタイル（「次の段落スタイルと先頭の文字スタイル」、[ADR 0374](adr/0374-paragraph-style-controls.md)） |
 | `opening-indent` | 始め括弧類で始まる段落の字下げ（「字下げ」、[ADR 0374](adr/0374-paragraph-style-controls.md)） |
 | `fit-characters` | 一行の段落を組む幅の字数。0 より大きい整数（「字取り」、[root ADR 0466](adr/0466-fit-characters.md)） |
-| `drop-lines` | ドロップキャップの行数。0 より大きい整数。今は `fit-characters` との併用の検査にだけ使い、ドロップキャップは組まない（「字取り」、[root ADR 0465](adr/0465-drop-caps.md)） |
+| `drop-lines` | ドロップキャップの行数。0 より大きい整数（「ドロップキャップ」、[root ADR 0465](adr/0465-drop-caps.md)） |
+| `drop-gap` | ドロップキャップの字と本文のあいだの空き。0 以上の寸法で、既定は 0（「ドロップキャップ」、[root ADR 0465](adr/0465-drop-caps.md)） |
 | `number-title-separator` | 番号と題のあいだの区切りの文字列。段落スタイル `caption` のものを、図版、コードブロック、表のキャプションに使う（「見出しの属性と番号」の節、[Golem ADR 0372](adr/0372-number-title-separator.md)） |
 | `title-format` | 番号のあるキャプションの題の書式。段落スタイル `caption` のものを、図版、コードブロック、表のキャプションに使う（「見出しの属性と番号」の節、[root ADR 0463](adr/0463-title-formats-for-numbered-headings-and-captions.md)） |
 
@@ -4268,6 +4269,34 @@ class ではなく属性で示すので、class の無い `p` を選ぶ `body` �
 縦組みの行は天から地へ進み、ノドと小口が行の方向に交わらないためである。
 位置は `align` の値（`@style-def` ではそのキーの引数）とする。
 
+#### ドロップキャップ
+
+段落スタイルの `drop-lines = n` は、段落の先頭のテキストの一書記素を、n 行の高さのドロップキャップとして組む（[root ADR 0465](adr/0465-drop-caps.md)）。
+`drop-lines` は 0 より大きい整数であり、それ以外の値は G03006 とする。
+字と本文のあいだの空きは、0 以上の寸法の `drop-gap` で指定し、既定は 0 である。
+
+横組みの欧文の字は、キャップハイトの上端を一行目のキャップハイトの上端に、ベースラインを n 行目のベースラインにそろえる。
+和文の字と縦組みの字は、仮想ボディの外側の辺を、一行目の仮想ボディの始まりの辺と n 行目の終わりの辺にそろえる。
+書体は `initial-style` の文字スタイルのものを使い、`initial-style` が無ければ段落のものを使う。
+`initial-style` の文字の大きさは使わない。
+
+一行目から n 行目までの本文の幅は、字の送り幅と `drop-gap` の和だけ短くする。
+回り込む図版の脇では、図版の分だけ短くした幅から、さらにこの和を引く。
+段落の行が n 行より少なければ空の行を足す。
+n 行を同じ段に置ける段落では、その n 行のあいだでページと段を分けない。
+`first-line-indent` と `opening-indent` は当てず、`indent` はどの行にも当てる。
+
+当てるのは、文書の最上位の段落と、結果をその場に置く本体（`@style` など）の中の段落である。
+リストの項目、表のセル、キャプション、注、フレームの中の段落と、見出しには当てず、diagnostic も出さない。
+`line-breaks = "keep"` の段落では、最初の行の部分にだけ当てる。
+始め括弧や引用符で始まる段落は、その字をドロップキャップにする。
+ルビや縦中横など、テキストでないインラインで始まる段落はドロップキャップを組まず、段落ごとに一つ G07143 を出す。
+空の段落はドロップキャップを組まず、diagnostic も出さない。
+
+HTML と EPUB では、その段落スタイルの段落の `::first-letter` に、`initial-letter: <n>` と `margin-inline-end: <drop-gap>` を書く。
+当てない段落と、テキストでないインラインで始まる段落には `data-no-drop` を付け、`:not([data-no-drop])` で規則から外す。
+ブラウザーの組み方は PDF と同じにならない。
+
 #### 字取り
 
 段落スタイルの `fit-characters` は、一行の段落を、段落の文字の大きさの指定した字数分の幅に組む（[root ADR 0466](adr/0466-fit-characters.md)）。
@@ -4303,7 +4332,6 @@ PDF の `fit-characters` は、文書の最上位の段落と、結果をその�
 `based-on` をたどって決まった段落スタイルが `drop-lines` と `fit-characters` の両方を持てば、エラーの G03301 とする。
 位置はその段落スタイルの定義（`style.toml` では `[paragraph-styles.<名前>]` の見出しの表の名前、原稿では `@style-def`）で、両方を持つ段落スタイルごとに一つ出す。
 エラーの後は、その段落スタイルの段落を、二つのキーが無いものとして組む。
-`drop-lines` は、値を読んでこの検査に使うだけで、ドロップキャップは組まない（[root ADR 0465](adr/0465-drop-caps.md) の実装を待つ）。
 
 HTML と EPUB では、`fit-characters` を持つ段落スタイルの段落に、`width: <n>em`、`text-align: justify`、`text-align-last: justify`、`text-justify: inter-character` を書く。
 規則は `p.ps-<名前>`（`body` では `p`、ファイルの段落スタイルではファイルの class の下）に書く。

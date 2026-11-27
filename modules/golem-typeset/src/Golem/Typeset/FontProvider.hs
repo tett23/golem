@@ -203,6 +203,7 @@ provide memoise fid faces body roles =
       lfCode = glyphCid . fontAt,
       lfEmbed = embed,
       lfEmBoxCentral = \ix -> let f = fontAt ix in toInteger (fontEmBoxCentral f) % toInteger (fontUnitsPerEm f),
+      lfCapHeight = \ix -> let f = fontAt ix; (_, _, cap) = fontExtents f in toInteger cap % toInteger (fontUnitsPerEm f),
       -- the path in style.toml and the form of a face (golem-cli ADR 0006)
       lfFaceFile = \ix -> let (f, p) = faceAt ix in (p, faceForm f),
       -- the ink box of a glyph from FreeType, in em (golem-driver ADR 0019)

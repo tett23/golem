@@ -1,0 +1,22 @@
+# root ADR 0465 A1: copy the fonts as described in ../../../README.md.
+chapters = [{ file = "chapters/01-drop-cap.gm" }]
+
+[metadata]
+id = "urn:uuid:00000000-0000-4000-8000-000000004651"
+title = "Latin drop caps"
+language = "en"
+date = 2026-11-27
+publisher = "Golem"
+
+[[metadata.creators]]
+name = "Golem"
+role = "author"
+
+[source]
+paragraph-separator = "blank-line"
+
+[targets.pdf]
+
+[targets.html]
+
+[targets.epub]

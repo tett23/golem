@@ -2721,6 +2721,7 @@ localStyleTests =
               "opening-indent" -> "half"
               "line-number-interval" -> "5"
               "drop-lines" -> "2"
+              "drop-gap" -> "2pt"
               "fit-characters" -> "4"
               _ -> "x"
             known k key = not (isLeftE (localStyleDef k [(key, LocalWord (valueOf key))]))

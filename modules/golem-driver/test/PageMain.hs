@@ -8,6 +8,7 @@ import CaptionSidenoteIndentSpec (captionSidenoteIndentTests)
 import CaptionSidenoteParagraphsSpec (captionSidenoteParagraphsTests)
 import ChapterNotesSpec
 import CompressedNoteMarksSpec (compressedNoteMarksTests)
+import DropCapsSpec (dropCapsTests)
 import EndnotesSpec (endnoteTests)
 import FigureSpec
 import FileSpacesSpec (fileSpacesTests)
@@ -91,6 +92,7 @@ tests =
       testGroup "PDF sidenotes (ADR 0006)" sidenoteTests,
       testGroup "text frames (root ADR 0438)" framesTests,
       testGroup "fit-characters (root ADR 0466)" fitCharactersTests,
+      testGroup "drop caps (root ADR 0465)" dropCapsTests,
       testGroup "blocks around the frames of wrap around (root ADR 0456)" aroundBlocksTests,
       testGroup "notes of more than one paragraph (docs/adr/0263)" notesTests,
       pageStartsTests,

@@ -43,6 +43,7 @@ module Golem.Doc.IR
     Figure (..),
     Wrap (..),
     InlineF (..),
+    splitInitialText,
     AkiAmount (..),
     akiAbsolute,
     akiAbsoluteSp,
@@ -81,16 +82,20 @@ module Golem.Doc.IR
   )
 where
 
+import Data.ByteString qualified as BS
 import Data.Int (Int64)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
+import Data.Maybe (catMaybes, isJust)
 import Data.String (IsString (..))
 import Data.Text (Text)
 import Data.Text qualified as T
+import Data.Text.Encoding qualified as TE
 import Data.Void (Void)
 import Golem.Length (Sp (..))
 import Golem.Parser.AST qualified as AST
 import Golem.Syntax.Span
+import Golem.Unicode.Grapheme (graphemeClusters)
 import Numeric.Natural (Natural)
 
 {- | Whether an integer is within the CDDL @int64@ (golem-doc ADR 0006):
@@ -757,3 +762,47 @@ splitAtLineBreaks :: [InlineF r] -> [[InlineF r]]
 splitAtLineBreaks is = case break isLineBreak is of
   (l, []) -> [l]
   (l, _ : rest) -> l : splitAtLineBreaks rest
+
+{- | The first text grapheme and the rest of a paragraph (root ADR 0465).
+Text wrappers are retained on both parts. A ruby or another non-text
+inline at the start is not a drop cap. Marks that draw no text stay with
+the rest, so they keep their anchors on the body line.
+-}
+splitInitialText :: [InlineF r] -> Maybe ([InlineF r], [InlineF r])
+splitInitialText is = case graphemeClusters (T.concat (catMaybes (takeWhile isJust (concatMap segments is)))) of
+  g : _ -> let (_, first, rest) = cut (T.length g) is in Just (first, rest)
+  [] -> Nothing
+  where
+    segments = \case
+      Text _ t -> [Just t]
+      CharStyle _ _ xs -> concatMap segments xs
+      Color _ _ xs -> concatMap segments xs
+      Lang _ _ xs -> concatMap segments xs
+      Link _ _ xs -> concatMap segments xs
+      Kenten _ _ xs -> concatMap segments xs
+      IndexMark {} -> []
+      ProofComment {} -> []
+      ChannelItem {} -> []
+      _ -> [Nothing]
+    cut n xs | n == 0 = (0, [], xs)
+    cut n [] = (n, [], [])
+    cut n (x : xs) = case x of
+      Text sp t ->
+        let (a, b) = T.splitAt n t
+            used = T.length a
+            after = sp {spanStart = spanStart sp + BS.length (TE.encodeUtf8 a)}
+            remaining = [Text after b | not (T.null b)]
+         in if used < n
+              then let (left, more, rest) = cut (n - used) xs in (left, [Text sp a | not (T.null a)] <> more, rest)
+              else (0, [Text sp a | not (T.null a)], remaining <> xs)
+      CharStyle sp name ys -> wrapped (CharStyle sp name) n ys xs
+      Color sp name ys -> wrapped (Color sp name) n ys xs
+      Lang sp name ys -> wrapped (Lang sp name) n ys xs
+      Link sp target ys -> wrapped (Link sp target) n ys xs
+      Resolved sp k label ys -> wrapped (Resolved sp k label) n ys xs
+      Kenten sp shape ys -> wrapped (Kenten sp shape) n ys xs
+      _ -> let (left, first, rest) = cut n xs in (left, first, x : rest)
+    wrapped wrap n ys xs =
+      let (left, first, rest) = cut n ys
+          (left', more, after) = cut left xs
+       in (left', [wrap first | not (null first)] <> more, [wrap rest | not (null rest)] <> after)

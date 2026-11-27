@@ -1,0 +1,21 @@
+# root ADR 0465 A1: an initial spanning three lines, with a 2pt gap.
+[page]
+size = "A5"
+binding = "left"
+writing-mode = "horizontal"
+
+[page.grid]
+font-size = "10pt"
+characters = 28
+lines = 25
+line-pitch = "15pt"
+position = { top = "24mm", gutter = "20mm" }
+
+[fonts.body]
+ja = "fonts/ja.otf"
+latin = "fonts/latin.otf"
+
+[paragraph-styles.lead]
+drop-lines = 3
+drop-gap = "2pt"
+first-line-indent = "1zw"

@@ -165,6 +165,14 @@ builds it to PDF, after copying the fonts in as for the other books, and
 checks by eye that the text keeps the wrap gap from each outline. The
 tests of golem-driver build it with the fonts of the tests.
 
+`specimens/drop-caps/latin/`, `horizontal/`, and `vertical/` hold the
+three drop-cap specimens of [root ADR 0465](../../../../docs/adr/0465-drop-caps.md)
+A1. Each has an initial spanning three lines, a 2pt gap, and a short
+paragraph that must still reserve three lines. Copy the fonts as below,
+then run `golem build` in each project. The maintainer checks the letter
+size and the adjacent lines in the PDFs. The projects also produce HTML
+and EPUB, whose browser layout may differ from the PDFs.
+
 What a page of these books shows is accepted by eye once, when its
 reference is written (the pull request says what was looked at on each
 page). The geometric properties of the same looks are checked by the

@@ -2,6 +2,7 @@ module Main (main) where
 
 import BoxSpec (boxTests)
 import CcittSpec (ccittTests)
+import DropCapsSpec (dropCapsTests)
 import FigureColorSpec (figureColorTests)
 import FitCharactersSpec (fitCharactersTests)
 import FitFigureSpec (fitFigureTests)
@@ -60,5 +61,6 @@ tests =
       testGroup "the boxes of paragraph styles (docs/adr/0271)" boxTests,
       noBreakProductTests,
       openingIndentTests,
-      fitCharactersTests
+      fitCharactersTests,
+      dropCapsTests
     ]

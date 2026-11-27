@@ -5,7 +5,10 @@ import CiteSpec qualified
 import Codec.CBOR.Term (Term (..), encodeTerm)
 import Codec.CBOR.Write (toStrictByteString)
 import Control.Exception (ErrorCall, evaluate, try)
+import Data.Bifunctor (bimap)
 import Data.ByteString qualified as BS
+import Data.Text (Text)
+import Data.Text qualified as T
 import Golem.Doc.Cbor
 import Golem.Doc.IR
 import Golem.Doc.Validate
@@ -46,7 +49,7 @@ cddlValidator = do
 
 tests :: TestTree
 tests =
-  testGroup "golem-doc" [cbor, CborExprSpec.tests, verticalNumbers, int64Tests, LinkSpec.tests, LangSpec.tests, ResolvedSpec.tests, TableSpec.tests, StyleRefSpec.tests, NoteSpec.tests, CiteSpec.tests, IndexSpec.tests, headingLevelTests]
+  testGroup "golem-doc" [cbor, CborExprSpec.tests, verticalNumbers, int64Tests, LinkSpec.tests, LangSpec.tests, ResolvedSpec.tests, TableSpec.tests, StyleRefSpec.tests, NoteSpec.tests, CiteSpec.tests, IndexSpec.tests, headingLevelTests, dropInitialTests]
 
 -- | The levels of a heading are 1 to 6 (docs/adr/0188).
 headingLevelTests :: TestTree
@@ -443,3 +446,47 @@ cbor =
         validateInlines size [e] [Deferred sp e] @?= []
         validateInlines size [] [IndexMark sp (IndexEntry ["a", "b", "c"] ["a", "b", "c"] IndexPoint)] @?= ["索引の項目の段の数が不正です"]
     ]
+
+-- | The shared first-grapheme boundary of PDF, HTML and diagnostics (root ADR 0465).
+dropInitialTests :: TestTree
+dropInitialTests =
+  testGroup
+    "root ADR 0465 initial grapheme"
+    [ testCase "root ADR 0465 I1: empty text has no drop cap" $ do
+        result [] @?= Nothing
+        result [Text sp ""] @?= Nothing,
+      testCase "root ADR 0465 I2: only the first grapheme is split off" $
+        result [Text sp "あいう"] @?= Just ("あ", "いう"),
+      testCase "root ADR 0465 I2: combining marks remain with their base" $
+        result [Text sp "a\x0301\&b"] @?= Just ("a\x0301", "b"),
+      testCase "root ADR 0465 I2: a grapheme crosses an inline style boundary" $
+        result [Text sp "a", CharStyle sp "accent" [Text sp "\x0301\&b"]] @?= Just ("a\x0301", "b"),
+      testCase "root ADR 0465 I2: an emoji ZWJ sequence remains one initial" $
+        result [Text sp "👩", CharStyle sp "accent" [Text sp "\x200D\&💻b"]] @?= Just ("👩\x200D\&💻", "b"),
+      testCase "root ADR 0465 I5: ruby and tate-chu-yoko are not text initials" $ do
+        result [Ruby sp () [RubySegment [Text sp "漢"] (Just "かん")], Text sp "後"] @?= Nothing
+        result [Tcy sp "12", Text sp "月"] @?= Nothing,
+      testCase "root ADR 0465 I5: references remain non-text after they resolve" $ do
+        result [Ref sp RefTitle "h"] @?= Nothing
+        result [Resolved sp RefTitle "h" [Text sp "題"]] @?= Nothing,
+      testCase "root ADR 0465 I2: text wrappers are copied on both parts" $ do
+        case splitInitialText [CharStyle sp "lead" [Text sp "abc"]] of
+          Just ([CharStyle _ a _], [CharStyle _ b _]) -> (a, b) @?= ("lead", "lead")
+          other -> assertFailure (show (other :: Maybe ([Inline], [Inline])))
+    ]
+  where
+    result :: [Inline] -> Maybe (Text, Text)
+    result xs = bimap textOf textOf <$> splitInitialText xs
+    textOf =
+      T.concat
+        . map
+          ( \case
+              Text _ t -> t
+              CharStyle _ _ ys -> textOf ys
+              Color _ _ ys -> textOf ys
+              Lang _ _ ys -> textOf ys
+              Link _ _ ys -> textOf ys
+              Resolved _ _ _ ys -> textOf ys
+              Kenten _ _ ys -> textOf ys
+              _ -> ""
+          )

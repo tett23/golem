@@ -289,7 +289,9 @@ data HtmlParaStyle = HtmlParaStyle
     for any other (root ADR 0469)
     -} hpsOpeningHalf :: !(Maybe HtmlIndent),
     -- | fit-characters, none with drop-lines too (root ADR 0466)
-    hpsFitCharacters :: !(Maybe Int)
+    hpsFitCharacters :: !(Maybe Int),
+    -- | the lines and the CSS gap of a drop cap (root ADR 0465)
+    hpsDropCap :: !(Maybe (Int, Text))
   }
   deriving stock (Eq)
 
@@ -409,7 +411,9 @@ data Ctx = Ctx
     {- | the text is inside a link: a resolved reference in it is its text
     alone (docs/adr/0267)
     -} cInLink :: Bool,
-    cPageBreaks :: Map SrcSpan [(Int, Text, Text)]
+    cPageBreaks :: Map SrcSpan [(Int, Text, Text)],
+    -- | only top-level paragraphs receive drop caps (root ADR 0465)
+    cDropAllowed :: Bool
   }
 
 {- | Where the notes of a page go (golem-driver ADR 0026): the file whose
@@ -541,7 +545,7 @@ page cfg ft book pageBreaks notes endnotes (Document fid bs) =
       local = Map.lookup fid (hcLocalStyles cfg)
       anonymous = Map.union (Map.findWithDefault Map.empty fid (hcLocalAnonymousStyles cfg)) (hcAnonymousStyles cfg)
       numbered = Map.fromList [(r, (n, Map.lookup r anonymous)) | (r, n) <- Map.toList (anonymousStyleNumbers book)]
-      c = Ctx cfg ft book here (maybe id (Map.union . hlParaStyles) local (hcParaStyles cfg)) numbered 0 notes endnotes (citeIds book) (maybe id (Map.union . hlCharStyles) local (hcCharStyles cfg)) False pageBreaks
+      c = Ctx cfg ft book here (maybe id (Map.union . hlParaStyles) local (hcParaStyles cfg)) numbered 0 notes endnotes (citeIds book) (maybe id (Map.union . hlCharStyles) local (hcCharStyles cfg)) False pageBreaks True
       -- a page with styles of its own has the class of its position (docs/adr ADR 0014)
       classes = ["vertical" | hcVertical cfg] <> ["file-" <> tshow n | Just _ <- [local], (n, Document fid' _) <- zip [1 :: Int ..] (bookDocs book), fid' == fid]
       body = topBlocks c bs <> notesSection c <> endnotesSection c
@@ -759,7 +763,11 @@ blockHtml c (Block sp lbl blang body) = case body of
           | otherwise = inlines c is
         -- a paragraph of a style with opening-indent = "half" that starts with an opening bracket, outside lists, which have no indent (root ADR 0469)
         opening = [("data-opening", "") | cListDepth c == 0, isJust (paraStyleOf c st >>= hpsOpeningHalf), opensWithBracket blang is]
-     in [el "p" (idAttr lbl <> cls <> opening) content, nl] <> sidenotes c blang is
+        dropStyle = paraStyleOf c st >>= hpsDropCap
+        namedDrop styles = Map.lookup (maybe "body" styleRefName st) styles >>= hpsDropCap
+        hasDropRule = isJust dropStyle || isJust (namedDrop (cParaStyles c)) || isJust (namedDrop (hcParaStyles (cCfg c)))
+        noDrop = [("data-no-drop", "") | hasDropRule, not (cDropAllowed c) || isNothing dropStyle || isNothing (splitInitialText is)]
+     in [el "p" (idAttr lbl <> cls <> opening <> noDrop) content, nl] <> sidenotes c blang is
   Heading l _ is ->
     let tag = "h" <> T.pack (show l)
         info = Map.lookup sp (bookHeadings (cBook c))
@@ -779,7 +787,7 @@ blockHtml c (Block sp lbl blang body) = case body of
         (idAttr lbl)
         ( nl
             : concat
-              [ concat [[el "dt" [] (inlines c t), nl] | t <- ts] <> concat [[el "dd" [] (nl : concatMap (block c) d), nl] | d <- ds]
+              [ concat [[el "dt" [] (inlines c t), nl] | t <- ts] <> concat [[el "dd" [] (nl : concatMap (block c {cDropAllowed = False}) d), nl] | d <- ds]
               | DefGroup ts ds <- gs
               ]
         ),
@@ -864,7 +872,7 @@ blockHtml c (Block sp lbl blang body) = case body of
       [el "div" [("class", "separator separator-rule"), ("style", separatorStyle align before after)] [separatorRuleSvg c sp name len weight color stroke], nl]
     Nothing -> []
   -- a text frame at the place of the command; its position and shape are for the PDF only (root ADR 0438)
-  FrameBlock name bs -> [el "aside" [("class", "frame frame-" <> name)] (nl : concatMap (block c) bs), nl]
+  FrameBlock name bs -> [el "aside" [("class", "frame frame-" <> name)] (nl : concatMap (block c {cDropAllowed = False}) bs), nl]
   where
     separatorStyle align before after = "text-align:" <> align <> ";margin-block-start:" <> tshow before <> "lh;margin-block-end:" <> tshow after <> "lh"
     -- a URL of http or https is a link; another URL is not (golem-doc ADR 0005)
@@ -875,7 +883,7 @@ blockHtml c (Block sp lbl blang body) = case body of
         | otherwise -> [el "span" [("class", "cs-url")] [textOf u]]
     -- the lists inside count one deeper; with [lists], the class of the depth (golem-driver ADR 0013)
     depth = cListDepth c + 1
-    inList = c {cListDepth = depth}
+    inList = c {cListDepth = depth, cDropAllowed = False}
     listClass count = case hcLists (cCfg c) of
       Just ls -> [("class", "list-" <> tshow (min depth (count ls)))]
       Nothing -> []
@@ -1340,7 +1348,7 @@ noteList c cls title kind idPrefix backPrefix mark ns =
             [ [ Element
                   "aside"
                   [plainAttr "epub:type" kind, plainAttr "id" (idPrefix <> key n)]
-                  [el "p" [] ((if i == (0 :: Int) then [Element "a" [("href", linkTo c f (backPrefix <> key n))] [textOf (mark c n)], textOf " "] else []) <> inlines c is) | (i, is) <- zip [0 ..] ps],
+                  [el "p" [("data-no-drop", "") | any (isJust . hpsDropCap) (Map.elems (cParaStyles c))] ((if i == (0 :: Int) then [Element "a" [("href", linkTo c f (backPrefix <> key n))] [textOf (mark c n)], textOf " "] else []) <> inlines c is) | (i, is) <- zip [0 ..] ps],
                 nl
               ]
             | (f, key, n, ps) <- ns
@@ -1726,6 +1734,7 @@ css cfg book =
             rule (pre <> "p.ps-" <> key <> " + p.ps-" <> key) ["margin-block-start: " <> (if spaceBetween ps > 0 then spaceText ps (spaceBetween ps) else if spaceBefore ps > 0 || spaceAfter ps > 0 then "0" else marginOf ps)]
           ]
             <> [rule (openingSelector (pre <> "p.ps-" <> key) ps) ["text-indent: " <> openingTextIndent f] | Just f <- [hpsOpeningHalf ps]]
+            <> dropRules (pre <> "p.ps-" <> key) ps
             <> ruleRules (pre <> "p.ps-" <> key) (hpsRuleBefore ps) (hpsRuleAfter ps)
             <> [rule (pre <> "div.box-" <> key) (hbDecls hb) | Just hb <- [hpsBox ps]]
         | (key, ps) <- styles
@@ -1907,6 +1916,7 @@ css cfg book =
             <> [rule sel (hpsAlign ps) | alignRule name ps]
             -- the width of so many characters, the characters spread over it (root ADR 0466)
             <> [rule sel (fitDecls n) | Just n <- [hpsFitCharacters ps]]
+            <> dropRules (if name == "body" then "p:where(:not([class]), .ps-body)" else sel) ps
             <> [sel <> " { padding-inline-end: " <> hpsEndIndent ps <> "; }" | endIndentRule name ps]
             <> [ prefixed (outside [name | name /= "body"]) (adjacent <> " + " <> adjacent) <> " { margin-block-start: " <> (if spaceBetween ps > 0 then spaceText ps (spaceBetween ps) else "0") <> "; }"
                | spaceBetween ps > 0 || spaced || isJust (hpsPhysical ps)
@@ -2053,6 +2063,7 @@ css cfg book =
                   <> [rule (openingSelector (paraSel name) ps) ["text-indent: " <> openingTextIndent f] | Just f <- [hpsOpeningHalf ps]]
                   -- fit-characters (root ADR 0466)
                   <> [rule (paraSel name) (fitDecls k) | Just k <- [hpsFitCharacters ps]]
+                  <> dropRules (paraSel name) ps
               | (name, ps) <- locals
               ]
               -- the pairs of a style of the file and another
@@ -2070,6 +2081,15 @@ css cfg book =
             [rule (pre <> " div.box-" <> name) (hbDecls hb) | (name, ps) <- locals, Just hb <- [hpsBox ps]]
               <> [pre <> " div.box > p { padding-inline-start: 0; padding-inline-end: 0; }" | not (Map.null (hlParaStyles l)), any (isJust . hpsBox . snd) mergedList]
        in charRules <> markerRules (pre <> " ") (hlCharStyles l) <> readingRules (pre <> " ") (hlCharStyles l) <> paraStyleRules <> faceRules <> boxLocal <> listRule
+
+-- | Only applicable paragraphs receive initial-letter (root ADR 0465).
+dropRules :: Text -> HtmlParaStyle -> [Text]
+dropRules sel ps = case hpsDropCap ps of
+  Nothing -> []
+  Just (n, gap) ->
+    [ sel <> ":not([data-no-drop])::first-letter { initial-letter: " <> T.pack (show n) <> "; margin-inline-end: " <> gap <> "; }",
+      sel <> ":not([data-no-drop])" <> (if hpsKeepLines ps then " > .line:first-child" else "") <> " { text-indent: 0; }"
+    ]
 
 {- | The declarations of a paragraph style of fit-characters (root ADR
 0466): the width of so many characters, the characters spread over it.

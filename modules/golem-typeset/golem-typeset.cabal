@@ -90,6 +90,7 @@ test-suite golem-typeset-test
     NoBreakProductSpec
     OpeningIndentSpec
     FitCharactersSpec
+    DropCapsSpec
     PathMarksSpec
     RuleShapeSpec
     PdfColorCcittSpec

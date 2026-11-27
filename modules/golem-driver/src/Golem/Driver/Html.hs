@@ -99,6 +99,7 @@ htmlParaStyles style =
           (physicalParagraph d)
           (openingHalf d)
           (fitCharacters d)
+          ((,cssLength (fromMaybe (Abs 0) (psDropGap d))) <$> if isJust (psFitCharacters d) then Nothing else psDropLines d)
       )
     | n <- Map.keys (stParaStyles style),
       -- toc-<l> as built in writes nothing: the table of contents of HTML is as before (docs/adr/0264)

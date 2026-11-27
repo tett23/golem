@@ -14,6 +14,7 @@ module Golem.Eval.RegexStyle
     regexRules,
     applyRegexStyles,
     applyInitialStyles,
+    dropCapDiagnostics,
   )
 where
 
@@ -23,7 +24,7 @@ import Data.IntMap.Strict qualified as IntMap
 import Data.List (groupBy)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
-import Data.Maybe (fromMaybe, isJust)
+import Data.Maybe (fromMaybe, isJust, isNothing)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Golem.Doc.IR
@@ -290,3 +291,28 @@ spanOf = \case
   Link s _ _ -> s
   Lang s _ _ -> s
   Resolved s _ _ _ -> s
+
+-- | G07143 once per applicable non-text initial, before layout (root ADR 0465).
+dropCapDiagnostics :: Style -> Document -> [Diagnostic]
+dropCapDiagnostics style doc =
+  [ diagnostic "G07143" Warning sp "段落の先頭がテキストでないので、ドロップキャップを組みません"
+  | Block sp _ _ (Paragraph st is) <- docBlocks doc,
+    Just def <- [paraStyleWith style (styleRefNameOf st) (maybe [] refValues st)],
+    isJust (psDropLines def),
+    isNothing (psFitCharacters def),
+    any draws is,
+    isNothing (splitInitialText is)
+  ]
+  where
+    refValues r = [(k, case v of StyleWord w -> LocalWord w; StyleString t -> LocalString t) | (k, v) <- Map.toAscList (styleRefKeys r)]
+    draws = \case
+      Text _ t -> not (T.null t)
+      CharStyle _ _ xs -> any draws xs
+      Color _ _ xs -> any draws xs
+      Lang _ _ xs -> any draws xs
+      Link _ _ xs -> any draws xs
+      Resolved _ _ _ xs -> any draws xs
+      IndexMark {} -> False
+      ProofComment {} -> False
+      ChannelItem {} -> False
+      _ -> True
