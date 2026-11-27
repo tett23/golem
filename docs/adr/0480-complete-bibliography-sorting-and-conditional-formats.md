@@ -1,6 +1,6 @@
 # ADR 0480: 文献宣言の並べ替えと条件付きの書式を補う
 
-Status: proposed
+Status: accepted-pending
 
 ## 文脈
 
