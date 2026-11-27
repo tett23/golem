@@ -3849,7 +3849,7 @@ cite ctx sp args = do
   let namedArgs = [(asp, nameAt, name, value) | A.Located asp (A.Keyword (A.Located nameAt name) value) <- args]
   namedValues <- mapM namedValue namedArgs
   let successful = [keyword | Just (Right keyword) <- namedValues]
-      valueProblems = [case result of Nothing -> []; Just (Left d) -> [d]; Just (Right keyword) -> validateCitationLocatorValue keyword <> affixProblems keyword | result <- namedValues]
+      valueProblems = [case result of Nothing -> []; Just (Left d) -> [d]; Just (Right keyword) -> validateCitationLocatorValue keyword <> affixProblems keyword <> formProblems keyword | result <- namedValues]
       nameProblems = validateCitationLocatorNames [(nameAt, name) | (_, nameAt, name, _) <- namedArgs]
       keywordProblems = concat (zipWith (<>) nameProblems valueProblems)
       locator = listToMaybe [value | keyword <- successful, Just (CitationLocator value) <- [decodeCitationArgument (ckName keyword) (ckValue keyword)]]
@@ -3865,8 +3865,17 @@ cite ctx sp args = do
       suffix = [Text (ckValueSpan keyword) text | keyword <- successful, ckName keyword == "suffix", VString text <- [ckValue keyword]]
       problems = keyErrors <> map Left keywordProblems <> manyKeys <> noKey
   mapM_ (either report (\(code, msg) -> err code sp msg)) problems
-  pure [Cite sp [CiteItem k locator prefix suffix | k <- keys] | null problems]
+  -- root ADR 0470 keeps the ordinary citation after an invalid form;
+  -- all other citation errors still remove it.
+  pure [Cite sp [CiteItem k locator prefix suffix | k <- keys] | not (any blocking problems)]
   where
+    blocking (Left d) = diagCode d /= DiagnosticCode "G02289"
+    blocking (Right _) = True
+    formProblems keyword
+      | ckName keyword == "form",
+        ckValue keyword /= VString "year" =
+          [diagnostic "G02289" Error (ckValueSpan keyword) ("cite の form は year だけを書けます: " <> valueText (ckValue keyword))]
+      | otherwise = []
     namedValue (asp, nameAt, name, value)
       | isNothing (locatorLabelNamed name), name `notElem` ["prefix", "suffix", "form"] = pure Nothing
       | otherwise = do
@@ -3914,7 +3923,7 @@ cites ctx inHeading sp args slots
       [node@(A.Located commandSpan (A.Command (A.Located _ "cite") childArgs _))] -> do
         before <- gets (length . stDiags)
         result <- evalInlines ctx inHeading [node]
-        problems <- gets (any isError . drop before . stDiags)
+        problems <- gets (any (\d -> isError d && diagCode d /= DiagnosticCode "G02289") . drop before . stDiags)
         case result of
           [Cite _ [item]]
             | not problems ->

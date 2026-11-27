@@ -54,6 +54,23 @@ tests =
         forM_ [("[cite a pages=1]\n", "G02297", (8, 13)), ("[cite a chapter=-1]\n", "G02298", (16, 18)), ("[cite a page=1 chapter=2]\n", "G02295", (15, 22))] $ \(source, code, site) ->
           let (ds, _) = evalSource ctx source
            in [(diagCodeText d, (spanStart (diagSpan d), spanEnd (diagSpan d))) | d <- ds] @?= [(code, site)],
+      testCase "root ADR 0470: invalid citation forms diagnose but preserve the ordinary citation" $
+        forM_ ["author", "YEAR", "\"\"", "7", "[= true]", "[= nil]", "[= [1]]", "[= 1/2]", "2...4"] $ \value ->
+          let (items, ds) = citesOf ("[cite a form=" <> value <> "]\n")
+           in (items, map fst ds) @?= ([[citeItem "a"]], ["G02289"]),
+      testCase "root ADR 0470: cites retains ordinary items after invalid forms" $
+        let (items, ds) = citesOf "[cites: [cite a form=author]|[cite b]]\n"
+         in (items, map fst ds) @?= ([[citeItem "a", citeItem "b"]], ["G02289"]),
+      testCase "root ADR 0470: invalid forms interleave with blocking locator errors in input order" $
+        forM_ [("form=author chapter=-1", ["G02289", "G02298"]), ("chapter=-1 form=author", ["G02298", "G02289"])] $ \(arguments, expected) ->
+          let (items, ds) = citesOf ("[cite a " <> arguments <> "]\n")
+           in (items, map fst ds) @?= ([], expected),
+      testCase "root ADR 0470: invalid forms point at the evaluated value" $
+        forM_ [("[cite a form=7]\n", (13, 14)), ("[cite a form=[= true]]\n", (13, 21))] $ \(source, expected) ->
+          let (ds, _) = evalSource ctx source
+           in [(diagCodeText d, (spanStart (diagSpan d), spanEnd (diagSpan d))) | d <- ds] @?= [("G02289", expected)],
+      testCase "root ADR 0470: the valid year citation form has no invalid-form diagnostic" $
+        citesOf "[cite a form=year]\n" @?= ([[citeItem "a"]], []),
       testCase "root ADR 0475 I6: citation affixes are literal text, including markup and empty strings" $
         forM_ ["", "<a>&[cite x]", "参照: {year}"] $ \literal ->
           let source = "[cite a prefix=" <> ("\"" <> literal <> "\"") <> " suffix=" <> ("\"" <> literal <> "\"") <> "]\n"
