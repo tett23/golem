@@ -14,6 +14,7 @@ module Golem.Assemble.BibliographyStyle
     builtinBibliographyNames,
     bibliographyFields,
     bibliographyLocatorNames,
+    bibliographyTypeFor,
     overlayBibliographyStyle,
     overlayBibliographyNames,
   )
@@ -247,3 +248,10 @@ overlayBibliographyNames base override =
       bnEtAl = bnEtAl override <|> bnEtAl base,
       bnLabel = bnLabel override <|> bnLabel base
     }
+
+{- | Use the declared entry type, or types.default only when that type is absent.
+No pieces or styles are inferred when neither declaration exists (root ADR 0470).
+-}
+bibliographyTypeFor :: Text -> BibliographyStyle d -> Maybe BibliographyType
+bibliographyTypeFor entryType declaration =
+  Map.lookup entryType (bsTypes declaration) <|> Map.lookup "default" (bsTypes declaration)
