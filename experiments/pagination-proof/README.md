@@ -1738,7 +1738,12 @@ golem-typeset はコードの行を脚注なしで作り（`Flow.hs:3870`）、g
    警告の追加、移動、採用する詩の行数を減らす再試行、一行の退避先が、次の入力の `WrapReady` を保つことを導く。
    試し置きが返す各状態の条件は `tryVerses` から導き、処理全体の成功は前提にしない。
    相互再帰の分岐と引数は `check-causal-stanza-shape.sh` で写しと比べる。
-   本体の全制御とプローブの内部は残し、[詩の再帰入口の依存調査](../../docs/research/0352-causal-stanza-entry-dependencies.md) に記録する。
+   その時点の前提と残りは [詩の再帰入口の依存調査](../../docs/research/0352-causal-stanza-entry-dependencies.md) に記録する。
+   `CausalProbeEntries.lean` は、モデルの `probeNext` と `probeChain` の各再帰入力、前処理後の入力、詩の試しの全再帰入力、通常の段落の試し後の入力を検査する。
+   後続の行を調べる際に渡す `endWrap` 後のカーソルも扱う。
+   処理の成功や、前処理がカーソルの条件を保つことを別途仮定しない。
+   分岐と引数は `check-causal-probe-shape.sh` で写しと比べる。
+   本体の全制御や組み直す状態全体の対応は残し、[プローブの入口の依存調査](../../docs/research/0352-causal-probe-entry-dependencies.md) に記録する。
 
 これらを終えるまで Alloy の定期実行と既存の参照を維持する。
 終えたときは、Alloy の定期実行を終え、規則やモデルを変えたときにローカルの Lean で検証し直す手順を CONTRIBUTING に書く。
@@ -1775,6 +1780,7 @@ sh experiments/pagination-proof/check.sh
 `CausalParagraphs.lean` は `CausalStanza.olean` を読み込み、前処理と段落間の成功結果のカーソルを検査する。
 `CausalCalls.lean` は `CausalParagraphs.olean` と `WrapVerses.olean` を読み込み、失敗する試みも含む各入口の条件を検査する。
 `CausalStanzaEntries.lean` は `CausalCalls.olean` を読み込み、詩の配置と採用の相互再帰の入口を検査する。
+`CausalProbeEntries.lean` も `CausalCalls.olean` を読み込み、後続のプローブの相互再帰の入口を検査する。
 `CausalFirstIds.lean` は、採番の算術部分だけをほかのモデルを読み込まずに検査する。
 `WholeOrder.lean` は `WholeNotes.olean` を読み込み、ほかの検査と並んで検査し、最後にその結果を待つ。
 `WholeRules.lean` は `Whole.olean` を読み込み、同じくほかの検査と並んで検査する。

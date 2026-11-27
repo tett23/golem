@@ -421,6 +421,16 @@ sh "$root/experiments/pagination-proof/check-causal-stanza-shape.sh"
 LEAN_PATH="$tmp" "$lean" "$causalStanzaEntries"
 echo "root ADR 0352 I3: every modeled stanza and accept entry preserves wrap readiness"
 
+# Follow both probe loops, including failed verse and paragraph trials.
+causalProbeEntries=$root/experiments/pagination-proof/CausalProbeEntries.lean
+if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|implemented_by|extern|native_decide)([^A-Za-z_]|$)' "$causalProbeEntries"; then
+  echo "unproved or unchecked Lean declaration in $causalProbeEntries" >&2
+  exit 1
+fi
+sh "$root/experiments/pagination-proof/check-causal-probe-shape.sh"
+LEAN_PATH="$tmp" "$lean" "$causalProbeEntries"
+echo "root ADR 0352 I3: every modeled probe entry preserves wrap readiness"
+
 
 # The values of the evaluation of Golem.Layout.KnuthPlass (badness,
 # fitness, line demerits, cumulative widths, the demerits of the chosen
