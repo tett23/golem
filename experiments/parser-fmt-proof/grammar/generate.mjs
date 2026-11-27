@@ -98,7 +98,8 @@ function nestedChoices(expr, visit) {
           items.length === 1 && items[0].bind === null && items[0].expr.tag === 'ref') &&
           !provedNlEofChoice(expr) &&
           !provedLiteralNlEofChoice(expr) && !provedClassLookaheadOrEof(expr))
-        expr.alts.filter(items => !provedEscapeItems(items) && !provedReservedOrdinary(items)).forEach(visit);
+        expr.alts.filter(items => !provedEscapeItems(items) && !provedReservedOrdinary(items) &&
+          !provedReservedComment(items)).forEach(visit);
       expr.alts.flat().forEach(item => nestedChoices(item.expr, visit));
       break;
     case 'star': case 'plus': case 'opt': case 'and': case 'not':
@@ -304,6 +305,12 @@ function provedReservedOrdinary(items) {
   return items.length === 2 && items.every(item => item.bind === null) &&
     items[0].expr.tag === 'not' && items[0].expr.expr.tag === 'class' &&
     items[0].expr.expr.written === String.raw`[\[\]\\\n]` && items[1].expr.tag === 'any';
+}
+// ReservedCommentTotal proves the complete same-line delimited comment for
+// arbitrary input, and identifies this branch in the exported actual grammar.
+function provedReservedComment(items) {
+  return items.length === 3 && items.every(item => item.bind === null) &&
+    describeItems(items) === String.raw`'%%' (!'%%' ![\n] .)* '%%'`;
 }
 const escapeAst = ast?.rules.find(rule => rule.name === 'Escape');
 const escapeFullyProved = rule('Escape') === String.raw`'\\' ![\n] .` &&

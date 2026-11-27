@@ -37,7 +37,11 @@ try {
   // which recurse through Block like the other block structures.
   assert.doesNotMatch(strict.stderr, /^unsupported ReservedRange choice /m,
     'root ADR 0351 I1, I2: the reserved-range guards and label have an arbitrary-input proof');
-  assert.ok(baselineUnsupported <= 24, 'the full grammar model must not regress in unsupported choices');
+  assert.ok(!strict.stderr.split('\n').some(line =>
+    line.startsWith('unsupported ReservedBracketBody choice ') &&
+    line.endsWith(String.raw`'%%' (!'%%' ![\n] .)* '%%'`)),
+  'root ADR 0351 I1, I2: the reserved bracket comment branch needs an arbitrary-input proof');
+  assert.ok(baselineUnsupported <= 23, 'the full grammar model must not regress in unsupported choices');
   assert.equal(strict.status === 0, baselineUnsupported === 0,
     'strict generation succeeds exactly when every choice is supported');
   for (const line of strict.stderr.split('\n').filter(line => line.startsWith('unsupported '))) {
@@ -520,6 +524,55 @@ try {
     'root ADR 0351: changing the always-failing predicate must accept the previously rejected range');
   assert.match(nativeReserved.stdout, /TEXT@4\.\.6 \"\.\.\"/,
     'the accepted CST must contain the two reserved dots at their original span');
+
+  const reservedComment = String.raw`'%%' (!'%%' ![\n] .)* '%%'`;
+  assert.ok(original.includes(reservedComment));
+  const reservedCommentMutations = [
+    ['ReservedCommentOpening', reservedComment.replace(/^'%%'/, "'%'")],
+    ['ReservedCommentGuard', reservedComment.replace("!'%%'", "&'%%'")],
+    ['ReservedCommentNewline', reservedComment.replace(String.raw`![\n]`, String.raw`[\n]`)],
+    ['ReservedCommentRepetition', reservedComment.replace(')*', ')+')],
+    ['ReservedCommentClosing', reservedComment.replace(/'%%'$/, "'%'")],
+    ['ReservedCommentCharacter', reservedComment.replace(' .)', " 'x')")],
+  ];
+  for (const [name, changedBranch] of reservedCommentMutations) {
+    assert.notEqual(changedBranch, reservedComment);
+    const changedPath = join(work, name + '.hpeg');
+    writeFileSync(changedPath, original.replace(reservedComment, changedBranch));
+    const rejected = spawnSync(process.execPath, [join(here, 'generate.mjs'), changedPath, generated], { encoding: 'utf8' });
+    assert.notEqual(rejected.status, 0);
+    assert.ok(rejected.stderr.split('\n').some(line =>
+      line.startsWith('unsupported ReservedBracketBody choice ') && line.endsWith(changedBranch)),
+    `root ADR 0351 I1/I2: ${name} must invalidate the complete comment branch proof`);
+  }
+  // Expose the actual existing rule, without replacing it with a handwritten
+  // recovery grammar. These are entry-rule CST checks, not valid manuscripts.
+  const nativeBodyGrammar = original.replace('%syntax\n', '%syntax\n%entry ReservedBracketBody\n');
+  assert.notEqual(nativeBodyGrammar, original);
+  const nativeBodyPath = join(work, 'NativeReservedBody.hpeg');
+  writeFileSync(nativeBodyPath, nativeBodyGrammar);
+  const nativeBodySamples = ['%%%%', '%%]text%%', '%%]字%%'];
+  for (const sample of nativeBodySamples) {
+    const input = join(work, 'native-reserved-body.gm');
+    writeFileSync(input, sample);
+    const parsed = spawnSync(process.env.PEG_HS ?? 'peg-hs',
+      ['parse', '--entry', 'ReservedBracketBody', '--format', 'cst', nativeBodyPath, input],
+      { encoding: 'utf8', env: { ...process.env, XDG_CACHE_HOME: join(work, 'cache') } });
+    assert.equal(parsed.status, 0, parsed.stdout + parsed.stderr);
+    assert.match(parsed.stdout, new RegExp(`^ReservedBracketBody@0\\.\\.${Buffer.byteLength(sample)}$`, 'm'));
+  }
+  const nativeBodyMutated = join(work, 'NativeReservedBodyMutated.hpeg');
+  writeFileSync(nativeBodyMutated, nativeBodyGrammar.replace(reservedComment,
+    reservedComment.replace("!'%%'", "&'%%'")));
+  const nativeBodyCounterexample = join(work, 'native-reserved-body-counterexample.gm');
+  writeFileSync(nativeBodyCounterexample, '%%]text%%');
+  const nativeBodyRejected = spawnSync(process.env.PEG_HS ?? 'peg-hs',
+    ['parse', '--entry', 'ReservedBracketBody', '--format', 'cst', nativeBodyMutated, nativeBodyCounterexample],
+    { encoding: 'utf8', env: { ...process.env, XDG_CACHE_HOME: join(work, 'cache') } });
+  assert.notEqual(nativeBodyRejected.status, 0,
+    'root ADR 0351: reversing the comment guard must reject the complete recovered body with an internal closing bracket');
+  assert.match(nativeBodyRejected.stdout + nativeBodyRejected.stderr, /^1:3: expected /m,
+    'the native counterexample must fail at the internal bracket, not while compiling the parser');
 
   const nativeExpressionMutations = [
     ['CallNamespaceMany', '[= foo.bar.baz(1)]\n', true, { CallExpr: 1, ExprIdent: 3 }],
@@ -1088,6 +1141,23 @@ try {
     'the counterexample must refute the theorem rather than fail to load its imports');
   writeFileSync(generated, model);
   execFileSync(lean, ['-o', join(work, 'Generated.olean'), generated], growthEnv);
+  const reservedCommentSource = join(work, 'ReservedCommentTotal.lean');
+  copyFileSync(join(here, 'ReservedCommentTotal.lean'), reservedCommentSource);
+  const reservedCommentProof = spawnSync(lean, [reservedCommentSource], growthEnv);
+  assert.equal(reservedCommentProof.status, 0, reservedCommentProof.stdout + reservedCommentProof.stderr);
+  assert.doesNotMatch(reservedCommentProof.stdout + reservedCommentProof.stderr, /sorryAx|declaration uses 'sorry'/,
+    'root ADR 0351: the arbitrary-input comment proof must not have a proof hole');
+  const reservedCommentModelMutation = model.replace(
+    /(name := "ReservedBracketBody"[^\n]*?)\.notPred \(\.lit "%%"/, '$1.andPred (.lit "%%"');
+  assert.notEqual(reservedCommentModelMutation, model);
+  writeFileSync(generated, reservedCommentModelMutation);
+  execFileSync(lean, ['-o', join(work, 'Generated.olean'), generated], growthEnv);
+  const reservedCommentRefuted = spawnSync(lean, [reservedCommentSource], growthEnv);
+  assert.notEqual(reservedCommentRefuted.status, 0);
+  assert.match(reservedCommentRefuted.stdout + reservedCommentRefuted.stderr, /type mismatch|unsolved goals/,
+    'the changed actual AST must refute the proof, not its imports');
+  writeFileSync(generated, model);
+  execFileSync(lean, ['-o', join(work, 'Generated.olean'), generated], growthEnv);
   const expressionSource = join(work, 'ExpressionComposition.lean');
   copyFileSync(join(here, 'ExpressionComposition.lean'), expressionSource);
   const expressionProof = spawnSync(lean, ['-o', join(work, 'ExpressionComposition.olean'), expressionSource], growthEnv);
@@ -1119,7 +1189,7 @@ try {
   assert.match(refuted.stdout + refuted.stderr, /unsolved goals/, 'the mutation must refute the theorem, not fail to load a file');
   const unsupportedChoices = [...strict.stderr.matchAll(/^unsupported [A-Za-z][A-Za-z0-9]* choice /gm)].length;
   assert.equal(unsupportedChoices, baselineUnsupported, 'strict report count must remain stable through mutation tests');
-  console.log(`grammar: source and AST rules ${emittedRuleCount}/${astRuleCount}/${sourceRuleCount}, unsupported choices ${unsupportedChoices}, positive proof modules 29, negative mutations 113, implementation parser cases ${parserCases.length}, syntax-only parser cases 1, native parser counterexamples ${2 + nativeLexicalMutations.length + nativeCompositionMutations.length + nativeExpressionMutations.length + nativeArgumentMutations.length + nativeBlockLeafMutations.length}, rejected parser cases ${rejectedParserCases.length + badDelimiterCases.length + 1 + lexicalRejectedCases.length + compositionRejectedCases.length + expressionRejectedCases.length + argumentRejectedCases.length + blockLeafRejectedCases.length}`);
+  console.log(`grammar: source and AST rules ${emittedRuleCount}/${astRuleCount}/${sourceRuleCount}, unsupported choices ${unsupportedChoices}, positive proof modules 30, negative mutations 120, implementation parser cases ${parserCases.length}, syntax-only parser cases 1, native reserved-body entry cases ${nativeBodySamples.length}, native parser counterexamples ${3 + nativeLexicalMutations.length + nativeCompositionMutations.length + nativeExpressionMutations.length + nativeArgumentMutations.length + nativeBlockLeafMutations.length}, rejected parser cases ${rejectedParserCases.length + badDelimiterCases.length + 1 + lexicalRejectedCases.length + compositionRejectedCases.length + expressionRejectedCases.length + argumentRejectedCases.length + blockLeafRejectedCases.length}`);
 } finally {
   rmSync(work, { recursive: true, force: true });
 }

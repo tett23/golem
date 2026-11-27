@@ -23,5 +23,4 @@ TableBodyRow choice 1: Nl r:TableRow(ind) (&{ r == h })^table_cells
 TableRow choice 1: Ind(ind) cs:TableCellAndPipe+ Pipe Sp RowBreak?
 SkippedReserved choice 1: '[!' ReservedBracketBody ']'
 ReservedBracketBody choice 1: ('\\' ![\n] . / '%%' (!'%%' ![\n] .)* '%%' / '[' ReservedBracketBody ']' / ![\[\]\\\n] .)*
-ReservedBracketBody choice 2: '%%' (!'%%' ![\n] .)* '%%'
-ReservedBracketBody choice 3: '[' ReservedBracketBody ']'
+ReservedBracketBody choice 2: '[' ReservedBracketBody ']'
