@@ -5,6 +5,7 @@ import Bibliography0475Spec qualified
 import BibliographyFormatsSpec qualified
 import BibliographyNamesSpec qualified
 import BibliographyNoteContextSpec qualified
+import BibliographyNotesSpec qualified
 import BibliographyRangesSpec qualified
 import BibliographySortSpec qualified
 import BibliographyStyleSpec qualified
@@ -17,4 +18,4 @@ import Test.Tasty
 import WriterNotesSpec qualified
 
 main :: IO ()
-main = enterPackageDirectory >> defaultMain (testGroup "golem-assemble" [WriterNotesSpec.tests, BibliographyNoteContextSpec.tests, Bibliography0475Spec.tests, BibliographyRangesSpec.tests, BibliographyFormatsSpec.tests, BibliographyNamesSpec.tests, BibliographySortSpec.tests, BibliographyStyleSpec.tests, AssembleSpec.tests, IndexSpec.tests, ListMarkersSpec.tests, NumberingSpec.tests, TableNumberSpec.tests])
+main = enterPackageDirectory >> defaultMain (testGroup "golem-assemble" [WriterNotesSpec.tests, BibliographyNotesSpec.tests, BibliographyNoteContextSpec.tests, Bibliography0475Spec.tests, BibliographyRangesSpec.tests, BibliographyFormatsSpec.tests, BibliographyNamesSpec.tests, BibliographySortSpec.tests, BibliographyStyleSpec.tests, AssembleSpec.tests, IndexSpec.tests, ListMarkersSpec.tests, NumberingSpec.tests, TableNumberSpec.tests])

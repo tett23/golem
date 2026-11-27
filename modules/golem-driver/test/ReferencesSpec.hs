@@ -11,7 +11,10 @@ import Data.Maybe (mapMaybe)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Text.IO qualified as TIO
-import Golem.Assemble (Book (..), IndexGroup (..), IndexLocator (..), IndexSection (..), NoteChannelKind (..), NoteCitationContext (..), citationPiecesFor)
+import Golem.Assemble (AssembleConfig (..), Book (..), IndexGroup (..), IndexLocator (..), IndexSection (..), NoteChannelKind (..), NoteCitationContext (..), NoteNumbering (..), assemble, citationPiecesFor)
+import Golem.Assemble.BibliographyNoteContext (NoteCitationOccurrence (..), bibliographyNoteCitations)
+import Golem.Assemble.BibliographyNotes
+import Golem.Assemble.BibliographyStyle
 import Golem.Bibliography (EntryPart (..), entryText, formatEntry)
 import Golem.Bibliography.Csl (recordEntry, recordText)
 import Golem.Doc.Citation (CitePiece (..), citationText)
@@ -277,6 +280,31 @@ bibliographyFormatTests =
               result <- build (defaultOptions tmp) {optTargets = Just [TargetText]}
               assertEqual "no errors" [] (filter isError (brDiagnostics result))
               length [() | d <- brDiagnostics result, diagCode d == DiagnosticCode "G03306"] @?= if differentGiven then 2 else 1,
+    testCase "root ADR 0470 I5: prepared identical-source marks reach S1 and PDF by distinct note contexts" $
+      forM_ ["footnote", "endnote"] $ \channel -> do
+        result <- withMiniInput fakeProvider miniManifest horizontalStyle "seed" [] $ \input geom fonts -> do
+          let original = piBook input
+              fid = case bookDocs original of Document file _ : _ -> file; _ -> FileId 0
+              source = mkSpan fid 0 1
+              items = [citeItem "a", citeItem "b"]
+              mark = Cite source items
+              raw = [Document fid [Block source Nothing Nothing (Paragraph Nothing [mark, Text source " / ", mark, Text source " / ", mark])]]
+              style = emptyBibliographyStyle {bsCitationMode = Just "note", bsNoteChannel = Just channel} :: BibliographyStyle Int
+              config = AssembleConfig Map.empty "{n}" Map.empty NumberPerBook [] "{n}" "{n}" Map.empty 16 NumberPerBook
+              (assembled, diagnostics) = assemble config (\_ _ _ -> Right "") (prepareBibliographyNotes style raw)
+              noteOccurrences = bibliographyNoteCitations (bookDocs assembled)
+              prepared = Map.fromList [(ncoContext occurrence, (ncoSpan occurrence, ncoItems occurrence, [CiteText ("C" <> T.pack (show (nccNumber (ncoContext occurrence))))])) | occurrence <- noteOccurrences]
+              book = original {bookDocs = bookDocs assembled, bookNoteCitationPieces = prepared}
+              allLines layout = concat [slLine sl : concatMap snd (slNotes sl) | sl <- Map.elems (plLines layout)]
+              allText layout = T.concat [bcText box | line <- allLines layout, Box _ box <- lineItems line]
+          diagnostics @?= []
+          map (nccNumber . ncoContext) noteOccurrences @?= [1, 2, 3]
+          map (nccOccurrence . ncoContext) noteOccurrences @?= [0, 0, 0]
+          map ncoSpan noteOccurrences @?= replicate 3 source
+          map ncoItems noteOccurrences @?= replicate 3 items
+          resolved <- layoutPdf input {piBook = book} geom fonts >>= either (assertFailure . show) pure
+          forM_ ["C1", "C2", "C3"] $ \token -> T.count token (allText resolved) @?= 1
+        either (assertFailure . show) pure result,
     testGroup
       "PDF note occurrence consumers"
       [ testCase ("root ADR 0470 I5: PDF structural note ordinals in " <> name <> if vertical then " vertically" else " horizontally") $ do
