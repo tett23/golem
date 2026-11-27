@@ -72,3 +72,6 @@ Kindle Previewer の次ページの注などは、サムネイルでの確認に
 組版の境界の 15 件は、文字列と数値、ルビ、ページ参照、注の呼出印、正負のトラッキング、明示したアキ、横組みの幅を含む。
 実際の Wasm と Emet の入出力も試験し、Wasm 8 個の再生成と一致検査を通した。
 PDF の期待値の変更は、画像で確認した sample、complex-vertical と、sp 単位で比較した縦中横の配置の 3 件に限定した。
+決定性の参照ハッシュは、同じ間隔修正で変わった sample の入稿用と画面用、complex-vertical の PDF の 3 行だけを更新した。
+ローカルの `scripts/determinism.sh --no-manuals` の結果は、CI の x86 と ARM の両方の成果物と一致した。
+sample の入稿用と画面用の全ページの描画は、視覚確認済みの sample の描画とも一致した。
