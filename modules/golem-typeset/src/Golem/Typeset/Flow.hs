@@ -1751,6 +1751,7 @@ bibliographyLines bib cites =
     merged = \case
       EntryText a : EntryText b : rest -> merged (EntryText (a <> b) : rest)
       EntryText a : rest -> Text sp0 a : merged rest
+      EntryStyled name parts : rest -> CharStyle sp0 name (merged parts) : merged rest
       EntryUrl u : rest
         | Nothing <- checkUrl u -> Link sp0 u [CharStyle sp0 "url" [Text sp0 u]] : merged rest
         | otherwise -> CharStyle sp0 "url" [Text sp0 u] : merged rest

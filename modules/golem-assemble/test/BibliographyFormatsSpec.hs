@@ -1,15 +1,22 @@
 module BibliographyFormatsSpec (tests) where
 
 import Data.Either (isLeft)
+import Data.Map.Strict qualified as Map
 import Data.Text (Text)
 import Golem.Assemble.BibliographyFormats
+import Golem.Bibliography (EntryPart (..))
 import Test.Tasty
 import Test.Tasty.HUnit
 
 tests :: TestTree
 tests =
   testGroup "bibliography declaration pieces" $
-    [ testCase "root ADR 0470 I8: fragment rendering preserves notation errors" $
+    [ testCase "root ADR 0470 I2: character styles affect fields and preserve URL parts" $
+        bibliographyEntryParts (Map.fromList [("title", "italic"), ("URL", "strong")]) [BibliographyField "title" "Title", BibliographyLiteral ". ", BibliographyField "URL" "https://example.org"]
+          @?= [EntryStyled "italic" [EntryText "Title"], EntryText ". ", EntryStyled "strong" [EntryUrl "https://example.org"]],
+      testCase "root ADR 0470 I2: an unstyled field retains ordinary text" $
+        bibliographyEntryParts Map.empty [BibliographyField "title" "Title", BibliographyField "URL" "https://example.org"] @?= [EntryText "Title", EntryUrl "https://example.org"],
+      testCase "root ADR 0470 I8: fragment rendering preserves notation errors" $
         assertBool "Roman 4000 must report the same error" (isLeft (fragments [("volume", "4000")] ["{volume:upper-roman}"])),
       testCase "root ADR 0470 I3: fragment values remain literal text" $
         fragments [("title", "{URL}")] ["{title}"] @?= Right [BibliographyField "title" "{URL}"],

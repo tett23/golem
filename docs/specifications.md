@@ -577,6 +577,7 @@ flowchart TD
         text["golem-text<br/>プレーンテキスト（縦書きと横書き）"]
     end
     assemble --> doc
+    assemble --> bibliography
     assemble --> numerals
     assemble --> unicode
     cli --> driver
@@ -662,6 +663,10 @@ golem-doc はこの三つに依存せず、golem-bibliography と golem-numerals
 
 `renderBibliographyFragments` は、欄の値とリテラルの断片を分け、欄名を保持する。
 片を省く規則と数の表記は文字列を返す API と共通で、書式の解釈を二重に持たない。
+`bibliographyEntryParts` は、断片の欄名に対応する文字スタイルを `EntryStyled` にし、句読点はスタイルの外に保つ。
+`URL` の欄は `EntryUrl` を保ち、文字スタイルの中でも従来の URL の扱いを使う。
+HTML と EPUB は欄の文字スタイルを `cs-` のクラスにし、PDF は `CharStyle` のインラインにする。
+テキストは文字スタイルの中の文字を出す。
 
 宣言向けの書誌データは、golem-bibliography の `decodeCslRecords` で読み、`recordText`、`recordNames`、`recordDate` から欄を引く（[root ADR 0470](adr/0470-bibliography-styles-by-name-and-by-declaration.md)）。
 編者と DOI などの欄、名前ごとの `golem-sort-key` も保持する。

@@ -80,6 +80,7 @@ test-suite golem-typeset-test
   hs-source-dirs:   test
   main-is:          Main.hs
   other-modules:
+    BibliographySpec
     BoxSpec
     CcittEncode
     CcittSpec
@@ -109,6 +110,8 @@ test-suite golem-typeset-test
   build-depends:
     , JuicyPixels ==3.3.9
     , base
+    , containers
+    , golem-bibliography
     , bytestring
     , golem-color
     , golem-doc

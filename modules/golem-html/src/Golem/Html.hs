@@ -870,6 +870,7 @@ blockHtml c (Block sp lbl blang body) = case body of
     -- a URL of http or https is a link; another URL is not (golem-doc ADR 0005)
     entryPart = \case
       EntryText t -> [textOf t]
+      EntryStyled name parts -> [el "span" [("class", "cs-" <> name)] (concatMap entryPart parts)]
       EntryUrl u
         | any (`T.isPrefixOf` T.toLower u) ["http:", "https:"] -> [el "a" [("class", "cs-url"), ("href", u)] [textOf u]]
         | otherwise -> [el "span" [("class", "cs-url")] [textOf u]]

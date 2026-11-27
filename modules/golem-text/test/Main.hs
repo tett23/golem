@@ -82,7 +82,10 @@ tests :: TestTree
 tests =
   testGroup
     "golem-text"
-    [ testCase "@bibliography lists the entries, or the key without one (golem-doc ADR 0004)" $
+    [ testCase "root ADR 0470 I2: bibliography styles retain their text in plain output" $
+        renderBibliography (Map.fromList [("k", [EntryStyled "italic" [EntryText "Title"], EntryText ". ", EntryStyled "bold" [EntryUrl "https://example.org"]])]) [("k", 1)]
+          @?= [("a.txt", "[1] Title. https://example.org\n")],
+      testCase "@bibliography lists the entries, or the key without one (golem-doc ADR 0004)" $
         renderBibliography (Map.fromList [("jlreq", [EntryText "日本語組版処理の要件、W3C、2020。"])]) [("jlreq", 1), ("missing", 2)]
           @?= [("a.txt", "[1] 日本語組版処理の要件、W3C、2020。\n[2] missing\n")],
       testCase "@bibliography writes the URL and the date of access as text (golem-doc ADR 0005)" $

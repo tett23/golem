@@ -1,5 +1,6 @@
 module Main (main) where
 
+import BibliographySpec (bibliographyTests)
 import BoxSpec (boxTests)
 import CcittSpec (ccittTests)
 import FigureColorSpec (figureColorTests)
@@ -36,7 +37,8 @@ tests :: TestTree
 tests =
   testGroup
     "golem-typeset"
-    [ pdfDctTests,
+    [ bibliographyTests,
+      pdfDctTests,
       testGroup "the CCITTFaxDecode filter (root ADR 0425)" ccittTests,
       figureColorTests,
       testGroup "the size of a figure fitted to the column (root ADR 0440)" fitFigureTests,

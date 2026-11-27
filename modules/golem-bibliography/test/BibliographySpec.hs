@@ -19,7 +19,14 @@ fmt :: CslEntry -> Text
 fmt = entryText . formatEntry
 
 tests :: TestTree
-tests = testGroup "bibliography" [adr0004, adr0005]
+tests =
+  testGroup
+    "bibliography"
+    [ adr0004,
+      adr0005,
+      testCase "root ADR 0470 I2: text extraction preserves styled fields and nested URLs" $
+        entryText [EntryText "before ", EntryStyled "italic" [EntryText "Title", EntryStyled "bold" [EntryUrl "https://example.org"]], EntryText "."] @?= "before Titlehttps://example.org."
+    ]
 
 adr0004 :: TestTree
 adr0004 =

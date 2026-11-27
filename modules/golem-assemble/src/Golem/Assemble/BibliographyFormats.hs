@@ -1,7 +1,7 @@
 {- | The conditional pieces of a bibliography declaration (root ADR 0470).
 The reader takes the caller's table of field names, and the renderer takes
 already formatted field values. Neither knows the entry data or the
-selected style, and no package dependency is added for this format.
+selected style. Field identities remain available for per-field output styles.
 -}
 module Golem.Assemble.BibliographyFormats
   ( BibliographyPiece,
@@ -9,15 +9,19 @@ module Golem.Assemble.BibliographyFormats
     renderBibliographyPieces,
     BibliographyFragment (..),
     renderBibliographyFragments,
+    bibliographyEntryParts,
   )
 where
 
 import Data.Bifunctor (first)
+import Data.Map.Strict (Map)
+import Data.Map.Strict qualified as Map
 import Data.Maybe (fromMaybe, isNothing)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Read qualified as TR
 import Golem.Assemble.Formats (Braces (..), Piece (..), Slot (..), formatReason, notationName, parseFormat, unknownSlot, writeNumber)
+import Golem.Bibliography (EntryPart (..))
 
 -- | One conditional piece, parsed once; a slot keeps its name and @?@.
 newtype BibliographyPiece = BibliographyPiece [Piece (Text, Bool)]
@@ -80,3 +84,13 @@ renderBibliographyFragments value = fmap concat . traverse render
 
     literal t = [BibliographyLiteral t | not (T.null t)]
     field name t = [BibliographyField name t | not (T.null t)]
+
+{- | Apply per-field character styles without styling adjacent punctuation.
+URL fields keep the existing URL behavior of each output.
+-}
+bibliographyEntryParts :: Map Text Text -> [BibliographyFragment] -> [EntryPart]
+bibliographyEntryParts styles = map $ \case
+  BibliographyLiteral text -> EntryText text
+  BibliographyField name text ->
+    let part = if name == "URL" then EntryUrl text else EntryText text
+     in maybe part (\style -> EntryStyled style [part]) (Map.lookup name styles)

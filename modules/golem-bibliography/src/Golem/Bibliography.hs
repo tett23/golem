@@ -49,8 +49,10 @@ data CslEntry = CslEntry
   }
   deriving stock (Eq, Show)
 
--- | A part of a formatted entry: text, or a URL that the outputs mark as such.
-data EntryPart = EntryText !Text | EntryUrl !Text
+{- | Text, a URL, or a sequence with a named character style. Outputs keep
+the style around its own field and preserve URL handling inside it.
+-}
+data EntryPart = EntryText !Text | EntryUrl !Text | EntryStyled !Text ![EntryPart]
   deriving stock (Eq, Show)
 
 -- | The parts joined: the text of the entry.
@@ -61,6 +63,7 @@ partText :: EntryPart -> Text
 partText = \case
   EntryText t -> t
   EntryUrl t -> t
+  EntryStyled _ parts -> entryText parts
 
 {- | One entry: authors, title, container, publisher, year, and the URL
 with the date of access, the fields that are not empty, separated by
