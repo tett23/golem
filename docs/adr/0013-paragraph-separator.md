@@ -1,6 +1,6 @@
 # ADR 0013: 段落の区切り方をマニフェストで選ぶ
 
-Status: superseded [{"by":["docs/adr/0016-hard-line-breaks.md"],"part":"行末の `\\`"},{"by":["docs/adr/0193-line-paragraph-separator-by-default.md"],"part":"段落の区切り方の既定と `golem new` の雛形の `[source]`"}]
+Status: superseded [{"by":["docs/adr/0016-hard-line-breaks.md"],"part":"行末の `\\`"},{"by":["docs/adr/0193-line-paragraph-separator-by-default.md"],"part":"段落の区切り方の既定と `golem new` の雛形の `[source]`"},{"part":"keep による段落分割の例外","by":["docs/adr/0473-normalize-paragraph-blocks-before-body-binding.md"],"kind":"replace"}]
 
 ## 文脈
 
