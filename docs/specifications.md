@@ -655,6 +655,11 @@ golem-numerals は golem のどのパッケージにも依存せず、golem-bibl
 golem-doc はこの三つに依存せず、golem-bibliography と golem-numerals は golem-doc に依存しない。
 この向きは、cabal が解決した計画を読む `scripts/ci/doc-deps.sh` が CI の `build` ジョブで確かめる。
 
+参考文献の宣言の差し込み片は、golem-assemble の `Golem.Assemble.BibliographyFormats` が読み、値を引く関数を受けて展開する（[root ADR 0470](adr/0470-bibliography-styles-by-name-and-by-declaration.md)）。
+使える差し込みの名前は呼出側が渡し、数の表記と括弧のエスケープは共通の書式の処理を使う。
+必須の値が無い片は句読点ごと省き、`?` のある差し込みは値だけを省く。
+数として読めない値には数の表記を当てず、そのまま書く。
+
 ### golem-evaluate と golem-driver
 
 プロジェクトの評価は golem-evaluate が、書き出しは golem-driver が持つ（[root ADR 0434](adr/0434-split-evaluation-from-golem-driver.md)）。
