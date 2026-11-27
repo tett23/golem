@@ -1,0 +1,232 @@
+{
+  "run": {
+    "conclusion": "success",
+    "createdAt": "2026-11-26T10:32:00Z",
+    "databaseId": 45802211168,
+    "headSha": "d866976cb71a8bc53494919c1cfca004c86a8439"
+  },
+  "jobs": [
+    {
+      "name": "changes",
+      "conclusion": "success",
+      "started_at": "2026-11-26T10:32:02Z",
+      "completed_at": "2026-11-26T10:32:17Z"
+    },
+    {
+      "name": "scripts-linux",
+      "conclusion": "success",
+      "started_at": "2026-11-26T10:32:03Z",
+      "completed_at": "2026-11-26T10:34:49Z"
+    },
+    {
+      "name": "editors",
+      "conclusion": "success",
+      "started_at": "2026-11-26T10:32:04Z",
+      "completed_at": "2026-11-26T10:32:41Z"
+    },
+    {
+      "name": "release-scripts",
+      "conclusion": "success",
+      "started_at": "2026-11-26T10:32:19Z",
+      "completed_at": "2026-11-26T10:32:51Z"
+    },
+    {
+      "name": "wasm",
+      "conclusion": "success",
+      "started_at": "2026-11-26T10:32:19Z",
+      "completed_at": "2026-11-26T10:35:45Z"
+    },
+    {
+      "name": "cache-dist (ubuntu-24.04)",
+      "conclusion": "success",
+      "started_at": "2026-11-26T10:32:19Z",
+      "completed_at": "2026-11-26T10:35:30Z"
+    },
+    {
+      "name": "visual",
+      "conclusion": "success",
+      "started_at": "2026-11-26T10:32:19Z",
+      "completed_at": "2026-11-26T10:35:46Z"
+    },
+    {
+      "name": "plugins",
+      "conclusion": "success",
+      "started_at": "2026-11-26T10:32:19Z",
+      "completed_at": "2026-11-26T10:33:21Z"
+    },
+    {
+      "name": "scripts-macos",
+      "conclusion": "success",
+      "started_at": "2026-11-26T10:32:20Z",
+      "completed_at": "2026-11-26T10:36:12Z"
+    },
+    {
+      "name": "editors-lsp",
+      "conclusion": "success",
+      "started_at": "2026-11-26T10:32:19Z",
+      "completed_at": "2026-11-26T10:35:14Z"
+    },
+    {
+      "name": "format",
+      "conclusion": "success",
+      "started_at": "2026-11-26T10:32:19Z",
+      "completed_at": "2026-11-26T10:34:52Z"
+    },
+    {
+      "name": "verapdf",
+      "conclusion": "success",
+      "started_at": "2026-11-26T10:32:20Z",
+      "completed_at": "2026-11-26T10:36:36Z"
+    },
+    {
+      "name": "cache-dist (ubuntu-24.04-arm)",
+      "conclusion": "success",
+      "started_at": "2026-11-26T10:32:22Z",
+      "completed_at": "2026-11-26T10:35:34Z"
+    },
+    {
+      "name": "build (ubuntu-24.04-arm, outputs)",
+      "conclusion": "success",
+      "started_at": "2026-11-26T10:32:22Z",
+      "completed_at": "2026-11-26T10:35:20Z"
+    },
+    {
+      "name": "build (ubuntu-24.04, tests-driver-b)",
+      "conclusion": "success",
+      "started_at": "2026-11-26T10:32:19Z",
+      "completed_at": "2026-11-26T10:36:08Z"
+    },
+    {
+      "name": "build (ubuntu-24.04, outputs-checks)",
+      "conclusion": "success",
+      "started_at": "2026-11-26T10:32:19Z",
+      "completed_at": "2026-11-26T10:36:12Z"
+    },
+    {
+      "name": "build (ubuntu-24.04-arm, tests-rest-a)",
+      "conclusion": "success",
+      "started_at": "2026-11-26T10:32:21Z",
+      "completed_at": "2026-11-26T10:35:10Z"
+    },
+    {
+      "name": "build (ubuntu-24.04, outputs)",
+      "conclusion": "success",
+      "started_at": "2026-11-26T10:32:20Z",
+      "completed_at": "2026-11-26T10:35:46Z"
+    },
+    {
+      "name": "build (ubuntu-24.04, tests-rest-a)",
+      "conclusion": "success",
+      "started_at": "2026-11-26T10:32:19Z",
+      "completed_at": "2026-11-26T10:34:45Z"
+    },
+    {
+      "name": "build (ubuntu-24.04, tests-rest-b)",
+      "conclusion": "success",
+      "started_at": "2026-11-26T10:32:19Z",
+      "completed_at": "2026-11-26T10:36:44Z"
+    },
+    {
+      "name": "build (ubuntu-24.04, env)",
+      "conclusion": "success",
+      "started_at": "2026-11-26T10:32:19Z",
+      "completed_at": "2026-11-26T10:34:52Z"
+    },
+    {
+      "name": "build (ubuntu-24.04-arm, tests-driver-a)",
+      "conclusion": "success",
+      "started_at": "2026-11-26T10:32:22Z",
+      "completed_at": "2026-11-26T10:36:25Z"
+    },
+    {
+      "name": "build (ubuntu-24.04-arm, tests-driver-b)",
+      "conclusion": "success",
+      "started_at": "2026-11-26T10:32:22Z",
+      "completed_at": "2026-11-26T10:37:05Z"
+    },
+    {
+      "name": "parser-fmt-proofs / prove (arguments/Arguments)",
+      "conclusion": "success",
+      "started_at": "2026-11-26T10:32:19Z",
+      "completed_at": "2026-11-26T10:32:33Z"
+    },
+    {
+      "name": "parser-fmt-proofs / prove (grammar)",
+      "conclusion": "success",
+      "started_at": "2026-11-26T10:32:20Z",
+      "completed_at": "2026-11-26T10:46:31Z"
+    },
+    {
+      "name": "parser-fmt-proofs / prove (tables/Table)",
+      "conclusion": "success",
+      "started_at": "2026-11-26T10:32:19Z",
+      "completed_at": "2026-11-26T10:37:29Z"
+    },
+    {
+      "name": "build (ubuntu-24.04-arm, tests-rest-b)",
+      "conclusion": "success",
+      "started_at": "2026-11-26T10:32:21Z",
+      "completed_at": "2026-11-26T10:37:19Z"
+    },
+    {
+      "name": "parser-fmt-proofs / prove (eval/Eval)",
+      "conclusion": "success",
+      "started_at": "2026-11-26T10:32:19Z",
+      "completed_at": "2026-11-26T10:38:08Z"
+    },
+    {
+      "name": "build (ubuntu-24.04, tests-driver-a)",
+      "conclusion": "success",
+      "started_at": "2026-11-26T10:32:20Z",
+      "completed_at": "2026-11-26T10:35:57Z"
+    },
+    {
+      "name": "parser-fmt-proofs / nightly-cli",
+      "conclusion": "skipped",
+      "started_at": "2026-11-26T10:32:18Z",
+      "completed_at": "2026-11-26T10:32:17Z"
+    },
+    {
+      "name": "determinism",
+      "conclusion": "success",
+      "started_at": "2026-11-26T10:37:21Z",
+      "completed_at": "2026-11-26T10:37:27Z"
+    },
+    {
+      "name": "parser-fmt-manuscripts (eval)",
+      "conclusion": "success",
+      "started_at": "2026-11-26T10:37:21Z",
+      "completed_at": "2026-11-26T10:37:35Z"
+    },
+    {
+      "name": "parser-fmt-manuscripts (arguments)",
+      "conclusion": "success",
+      "started_at": "2026-11-26T10:37:21Z",
+      "completed_at": "2026-11-26T10:37:49Z"
+    },
+    {
+      "name": "parser-fmt-manuscripts (tables)",
+      "conclusion": "success",
+      "started_at": "2026-11-26T10:37:22Z",
+      "completed_at": "2026-11-26T10:37:51Z"
+    },
+    {
+      "name": "parser-fmt-manuscripts (manuscripts)",
+      "conclusion": "success",
+      "started_at": "2026-11-26T10:37:21Z",
+      "completed_at": "2026-11-26T10:37:46Z"
+    },
+    {
+      "name": "caches",
+      "conclusion": "skipped",
+      "started_at": "2026-11-26T10:37:20Z",
+      "completed_at": "2026-11-26T10:37:19Z"
+    },
+    {
+      "name": "ci",
+      "conclusion": "success",
+      "started_at": "2026-11-26T10:46:33Z",
+      "completed_at": "2026-11-26T10:47:25Z"
+    }
+  ]
+}

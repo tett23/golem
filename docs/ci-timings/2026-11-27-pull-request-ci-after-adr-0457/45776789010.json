@@ -1,0 +1,178 @@
+{
+  "run": {
+    "conclusion": "success",
+    "createdAt": "2026-11-26T07:38:05Z",
+    "databaseId": 45776789010,
+    "headSha": "e8c4d7b34c92f7757f8723677cdc1bd7d76b77fc"
+  },
+  "jobs": [
+    {
+      "name": "scripts-linux",
+      "conclusion": "success",
+      "started_at": "2026-11-26T07:38:07Z",
+      "completed_at": "2026-11-26T07:40:38Z"
+    },
+    {
+      "name": "editors",
+      "conclusion": "success",
+      "started_at": "2026-11-26T07:38:07Z",
+      "completed_at": "2026-11-26T07:38:40Z"
+    },
+    {
+      "name": "changes",
+      "conclusion": "success",
+      "started_at": "2026-11-26T07:38:09Z",
+      "completed_at": "2026-11-26T07:38:25Z"
+    },
+    {
+      "name": "cache-dist (ubuntu-24.04)",
+      "conclusion": "success",
+      "started_at": "2026-11-26T07:38:26Z",
+      "completed_at": "2026-11-26T07:39:20Z"
+    },
+    {
+      "name": "cache-dist (ubuntu-24.04-arm)",
+      "conclusion": "success",
+      "started_at": "2026-11-26T07:38:29Z",
+      "completed_at": "2026-11-26T07:39:20Z"
+    },
+    {
+      "name": "scripts-macos",
+      "conclusion": "success",
+      "started_at": "2026-11-26T07:38:27Z",
+      "completed_at": "2026-11-26T07:42:27Z"
+    },
+    {
+      "name": "visual",
+      "conclusion": "success",
+      "started_at": "2026-11-26T07:38:26Z",
+      "completed_at": "2026-11-26T07:40:15Z"
+    },
+    {
+      "name": "verapdf",
+      "conclusion": "success",
+      "started_at": "2026-11-26T07:38:27Z",
+      "completed_at": "2026-11-26T07:41:26Z"
+    },
+    {
+      "name": "format",
+      "conclusion": "success",
+      "started_at": "2026-11-26T07:38:27Z",
+      "completed_at": "2026-11-26T07:40:32Z"
+    },
+    {
+      "name": "wasm",
+      "conclusion": "success",
+      "started_at": "2026-11-26T07:38:27Z",
+      "completed_at": "2026-11-26T07:40:28Z"
+    },
+    {
+      "name": "release-scripts",
+      "conclusion": "success",
+      "started_at": "2026-11-26T07:38:27Z",
+      "completed_at": "2026-11-26T07:38:59Z"
+    },
+    {
+      "name": "editors-lsp",
+      "conclusion": "success",
+      "started_at": "2026-11-26T07:38:26Z",
+      "completed_at": "2026-11-26T07:39:42Z"
+    },
+    {
+      "name": "plugins",
+      "conclusion": "success",
+      "started_at": "2026-11-26T07:38:26Z",
+      "completed_at": "2026-11-26T07:39:25Z"
+    },
+    {
+      "name": "build (ubuntu-24.04, tests-driver-a)",
+      "conclusion": "success",
+      "started_at": "2026-11-26T07:38:26Z",
+      "completed_at": "2026-11-26T07:40:38Z"
+    },
+    {
+      "name": "build (ubuntu-24.04, outputs)",
+      "conclusion": "success",
+      "started_at": "2026-11-26T07:38:29Z",
+      "completed_at": "2026-11-26T07:40:20Z"
+    },
+    {
+      "name": "build (ubuntu-24.04-arm, tests-rest-a)",
+      "conclusion": "success",
+      "started_at": "2026-11-26T07:38:29Z",
+      "completed_at": "2026-11-26T07:40:46Z"
+    },
+    {
+      "name": "build (ubuntu-24.04, outputs-checks)",
+      "conclusion": "success",
+      "started_at": "2026-11-26T07:38:27Z",
+      "completed_at": "2026-11-26T07:40:47Z"
+    },
+    {
+      "name": "build (ubuntu-24.04-arm, tests-rest-b)",
+      "conclusion": "success",
+      "started_at": "2026-11-26T07:38:29Z",
+      "completed_at": "2026-11-26T07:41:50Z"
+    },
+    {
+      "name": "build (ubuntu-24.04, tests-driver-b)",
+      "conclusion": "success",
+      "started_at": "2026-11-26T07:38:27Z",
+      "completed_at": "2026-11-26T07:40:59Z"
+    },
+    {
+      "name": "build (ubuntu-24.04-arm, outputs)",
+      "conclusion": "success",
+      "started_at": "2026-11-26T07:38:29Z",
+      "completed_at": "2026-11-26T07:40:00Z"
+    },
+    {
+      "name": "build (ubuntu-24.04, env)",
+      "conclusion": "success",
+      "started_at": "2026-11-26T07:38:27Z",
+      "completed_at": "2026-11-26T07:40:09Z"
+    },
+    {
+      "name": "build (ubuntu-24.04, tests-rest-a)",
+      "conclusion": "success",
+      "started_at": "2026-11-26T07:38:27Z",
+      "completed_at": "2026-11-26T07:40:24Z"
+    },
+    {
+      "name": "build (ubuntu-24.04-arm, tests-driver-b)",
+      "conclusion": "success",
+      "started_at": "2026-11-26T07:38:29Z",
+      "completed_at": "2026-11-26T07:41:18Z"
+    },
+    {
+      "name": "build (ubuntu-24.04, tests-rest-b)",
+      "conclusion": "success",
+      "started_at": "2026-11-26T07:38:27Z",
+      "completed_at": "2026-11-26T07:41:20Z"
+    },
+    {
+      "name": "build (ubuntu-24.04-arm, tests-driver-a)",
+      "conclusion": "success",
+      "started_at": "2026-11-26T07:38:29Z",
+      "completed_at": "2026-11-26T07:40:45Z"
+    },
+    {
+      "name": "determinism",
+      "conclusion": "success",
+      "started_at": "2026-11-26T07:41:52Z",
+      "completed_at": "2026-11-26T07:42:02Z"
+    },
+    {
+      "name": "caches",
+      "conclusion": "skipped",
+      "started_at": "2026-11-26T07:41:51Z",
+      "completed_at": "2026-11-26T07:41:51Z"
+    },
+    {
+      "name": "ci",
+      "conclusion": "success",
+      "started_at": "2026-11-26T07:42:28Z",
+      "completed_at": "2026-11-26T07:42:47Z"
+    }
+  ]
+}
