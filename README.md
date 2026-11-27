@@ -800,8 +800,12 @@ CI の時間は `sh scripts/ci/ci-critical-path.sh` で測る。
 外部の再利用ワークフロー、読めない呼出先、循環、対応しない実行済みか実行中のジョブがあれば、理由を出して計測を中止する。
 `--needs` は呼出元の依存関係、`--graph` は展開した依存グラフを表示する（[root ADR 0472](./docs/adr/0472-count-reusable-workflows-in-ci-timing.md)）。
 保存したジョブの JSON も引数に渡せる。
-`workflow_revision` を持つ入力と API から収集する入力では、該当コミットの `.github/workflows/` を Git のローカルの履歴から読むため、そのコミットのオブジェクトが必要である。
-指定がない保存入力は `--workflow FILE` のファイルを使う。
+API の入力は changes ジョブの `GITHUB_WORKFLOW_SHA` の記録、古い実行では最初のマージ版の checkout のログから、実行版を確定する。
+PR の `headSha` は実行版と異なることがあるため代用しない。
+`workflow_revision` を持つ保存入力は該当コミットを Git の履歴から読む。
+API の計測では不足するコミットを同じリポジトリの origin から取得する。
+保存入力に同じ版の `workflow_files` もあれば、その内容を使い、Git オブジェクトの取得は不要である。
+どちらの指定もない保存入力は `--workflow FILE` のファイルを使う。
 
 #### どのジョブを走らせるか
 

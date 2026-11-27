@@ -449,8 +449,13 @@ matrix の呼出元が違う子の時間は混ぜない。
 省いたジョブは 0 秒で、ランナーの待ち時間は数えない。
 外部の再利用ワークフロー、読めない呼出先、循環、グラフに対応しない実行中か実行済みのジョブがあれば、理由を出して計測を中止する。
 `--needs` は既存の呼出元の依存関係、`--graph` は展開したグラフの JSON を表示する。
-API の入力は実行の `headSha` を `workflow_revision` として記録し、保存入力もこの値を持つ場合は該当コミットの `.github/workflows/` をローカルの Git の履歴から読む。
-この値を持たない保存入力は、`--workflow FILE` または既定のワークフローのファイルを使う（[root ADR 0472](adr/0472-count-reusable-workflows-in-ci-timing.md)）。
+API の入力は changes ジョブの `GITHUB_WORKFLOW_SHA` の記録を使い、古い実行では最初のマージ版の checkout のログを使って、実行版を `workflow_revision` に確定する。
+PR の head のコミットを、実行したマージ版の代わりに使わない。
+同じリポジトリの再利用ワークフローの版とも照合し、確定できなければ計測を止める。
+保存入力に `workflow_files` があれば、該当する YAML の内容を一時ディレクトリに展開して使う。
+パスは `.github/workflows/` の直下の YAML に限り、ディレクトリの外へ書かない。
+この欄がない場合は実行版を Git のローカルの履歴から読み、API の計測で不足するコミットは、同じリポジトリの origin から取得する。
+版とファイルの指定のない保存入力は、`--workflow FILE` または既定のファイルを使う（[root ADR 0472](adr/0472-count-reusable-workflows-in-ci-timing.md)）。
 
 CI は、検査を減らさずに時間を縮める（[ADR 0395](adr/0395-bring-the-pull-request-ci-under-five-minutes.md)）。
 `build` のランナーは、自分が使うものだけを組む（`scripts/ci/build-targets.sh`）。

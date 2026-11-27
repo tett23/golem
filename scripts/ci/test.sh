@@ -5063,6 +5063,51 @@ jq --arg revision "$(git -C "$HERE/../.." rev-parse HEAD)" '.workflow_revision=$
 run cpath --workflow "$CPR/.github/workflows/ci.yml" "$CP/recorded-current-meta.json"
 expect 'root ADR 0472 I1, I5: a recorded revision does not read the current invalid graph' 0 7
 
+# The PR head is not necessarily the workflow merge revision (root ADR 0472).
+CP_HEAD=1111111111111111111111111111111111111111
+CP_MERGE=2222222222222222222222222222222222222222
+jq -n --arg head "$CP_HEAD" --arg merge "$CP_MERGE" '{head_sha:$head,referenced_workflows:[{path:"tett23/golem/.github/workflows/child.yml@ref",sha:$merge}]}' >"$CP/revision.json"
+printf '2026-11-27T00:00:00Z ci-critical-path: workflow_revision=%s\n' "$CP_MERGE" >"$CP/revision-marker.log"
+run sh "$HERE/ci-workflow-revision.sh" tett23/golem "$CP/revision.json" "$CP/revision-marker.log"
+expect 'root ADR 0472 I1: the execution revision is not the PR head revision' 0 "$CP_MERGE"
+jq '.referenced_workflows=[]' "$CP/revision.json" >"$CP/revision-no-reference.json"
+run sh "$HERE/ci-workflow-revision.sh" tett23/golem "$CP/revision-no-reference.json"
+expect 'root ADR 0472 I5: a missing execution revision requires a job log' 2
+cat >"$CP/revision-job.log" <<LOG
+2026-11-27T00:00:00Z [command]/usr/bin/git checkout --force refs/remotes/pull/123/merge
+2026-11-27T00:00:01Z [command]/usr/bin/git log -1 --format=%H
+2026-11-27T00:00:02Z $CP_MERGE
+LOG
+run sh "$HERE/ci-workflow-revision.sh" tett23/golem "$CP/revision-no-reference.json" "$CP/revision-job.log"
+expect 'root ADR 0472 I1: legacy checkout logs preserve the execution merge revision' 0 "$CP_MERGE"
+cat >>"$CP/revision-job.log" <<'LOG'
+2026-11-27T00:00:03Z ##[group]Run printf 'ci-critical-path: workflow_revision=%s\n' "$GITHUB_WORKFLOW_SHA"
+LOG
+printf '2026-11-27T00:00:04Z ci-critical-path: workflow_revision=%s\n' "$CP_HEAD" >>"$CP/revision-job.log"
+run sh "$HERE/ci-workflow-revision.sh" tett23/golem "$CP/revision-no-reference.json" "$CP/revision-job.log"
+expect 'root ADR 0472 I1: workflow metadata takes priority over a checkout ref' 0 "$CP_HEAD"
+jq '.referenced_workflows += [{path:"tett23/golem/.github/workflows/other.yml@ref",sha:"3333333333333333333333333333333333333333"}]' "$CP/revision.json" >"$CP/revision-ambiguous.json"
+run sh "$HERE/ci-workflow-revision.sh" tett23/golem "$CP/revision-ambiguous.json"
+expect 'root ADR 0472 I5: ambiguous local workflow revisions fail' 1
+printf 'no revision information\n' >"$CP/revision-empty.log"
+run sh "$HERE/ci-workflow-revision.sh" tett23/golem "$CP/revision-no-reference.json" "$CP/revision-empty.log"
+expect 'root ADR 0472 I5: missing revision logs cannot fall back to the PR head' 1
+
+# Snapshots keep ephemeral pull-request merge workflows reproducible.
+cp_run "$CP/snapshot.json" "$(cp_job ci 7)"
+jq --rawfile workflow "$CPD/flat.yml" --arg revision "$CP_MERGE" '.+{workflow_revision:$revision,workflow_files:{".github/workflows/ci.yml":$workflow}}' "$CP/snapshot.json" >"$CP/snapshot-meta.json"
+run cpath --workflow "$CPR/.github/workflows/ci.yml" "$CP/snapshot-meta.json"
+expect 'root ADR 0472 I1: saved workflow files replay without ephemeral Git objects' 0 7
+jq '.workflow_files["../outside.yml"]="jobs: {}"' "$CP/snapshot-meta.json" >"$CP/snapshot-invalid.json"
+run cpath --workflow "$CPR/.github/workflows/ci.yml" "$CP/snapshot-invalid.json"
+if [ "$CODE" != 0 ] && [ ! -s "$WORK/out" ]; then ok; else ng 'root ADR 0472 I5: snapshot paths cannot leave the workflow directory'; fi
+jq --rawfile workflow "$CPR/.github/workflows/ci.yml" '.workflow_files[".github/workflows/ci.yml"]=$workflow' "$CP/snapshot-meta.json" >"$CP/snapshot-missing.json"
+run cpath --workflow "$CPR/.github/workflows/ci.yml" "$CP/snapshot-missing.json"
+if [ "$CODE" != 0 ] && [ ! -s "$WORK/out" ]; then ok; else ng 'root ADR 0472 I5: a missing saved callee cannot produce a median'; fi
+jq 'del(.workflow_revision)' "$CP/snapshot-meta.json" >"$CP/snapshot-no-revision.json"
+run cpath --workflow "$CPD/flat.yml" "$CP/snapshot-no-revision.json"
+if [ "$CODE" != 0 ] && [ ! -s "$WORK/out" ]; then ok; else ng 'root ADR 0472 I5: saved workflows require an execution revision'; fi
+
 # ---------------------------------------------------------------- the CI of pull requests under five minutes
 # (docs/adr/0395-bring-the-pull-request-ci-under-five-minutes.md)
 

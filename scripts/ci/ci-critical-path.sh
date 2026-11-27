@@ -27,7 +27,8 @@
 # its pages joined into one {"jobs": [...]}.
 #
 # A recorded workflow_revision uses .github/workflows at that local Git
-# commit, including all local callees. Online collection records headSha.
+# commit, including all local callees. Online collection uses the actual
+# workflow revision from local-call metadata or the changes job log.
 # --graph writes the expanded graph as JSON; --needs stays unexpanded.
 # --needs writes each job of FILE and its needs, "JOB: NEED NEED", one job
 # a line, in the order of FILE.
@@ -96,14 +97,27 @@ fi
 # time FILE: the time of the run of FILE, or nothing when it skipped build
 time_of() {
   revision=$(jq -r '.workflow_revision // empty' "$1")
+  if [ -z "$revision" ] && jq -e 'has("workflow_files")' "$1" >/dev/null; then
+    echo 'ci-critical-path: saved workflow files require an execution revision' >&2
+    return 1
+  fi
   if [ -n "$revision" ]; then
     case "$revision" in *[!0-9a-f]*) echo "ci-critical-path: invalid workflow revision $revision" >&2; return 1 ;; esac
     [ "${#revision}" -eq 40 ] || { echo "ci-critical-path: invalid workflow revision $revision" >&2; return 1; }
-    source_dir=$TMP/revisions/$revision
-    if [ ! -d "$source_dir" ]; then
-      mkdir -p "$source_dir"
-      git -C "$HERE/../.." archive "$revision" .github/workflows >"$TMP/workflows.tar" || { echo "ci-critical-path: unreadable workflow revision $revision" >&2; return 1; }
-      tar -xf "$TMP/workflows.tar" -C "$source_dir"
+    if jq -e 'has("workflow_files")' "$1" >/dev/null; then
+      jq -e '.workflow_files | type=="object" and length>0 and all(to_entries[]; (.key|test("^[.]github/workflows/[A-Za-z0-9_.-]+[.]ya?ml$")) and (.value|type=="string"))' "$1" >/dev/null || { echo 'ci-critical-path: invalid saved workflow files' >&2; return 1; }
+      source_dir=$(mktemp -d "$TMP/snapshot.XXXXXX")
+      mkdir -p "$source_dir/.github/workflows"
+      jq -r '.workflow_files|keys[]' "$1" | while IFS= read -r file; do
+        jq -j --arg path "$file" '.workflow_files[$path]' "$1" >"$source_dir/$file"
+      done
+    else
+      source_dir=$TMP/revisions/$revision
+      if [ ! -d "$source_dir" ]; then
+        mkdir -p "$source_dir"
+        git -C "$HERE/../.." archive "$revision" .github/workflows >"$TMP/workflows.tar" || { echo "ci-critical-path: unreadable workflow revision $revision" >&2; return 1; }
+        tar -xf "$TMP/workflows.tar" -C "$source_dir"
+      fi
     fi
     GRAPH=$(sh "$HERE/ci-workflow-graph.sh" "$source_dir/.github/workflows/ci.yml") || return 1
   else
@@ -158,13 +172,32 @@ if [ $# -gt 0 ]; then
 else
   REPO=${GH_REPO:-tett23/golem}
   found=0
-  LIST=$(gh run list --repo "$REPO" --workflow ci.yml --event pull_request --status success --limit 200 --json databaseId,headSha --jq '.[] | "\(.databaseId):\(.headSha)"')
-  for entry in $LIST; do
+  LIST=$(gh run list --repo "$REPO" --workflow ci.yml --event pull_request --status success --limit 200 --json databaseId --jq '.[].databaseId')
+  for run in $LIST; do
     [ "$found" -lt "$RUNS" ] || break
-    run=${entry%%:*}
-    revision=${entry#*:}
     sh "$HERE/github-api-read.sh" --paginate "repos/$REPO/actions/runs/$run/jobs?per_page=100" |
-      jq -s --arg revision "$revision" '{jobs: [.[].jobs[]],workflow_revision:$revision}' >"$TMP/$run.json"
+      jq -s '{jobs: [.[].jobs[]]}' >"$TMP/$run.json"
+    sh "$HERE/github-api-read.sh" "repos/$REPO/actions/runs/$run" >"$TMP/$run-metadata.json"
+    code=0
+    revision=$(sh "$HERE/ci-workflow-revision.sh" "$REPO" "$TMP/$run-metadata.json" 2>"$TMP/revision-error") || code=$?
+    if [ "$code" = 2 ]; then
+      job=$(jq -er '[.jobs[]|select(.name=="changes")|.id] | if length==1 then .[0] else error("no unique changes job") end' "$TMP/$run.json")
+      sh "$HERE/github-api-read.sh" --allow-escape-sequences "repos/$REPO/actions/jobs/$job/logs" >"$TMP/$run-changes.log"
+      revision=$(sh "$HERE/ci-workflow-revision.sh" "$REPO" "$TMP/$run-metadata.json" "$TMP/$run-changes.log")
+    elif [ "$code" != 0 ]; then
+      cat "$TMP/revision-error" >&2
+      exit "$code"
+    fi
+    if ! git -C "$HERE/../.." cat-file -e "$revision^{commit}" 2>/dev/null; then
+      origin_url=$(git -C "$HERE/../.." remote get-url origin)
+      case "$origin_url" in
+        "https://github.com/$REPO"|"https://github.com/$REPO.git"|"git@github.com:$REPO"|"git@github.com:$REPO.git"|"ssh://git@github.com/$REPO"|"ssh://git@github.com/$REPO.git") ;;
+        *) echo 'ci-critical-path: requested repository differs from origin; fetch the execution revision first' >&2; exit 1 ;;
+      esac
+      GIT_TERMINAL_PROMPT=0 git -C "$HERE/../.." fetch --no-tags origin "$revision" >&2
+    fi
+    jq --arg revision "$revision" '. + {workflow_revision:$revision}' "$TMP/$run.json" >"$TMP/with-revision.json"
+    mv "$TMP/with-revision.json" "$TMP/$run.json"
     t=$(time_of "$TMP/$run.json")
     [ -n "$t" ] || continue
     found=$((found + 1))

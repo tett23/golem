@@ -477,9 +477,11 @@ CI を待つ時間は変更を一つ入れるたびにかかるので、CI が�
 
 保存したジョブの JSON を、計測のスクリプトの引数に渡して再計測できる。
 入力に [code: workflow_revision] があれば、そのコミットの [code: .github/workflows/] をローカルの Git の履歴から読む。
-API から収集する場合も、実行のコミットをこの欄に記録する。
-該当コミットの Git オブジェクトが無ければ失敗する。
-この欄のない保存入力には [code: --workflow FILE] または既定のファイルを使う。
+API の入力は changes ジョブの [code: GITHUB_WORKFLOW_SHA] の記録か、古い実行のマージ版の checkout のログから、実行版を確かめる。
+PR の head のコミットは、実行したマージ版の代わりに使わない。
+保存入力に [code: workflow_files] もあれば、その版のファイルの内容を使うため、Git オブジェクトは不要である。
+API の計測では、不足するコミットを同じリポジトリの origin から取得する。
+版とファイルの欄がない保存入力には [code: --workflow FILE] または既定のファイルを使う。
 
 ## Actions のバージョン
 
