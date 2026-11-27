@@ -1004,7 +1004,7 @@ writePdfTarget inMemory printed screen opts e diagFid book bib = do
   let fontNotice = codeFontNotice diagFid style book <> kentenRubyNotices book
   case r of
     Left ds -> do
-      when (not inMemory && any ((== DiagnosticCode "G08113") . diagCode) ds) (mapM_ cleanDir dirs)
+      when (not inMemory && any ((`elem` [DiagnosticCode "G08113", DiagnosticCode "G07145"]) . diagCode) ds) (mapM_ cleanDir dirs)
       pure ([], ds <> fontNotice, Nothing)
     Right (bytes, notices, view, starts, screenBytes)
       -- golem preflight keeps the PDF in memory (golem-cli ADR 0006)

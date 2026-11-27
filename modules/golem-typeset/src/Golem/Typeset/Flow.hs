@@ -778,10 +778,14 @@ layoutFigures reuse numbered inp geom fonts figures = do
               let pagesResult = paginateBuilt inp geom capacity built
                   pages = fromRight [] pagesResult
                   errors =
-                    [ diagnostic "G07125" Error sp ("脚注の印、区切りの領域と脚注本文の一行が " <> T.pack (show n) <> " 行の段に収まりません")
+                    [ diagnostic "G07145" Error source ("ドロップキャップの先頭 " <> T.pack (show n) <> " 行を空の段にも配置できません")
                     | p <- pages,
-                      UnplaceableFootnote (NoteId sp _) n <- poUnmet p
+                      UnplaceablePrefix source n <- poUnmet p
                     ]
+                      <> [ diagnostic "G07125" Error sp ("脚注の印、区切りの領域と脚注本文の一行が " <> T.pack (show n) <> " 行の段に収まりません")
+                         | p <- pages,
+                           UnplaceableFootnote (NoteId sp _) n <- poUnmet p
+                         ]
                       <> separatorHoldErrors built pages
                in case pagesResult of
                     Left ds -> Left (ds <> bCaptionWarnings built)
@@ -885,7 +889,7 @@ separatorSpans built = Set.fromList [uSpan u | (_, u) <- bUnits built, USeparato
 paginateBuilt :: PdfInput -> PageGeometry -> Int -> Built -> Either [Diagnostic] [PageOutAt Sp]
 paginateBuilt inp geom capacity built
   | free = either (Left . pure . physicalError) Right (fromMaybe (paginatePhysical settings (bRetainedFlow built)) (bFreePages built))
-  | otherwise = Right (map normalize (paginateAvoiding (avoidLines inp geom built) (separatorSpans built) (adjustLimit geom) (pgNoteSeparator geom) (pageColumnSet (piStyle inp) geom) capacity (map (fmap gridUnits) (bRetainedFlow built))))
+  | otherwise = Right (map normalize (paginateHardPrefixes (hardPrefixes built) (avoidLines inp geom built) (separatorSpans built) (adjustLimit geom) (pgNoteSeparator geom) (pageColumnSet (piStyle inp) geom) capacity (map (fmap gridUnits) (bRetainedFlow built))))
   where
     pitch = pgLinePitch geom
     face = pgFontSize geom
@@ -898,6 +902,7 @@ paginateBuilt inp geom capacity built
     settings = physicalSettings inp geom capacity built
     atLine ident = Map.findWithDefault (mkSpan (piStyleFile inp) 0 0) ident (bLineSpans built)
     physicalError failure = case failure of
+      PhysicalPrefixTooTall source n -> diagnostic "G07145" Error source ("ドロップキャップの先頭 " <> T.pack (show n) <> " 行を空の段にも配置できません")
       PhysicalLineTooTall ident ->
         let (sp, name) = fromMaybe (atLine ident, "body") (paraOfLine built ident)
          in diagnostic "G07129" Error sp ("段落スタイル " <> name <> " の一行が段に収まりません")
@@ -909,10 +914,33 @@ paginateBuilt inp geom capacity built
       PhysicalBoxTooTall ident -> diagnostic "G07121" Error (atLine ident) "囲みの一行と padding が段に収まりません"
       PhysicalFigureTooTall ident -> diagnostic (if height < pitch then "G07131" else "G07038") Error (atLine ident) "図版の一行分の領域が段に収まりません"
 
+-- | Actual composed drop-cap prefixes, updated after causal recomposition.
+hardPrefixes :: Built -> Map Int (Int, SrcSpan)
+hardPrefixes built =
+  Map.fromList
+    [ (ident, (n, uSpan (cuUnits composedUnits Map.! index)))
+    | (index, ident) <- Map.toList firsts,
+      Just composed <- [fmap fst (Map.lookup index (cuBesides (bComposed built))) <|> Map.lookup index (cuSingles (bComposed built))],
+      Just (n, _) <- [cDropInset composed]
+    ]
+  where
+    composedUnits = bComposed built
+    firsts =
+      Map.union
+        (bUnitFirsts built)
+        ( Map.fromList
+            ( concat
+                [ snd (mapAccumL (\ident index -> let (c, _) = cuBesides composedUnits Map.! index in (ident + length (cLines c), (index, ident))) (firstId + 1) (besideParagraphs (cuUnits composedUnits) (cuBesides composedUnits) figure))
+                | figure <- Map.keys (cuFigures composedUnits),
+                  Just firstId <- [Map.lookup figure (bUnitFirsts built)]
+                ]
+            )
+        )
+
 -- | Resolve the same physical geometry for a causal trial and final pagination.
 physicalSettings :: PdfInput -> PageGeometry -> Int -> Built -> PhysicalSettings
 physicalSettings inp geom capacity built =
-  PhysicalSettings pitch face height (fromIntegral (max 0 (adjustLimit geom - 1)) * pitch + face) (fromIntegral (pgNoteSeparator geom) * pitch) (fmap (\n -> fromIntegral n * pitch) (pageColumnSet (piStyle inp) geom)) (bLinePitches built) (Map.map slSize (bLines built)) (bBoxPadding built) (bWrappedBefore built) headingBounds Nothing (separatorSpans built) (avoidAcross inp geom built)
+  PhysicalSettings pitch face height (fromIntegral (max 0 (adjustLimit geom - 1)) * pitch + face) (fromIntegral (pgNoteSeparator geom) * pitch) (fmap (\n -> fromIntegral n * pitch) (pageColumnSet (piStyle inp) geom)) (bLinePitches built) (Map.map slSize (bLines built)) (bBoxPadding built) (bWrappedBefore built) headingBounds Nothing (separatorSpans built) (avoidAcross inp geom built) (hardPrefixes built)
   where
     pitch = pgLinePitch geom
     face = pgFontSize geom
@@ -1107,6 +1135,7 @@ unmetWarnings pagePitch free held names paraOf styleAt pages =
       DroppedBlank sp -> [infoDiagnostic "G07047" sp "段の先頭に来た @blank-line の空きを捨てました"]
       -- G07142 is an error of the layout (root ADR 0456)
       UnplacedBlock _ -> []
+      UnplaceablePrefix {} -> []
       TallHeading i n room ->
         [ notice "G07100" sp ("見出しが段に入りません（" <> name <> "。見出しは " <> T.pack (show n) <> " 行、段の残りは " <> T.pack (show room) <> " 行）")
         | Just (sp, name) <- [Map.lookup i names]

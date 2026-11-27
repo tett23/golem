@@ -314,6 +314,8 @@ data Unmet
     UnmetKeepNext !SrcSpan
   | -- | a footnote cannot make progress even in an empty column (Golem ADR 0353)
     UnplaceableFootnote !NoteId !Int
+  | -- | A drop-cap initial prefix cannot fit even a fresh normal column.
+    UnplaceablePrefix !SrcSpan !Int
   | -- | a paragraph of keep-all-lines broken, as an empty column does not hold it: the id of its first line (docs/adr/0261)
     SplitKept !Int
   | {- | a block that cannot be shortened left out of an empty column of

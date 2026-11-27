@@ -33,7 +33,7 @@ codeOf i k = FCode (CodeGeometry 10 10 10 10 0) 0 1 False (map line [i .. i + k 
 
 -- | One column of 160 sp, a line of 16 sp, the blocks kept off the areas on page 1.
 free :: [(Sp, Sp)] -> PhysicalSettings
-free areas = PhysicalSettings 16 10 160 160 0 (ColumnSet 1 0 0 0) Map.empty Map.empty Map.empty Map.empty Map.empty Nothing Set.empty (\page _ _ _ -> if page == 1 then areas else [])
+free areas = PhysicalSettings 16 10 160 160 0 (ColumnSet 1 0 0 0) Map.empty Map.empty Map.empty Map.empty Map.empty Nothing Set.empty (\page _ _ _ -> if page == 1 then areas else []) Map.empty
 
 avoidTests :: TestTree
 avoidTests =

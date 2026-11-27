@@ -99,7 +99,7 @@ adjacentFree = adjacentFlows (\n -> 20 * fromIntegral n) 20
 adjacentFreeSettings :: Adjacent -> PhysicalSettings
 adjacentFreeSettings ad =
   let c = 20 * fromIntegral (adCapacity ad)
-   in PhysicalSettings 20 10 c c 0 (ColumnSet 1 0 0 0) Map.empty Map.empty Map.empty Map.empty Map.empty Nothing Set.empty noAvoid
+   in PhysicalSettings 20 10 c c 0 (ColumnSet 1 0 0 0) Map.empty Map.empty Map.empty Map.empty Map.empty Nothing Set.empty noAvoid Map.empty
 
 -- | The length the two rules need between the faces: iA + wA + max(oA, oB) + wB + iB + rB.
 needOf :: Adjacent -> Sp
