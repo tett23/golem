@@ -933,7 +933,7 @@ piecesOf env inl = case inl of
   -- the shape is a look of the characters inside; the inner kenten wins (golem-driver ADR 0019)
   Kenten _ sh xs -> concatMap (piecesOf env {ceLook = lk {lkKenten = Just (fromMaybe KentenSesame (sh >>= kentenShapeFromName))}}) xs
   Ruby sp _ segs -> at sp (rubyPieces env segs)
-  Tcy sp t -> at sp [PBox lk t KindTcy (lkSize lk)]
+  Tcy sp content -> at sp (tcyPieces env content)
   Upright sp t -> at sp (if ceVertical env then [PBox lk u KindUpright (L.zwToSp (lkSize lk) (ceCellRatio env)) | u <- graphemeClusters t] else textPieces lk t)
   Warichu sp t ->
     let half = lk {lkSize = L.zwToSp (lkSize lk) (1 % 2)}
@@ -1060,7 +1060,7 @@ A number set flat is text here: only the box of a mark sets it flat
 markInlines :: SrcSpan -> [MarkPart] -> [Inline]
 markInlines sp = map $ \case
   MarkText t -> Text sp t
-  MarkTcy t -> Tcy sp t
+  MarkTcy t -> Tcy sp (TcyLiteral t)
   MarkFlat t -> Text sp t
 
 -- | The text of the parts of a mark.
@@ -1307,17 +1307,30 @@ codePieces lk = go 0
         let (run, rest) = T.break (\c -> c == ' ' || c == '\t') t
          in (i, PCode lk run 0 0) : go (i + T.length run) rest
 
+tcyText :: TcyContent -> Text
+tcyText (TcyLiteral t) = t
+tcyText (TcyNumber q) = renderIRNumber q
+
+-- The same visible text and look always use the same TCY box factory.
+tcyPieces :: ComposeEnv -> TcyContent -> [Piece]
+tcyPieces env content = case content of
+  TcyNumber _ | not (ceVertical env) -> textPieces look value
+  _ -> [PBox look value KindTcy (lkSize look)]
+  where
+    look = ceLook env
+    value = tcyText content
+
 numberPieces :: ComposeEnv -> Rational -> Maybe NumberStyle -> [Piece]
 numberPieces env q style
   | denominator q /= 1 =
       if ceVertical env && (style == Just StyleTcy || (isNothing style && ceVerticalNumbers env == VerticalFixed StyleTcy))
-        then [PBox lk (renderIRNumber q) KindTcy (lkSize lk)]
+        then tcyPieces env (TcyNumber q)
         else textPieces lk (renderIRNumber q)
   | not (ceVertical env) = textPieces lk (T.pack (show n))
   | otherwise = case fromMaybe (verticalStyleOf (ceVerticalNumbers env) n) style of
       StyleKanji -> textPieces lk (kanji n)
       StyleKanjiDigits -> textPieces lk (kanjiDigits n)
-      StyleTcy -> [PBox lk (T.pack (show n)) KindTcy (lkSize lk)]
+      StyleTcy -> tcyPieces env (TcyNumber q)
   where
     n = numerator q
     lk = ceLook env
@@ -1380,7 +1393,7 @@ baseChars env lk inl = case inl of
   Lang _ l xs -> concatMap (baseChars env lk {lkLang = Just l}) xs
   Resolved _ _ _ xs -> concatMap (baseChars env lk) xs
   Kenten _ _ xs -> concatMap (baseChars env lk) xs
-  Tcy _ t -> each t
+  Tcy _ t -> each (tcyText t)
   Warichu _ t -> each t
   Upright _ t -> each t
   Number _ n _ -> each (renderIRNumber n)

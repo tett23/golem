@@ -88,7 +88,28 @@ fn rational_of(value: &Value) -> R<Rational> {
 pub enum NumberStyle {
     Kanji,
     KanjiDigits,
-    Tcy,
+}
+
+/// The distinct payloads of the common tate-chu-yoko inline (root ADR 0479).
+#[derive(Clone, Debug, PartialEq)]
+pub enum TcyContent {
+    Literal(String),
+    Number(Rational),
+}
+
+fn tcy_value(content: &TcyContent) -> Value {
+    match content {
+        TcyContent::Literal(s) => Value::Array(vec![int(0u8), text(s)]),
+        TcyContent::Number(q) => Value::Array(vec![int(1u8), rational_value(*q)]),
+    }
+}
+
+fn tcy_of(value: &Value) -> R<TcyContent> {
+    match arr(value)? {
+        [tag, s] if u64_of(tag)? == 0 => Ok(TcyContent::Literal(text_of(s)?)),
+        [tag, q] if u64_of(tag)? == 1 => Ok(TcyContent::Number(rational_of(q)?)),
+        _ => Err(DecodeError::Shape("tcy content")),
+    }
 }
 
 /// `ref-kind = 0..2`
@@ -113,7 +134,7 @@ pub enum Inline {
     /// 7
     CharStyle { span: Span, style: String, body: Vec<Inline> },
     /// 8
-    Tcy { span: Span, text: String },
+    Tcy { span: Span, content: TcyContent },
     /// 26 (root ADR 0380)
     Warichu { span: Span, text: String },
     /// 27 (root ADR 0380)
@@ -378,7 +399,7 @@ pub fn inline_value(x: &Inline) -> Value {
         Inline::Kenten { span, shape, body } => t(5, span, vec![opt_text(shape), inlines_value(body)]),
         Inline::Color { span, swatch, body } => t(6, span, vec![text(swatch), inlines_value(body)]),
         Inline::CharStyle { span, style, body } => t(7, span, vec![text(style), inlines_value(body)]),
-        Inline::Tcy { span, text: s } => t(8, span, vec![text(s)]),
+        Inline::Tcy { span, content } => t(8, span, vec![tcy_value(content)]),
         Inline::Warichu { span, text: s } => t(27, span, vec![text(s)]),
         Inline::Upright { span, text: s } => t(28, span, vec![text(s)]),
         Inline::Number { span, value, style } => t(
@@ -389,7 +410,6 @@ pub fn inline_value(x: &Inline) -> Value {
                 style.map_or(Value::Null, |s| int(match s {
                     NumberStyle::Kanji => 0u8,
                     NumberStyle::KanjiDigits => 1,
-                    NumberStyle::Tcy => 2,
                 })),
             ],
         ),
@@ -678,7 +698,7 @@ pub fn inline_of(v: &Value) -> R<Inline> {
         (5, [shape, body]) => Inline::Kenten { span, shape: opt(shape, text_of)?, body: inlines_of(body)? },
         (6, [sw, body]) => Inline::Color { span, swatch: text_of(sw)?, body: inlines_of(body)? },
         (7, [st, body]) => Inline::CharStyle { span, style: text_of(st)?, body: inlines_of(body)? },
-        (8, [s]) => Inline::Tcy { span, text: text_of(s)? },
+        (8, [s]) => Inline::Tcy { span, content: tcy_of(s)? },
         (27, [s]) => Inline::Warichu { span, text: text_of(s)? },
         (28, [s]) => Inline::Upright { span, text: text_of(s)? },
         (9, [n, st]) => Inline::Number {
@@ -687,7 +707,6 @@ pub fn inline_of(v: &Value) -> R<Inline> {
             style: opt(st, |s| match u64_of(s)? {
                 0 => Ok(NumberStyle::Kanji),
                 1 => Ok(NumberStyle::KanjiDigits),
-                2 => Ok(NumberStyle::Tcy),
                 _ => Err(bad()),
             })?,
         },
@@ -822,6 +841,37 @@ mod tests {
     }
 
     #[test]
+    fn root_adr_0479_i4_common_tcy_payload_roundtrips() {
+        for content in [Value::Array(vec![int(0u8), text("001")]), Value::Array(vec![int(1u8), Value::Tag(30, Box::new(Value::Array(vec![int(1i64), int(3i64)])))])] {
+            let wire = Value::Array(vec![int(8u8), span_value(sp(0, 1)), content]);
+            assert_eq!(inline_value(&inline_of(&wire).expect("new TCY payload")), wire);
+        }
+    }
+
+    #[test]
+    fn root_adr_0479_i3_i4_reject_legacy_tcy_encodings() {
+        let old_literal = Value::Array(vec![int(8u8), span_value(sp(0, 1)), text("001")]);
+        let old_number = Value::Array(vec![int(9u8), span_value(sp(0, 1)), rational_value(1.into()), int(2u8)]);
+        assert!(inline_of(&old_literal).is_err());
+        assert!(inline_of(&old_number).is_err());
+    }
+
+    #[test]
+    fn root_adr_0479_i4_reject_malformed_tcy_payloads() {
+        let rational = |n, d| Value::Tag(30, Box::new(Value::Array(vec![int(n), int(d)])));
+        for content in [
+            Value::Array(vec![int(2u8), text("001")]),
+            Value::Array(vec![int(0u8), int(1u8)]),
+            Value::Array(vec![int(1u8), int(1u8)]),
+            Value::Array(vec![int(1u8), rational(1i64, 0i64)]),
+            Value::Array(vec![int(1u8), rational(2i64, 4i64)]),
+        ] {
+            let wire = Value::Array(vec![int(8u8), span_value(sp(0, 1)), content]);
+            assert!(inline_of(&wire).is_err());
+        }
+    }
+
+    #[test]
     fn root_adr_0478_i3_rational_normalization_and_limits() {
         assert_eq!(Rational::new(2, 20), Rational::new(1, 10));
         assert_eq!(Rational::new(0, -5), Some(0.into()));
@@ -866,7 +916,7 @@ mod tests {
                 span: sp(0, 3),
                 segments: vec![RubySegment { base: vec![Inline::Text { span: sp(0, 3), text: "漢".into() }], reading: Some("かん".into()) }],
             },
-            Inline::Number { span: sp(1, 2), value: (-5).into(), style: Some(NumberStyle::Tcy) },
+            Inline::Tcy { span: sp(1, 2), content: TcyContent::Number((-5).into()) },
             Inline::Aki { span: sp(1, 2), zw: None, sp: Some(Sp(65536)) },
             Inline::Deferred { span: sp(1, 2), expr: Value::Array(vec![Value::Int(0), span_value(sp(1, 2)), Value::Int(3)]) },
             Inline::ChannelItem { span: sp(1, 2), channel: "glossary".into(), key: Some("k".into()), reading: None, body: vec![] },

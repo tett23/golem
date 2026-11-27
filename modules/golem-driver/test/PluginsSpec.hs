@@ -12,7 +12,7 @@ import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Text.IO qualified as TIO
 import Golem.Assemble (Book (..), inlineText)
-import Golem.Doc.IR (Block (..), BlockBody (..), Document (..), Inline, InlineF (..), ListItem (..), NumberStyle (..), RubySegment (..), Table (..))
+import Golem.Doc.IR (Block (..), BlockBody (..), Document (..), Inline, InlineF (..), ListItem (..), RubySegment (..), Table (..), TcyContent (..))
 import Golem.Driver
 import Golem.Eval.Builtin (builtinName, unPluginCommandName)
 import Golem.Eval.File (EvalResult (..), PluginHook (..))
@@ -533,9 +533,9 @@ verticalStyle = TE.encodeUtf8 (T.replace "writing-mode = \"horizontal\"" "writin
 shapes :: [Inline] -> [T.Text]
 shapes = map $ \case
   Text _ t -> t
-  i@(Number _ _ (Just StyleTcy)) -> "#" <> inlineText i
+  i@(Tcy _ (TcyNumber _)) -> "#" <> inlineText i
   i@Number {} -> "number " <> inlineText i
-  Tcy _ t -> "[tcy: " <> t <> "]"
+  Tcy _ (TcyLiteral t) -> "[tcy: " <> t <> "]"
   Warichu _ t -> "[warichu: " <> t <> "]"
   Upright _ t -> "[upright: " <> t <> "]"
   CharStyle _ s xs -> "[" <> s <> ": " <> T.concat (shapes xs) <> "]"
@@ -632,7 +632,7 @@ autoTcyTests =
                 "inlinesOf _ = []",
                 "",
                 "isTcy :: Inline.Inline -> Bool",
-                "isTcy (Inline.Number _ (Just Inline.TateChuYoko)) = True",
+                "isTcy (Inline.Tcy (Inline.TcyNumber _)) = True",
                 "isTcy _ = False"
               ]
           function name = "\n[[filters]]\nfunction = \"f.emet\"\nfilter = \"" <> name <> "\"\nfiles = [\"a.gm\"]\n"

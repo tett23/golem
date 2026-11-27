@@ -5,7 +5,7 @@
 -- | The outside of tate-chu-yoko is one ideograph (root ADR 0479).
 module TcyBoundarySpec (tcyBoundaryTests) where
 
-import Control.Monad (forM_, replicateM)
+import Control.Monad (forM_, replicateM, when)
 import Data.Text (Text)
 import Fixtures (fs, sp, sp0)
 import Golem.Doc.IR
@@ -13,15 +13,16 @@ import Golem.Layout.Aki qualified as A
 import Golem.Layout.Japanese
 import Golem.Layout.KnuthPlass
 import Golem.Layout.Look (Look (..))
+import Golem.Layout.PageLabel (plainLabel)
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.HUnit
 
 -- Kept at one site so the IR migration can change the payload independently.
 literal :: Text -> Inline
-literal = Tcy sp
+literal = Tcy sp . TcyLiteral
 
 number :: Integer -> Inline
-number n = Number sp n (Just StyleTcy)
+number n = Tcy sp (TcyNumber (fromInteger n))
 
 -- Only dimensions and break decisions are compared, not glyph identity or source sites.
 trace :: ComposeEnv -> [Inline] -> [(String, String)]
@@ -48,7 +49,28 @@ tcyBoundaryTests =
             assertEqual (show (inside, before, after)) (trace (env vertical) (surround han)) (trace (env vertical) (surround (literal inside)))
     | vertical <- [False, True]
     ]
-      <> [ testCase "root ADR 0479 I1, I2: explicit numeric tcy has ideograph boundaries" $
+      <> [ testCase "root ADR 0479 I4, I5: Ruby parents preserve normalized literal/numeric equivalence" $ do
+             let ruby content = Ruby sp () [RubySegment [Tcy sp content] (Just "よみ")]
+                 surround x = [sp0 "あ", x, sp0 "い"]
+             forM_ [False, True] $ \vertical ->
+               trace (env vertical) (surround (ruby (TcyLiteral "0.1"))) @?= trace (env vertical) (surround (ruby (TcyNumber (1 / 10)))),
+           testCase "root ADR 0479 I1, I5: resolved page-number TCY uses the same ideograph box" $ do
+             let e = (env True) {cePageOf = const (Just (plainLabel 12)), ceRefPageNumbers = Just (VerticalFixed StyleTcy)}
+                 its = fst (composeInlines e [sp0 "あ", Ref sp RefPage "page", sp0 "い"])
+             [w | Box w c <- its, boxKind c == KindTcy] @?= [fs]
+             [w | Glue w _ _ JapaneseWesternGlue _ <- its] @?= [],
+           testCase "root ADR 0479 I5: literal and numeric boxes share tracking, explicit aki, size, and link handling" $
+             forM_ [-100, 0, 100] $ \tracking -> do
+               let e = (env True) {ceLook = (ceLook (env True)) {lkTracking = tracking}, ceRestyle = \lk i -> case i of CharStyle {} -> lk {lkSize = 2 * fs}; _ -> lk}
+                   surround middle = [sp0 "あ", Aki sp (AkiZw (1 / 5)), Link sp "https://example.com/" [CharStyle sp "large" [middle]], Aki sp (AkiAbs 12345), sp0 "い"]
+               trace e (surround (literal "12")) @?= trace e (surround (number 12)),
+           testCase "root ADR 0479 I5: note markers keep their attachment after either TCY content" $
+             forM_ [False, True] $ \vertical -> do
+               let note = Note sp 1 Nothing (noteBody sp [literal "001", number 12])
+                   surround middle = [sp0 "あ", middle, note, sp0 "い"]
+               trace (env vertical) (surround (literal "12")) @?= trace (env vertical) (surround han)
+               when vertical $ trace (env vertical) (surround (number 12)) @?= trace (env vertical) (surround han),
+           testCase "root ADR 0479 I1, I2: explicit numeric tcy has ideograph boundaries" $
              forM_ [-123, -1, 0, 1, 12, 123] $ \n ->
                forM_ [("あ", "い"), ("a", "b"), ("1", "月"), ("（", "）")] $ \(before, after) -> do
                  let surround middle = [sp0 before, middle, sp0 after]

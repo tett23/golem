@@ -76,11 +76,24 @@ numberTests :: TestTree
 numberTests =
   testGroup
     "numbers between the host and a plugin (docs/adr ADR 0101)"
-    [ testCase "root ADR 0478 A2, I3: an actual Wasm plugin returns an exact rational Number" $ do
+    [ testCase "root ADR 0479 A2, I4: an actual Wasm plugin returns both TCY contents" $ do
         let value = TTagged 30 (TList [TInt 1, TInt 3])
-            inline = TList [TInt 9, TList [TInt 1, TInt 10, TInt 20], value, TInt 2]
-        p <- answering (cbor (TList [TList [inline], TList []]))
-        fmap fst (callCommand p "shout" [] [] callSpan) @?= Right [Number callSpan (1 % 3) (Just StyleTcy)],
+            inline = TList [TInt 8, TList [TInt 1, TInt 10, TInt 20], TList [TInt 1, value]]
+            literal = TList [TInt 8, TList [TInt 1, TInt 10, TInt 20], TList [TInt 0, TString "001"]]
+        p <- answering (cbor (TList [TList [literal, inline], TList []]))
+        fmap fst (callCommand p "shout" [] [] callSpan) @?= Right [Tcy callSpan (TcyLiteral "001"), Tcy callSpan (TcyNumber (1 % 3))],
+      testCase "root ADR 0479 I3, I4: actual Wasm rejects legacy and malformed TCY" $
+        mapM_
+          ( \inline -> do
+              p <- answering (cbor (TList [TList [inline], TList []]))
+              case callCommand p "shout" [] [] callSpan of
+                Left (BadOutput _) -> pure ()
+                other -> assertFailure (show other)
+          )
+          [ TList [TInt 8, TList [TInt 1, TInt 10, TInt 20], TString "001"],
+            TList [TInt 9, TList [TInt 1, TInt 10, TInt 20], TTagged 30 (TList [TInt 12, TInt 1]), TInt 2],
+            TList [TInt 8, TList [TInt 1, TInt 10, TInt 20], TList [TInt 1, TTagged 30 (TList [TInt 2, TInt 4])]]
+          ],
       testCase "root ADR 0478 I6: actual Wasm plugin rejects malformed rational Number payloads" $
         mapM_
           ( \value -> do

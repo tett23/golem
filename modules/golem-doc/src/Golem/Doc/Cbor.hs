@@ -183,9 +183,10 @@ inlineT rt = \case
   Kenten s sh xs -> tagged 5 [spanT s, opt text sh, sub xs]
   Color s c xs -> tagged 6 [spanT s, text c, sub xs]
   CharStyle s c xs -> tagged 7 [spanT s, text c, sub xs]
-  Tcy s t -> tagged 8 [spanT s, text t]
+  Tcy s t -> tagged 8 [spanT s, tcyTerm t]
   Warichu s t -> tagged 27 [spanT s, text t]
   Upright s t -> tagged 28 [spanT s, text t]
+  Number _ _ (Just StyleTcy) -> error "golem-doc: explicit TCY must use TcyNumber"
   Number s n st -> tagged 9 [spanT s, rationalTerm n, opt (int . fromEnum) st]
   Ref s k l -> tagged 10 [spanT s, int (fromEnum k), text l]
   Deferred s (DeferredExpr e) -> tagged 11 [spanT s, exprT e]
@@ -592,10 +593,10 @@ termInline rd t =
         (5, [sh, x]) -> Kenten s <$> asOpt asText sh <*> sub x
         (6, [c, x]) -> Color s <$> asText c <*> sub x
         (7, [c, x]) -> CharStyle s <$> asText c <*> sub x
-        (8, [x]) -> Tcy s <$> asText x
+        (8, [x]) -> Tcy s <$> asTcyContent x
         (27, [x]) -> Warichu s <$> asText x
         (28, [x]) -> Upright s <$> asText x
-        (9, [n, st]) -> Number s <$> asRational n <*> asOpt asEnum st
+        (9, [n, st]) -> Number s <$> asRational n <*> asOpt asNumberStyle st
         (10, [k, l]) -> Ref s <$> asEnum k <*> asText l
         (11, [e]) -> Deferred s . DeferredExpr <$> termExpr e
         -- 12 and 13 are retired (docs/adr/0263)
@@ -688,3 +689,21 @@ termExpr t =
       asList x >>= \case
         [k, v] -> (,) <$> asText k <*> termExpr v
         _ -> bad "連想配列の要素"
+
+-- | The common TCY payload of root ADR 0479.
+tcyTerm :: TcyContent -> Term
+tcyTerm (TcyLiteral t) = TList [int (0 :: Int), text t]
+tcyTerm (TcyNumber q) = TList [int (1 :: Int), rationalTerm q]
+
+asTcyContent :: Term -> D TcyContent
+asTcyContent (TList [tag, value]) =
+  asIntI tag >>= \case
+    0 -> TcyLiteral <$> asText value
+    1 -> TcyNumber <$> asRational value
+    _ -> bad "縦中横の中身"
+asTcyContent _ = bad "縦中横の中身"
+
+asNumberStyle :: Term -> D NumberStyle
+asNumberStyle value =
+  asEnum value >>= \style ->
+    if style == StyleTcy then bad "Number の表記" else pure style

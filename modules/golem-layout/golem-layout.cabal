@@ -128,6 +128,7 @@ test-suite golem-layout-test
                     NoBreakEnum
                     NoBreakShapeSpec
                     NumberUnitSpec
+                    TcyBoundarySpec
                     SoftHyphenSpec
                     OverflowSpec
                     PaginateEnum
