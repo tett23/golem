@@ -112,6 +112,13 @@ Haskell の型（golem-doc の [code: Golem.Doc.IR]）は手で書き、CDDL と
 - 整数のフィールドは 64 ビットの符号付き整数（-2 の 63 乗以上、2 の 63 乗未満）に限り、CDDL では [code: int64] と書く。評価が 0 以上の値しか入れない欄（番号、図版のページ、行番号、アキの量）は [code: uint64] と書き、Haskell の型は [code: Natural] である。bignum（CBOR の tag 2 と 3）は書かない。評価器は範囲の外の整数を IR に入れずに G02091 のエラーにし、復号は範囲の外の整数をスキーマの誤りにする。[note: [style url: https://github.com/tett23/golem/blob/main/docs/golem-doc/adr/0006-integer-range-in-ir.md]（golem-doc ADR 0006「意味論 IR の大きな整数」）]
 - スキーマの先頭にバージョンを置き、ABI のバージョンと一致させる。ノードやフィールドを足したらバージョンを上げる。今のバージョンは 9 である。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0101-rational-numbers-in-expressions.md]（ADR 0101「式の言語の数を自然数、整数、有理数の三つの型にし、浮動小数点数をなくす」）が式の数のリテラルと有理数を足して 8 にし、v0.1.0-rc4 の後に [style url: https://github.com/tett23/golem/blob/main/docs/adr/0262-table-numbers-captions-column-widths-and-cell-styles.md]（ADR 0262「表の番号とキャプション、列の幅、文字の大きさ」）が表の欄を足して 9 にした。[style url: https://github.com/tett23/golem/blob/main/docs/adr/0263-notes-with-more-than-one-paragraph.md]（ADR 0263「複数段落の注」）の注の本文の変更と、[style url: https://github.com/tett23/golem/blob/main/docs/adr/0266-citation-locators-and-multiple-keys.md]（ADR 0266「引用の頁の指定と複数の文献」）の引用の変更と、[style url: https://github.com/tett23/golem/blob/main/docs/adr/0265-index-cross-references-page-ranges-and-section-headings.md]（ADR 0265「索引の参照、ページの範囲、見出し」）の索引の印の種類も、同じ 9 に含む。]
 
+数のインライン [code: Number] は、整数ではなく正確な有理数を持つ。
+CBOR のタグ 9 の値の欄は、タグ 30 を付けた分子と分母の組である。
+分子は [code: int64]、分母は 1 以上 9223372036854775807 以下とし、既約な組だけを受け付ける。
+旧整数ペイロード、分母 0、負の分母、未約分の組、範囲外の組は拒否する。
+数の糖衣構文と明示コマンドは、位置を除いて同じ IR を作る。
+ABI のバージョンは、リリース済みかどうかを調べて root ADR 0052 の規則で決める。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0478-accept-rational-values-in-number-text.md]（root ADR 0478「number-text で有理数を受け付け、小数を含む糖衣構文を追加する」）]
+
 ## 文書とブロック
 
 ファイル一つ分の文書は、ABI のバージョン、ファイルの番号、ブロックの列である。
