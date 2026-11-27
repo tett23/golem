@@ -297,7 +297,7 @@ endnoteTests =
       take 1 pages @?= [["甲1", "後注", "1一。"]]
       assertBool (show pages) ("乙" `elem` concat (drop 1 pages)),
     testCase "root ADR 0412 I2: an endnote of two paragraphs written with @endnote is one endnote" $ do
-      let src = [("a.gm", "本文[endnote k]。\n\n@endnote k\n  一つめ。\n\n  二つめ。\n")]
+      let src = [("a.gm", "本文[endnote k]。\n\n@endnote k\n:::\n一つめ。\n\n二つめ。\n:::\n")]
       pages <- pdfLines miniManifest baseStyle src >>= either (assertFailure . show) pure
       concat pages @?= ["本文1。", "後注", "1一つめ。", "二つめ。"]
       (_, files) <- buildFor [TargetHtml, TargetText] miniManifest baseStyle src

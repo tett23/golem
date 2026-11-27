@@ -14,6 +14,7 @@ module Golem.Eval.File
     Usage (..),
     EvalResult (..),
     evalFile,
+    paragraphBlocks,
     builtinInlineCommands,
     Space (..),
     Overrides (..),
@@ -303,8 +304,57 @@ data St = St
     stListedRefs :: !(Set Text),
     -- | the names listed by, and the namespaces of, the @import lines of variable files the evaluation does not resolve (root ADR 0455)
     stUnresolvedVars :: !(Set Text),
-    stUnresolvedNamespaces :: !(Set Text)
+    stUnresolvedNamespaces :: !(Set Text),
+    stBodyScopes :: ![BodyScope]
   }
+
+-- | A body accepted by one command, before its callback is entered (root ADR 0473).
+data BodyScope = BodyScope
+  { scopeCommand :: !SrcSpan,
+    scopeFence :: !(Maybe SrcSpan),
+    scopeInput :: ![A.Located A.Block],
+    scopeResult :: !(Maybe (Maybe [Block]))
+  }
+
+withBodyScope :: SrcSpan -> Maybe SrcSpan -> Bool -> [A.Located A.Block] -> M [Block] -> M [Block]
+withBodyScope site fence canOmit input action = do
+  errors <- gets (length . filter ((== Error) . diagSeverity) . stDiags)
+  modify' (\st -> st {stBodyScopes = BodyScope site fence input Nothing : stBodyScopes st})
+  out <- action
+  current <- gets (listToMaybe . stBodyScopes)
+  ds <- gets stDiags
+  case (fence, current) of
+    (Just fsp, Just scope)
+      | canOmit,
+        length input == 1,
+        Just (Just [_]) <- scopeResult scope,
+        length (filter ((== Error) . diagSeverity) ds) == errors -> do
+          let opening = mkSpan (spanFile fsp) (spanStart fsp) (spanStart fsp + 3)
+          unless (any (\d -> diagCode d == DiagnosticCode "G01031" && diagSpan d == opening) ds) $
+            report (diagnostic "G01031" Info opening "::: で囲まなくても、直後の一つのブロックは本体になります")
+    _ -> pure ()
+  modify' (\st -> st {stBodyScopes = drop 1 (stBodyScopes st)})
+  pure out
+
+-- | Evaluate a bound body once, check its cardinality, then call its consumer.
+bodyValues :: [A.Located A.Block] -> M [Block] -> ([Block] -> M [Block]) -> M [Block]
+bodyValues input evaluate consume =
+  gets (listToMaybe . stBodyScopes) >>= \case
+    Just scope | scopeInput scope == input -> do
+      result <- case scopeResult scope of
+        Just cached -> pure cached
+        Nothing -> do
+          bs <- evaluate
+          let tooMany = isNothing (scopeFence scope) && (length input > 1 || length bs > 1)
+              site = case input of
+                [] -> scopeCommand scope
+                first : rest -> foldl (\a b -> mkSpan (spanFile a) (min (spanStart a) (spanStart b)) (max (spanEnd a) (spanEnd b))) (A.locSpan first) (map A.locSpan rest)
+          when tooMany $ err "G02290" site "複数のブロックを本体にするには ::: で囲みます"
+          let cached = if tooMany then Nothing else Just bs
+          modify' (\st -> st {stBodyScopes = case stBodyScopes st of current : rest -> current {scopeResult = Just cached} : rest; [] -> []})
+          pure cached
+      maybe (pure []) consume result
+    _ -> evaluate >>= consume
 
 -- | Where .gm uses a name: an inline command, a block command, or an expression (root ADR 0451).
 data Space = InlineSpace | BlockSpace | ExprSpace
@@ -366,12 +416,12 @@ evalFile ctx0 (A.File fid blocks0) =
       (exceptions, exceptionDiags) = fileHyphenationExceptions header
       local = local0 {lsHyphenationExceptions = exceptions}
       ctx = (withFileStyles local ctx0) {ctxSource = source}
-      blocks = rest
+      blocks = paragraphBlocks source rest
       -- the styles of style.toml with those of the file over them
       fileStyle = withLocalStyles (ctxStyle ctx0) local
       -- meta and vars, which every file reads without @import (docs/adr/0185)
       st0 =
-        (St Map.empty (Map.fromList [("meta", ctxMeta ctx), ("vars", ctxVars ctx)]) Map.empty [] Set.empty Map.empty [] 0 0 0 (settingDiags <> styleDiags <> exceptionDiags) Map.empty Map.empty [] [] [] [] Map.empty [] Set.empty Map.empty Map.empty [] Set.empty Set.empty Set.empty)
+        (St Map.empty (Map.fromList [("meta", ctxMeta ctx), ("vars", ctxVars ctx)]) Map.empty [] Set.empty Map.empty [] 0 0 0 (settingDiags <> styleDiags <> exceptionDiags) Map.empty Map.empty [] [] [] [] Map.empty [] Set.empty Map.empty Map.empty [] Set.empty Set.empty Set.empty [])
           { stFileImports = rights (importsOf (A.File fid blocks0)),
             stSetNames = Set.fromList (concatMap setNames blocks0)
           }
@@ -412,17 +462,20 @@ paragraph included, leaves the paragraph in body. The paragraph is
 evaluated as the body form of @style, so that a style that keeps its
 lines keeps those of the paragraph.
 
-Each block is split into its lines ('splitLines') and normalized
-('normalizeBlock') right before it is evaluated, so that the names the
-@import lines before it override are known (root ADR 0471).
+Paragraph boundaries have already been fixed by 'paragraphBlocks'
+(root ADR 0473). Each block is normalized right before evaluation, so
+that the names earlier @import lines override are known (root ADR 0471).
 -}
 nextStyled :: EvalContext -> Style -> [A.Located A.Block] -> M [Block]
-nextStyled ctx style = go Nothing
+nextStyled ctx style = nextStyledFrom ctx style Nothing
+
+nextStyledFrom :: EvalContext -> Style -> Maybe Text -> [A.Located A.Block] -> M [Block]
+nextStyledFrom ctx style = go
   where
     go _ [] = pure []
     go next (b : bs) = do
       isBuiltin <- builtinBlockAt ctx
-      (out, next') <- lines' isBuiltin next (splitLines isBuiltin (ctxSource ctx) (ctxParaStyles ctx) [b])
+      (out, next') <- lines' isBuiltin next [b]
       (out <>) <$> go next' bs
     lines' _ next [] = pure ([], next)
     lines' isBuiltin next (b : bs) = do
@@ -430,23 +483,30 @@ nextStyled ctx style = go Nothing
             Just n | implicit isBuiltin b -> withStyle n b
             _ -> b
       out <- evalBlock ctx (normalizeBlock isBuiltin b')
-      let next' = case reverse out of
-            [] -> next
-            -- the next-style of the keys of @style over that of the style (root ADR 0467)
-            Block {blockBody = Paragraph st _} : _ -> paraStyleWith style (styleRefNameOf st) (maybe [] refValues st) >>= psNextStyle
-            Block {blockBody = Heading level _ _} : _ -> headingParaStyle style level >>= psNextStyle
-            _ -> Nothing
+      let next' = followingStyle style next out
       Bi.first (out <>) <$> lines' isBuiltin next' bs
     implicit isBuiltin = \case
       A.Located _ (A.Paragraph _) -> True
       A.Located _ (A.Attributed cmds (Just (A.Located _ (A.Paragraph _)))) -> not (any (\c -> isStyleCommand isBuiltin c || isBreakCommand isBuiltin c || isSettingCommand c) cmds)
       _ -> False
-    -- the built-in @style, whatever the file overrides (root ADR 0471 I8)
-    styleCommand sp n = A.BlockCommand (A.Located sp nextStyleName) [A.Located sp (A.Positional (A.Word n))]
-    withStyle n (A.Located sp b) = A.Located sp $ case b of
-      A.Paragraph is -> styleCommand sp n [A.Located sp (A.Paragraph is)]
-      A.Attributed cmds t -> A.Attributed (cmds <> [A.Located sp (styleCommand sp n [])]) t
-      other -> other
+
+-- | The last emitted paragraph or heading supplies the next paragraph style; empty output leaves it alone.
+followingStyle :: Style -> Maybe Text -> [Block] -> Maybe Text
+followingStyle style previous out = case reverse out of
+  [] -> previous
+  Block {blockBody = Paragraph st _} : _ -> paraStyleWith style (styleRefNameOf st) (maybe [] refValues st) >>= psNextStyle
+  Block {blockBody = Heading level _ _} : _ -> headingParaStyle style level >>= psNextStyle
+  _ -> Nothing
+
+-- | The synthetic built-in @style cannot be overridden by a source command.
+styleCommand :: SrcSpan -> Text -> [A.Located A.Block] -> A.Block
+styleCommand sp n = A.BlockCommand (A.Located sp nextStyleName) [A.Located sp (A.Positional (A.Word n))]
+
+withStyle :: Text -> A.Located A.Block -> A.Located A.Block
+withStyle n (A.Located sp b) = A.Located sp $ case b of
+  A.Paragraph is -> styleCommand sp n [A.Located sp (A.Paragraph is)]
+  A.Attributed cmds t -> A.Attributed (cmds <> [A.Located sp (styleCommand sp n [])]) t
+  other -> other
 
 {- | The context with the styles of the file over those of style.toml
 (docs/adr ADR 0014): its character styles added, and whether each
@@ -593,7 +653,8 @@ normalizeBlock isBuiltin lb@(A.Located sp b) = A.Located sp $ case b of
   A.Attributed cs t
     | any (isStyleCommand isBuiltin) cs -> A.Attributed (map (styledBlock isBuiltin) cs) (styledBlock isBuiltin <$> t)
     | otherwise -> A.Attributed (map normalize cs) (nextBody <$> t)
-  A.Fenced bs -> A.Fenced (map normalize bs)
+  -- Boundaries are fixed already; the receiver still decides how internal newlines are drawn.
+  A.Fenced closed bs -> A.Fenced closed (map (styledBlock isBuiltin) bs)
   other -> other
   where
     normalize = normalizeBlock isBuiltin
@@ -616,7 +677,7 @@ styledBlock isBuiltin lb@(A.Located sp b) = case b of
   A.DefList gs -> A.Located sp (A.DefList [A.DefGroup (map joinSoftBreaks ts) (map (map styled) ds) | A.DefGroup ts ds <- gs])
   A.BlockCommand n args body | isLangCommand isBuiltin lb -> A.Located sp (A.BlockCommand n (map normalizeArg args) (map styled body))
   A.Attributed cs t -> A.Located sp (A.Attributed (map styled cs) (styled <$> t))
-  A.Fenced bs -> A.Located sp (A.Fenced (map styled bs))
+  A.Fenced closed bs -> A.Located sp (A.Fenced closed (map styled bs))
   _ -> normalizeBlock isBuiltin lb
   where
     styled = styledBlock isBuiltin
@@ -627,38 +688,26 @@ isStyleCommand isBuiltin c = builtinCommand isBuiltin c == Just "style"
 
 -- ------------------------------------------------------------------ the line style
 
-{- | The line style (docs/adr ADR 0013): a paragraph is split at its
-top-level 'A.SoftBreak' into paragraphs, one per line. The next paragraph
-of a group is split when the group is evaluated (root ADR 0459). The
-paragraphs of a style that keeps its lines are left alone, and so are
-headings, terms, tables and code. The blank-line style changes nothing.
-The bodies of @style and @figure are told by the built-in command they
-call (root ADR 0471).
+{- | Normalize paragraph boundaries before binding bodies (root ADR 0473).
+Only the source paragraph separator and hard breaks determine the boundary;
+command names, paragraph styles and the next style are not inputs.
 -}
-splitLines :: (Text -> Bool) -> SourceSettings -> Map Text LineBreaks -> [A.Located A.Block] -> [A.Located A.Block]
-splitLines isBuiltin source paraStyles
-  | ssParagraphSeparator source == BlankLineSeparated = id
-  | otherwise = concatMap splitBlock
+paragraphBlocks :: SourceSettings -> [A.Located A.Block] -> [A.Located A.Block]
+paragraphBlocks source = concatMap normalize
   where
-    splitBlock lb@(A.Located _ b) = case b of
-      A.Paragraph is -> splitParagraph is
-      _ -> [inside lb]
-    -- a block that is not split itself, with the blocks inside it split
-    inside lb@(A.Located sp b) = A.Located sp $ case b of
-      A.BulletList items -> A.BulletList (map (concatMap splitBlock) items)
-      A.OrderedList items -> A.OrderedList (map (concatMap splitBlock) items)
-      A.DefList gs -> A.DefList [A.DefGroup ts (map (concatMap splitBlock) ds) | A.DefGroup ts ds <- gs]
-      A.BlockCommand n args body
-        | keepsLines lb || captionKeeps lb -> b
-        | otherwise -> A.BlockCommand n args (concatMap splitBlock body)
-      A.Attributed cmds t
-        | any keepsLines cmds -> b
-        | otherwise -> A.Attributed (map inside cmds) (inside <$> t)
-      A.Fenced bs -> A.Fenced (concatMap splitBlock bs)
-      other -> other
-    -- the caption of @figure, when caption keeps its lines (docs/adr/0367)
-    captionKeeps lb = builtinCommand isBuiltin lb == Just "figure" && Map.lookup "caption" paraStyles == Just KeepLines
-    keepsLines = keepsLinesStyle isBuiltin paraStyles
+    normalize lb@(A.Located sp value) = case value of
+      A.Paragraph is | ssParagraphSeparator source == LineSeparated -> splitParagraph is
+      A.BulletList items -> [A.Located sp (A.BulletList (map (paragraphBlocks source) items))]
+      A.OrderedList items -> [A.Located sp (A.OrderedList (map (paragraphBlocks source) items))]
+      A.DefList groups -> [A.Located sp (A.DefList [A.DefGroup terms (map (paragraphBlocks source) definitions) | A.DefGroup terms definitions <- groups])]
+      A.BlockCommand name args body -> [A.Located sp (A.BlockCommand name args (paragraphBlocks source body))]
+      A.Fenced closed body -> [A.Located sp (A.Fenced closed (paragraphBlocks source body))]
+      A.Attributed commands target ->
+        let commands' = paragraphBlocks source commands
+         in case maybe [] normalize target of
+              [] -> [A.Located sp (A.Attributed commands' Nothing)]
+              first : rest -> A.Located (mkSpan (spanFile sp) (spanStart sp) (spanEnd (A.locSpan first))) (A.Attributed commands' (Just first)) : rest
+      _ -> [lb]
 
 {- | The lines of a paragraph as paragraphs: spaces and tabs at the start of
 each line are not text (the ideographic space is), and a line left empty
@@ -693,7 +742,15 @@ block :: SrcSpan -> BlockBody -> Block
 block sp = Block sp Nothing Nothing
 
 evalBlock :: EvalContext -> A.Located A.Block -> M [Block]
-evalBlock ctx (A.Located sp b) = case b of
+evalBlock ctx lb@(A.Located sp (A.BlockCommand _ _ body)) | not (null body) = do
+  existing <- gets (listToMaybe . stBodyScopes)
+  if maybe False (\scope -> scopeCommand scope == sp && scopeInput scope == body) existing
+    then evalBlockRaw ctx lb
+    else withBodyScope sp Nothing False body (evalBlockRaw ctx lb)
+evalBlock ctx lb = evalBlockRaw ctx lb
+
+evalBlockRaw :: EvalContext -> A.Located A.Block -> M [Block]
+evalBlockRaw ctx (A.Located sp b) = case b of
   A.Separator name -> pure [block sp (Separator name)]
   -- items, definitions and captions break their lines by the same rule (docs/adr ADR 0016)
   A.Paragraph is -> styledParagraph ctx sp Nothing is
@@ -744,7 +801,7 @@ evalBlock ctx (A.Located sp b) = case b of
                 pure []
           _ -> prepareArgs args >>= maybe (pure []) (\args' -> standalone ctx sp name args' body)
   A.Attributed cmds target -> attributed ctx Nothing sp cmds target
-  A.Fenced bs -> evalBlocks ctx bs
+  A.Fenced _ bs -> evalBlocks ctx bs
   A.ErrorBlock -> pure []
   where
     one x = [block sp x]
@@ -889,7 +946,7 @@ setNames (A.Located _ b) = case b of
   A.DefList gs -> concatMap (concatMap (concatMap setNames) . A.dgDefs) gs
   A.BlockCommand _ _ body -> concatMap setNames body
   A.Attributed cmds t -> concatMap setNames cmds <> maybe [] setNames t
-  A.Fenced bs -> concatMap setNames bs
+  A.Fenced _ bs -> concatMap setNames bs
   _ -> []
 
 -- | A function listed by @import in a space of use, its use noted for the lint (G05003, root ADR 0451).
@@ -1049,8 +1106,7 @@ G02091 and the plugin is not called.
 pluginBlock :: EvalContext -> SrcSpan -> PluginBlockCommand -> [A.Located A.Argument] -> [A.Located A.Block] -> M [Block]
 pluginBlock ctx sp pb args body = do
   vals <- pluginArgs ctx sp args
-  body' <- evalBlocks ctx body
-  case sequence vals of
+  bodyValues body (evalBlocks ctx body) $ \body' -> case sequence vals of
     Left d -> report d >> pure []
     Right vs | not (all (all inInt64 . valueInts . pluginArgValue) vs) -> outOfInt64 sp >> pure []
     Right vs -> case pbCall pb vs body' sp of
@@ -1262,8 +1318,7 @@ callBlock ctx sp shown f args body = do
     Just vs
       | not (bfBody f) && not (null body) -> err "G02123" sp ("本体を受け取らない関数のブロックコマンドに本体があります: " <> shown) >> pure []
       | otherwise -> do
-          body' <- evalBlocks ctx body
-          case bfCall f vs body' sp of
+          bodyValues body (evalBlocks ctx body) $ \body' -> case bfCall f vs body' sp of
             Left ds -> mapM_ report ds >> pure []
             Right out -> do
               let out' = map (fillKentenBlock ctx) out
@@ -1390,6 +1445,8 @@ data CommandKind
     TakesBody
   | -- | an attribute of the first block of that result
     Attribute
+  | -- | accepts only an explicit fenced body (the existing figure caption)
+    ExplicitBody
   | -- | puts out blocks of its own and takes no body
     PutsOut
   | {- | a name the evaluation cannot call (a .emet not loaded, a name of G02272): it puts out nothing, and
@@ -1400,13 +1457,11 @@ data CommandKind
 
 {- | The paragraph style a @style passes to the blocks of its body (root
 ADR 0460): the line of the @style, the name and the keys of its named
-arguments (root ADR 0467; Nothing after G02047, as body), and whether the
-style keeps its lines.
+arguments (root ADR 0467; Nothing after G02047, as body).
 -}
 data Passed = Passed
   { psCommand :: !SrcSpan,
-    psRef :: !(Maybe StyleRef),
-    psKeeps :: !Bool
+    psRef :: !(Maybe StyleRef)
   }
 
 -- | The kind of a command of a group, looked up as 'standalone' and 'builtinBlock' look it up, without noting any use.
@@ -1420,6 +1475,7 @@ commandKind ctx (A.Located _ b) =
       -- an overridden built-in command is the function listed (root ADR 0471)
       | isJust (parseOverridableBlock name), Just ref <- Map.lookup (BlockSpace, name) listedFns -> pure (listedKind name ref)
       | name `elem` ["note", "endnote", "frame", "style", "lang"] -> pure TakesBody
+      | name == "figure" -> pure ExplicitBody
       | name `elem` attributeCommands -> pure Attribute
       | name `elem` builtinBlockCommands || name `elem` settingCommands -> pure PutsOut
       | Map.member name (phBlocks (ctxPlugins ctx)) -> pure TakesBody
@@ -1463,7 +1519,7 @@ attributedWith isBuiltin ctx passed sp cmds0 target
       (bs <>) <$> attributed ctx passed sp rest target
   | null cmds0 = case target of
       Nothing -> pure []
-      Just (A.Located _ (A.Fenced inner)) -> do
+      Just (A.Located _ (A.Fenced _ inner)) -> do
         err "G02123" sp "本体を受け取らないコマンドに ::: で囲んだ本体があります"
         concat <$> mapM (evalWith ctx passed) inner
       Just t -> evalWith ctx passed t
@@ -1491,13 +1547,10 @@ commandRow ctx passed sp cmds0 target = do
   let isNote c = builtinCommand isBuiltin c `elem` [Just "note", Just "endnote"]
       isStyleCommand' = isStyleCommand isBuiltin
       isLangCommand' = isLangCommand isBuiltin
-      keeps = maybe False psKeeps passed || any (keepsLinesStyle isBuiltin (ctxParaStyles ctx)) cmds0
-      -- the blocks of the body: in the line style, the lines of the next paragraph, unless a style keeps them
+      -- the already normalized body blocks, independent of its style (root ADR 0473)
       bodyBlocks = case target of
         Nothing -> []
-        Just (A.Located _ (A.Fenced bs)) -> bs
-        Just (A.Located _ (A.Paragraph is))
-          | ssParagraphSeparator (ctxSource ctx) == LineSeparated && not keeps -> splitParagraph is
+        Just (A.Located _ (A.Fenced _ bs)) -> bs
         Just t -> [t]
       evalBody = concat <$> mapM (evalWith ctx passed) bodyBlocks
       -- the commands after one that takes a body, with the body
@@ -1513,15 +1566,24 @@ commandRow ctx passed sp cmds0 target = do
           when (null r && null pre && isNothing target && Unresolved `notElem` map fst rest) $
             err "G02010" sp "属性の後にブロックがありません"
           (pre,) <$> attach ctx (map snd attrs) r
-        ((TakesBody, c) : rest) -> ([],) <$> evalWith ctx passed (withBody c (inner rest))
+        ((TakesBody, c) : rest) -> ([],) <$> applyBody True c (inner rest)
+        ((ExplicitBody, c) : rest)
+          | null rest, Just (A.Located _ (A.Fenced _ _)) <- target -> ([],) <$> applyBody False c bodyBlocks
         ((_, c) : rest)
           | null rest -> do
               out <- evalWith ctx passed c
-              after <- evalBody
+              after <- case passed of
+                Just _ -> evalBody
+                Nothing -> nextStyledFrom ctx (withLocalStyles (ctxStyle ctx) (ctxLocalStyles ctx)) (followingStyle (withLocalStyles (ctxStyle ctx) (ctxLocalStyles ctx)) Nothing out) bodyBlocks
               pure ([], out <> after)
           | otherwise -> do
               out <- evalWith ctx passed c
-              (pre, r) <- go rest
+              let style = withLocalStyles (ctxStyle ctx) (ctxLocalStyles ctx)
+                  refresh entry@(_, A.Located csp (A.BlockCommand (A.Located _ n) _ _))
+                    | n == nextStyleName, not (null out) = fmap (\st -> (TakesBody, A.Located csp (styleCommand csp st []))) (followingStyle style Nothing out)
+                    | otherwise = Just entry
+                  refresh entry = Just entry
+              (pre, r) <- go (mapMaybe refresh rest)
               pure (out <> pre, r)
   kinds0 <- mapM (commandKind ctx) cmds0
   let tagged0 = zip kinds0 cmds0
@@ -1544,7 +1606,7 @@ commandRow ctx passed sp cmds0 target = do
       -- a name the evaluation cannot call is one that puts out blocks (root ADR 0461)
       kinds = [if k == Unresolved then PutsOut else k | (k, _) <- tagged]
       nextBlock = case target of
-        Just (A.Located _ (A.Fenced _)) -> False
+        Just (A.Located _ (A.Fenced _ _)) -> False
         Just _ -> True
         Nothing -> False
       fenced = isJust target && not nextBlock
@@ -1555,8 +1617,8 @@ commandRow ctx passed sp cmds0 target = do
         [] -> False
         (lastK : before) ->
           let earlier = reverse before
-           in or [Attribute `elem` take i earlier | (i, k) <- zip [0 ..] earlier, k == PutsOut]
-                || (lastK == PutsOut && nextBlock)
+           in or [Attribute `elem` take i earlier | (i, k) <- zip [0 ..] earlier, k `elem` [PutsOut, ExplicitBody]]
+                || (lastK `elem` [PutsOut, ExplicitBody] && nextBlock)
       -- the commands inside the first that takes a body report for themselves
       suffix = case break (== TakesBody) kinds of
         (_, _ : rest@(_ : _)) -> Just rest
@@ -1571,40 +1633,17 @@ commandRow ctx passed sp cmds0 target = do
     lastOf ks = case reverse ks of
       (k : _) -> Just k
       [] -> Nothing
-    withBody c body = case c of
-      A.Located csp (A.BlockCommand n args own) -> A.Located csp (A.BlockCommand n args (own <> body))
-      other -> other
+    applyBody canOmit c body = case c of
+      A.Located csp (A.BlockCommand n args own) ->
+        let input = own <> body
+            fence = case target of Just (A.Located fsp (A.Fenced _ _)) -> Just fsp; _ -> Nothing
+            closed = case target of Just (A.Located _ (A.Fenced isClosed _)) -> isClosed; _ -> False
+         in withBodyScope csp fence (canOmit && closed) input (evalWith ctx passed (A.Located csp (A.BlockCommand n args input)))
+      other -> evalWith ctx passed other
 
 -- | A block that calls the built-in @lang (root ADR 0471).
 isLangCommand :: (Text -> Bool) -> A.Located A.Block -> Bool
 isLangCommand isBuiltin c = builtinCommand isBuiltin c == Just "lang"
-
-{- | The built-in @style with the name of a paragraph style that keeps its
-lines (root ADR 0471), or with line-breaks="keep" among its named
-arguments (root ADR 0467).
--}
-keepsLinesStyle :: (Text -> Bool) -> Map Text LineBreaks -> A.Located A.Block -> Bool
-keepsLinesStyle isBuiltin paraStyles = \case
-  c@(A.Located _ (A.BlockCommand _ args _))
-    | isStyleCommand isBuiltin c,
-      [v] <- [v | A.Located _ (A.Positional v) <- args],
-      Just n <- nameArg v ->
-        argumentLineBreaks args (Map.lookup n paraStyles) == Just KeepLines
-  _ -> False
-
-{- | The line-breaks of the named arguments of @style over those of its
-style (root ADR 0467): keep or join written once, as a word or a string.
--}
-argumentLineBreaks :: [A.Located A.Argument] -> Maybe LineBreaks -> Maybe LineBreaks
-argumentLineBreaks args own = case [v | A.Located _ (A.Keyword (A.Located _ "line-breaks") v) <- args] of
-  [v] | Just "keep" <- nameOrString v -> Just KeepLines
-  [v] | Just "join" <- nameOrString v -> Just JoinLines
-  _ -> own
-  where
-    nameOrString = \case
-      A.Word w -> Just w
-      A.StringLit t -> Just t
-      _ -> Nothing
 
 {- | The attributes on the first of the blocks (docs/adr ADR 0005, golem-eval
 ADR 0003): its label, the attributes of its kind (G02013 for the others),
@@ -1654,7 +1693,7 @@ evalStyled ctx ps lb@(A.Located sp b) =
     A.DefList gs -> one . DefList <$> mapM (\(A.DefGroup ts ds) -> DefGroup <$> mapM (evalInlines ctx False) ts <*> mapM inner ds) gs
     A.Table {} -> evalBlock ctx lb >>= mapM (styledOutput ctx ps)
     A.Attributed cmds t -> attributed ctx (Just ps) sp cmds t
-    A.Fenced bs -> inner bs
+    A.Fenced _ bs -> inner bs
     -- the built-in commands alone (root ADR 0471): an overridden name puts out blocks in the style
     A.BlockCommand _ args body
       | builtinCommand isBuiltin lb `elem` map Just ["style", "frame", "note", "endnote"] -> evalBlock ctx lb
@@ -1983,8 +2022,8 @@ langBody ctx = langBodyWith (evalBlocks ctx)
 langBodyWith :: ([A.Located A.Block] -> M [Block]) -> SrcSpan -> [A.Located A.Argument] -> [A.Located A.Block] -> M [Block]
 langBodyWith evalBody sp args body = do
   tag <- langTag sp args
-  bs <- evalBody body
-  pure [if isBreakBlock (blockBody b) then b else withLang tag b | b <- bs]
+  bodyValues body (evalBody body) $ \bs ->
+    pure [if isBreakBlock (blockBody b) then b else withLang tag b | b <- bs]
 
 -- | A forced break, a page control, blank lines or a separator: a point between the blocks, not a block of text.
 isBreakBlock :: BlockBody -> Bool
@@ -2162,11 +2201,11 @@ noteDefinition ctx kind sp args body = case args of
         defined <- gets (any (\(n, _, _) -> n == name) . kindDefs kind)
         when defined $ err "G02140" sp ("同じ名前の注の本文を二度書いています: " <> name)
         when (null body) $ err "G02143" sp ("@" <> kindCommand kind <> " に本文がありません: " <> name)
-        bs <- concat <$> mapM (paragraphsOnly ctx ("G02141", "注の本文には段落だけを書けます") "@style は注の本文には付けられません") body
-        unless defined $ modify' $ \s -> case kind of
-          FootKind -> s {stNoteDefs = stNoteDefs s <> [(name, sp, bs)]}
-          EndKind -> s {stEndnoteDefs = stEndnoteDefs s <> [(name, sp, bs)]}
-        pure []
+        bodyValues body (concat <$> mapM (paragraphsOnly ctx ("G02141", "注の本文には段落だけを書けます") "@style は注の本文には付けられません") body) $ \bs -> do
+          unless defined $ modify' $ \s -> case kind of
+            FootKind -> s {stNoteDefs = stNoteDefs s <> [(name, sp, bs)]}
+            EndKind -> s {stEndnoteDefs = stEndnoteDefs s <> [(name, sp, bs)]}
+          pure []
   _ -> err "G02142" sp noteNameMessage >> pure []
 
 {- | The body of a block that holds paragraphs only (@note, @endnote,
@@ -2214,8 +2253,8 @@ frameBlock ctx sp args body = case args of
   [A.Located _ (A.Positional v)]
     | Just name <- nameArg v,
       frameName name -> do
-        bs <- concat <$> mapM (paragraphsOnly ctx ("G02256", "フレームの中身には段落だけを書けます") "@style はフレームの中の段落には付けられません") body
-        pure [block sp (FrameBlock name bs)]
+        bodyValues body (concat <$> mapM (paragraphsOnly ctx ("G02256", "フレームの中身には段落だけを書けます") "@style はフレームの中の段落には付けられません") body) $ \bs ->
+          pure [block sp (FrameBlock name bs)]
   _ -> err "G02255" sp "@frame にはフレームの名前を一つ書きます" >> pure []
   where
     frameName name = case T.uncons name of
@@ -2396,11 +2435,10 @@ styleBody ctx sp headerEnd args body
   | null body = err "G02046" sp "@style の本体に段落がありません" >> pure []
   | otherwise = do
       ref <- styleName ctx sp args
-      let keeps = maybe False (\r -> argumentLineBreaks args (Map.lookup (styleRefName r) (ctxParaStyles ctx)) == Just KeepLines) ref
-      -- the blocks without paragraphs or tables, breaks and separators among them, are put out as they are
-      bs <- concat <$> mapM (evalStyled ctx (Passed sp ref keeps)) body
-      unless (hasParagraphOrTable bs) $ err "G02046" sp "@style の本体に段落がありません"
-      pure bs
+      -- The body is validated before styling can become a successful result.
+      bodyValues body (concat <$> mapM (evalStyled ctx (Passed sp ref)) body) $ \bs -> do
+        unless (hasParagraphOrTable bs) $ err "G02046" sp "@style の本体に段落がありません"
+        pure bs
 
 {- | A paragraph in a paragraph style (docs/adr ADR 0005). An unknown style
 is G02047 and the paragraph is body. With line-breaks = "keep" each line
@@ -2560,7 +2598,7 @@ them: the diagnostics, and whether the figure passes.
 -}
 figureChecks :: EvalContext -> SrcSpan -> Figure -> ([Diagnostic], Bool)
 figureChecks ctx sp f =
-  let st0 = St Map.empty Map.empty Map.empty [] Set.empty Map.empty [] 0 0 0 [] Map.empty Map.empty [] [] [] [] Map.empty [] Set.empty Map.empty Map.empty [] Set.empty Set.empty Set.empty
+  let st0 = St Map.empty Map.empty Map.empty [] Set.empty Map.empty [] 0 0 0 [] Map.empty Map.empty [] [] [] [] Map.empty [] Set.empty Map.empty Map.empty [] Set.empty Set.empty Set.empty []
       (ok, st) = runState (checkFigure sp (fmap isJust . asset ctx sp) f) st0
    in (stDiags st, ok)
 
@@ -2633,32 +2671,32 @@ figure ctx sp args body = do
                 _ -> wrongPage p
       fine <- (&& formats) <$> ok
       isBuiltin <- builtinBlockAt ctx
-      caption <- captionParagraphs =<< evalCaption . concat =<< mapM (unstyled isBuiltin) body
-      case look "alt" of
-        Nothing -> err "G02028" sp "図版には alt の代替テキストが必要です" >> pure []
-        Just alt
-          | figureNeedsWeb path web -> report (figureNeedsWebError sp) >> pure []
-          | not fine || isLeft page -> pure []
-          | otherwise -> do
-              wrap <- case look "wrap" of
-                Nothing -> pure (Right Nothing)
-                Just "start" -> pure (Right (Just WrapStart))
-                Just "end" -> pure (Right (Just WrapEnd))
-                Just w -> pure (Left w)
-              -- a figure turned onto a page of its own in the PDF (golem-driver ADR 0034)
-              let rotate = case look "rotate" of
-                    Nothing -> Right False
-                    Just "true" -> Right True
-                    Just "false" -> Right False
-                    Just r -> Left r
-              case (wrap, rotate) of
-                (Left w, _) -> err "G02030" sp ("wrap は start か end です: " <> w) >> pure []
-                (_, Left r) -> err "G02087" sp ("rotate は true か false です: " <> r) >> pure []
-                (Right wr, Right rot) -> case figureLayoutError sp (maybe sp (\(A.Located wsp _) -> wsp) (keywordAt "width" args)) wr rot (look "width") of
-                  Just d -> report d >> pure []
-                  Nothing -> do
-                    outline <- figureOutline wr
-                    pure [block sp (FigureBlock (Figure path web alt wr (look "width") caption (fromRight Nothing page) rot False outline))]
+      bodyValues body (captionParagraphs =<< evalCaption . concat =<< mapM (unstyled isBuiltin) body) $ \caption -> do
+        case look "alt" of
+          Nothing -> err "G02028" sp "図版には alt の代替テキストが必要です" >> pure []
+          Just alt
+            | figureNeedsWeb path web -> report (figureNeedsWebError sp) >> pure []
+            | not fine || isLeft page -> pure []
+            | otherwise -> do
+                wrap <- case look "wrap" of
+                  Nothing -> pure (Right Nothing)
+                  Just "start" -> pure (Right (Just WrapStart))
+                  Just "end" -> pure (Right (Just WrapEnd))
+                  Just w -> pure (Left w)
+                -- a figure turned onto a page of its own in the PDF (golem-driver ADR 0034)
+                let rotate = case look "rotate" of
+                      Nothing -> Right False
+                      Just "true" -> Right True
+                      Just "false" -> Right False
+                      Just r -> Left r
+                case (wrap, rotate) of
+                  (Left w, _) -> err "G02030" sp ("wrap は start か end です: " <> w) >> pure []
+                  (_, Left r) -> err "G02087" sp ("rotate は true か false です: " <> r) >> pure []
+                  (Right wr, Right rot) -> case figureLayoutError sp (maybe sp (\(A.Located wsp _) -> wsp) (keywordAt "width" args)) wr rot (look "width") of
+                    Just d -> report d >> pure []
+                    Nothing -> do
+                      outline <- figureOutline wr
+                      pure [block sp (FigureBlock (Figure path web alt wr (look "width") caption (fromRight Nothing page) rot False outline))]
     _ -> err "G02032" sp "@figure には画像のパスを一つ書きます" >> pure []
   where
     check p = isJust <$> asset ctx sp p

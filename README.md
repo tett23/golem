@@ -212,6 +212,10 @@ PDF では約物と罫線の区切りを後続の最初の行と同じ段に置�
 空の段へ送っても保持できなければ、[G07134](docs/diagnostics.md#g07134) で生成を止める。
 
 段落を分けずに行を改めるには、行の末尾に `\` を書く（強制改行、[docs/adr/0016](docs/adr/0016-hard-line-breaks.md)）。
+段落の境界は、本体の束縛や段落スタイルの適用より前に決まり、`line-breaks = "keep"` でも別の段落を結合しない。
+`@style` などの暗黙の本体は直後の一ブロックだけであり、複数の段落や生成ブロックを渡すには `:::` で囲む。
+字下げした本体が複数ブロックになれば、G02290 で生成を止める（[root ADR 0473](docs/adr/0473-normalize-paragraph-blocks-before-body-binding.md)）。
+図版の既存のキャプション本体も `:::` で囲めるが、`@figure` は字下げも囲みもない直後の段落をキャプションにはしない。
 
 ### テキストフレーム
 
@@ -293,6 +297,8 @@ PDF の柱とノンブルに当てる文字スタイルは、マスターペー�
 台本専用の固定値は設けない。
 
 `next-style` は次の段落の段落スタイルを、`initial-style` は段落の先頭の一字の文字スタイルを決め、`opening-indent = "half"` は始め括弧類で始まる段落の字下げを PDF、HTML、EPUB で半角減らす（[ADR 0374](./docs/adr/0374-paragraph-style-controls.md)、[root ADR 0469](./docs/adr/0469-opening-indent-in-html-and-epub.md)）。
+見出しでは、`[headings.<階層>]` の `paragraph-style` に結び付けた段落スタイルの `next-style` が、直後の段落に当たる（[root ADR 0468](docs/adr/0468-paragraph-styles-for-headings-and-lists.md)）。
+段落と見出しのどちらから次スタイルが決まっても、`keep` で別の段落を結合せず、一段落一ブロックを保つ（[root ADR 0473](docs/adr/0473-normalize-paragraph-blocks-before-body-binding.md)）。
 `fit-characters` は一行の段落を指定の字数分の幅に組み、字のあいだに同じ空きを配る（字取り、[root ADR 0466](./docs/adr/0466-fit-characters.md)）。
 
 文字の詰めと送りも、スタイルで指定する。

@@ -52,8 +52,8 @@ data Block
   | SetVar (Located Name) (Located Expr)
   | BlockCommand (Located Name) [Located Argument] [Located Block]
   | Attributed [Located Block] (Maybe (Located Block))
-  | -- | the blocks between ::: lines, the body of the commands of an 'Attributed' (root ADR 0459)
-    Fenced [Located Block]
+  | -- | whether the closing delimiter was written, then the body blocks (root ADR 0459, root ADR 0473)
+    Fenced Bool [Located Block]
   | ErrorBlock
   deriving stock (Eq, Show)
 
@@ -184,7 +184,7 @@ plainEscapesIn p (File fid bs) = File fid (map (fmap block) bs)
       Table al h rows -> Table al (map inlines h) (map (map inlines) rows)
       BlockCommand n args body -> BlockCommand n (map (fmap argument) args) (map (fmap block) body)
       Attributed cs t -> Attributed (map (fmap block) cs) (fmap (fmap block) t)
-      Fenced inner -> Fenced (map (fmap block) inner)
+      Fenced closed inner -> Fenced closed (map (fmap block) inner)
       other -> other
     inlines = joinText . map (fmap inline)
     inline = \case

@@ -126,7 +126,7 @@ withVerseProject style src k = withSystemTempDirectory "golem-verse" $ \tmp -> d
   k tmp
 
 verseSource :: T.Text
-verseSource = "@style verse\n  Full fathom five thy father lies;\n  Of his bones are coral made;\n\n  Nothing of him that doth fade,\n"
+verseSource = "@style verse\n:::\nFull fathom five thy father lies;\nOf his bones are coral made;\n\nNothing of him that doth fade,\n:::\n"
 
 -- | The PDF flow of a verse project and its lines as (line length, indent).
 verseLines :: BS.ByteString -> T.Text -> IO ([Flow], [(Sp, Sp)])

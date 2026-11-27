@@ -359,7 +359,7 @@ convertAozoraWith mode src = do
       [] -> []
       items@(Para {} : _) ->
         let (stanza, rest) = span isPara items
-         in ("@style verse\n" <> T.intercalate "\n" ["  " <> verseLine i g | Para i g <- stanza]) : verseBlocks rest
+         in ("@style verse\n" <> T.intercalate "\\\n" ["  " <> verseLine i g | Para i g <- stanza]) : verseBlocks rest
       Heading h g : rest -> headingBlock h g : verseBlocks rest
       Break b : rest -> b : verseBlocks rest
       Blank : rest -> verseBlocks rest

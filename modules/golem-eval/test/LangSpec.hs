@@ -124,18 +124,18 @@ tests =
         langs "@lang en\n@lang fr\nBonjour.\n" @?= [("p", Just "fr")]
         codes "@lang en\n@lang fr\nBonjour.\n" @?= ["G02012"],
       testCase "the body of @lang: each block at the top of the body" $ do
-        langs "@lang en\n  The first paragraph.\n\n  The second.\n\n  - A list inside it.\n" @?= [("p", Just "en"), ("p", Just "en"), ("ul", Just "en")]
-        msgs "@lang en\n  The first paragraph.\n\n  The second.\n\n  - A list inside it.\n" @?= [],
+        langs "@lang en\n:::\nThe first paragraph.\n\nThe second.\n\n- A list inside it.\n:::\n" @?= [("p", Just "en"), ("p", Just "en"), ("ul", Just "en")]
+        msgs "@lang en\n:::\nThe first paragraph.\n\nThe second.\n\n- A list inside it.\n:::\n" @?= [],
       testCase "a block with @lang of its own in the body of @lang" $
-        langs "@lang en\n  English.\n\n  @lang de\n  Deutsch.\n\n  English again.\n" @?= [("p", Just "en"), ("p", Just "de"), ("p", Just "en")],
+        langs "@lang en\n:::\nEnglish.\n\n@lang de\nDeutsch.\n\nEnglish again.\n:::\n" @?= [("p", Just "en"), ("p", Just "de"), ("p", Just "en")],
       testCase "a heading in the body of @lang" $ do
-        langs "@lang en\n  # Title\n\n  Text.\n" @?= [("h", Just "en"), ("p", Just "en")]
-        msgs "@lang en\n  # Title\n\n  Text.\n" @?= [],
+        langs "@lang en\n:::\n# Title\n\nText.\n:::\n" @?= [("h", Just "en"), ("p", Just "en")]
+        msgs "@lang en\n:::\n# Title\n\nText.\n:::\n" @?= [],
       testCase "root ADR 0462 I1: a page break in the body of @lang at the top is no error, and so on" $ do
-        codes "@lang en\n  Text.\n\n  @page-break\n" @?= []
-        [blockBody b | b <- blocksOf "@lang en\n  Text.\n\n  @page-break\n", kind (blockBody b) == "other"] @?= [ForcedBreak BreakPage]
-        codes "@lang en\n  Text.\n\n  @no-page-break\n" @?= []
-        codes "@lang en\n  Text.\n\n  @blank-line\n" @?= [],
+        codes "@lang en\n:::\nText.\n\n@page-break\n\n:::\n" @?= []
+        [blockBody b | b <- blocksOf "@lang en\n:::\nText.\n\n@page-break\n\n:::\n", kind (blockBody b) == "other"] @?= [ForcedBreak BreakPage]
+        codes "@lang en\n:::\nText.\n\n@no-page-break\n\n:::\n" @?= []
+        codes "@lang en\n:::\nText.\n\n@blank-line\n\n:::\n" @?= [],
       testCase "G02010: @lang without a block after it" $ do
         codes "@lang en\n" @?= ["G02010"]
         codes "@lang en\n@label a\n" @?= ["G02010"],

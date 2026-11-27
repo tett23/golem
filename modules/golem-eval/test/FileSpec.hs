@@ -506,23 +506,23 @@ tests =
         errs "@figure images/none.png alt=x\n" @?= ["G02033"]
         errs "@figure images/a.png alt=x wrap=end\n" @?= ["G02031"],
       testCase "G02118: a block of a caption that is not a paragraph, at the block; the figure stays with its paragraphs (docs/adr/0144)" $ do
-        let src = "@figure images/a.png alt=x\n  外\n\n  @figure images/a.png alt=y\n    内\n\n  - 項目\n\n  ```\n  code\n  ```\n\n  | a |\n  |---|\n  | b |\n"
+        let src = "@figure images/a.png alt=x\n:::\n外\n\n@figure images/a.png alt=y\n  内\n\n- 項目\n\n```\ncode\n```\n\n| a |\n|---|\n| b |\n:::\n"
             -- the byte offset of the first needle
             at needle = BS.length (TE.encodeUtf8 (fst (T.breakOn needle src)))
         [(c, m, st) | (c, m, st, _) <- diags src]
-          @?= [ ("G02118", "図版のキャプションには段落だけを書けます: 図版", at "  @figure images/a.png alt=y"),
-                ("G02118", "図版のキャプションには段落だけを書けます: 箇条書き", at "  - 項目"),
-                ("G02118", "図版のキャプションには段落だけを書けます: コードブロック", at "  ```"),
-                ("G02118", "図版のキャプションには段落だけを書けます: 表", at "  | a |")
+          @?= [ ("G02118", "図版のキャプションには段落だけを書けます: 図版", at "@figure images/a.png alt=y"),
+                ("G02118", "図版のキャプションには段落だけを書けます: 箇条書き", at "- 項目"),
+                ("G02118", "図版のキャプションには段落だけを書けます: コードブロック", at "```"),
+                ("G02118", "図版のキャプションには段落だけを書けます: 表", at "| a |")
               ]
         case body src of
           [FigureBlock f] -> (figAlt f, [blockBody b | b <- figCaption f]) @?= ("x", [Paragraph Nothing [Text (mkSpan (FileId 1) (at "外") (at "外" + 3)) "外"]])
           other -> assertFailure (show other),
       testCase "a caption of paragraphs only is no error; @blank-line in a caption is G02093 only (docs/adr/0144)" $ do
-        errs "@figure images/a.png alt=x\n  一つめ。\n\n  二つめ。\n" @?= []
-        errs "@figure images/a.png alt=x\n  一つめ。\n\n  @blank-line\n" @?= ["G02093"],
+        errs "@figure images/a.png alt=x\n:::\n一つめ。\n\n二つめ。\n:::\n" @?= []
+        errs "@figure images/a.png alt=x\n:::\n一つめ。\n\n@blank-line\n\n:::\n" @?= ["G02093"],
       testCase "a figure in a caption is not in the IR, so it takes no number: the next figure is the second (docs/adr/0144)" $
-        case body "@figure images/a.png alt=x\n  外\n\n  @figure images/a.png alt=y\n    内\n\n@figure images/a.png alt=z\n  二つめ\n" of
+        case body "@figure images/a.png alt=x\n:::\n外\n\n@figure images/a.png alt=y\n  内\n\n:::\n\n@figure images/a.png alt=z\n  二つめ\n" of
           [FigureBlock f, FigureBlock g] -> (figAlt f, length (figCaption f), figAlt g) @?= ("x", 1, "z")
           other -> assertFailure (show other),
       testCase "the formats of a figure and its web image (golem-pdf ADR 0008)" $ do
@@ -629,7 +629,7 @@ verseTests =
         -- no G02040; the digits make the notice G02063 (golem-syntax ADR 0002)
         errs "[tcy: 1\n2]\n" @?= ["G02063"],
       testCase "lines and stanzas" $
-        verseOf "@style verse\n  A\n  B\n\n  C\n" @?= [[["A"], ["B"]], [["C"]]],
+        verseOf "@style verse\n:::\nA\nB\n\nC\n:::\n" @?= [[["A"], ["B"]], [["C"]]],
       testCase "whitespace at the start of a line is ignored, the ideographic space is not" $ do
         verseOf "@style verse\n  A\n    B\n" @?= [[["A"], ["B"]]]
         verseOf "@style verse\n  A\n  \x3000B\n" @?= [[["A"], ["\x3000B"]]],
@@ -669,7 +669,7 @@ styleTests =
         snd (run c "@style code\n  x\n") @?= ["G02066"]
         [m | (code', m, _, _) <- diagsWith c "@style code\nx\n", code' == "G02066"] @?= ["code はコードブロックの段落スタイルです。コードは ``` か @listing で書きます"],
       testCase "the body form" $
-        map stripped (body "@style verse\n  A\n  B\n\n  C\n") @?= [(Just "verse", ["A", "<br>", "B"]), (Just "verse", ["C"])],
+        map stripped (body "@style verse\n:::\nA\nB\n\nC\n:::\n") @?= [(Just "verse", ["A", "<br>", "B"]), (Just "verse", ["C"])],
       testCase "the attribute form" $
         map stripped (body "@style verse\nA\nB\n") @?= [(Just "verse", ["A", "<br>", "B"])],
       testCase "a join style joins the lines" $
@@ -691,7 +691,7 @@ styleTests =
           other -> assertFailure (show other),
       testCase "a block command after attributes is their target" $ do
         errs "@label song\n@style verse\n  A\n" @?= []
-        labels "@label song\n@style verse\n  A\n\n  B\n" @?= [Just "song", Nothing]
+        labels "@label song\n@style verse\n:::\nA\n\nB\n:::\n" @?= [Just "song", Nothing]
         errs "@label fig\n@figure images/a.png alt=x\n  キャプション。\n" @?= []
         case blocksOf "@label fig\n@figure images/a.png alt=x\n  キャプション。\n" of
           [Block _ (Just "fig") Nothing (FigureBlock _)] -> pure ()
@@ -1392,7 +1392,7 @@ settingsTests =
         map (\d -> let DiagnosticCode c = diagCode d in c) ds @?= ["G02050"]
         map stripped bs @?= [(Nothing, ["a"]), (Nothing, ["b"])],
       testCase "@manifest and @style-def together, without a blank line" $ do
-        let (bs, ds, _) = runS sctx "@manifest paragraph-separator=line\n@style-def paragraph letter\n@style letter\na\nb\n"
+        let (bs, ds, _) = runS sctx "@manifest paragraph-separator=line\n@style-def paragraph letter\n@style letter\n:::\na\nb\n:::\n"
         map stripped bs @?= [(Just "letter", ["a"]), (Just "letter", ["b"])]
         ds @?= [],
       testCase "a filter may give the paragraph styles of the file" $ do
@@ -1466,10 +1466,10 @@ separatorTests =
         map blockLabel bs @?= [Just "p", Nothing]
         map (shapeOf . blockBody) bs @?= [(Nothing, ["a"]), (Nothing, ["b"])],
       testCase "a keep style keeps its lines; its stanzas are separated by blank lines" $ do
-        shapes lineCtx "@style verse\na\nb\n" @?= [(Just "verse", ["a", "<br>", "b"])]
-        shapes lineCtx "@style verse\n  a\n  b\n\n  c\n" @?= [(Just "verse", ["a", "<br>", "b"]), (Just "verse", ["c"])],
+        shapes lineCtx "@style verse\na\\\nb\n" @?= [(Just "verse", ["a", "<br>", "b"])]
+        shapes lineCtx "@style verse\n:::\na\\\nb\n\nc\n:::\n" @?= [(Just "verse", ["a", "<br>", "b"]), (Just "verse", ["c"])],
       testCase "the body of a join style is split" $
-        shapes lineCtx "@style quote\n  a\n  b\n" @?= [(Just "quote", ["a"]), (Just "quote", ["b"])],
+        shapes lineCtx "@style quote\n:::\na\nb\n:::\n" @?= [(Just "quote", ["a"]), (Just "quote", ["b"])],
       testCase "the continuation line of a list item is the next paragraph of the item" $
         case map blockBody (blocksIn lineCtx "- a\n  b\n") of
           [BulletList [ListItem Nothing bs]] -> map (shapeOf . blockBody) bs @?= [(Nothing, ["a"]), (Nothing, ["b"])]
@@ -1478,7 +1478,7 @@ separatorTests =
         shapes lineCtx "a\n# h\nb\n" @?= [(Nothing, ["a"]), (Just "#", ["h"]), (Nothing, ["b"])]
         shapes ctx "a\n# h\nb\n" @?= [(Nothing, ["a"]), (Just "#", ["h"]), (Nothing, ["b"])],
       testCase "a caption of a figure is split" $
-        case map blockBody (blocksIn lineCtx "@figure images/a.png alt=a\n  c1\n  c2\n") of
+        case map blockBody (blocksIn lineCtx "@figure images/a.png alt=a\n:::\nc1\nc2\n:::\n") of
           [FigureBlock f] -> map (shapeOf . blockBody) (figCaption f) @?= [(Nothing, ["c1"]), (Nothing, ["c2"])]
           other -> assertFailure (show other),
       testCase "an evaluated file records the paragraph separator of its context" $ do
@@ -1721,12 +1721,12 @@ blankLineTests =
               assertBool (T.unpack src) (not (any hasBlank bs))
           )
           [ "- あ\n\n  @blank-line\n  い\n",
-            "@figure images/a.png alt=a\n  c\n\n  @blank-line\n",
+            "@figure images/a.png alt=a\n:::\nc\n\n@blank-line\n\n:::\n",
             "= t\n  @blank-line\n"
           ]
         msgs "- あ\n\n  @blank-line\n  い\n" @?= [("G02093", "@blank-line は文書の最上位にだけ置けます")],
       testCase "@blank-line in the body of @style is put out as it is (root ADR 0460)" $
-        errs "@style verse\n  あ\n\n  @blank-line\n" @?= [],
+        errs "@style verse\n:::\nあ\n\n@blank-line\n\n:::\n" @?= [],
       testCase "in an attribute group, the blank lines go before the target and the attributes skip them" $ do
         labelled "@blank-line\n@label x\n# 見出し\n" @?= ([(Nothing, "blank 1"), (Just "x", "heading")], [])
         labelled "@label x\n@blank-line\n# 見出し\n" @?= ([(Nothing, "blank 1"), (Just "x", "heading")], [])
@@ -2190,7 +2190,7 @@ printingsTests =
           (Paragraph _ is : _, _) -> [(n, st) | Number _ n st <- is] @?= [(2026, Just StyleKanjiDigits), (10, Nothing), (16, Nothing), (1, Nothing)]
           other -> assertFailure (show other),
       testCase "@style applies to every paragraph" $
-        [st | Paragraph st _ <- fst (run (printingsCtx "ja") "@style quote\n@printings\n")] @?= [Just "quote", Just "quote", Just "quote"],
+        [st | Paragraph st _ <- fst (run (printingsCtx "ja") "@style quote\n:::\n@printings\n:::\n")] @?= [Just "quote", Just "quote", Just "quote"],
       testCase "a book not in Japanese is G02076 alone and sets nothing" $ do
         run (printingsCtx "en") "@printings\n" @?= ([], ["G02076"])
         [m | (_, m, _, _) <- diagsWith (printingsCtx "en") "@printings\n"] @?= ["@printings は日本語の本（language の主の副タグが ja）でだけ使えます"],

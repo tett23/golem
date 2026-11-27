@@ -117,7 +117,7 @@ nextStyleTests =
         map fst (paragraphs s "@style lead\n一\n\n二\n\n三\n") @?= [Just "lead", Just "after", Nothing]
         map fst (paragraphs s "@style lead\n一\n") @?= [Just "lead"]
         -- every paragraph of a body form is in the style written; the one after takes the next-style
-        map fst (paragraphs s "@style lead\n  一\n\n  二\n\n三\n") @?= [Just "lead", Just "lead", Just "after"],
+        map fst (paragraphs s "@style lead\n:::\n一\n\n二\n:::\n\n三\n") @?= [Just "lead", Just "lead", Just "after"],
       testCase "ADR 0374: next-style is followed from paragraph to paragraph, each by its own style" $ do
         let s = styleOf "[paragraph-styles.a]\nnext-style = \"b\"\n\n[paragraph-styles.b]\nnext-style = \"c\"\n\n[paragraph-styles.c]\n"
         map fst (paragraphs s "@style a\n一\n\n二\n\n三\n\n四\n") @?= [Just "a", Just "b", Just "c", Nothing],

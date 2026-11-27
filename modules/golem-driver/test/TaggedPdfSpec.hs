@@ -175,7 +175,7 @@ structureTests =
         bad <- fixtureLeavesOutOfOrder name
         assertEqual name [] bad,
     testCase "a language span is a Span of its /Lang; a block with @lang has it on its own element" $ do
-      t <- treeLines <$> miniStructure horizontalStyle "本文[lang fr: x]。\n\n@lang en\nText.\n\n@lang en\n- a\n- b\n\n@lang en\n  One.\n\n  Two.\n"
+      t <- treeLines <$> miniStructure horizontalStyle "本文[lang fr: x]。\n\n@lang en\nText.\n\n@lang en\n- a\n- b\n\n@lang en\n:::\nOne.\n\nTwo.\n:::\n"
       assertBool (show t) ("Span Lang=fr" `elem` t)
       [l | l <- t, "P Lang=" `T.isPrefixOf` l] @?= ["P Lang=en", "P Lang=en", "P Lang=en"]
       [l | l <- t, "L " `T.isPrefixOf` l] @?= ["L Lang=en /List /ListNumbering /Disc"]

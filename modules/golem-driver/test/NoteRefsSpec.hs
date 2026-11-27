@@ -238,7 +238,7 @@ noteRefTests =
       cs <- buildCodes baseStyle "本[note label=X: 注。]\n"
       filter (== "G02026") cs @?= ["G02026"],
     testCase "root ADR 0422: a note written by name takes a label too" $ do
-      pages <- withSystemTempDirectory "golem-note-refs" $ \dir -> pdfLinesIn dir miniManifest baseStyle [("a.gm", "他[note: 一。]\n\n印[note k label=x]\n\n参[ref-number x]\n\n@note k\n  二つめ。\n\n  三つめ。\n")]
+      pages <- withSystemTempDirectory "golem-note-refs" $ \dir -> pdfLinesIn dir miniManifest baseStyle [("a.gm", "他[note: 一。]\n\n印[note k label=x]\n\n参[ref-number x]\n\n@note k\n:::\n二つめ。\n\n三つめ。\n:::\n")]
       ls <- either (assertFailure . show) (pure . concat) pages
       lineAfter "参" ls @?= Just "2",
     testCase "root ADR 0422 I4: a note without a label: the name of @note is no label (G04003)" $ do

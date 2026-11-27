@@ -147,7 +147,7 @@ framesTests =
       bodyLines with @?= bodyLines without
       assertBool "frames" (not (null (framesOn with))),
     testCase "root ADR 0438 I1: @frame quote with two paragraphs puts both in the frame on its page" $ do
-      (_, pl) <- layoutOk (framesStyle twoFrames []) "前の段落。\n\n@frame quote\n  一つめ。\n\n  二つめ。\n\n後の段落。\n" []
+      (_, pl) <- layoutOk (framesStyle twoFrames []) "前の段落。\n\n@frame quote\n:::\n一つめ。\n\n二つめ。\n:::\n\n後の段落。\n" []
       map (frameText . snd) (framesOn pl) @?= ["一つめ。二つめ。"],
     testCase "root ADR 0438 I1: a @frame right after the last line of a page goes on that page" $ do
       -- 36 paragraphs of ten characters fill the 30 grid lines of page 1 with two lines each? no: 12 characters a line, so one line each

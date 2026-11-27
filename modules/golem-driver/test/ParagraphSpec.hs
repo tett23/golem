@@ -150,13 +150,13 @@ verseTests =
     testCase "PDF: a long line is broken and its continuation hangs" $ do
       let style = "[page]\nsize = \"A5\"\nbinding = \"left\"\nwriting-mode = \"horizontal\"\n\n[page.grid]\nfont-size = \"10pt\"\ncharacters = 30\nlines = 30\nline-pitch = \"15pt\"\ncolumns = 1\nposition = { top = \"18mm\", gutter = \"20mm\" }\n"
           fs = 655360
-      (flow, ls) <- verseLines style ("@style verse\n  " <> T.replicate 45 "あ" <> "\n\n  い\n")
+      (flow, ls) <- verseLines style ("@style verse\n:::\n" <> T.replicate 45 "あ" <> "\n\nい\n:::\n")
       ls @?= [(30 * fs, 0), (28 * fs, 2 * fs), (30 * fs, 0)]
       [map length vs | FStanza _ vs <- flow] @?= [[2], [1]]
       [n | FSpace n <- flow] @?= [1],
     testCase "PDF: the hang in vertical writing, and the space between stanzas from the style" $ do
       let fs = maybe 0 (dimToSp 0) (parseDim "13Q")
-      (flow, ls) <- verseLines (pdfStyle <> "\n[paragraph-styles.verse]\nspace-between = 2\n") ("@style verse\n  " <> T.replicate 60 "あ" <> "\n\n  い\n")
+      (flow, ls) <- verseLines (pdfStyle <> "\n[paragraph-styles.verse]\nspace-between = 2\n") ("@style verse\n:::\n" <> T.replicate 60 "あ" <> "\n\nい\n:::\n")
       map snd ls @?= [0, 2 * fs, 0]
       [n | FSpace n <- flow] @?= [2],
     testCase "PDF: the attribute form and a label" $ do

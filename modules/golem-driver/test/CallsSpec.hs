@@ -213,7 +213,7 @@ callsTests =
           e <- evaluated tmp
           codesIn e @?= []
           [(l, t) | Block _ _ l (Paragraph _ [Text _ t]) <- blocksOf e "a.gm"] @?= [(Nothing, "語彙"), (Just "de", "Deutsch.")]
-        withBook [("a.gm", imported "@lang en\n@book.word-table 語彙\n  @lang de\n  Deutsch.\n")] [("functions/book.emet", book)] "" $ \tmp -> do
+        withBook [("a.gm", imported "@lang en\n:::\n@book.word-table 語彙\n  @lang de\n  Deutsch.\n:::\n")] [("functions/book.emet", book)] "" $ \tmp -> do
           e <- evaluated tmp
           codesIn e @?= []
           [(l, t) | Block _ _ l (Paragraph _ [Text _ t]) <- blocksOf e "a.gm"] @?= [(Just "en", "語彙"), (Just "de", "Deutsch.")],

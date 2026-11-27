@@ -163,7 +163,7 @@ fitCharactersTests =
       indentOf "left" >>= (@?= ([0], [4 * fs]))
       indentOf "fully-justified" >>= (@?= ([0], [4 * fs])),
     testCase "root ADR 0466 I2: a paragraph of the body of @style, put in place, is fitted" $ do
-      (_, pl) <- layoutOk (fitStyle 4 "") "@style title\n  目次\n\n  索引\n" []
+      (_, pl) <- layoutOk (fitStyle 4 "") "@style title\n:::\n目次\n\n索引\n:::\n" []
       map lengthOf (linesOf pl) @?= [4 * fs, 4 * fs]
       map gapsOf (linesOf pl) @?= [[2 * fs], [2 * fs]],
     testCase "root ADR 0466 I1: a list item of a style of fit-characters is not fitted, and has no diagnostic" $ do

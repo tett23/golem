@@ -132,6 +132,9 @@ diagnostic のコードは、[code: G] か [code: E] の後に 5 桁の数字を
 | 08 | 出力（フォント、出力インテント） | golem-typeset、golem-driver |
 | 09 | プリフライト | golem-preflight |
 
+G01031 は、既存の番号を保ったまま評価段階へ移した例外である。
+段落の正規化と名前解決の後で、囲みを除いても同じ一ブロックを本体に渡せるかを判定する。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0473-normalize-paragraph-blocks-before-body-binding.md]（root ADR 0473「IR の段落境界を正規化し、一段落を一ブロックにする」）]
+
 一度割り当てたコードは、別の意味に再利用しない。
 使わなくなったコードは、文書の節を消さずに状態を「廃止」にする。
 CI のログや外部の資料に残ったコードが、後から別の意味に変わることはない。

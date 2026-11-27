@@ -117,13 +117,13 @@ captionSidenoteParagraphsTests =
       firstOnly measure (10 * pt) code
       firstOnly column (8 * pt) sidenote,
     testCase "ADR 0367: the paragraphs of a caption are apart by space-between, and the caption takes the rows" $ do
-      plain <- captionOf "" "  一行目\n\n  二行目\n"
-      spaced <- captionOf "space-between = 1\n" "  一行目\n\n  二行目\n"
+      plain <- captionOf "" ":::\n一行目\n\n二行目\n:::\n"
+      spaced <- captionOf "space-between = 1\n" ":::\n一行目\n\n二行目\n:::\n"
       map ptRow (pfCaption plain) @?= [0, 1]
       map ptRow (pfCaption spaced) @?= [0, 2]
       (pfCaptionSpan plain, pfCaptionSpan spaced) @?= (2, 3),
     testCase "ADR 0367: a caption whose style keeps its lines is one paragraph: no space-between inside, each line indented" $ do
-      kept <- captionOf "line-breaks = \"keep\"\nspace-between = 1\nfirst-line-indent = \"1zw\"\n" "  一行目\n  二行目\n\n  三行目\n"
+      kept <- captionOf "line-breaks = \"keep\"\nspace-between = 1\nfirst-line-indent = \"1zw\"\n" ":::\n一行目\n二行目\n\n三行目\n:::\n"
       [(ptRow l, ptIndent l) | l <- pfCaption kept] @?= [(0, 10 * pt), (1, 10 * pt), (3, 10 * pt)]
       pfCaptionSpan kept @?= 4
       -- joined, the newline joins the lines into one

@@ -33,7 +33,15 @@ quoteStyle = horizontalStyle <> "\n[paragraph-styles.quote]\nspace-before = 2\ns
 
 styleArgumentsPdfTests :: [TestTree]
 styleArgumentsPdfTests =
-  [ testCase "root ADR 0467 I1: @style body sets the paragraph as one without @style" $ do
+  [ testCase "root ADR 0473 I1, I2: line-mode style applies to the first and third paragraph only" $ do
+      implicit <- linesOf quoteStyle "@manifest paragraph-separator=line\n@style body indent=2zw\nあ\nい\n@style body indent=2zw\nう\nえ\n"
+      explicit <- linesOf quoteStyle "@style body indent=2zw\nあ\n\nい\n\n@style body indent=2zw\nう\n\nえ\n"
+      implicit @?= explicit,
+    testCase "root ADR 0473 I3: a fenced line-mode pair applies its style to both paragraphs" $ do
+      fenced <- linesOf quoteStyle "@manifest paragraph-separator=line\n@style body indent=2zw\n:::\nあ\nい\n:::\n"
+      repeated <- linesOf quoteStyle "@style body indent=2zw\nあ\n\n@style body indent=2zw\nい\n"
+      fenced @?= repeated,
+    testCase "root ADR 0467 I1: @style body sets the paragraph as one without @style" $ do
       body <- linesOf quoteStyle "@style body\nあいう\n"
       plain <- linesOf quoteStyle "あいう\n"
       body @?= plain,
