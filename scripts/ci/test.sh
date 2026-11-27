@@ -5489,20 +5489,20 @@ split_rest() {
 run split_rest "$HERE" "$R57"
 expect "root ADR 0457 I1: test-suites: each suite of rest is in exactly one of rest-a and rest-b" 0
 run test_suites rest-a "$R57"
-expect "root ADR 0457 I1: test-suites: rest-a has the suites of REST_A" 0 "golem-emet:test:golem-emet-test
-golem-parser:test:golem-parser-test"
+expect "root ADR 0457 I1: test-suites: rest-a has the suites of REST_A" 0 "golem-emet:test:golem-emet-test"
 run test_suites rest-b "$R57"
-expect "root ADR 0457 I1: test-suites: rest-b has the other suites of rest" 0 "golem-pdf:test:golem-pdf-test"
+expect "root ADR 0457 I1: test-suites: rest-b has the other suites of rest" 0 "golem-parser:test:golem-parser-test
+golem-pdf:test:golem-pdf-test"
 run split_rest "$HERE" "$HERE/../../modules"
 expect "root ADR 0457 I2: test-suites: rest-a and rest-b of modules/ are rest, split in two" 0
 run test_suites rest-a
-expect "root ADR 0457 I1: tests-rest-a runs golem-emet-test, golem-parser-test and golem-typeset-test" 0 "golem-emet:test:golem-emet-test
-golem-parser:test:golem-parser-test
+expect "root ADR 0457 I1: tests-rest-a runs golem-emet-test and golem-typeset-test" 0 "golem-emet:test:golem-emet-test
 golem-typeset:test:golem-typeset-test"
 # I3: a new suite that REST_A does not list is in rest-b
 printf '\ntest-suite golem-pdf-new-test\n  type: exitcode-stdio-1.0\n' >>"$R57/golem-pdf/golem-pdf.cabal"
 run test_suites rest-b "$R57"
-expect "root ADR 0457 I3: test-suites: a new suite not in REST_A is in rest-b" 0 "golem-pdf:test:golem-pdf-test
+expect "root ADR 0457 I3: test-suites: a new suite not in REST_A is in rest-b" 0 "golem-parser:test:golem-parser-test
+golem-pdf:test:golem-pdf-test
 golem-pdf:test:golem-pdf-new-test"
 # copies of the scripts with another REST_A: with a name in no module, and
 # with a suite of golem-driver

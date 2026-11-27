@@ -45,7 +45,7 @@
 # 0457)
 set -eu
 DRIVER_A="golem-driver-pdf-test golem-driver-cli-test golem-driver-global-test"
-REST_A="golem-emet-test golem-parser-test golem-typeset-test"
+REST_A="golem-emet-test golem-typeset-test"
 usage() { echo "usage: test-suites.sh driver|driver-a|driver-b|rest|rest-a|rest-b|all|wasm [MODULES]" >&2; exit 2; }
 [ $# -ge 1 ] && [ $# -le 2 ] || usage
 PART=$1
