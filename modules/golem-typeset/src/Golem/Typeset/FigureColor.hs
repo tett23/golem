@@ -203,7 +203,7 @@ grayValue = \case
 
 -- | The CMYK tone is computed before the screen approximation, without intermediate rounding.
 rgbTone :: Cmyk -> Rational -> (Int, Int, Int)
-rgbTone swatch brightness = Color.rgb8OfTintPercent swatch brightness
+rgbTone = Color.rgb8OfTintPercent
 
 checkDimensions :: P.ImageData -> Either Text ()
 checkDimensions image = do

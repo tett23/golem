@@ -1245,7 +1245,7 @@ expandSamples width height bits sampleComponents ranges palette components raw =
       Just _ -> components
       Nothing -> if bits == 16 then 2 else 1
     nearest :: Rational -> Integer
-    nearest value = Color.nearestHalfUp value
+    nearest = Color.nearestHalfUp
     mapped (low, high) sample = Color.decodeRange low high (toInteger maximum') (toInteger sample)
     entry range sample = case palette of
       Just (highest, table) ->

@@ -167,7 +167,7 @@ ycbcr8ToRgb8 y cb cr = Rgb8 (clamp (yi + crR)) (clamp (yi + green)) (clamp (yi +
     cri = fromIntegral cr - 128
     crR = (91881 * cri + 32768) `shiftR` 16
     cbB = (116130 * cbi + 32768) `shiftR` 16
-    green = ((-22554 * cbi + 32768) - 46802 * cri) `shiftR` 16
+    green = ((-(22554 * cbi) + 32768) - 46802 * cri) `shiftR` 16
     clamp = max 0 . min 255
 
 ycck8ToCmyk8 :: Word8 -> Word8 -> Word8 -> Word8 -> Cmyk8
