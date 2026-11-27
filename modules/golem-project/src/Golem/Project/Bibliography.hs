@@ -6,15 +6,14 @@ module Golem.Project.Bibliography
   )
 where
 
-import Data.Bifunctor (first)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Golem.Assemble.BibliographyFormats (parseBibliographyPiece)
+import Golem.Assemble.BibliographyNames (parseInitialFormat)
 import Golem.Assemble.BibliographyStyle
-import Golem.Assemble.Formats (Braces (..), Slot (..), formatReason, parseFormat, unknownSlot)
 import Golem.Project.Manifest (maxNaturalInt)
 import Golem.Project.TomlSchema
 import Toml.Schema
@@ -112,7 +111,7 @@ bibliographyChecks bibliography = selected <> concatMap declaration (Map.toList 
       concat [pieces key values | (key, Just values) <- [("citation", bsCitation style), ("citation-year", bsCitationYear style), ("subsequent", bsSubsequent style)]]
         <> [bad [ScopeKey "label"] reason | Just text <- [bsLabel style], Left reason <- [parseBibliographyPiece bibliographyFields text]]
         <> concat [concat [piecesAt [ScopeKey "types", ScopeKey kind, ScopeKey "pieces"] values | Just values <- [btPieces entry]] | (kind, entry) <- Map.toList (bsTypes style)]
-        <> [bad [ScopeKey "names", ScopeKey role, ScopeKey "initial-format"] reason | (role, names) <- Map.toList (bsNames style), Just text <- [bnInitialFormat names], Left reason <- [initialFormat text]]
+        <> [bad [ScopeKey "names", ScopeKey role, ScopeKey "initial-format"] reason | (role, names) <- Map.toList (bsNames style), Just text <- [bnInitialFormat names], Left reason <- [parseInitialFormat text]]
         <> concat [formats name (base <> [ScopeKey "languages", ScopeKey language]) override | (language, override) <- Map.toList (bsLanguages style)]
       where
         pieces key = piecesAt [ScopeKey key]
@@ -120,7 +119,6 @@ bibliographyChecks bibliography = selected <> concatMap declaration (Map.toList 
         bad path reason =
           let key = T.intercalate "." [case scope of ScopeKey text -> text; ScopeIndex index -> "[" <> T.pack (show index) <> "]" | scope <- drop 3 (base <> path)]
            in ("G03304", name, base <> path, "参考文献のスタイル " <> name <> " の " <> key <> " を書式として読めません: " <> reason)
-    initialFormat = first formatReason . parseFormat EscapesOnly (\name -> if name == "i" then Right (TextSlot ()) else Left (unknownSlot ("未知の差し込みです: {" <> name <> "}")))
 
 bibliographySchema :: Node
 bibliographySchema = NTable [("style", str), ("styles", NNamed Nothing (declarationNode True))]

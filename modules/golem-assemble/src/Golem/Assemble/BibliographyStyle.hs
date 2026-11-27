@@ -14,9 +14,12 @@ module Golem.Assemble.BibliographyStyle
     builtinBibliographyNames,
     bibliographyFields,
     bibliographyLocatorNames,
+    overlayBibliographyStyle,
+    overlayBibliographyNames,
   )
 where
 
+import Control.Applicative ((<|>))
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Text (Text)
@@ -200,3 +203,47 @@ bibliographyFields =
 -- | The locator keys already used by the citation IR.
 bibliographyLocatorNames :: [Text]
 bibliographyLocatorNames = map locatorLabelName [minBound :: LocatorLabel .. maxBound]
+
+-- | Apply a partial declaration over a base without supplying defaults.
+overlayBibliographyStyle :: BibliographyStyle d -> BibliographyStyle d -> BibliographyStyle d
+overlayBibliographyStyle base override =
+  BibliographyStyle
+    { bsCitationMode = bsCitationMode override <|> bsCitationMode base,
+      bsCitation = bsCitation override <|> bsCitation base,
+      bsCitationYear = bsCitationYear override <|> bsCitationYear base,
+      bsCitationDelimiter = bsCitationDelimiter override <|> bsCitationDelimiter base,
+      bsCitationSort = bsCitationSort override <|> bsCitationSort base,
+      bsSubsequent = bsSubsequent override <|> bsSubsequent base,
+      bsNoteChannel = bsNoteChannel override <|> bsNoteChannel base,
+      bsSort = bsSort override <|> bsSort base,
+      bsLanguageOrder = bsLanguageOrder override <|> bsLanguageOrder base,
+      bsLabel = bsLabel override <|> bsLabel base,
+      bsHangingIndent = bsHangingIndent override <|> bsHangingIndent base,
+      bsYearSuffix = bsYearSuffix override <|> bsYearSuffix base,
+      bsPageRange = bsPageRange override <|> bsPageRange base,
+      bsRangeDelimiter = bsRangeDelimiter override <|> bsRangeDelimiter base,
+      bsMonths = bsMonths override <|> bsMonths base,
+      bsLocatorLabels = Map.union (bsLocatorLabels override) (bsLocatorLabels base),
+      bsTypes = Map.unionWith overlayType (bsTypes base) (bsTypes override),
+      bsNames = Map.unionWith overlayBibliographyNames (bsNames base) (bsNames override),
+      bsLanguages = Map.unionWith overlayBibliographyStyle (bsLanguages base) (bsLanguages override)
+    }
+  where
+    overlayType first second = BibliographyType (btPieces second <|> btPieces first) (Map.union (btCharStyles second) (btCharStyles first))
+
+-- | Keep inherited name options unless that option was explicitly written.
+overlayBibliographyNames :: BibliographyNames -> BibliographyNames -> BibliographyNames
+overlayBibliographyNames base override =
+  BibliographyNames
+    { bnOrder = bnOrder override <|> bnOrder base,
+      bnPartDelimiter = bnPartDelimiter override <|> bnPartDelimiter base,
+      bnInitials = bnInitials override <|> bnInitials base,
+      bnInitialFormat = bnInitialFormat override <|> bnInitialFormat base,
+      bnInitialDelimiter = bnInitialDelimiter override <|> bnInitialDelimiter base,
+      bnDelimiter = bnDelimiter override <|> bnDelimiter base,
+      bnLastDelimiter = bnLastDelimiter override <|> bnLastDelimiter base,
+      bnMax = bnMax override <|> bnMax base,
+      bnUseFirst = bnUseFirst override <|> bnUseFirst base,
+      bnEtAl = bnEtAl override <|> bnEtAl base,
+      bnLabel = bnLabel override <|> bnLabel base
+    }
