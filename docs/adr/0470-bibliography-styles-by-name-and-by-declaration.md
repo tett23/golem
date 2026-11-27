@@ -1,6 +1,6 @@
 # ADR 0470: 参考文献のスタイルを、決まった名前と宣言の二つで選ぶ
 
-Status: accepted-pending
+Status: superseded-pending [{"part":"宣言の形と引用の細部","by":["docs/adr/0475-complete-bibliography-declarations-and-citation-delimiters.md"],"kind":"supplement"}]
 
 ## 文脈
 

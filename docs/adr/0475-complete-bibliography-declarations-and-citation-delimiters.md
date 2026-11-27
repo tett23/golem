@@ -1,6 +1,6 @@
 # ADR 0475: 文献宣言の必須項目と名前の省略と引用の区切りを定める
 
-Status: proposed
+Status: accepted-pending
 
 ## 文脈
 
