@@ -285,7 +285,7 @@ fn split(span: Span, text: String, edits: &[(usize, usize, Kind)]) -> Vec<Inline
             out.push(Inline::Text { span, text: text[at..*s].into() });
         }
         out.push(match k {
-            Kind::Number(n) => Inline::Number { span, value: *n, style: Some(NumberStyle::Tcy) },
+            Kind::Number(n) => Inline::Number { span, value: (*n).into(), style: Some(NumberStyle::Tcy) },
             Kind::Tcy => Inline::Tcy { span, text: text[*s..*e].into() },
         });
         at = *e;
@@ -427,7 +427,7 @@ mod tests {
     }
 
     fn num(n: i64) -> Inline {
-        Inline::Number { span: S, value: n, style: Some(NumberStyle::Tcy) }
+        Inline::Number { span: S, value: n.into(), style: Some(NumberStyle::Tcy) }
     }
 
     fn style(name: &str, body: Vec<Inline>) -> Inline {
@@ -517,7 +517,7 @@ mod tests {
         assert_eq!(go(xs.clone()), (xs, vec!["split".to_string()]));
         let xs = vec![deferred, t("年")];
         assert_eq!(go(xs.clone()), (xs, none()));
-        let number = Inline::Number { span: S, value: 3, style: None };
+        let number = Inline::Number { span: S, value: 3.into(), style: None };
         let xs = vec![number, t("回")];
         assert_eq!(go(xs.clone()), (xs, none()));
     }

@@ -20,6 +20,7 @@ library
     Golem.Numerals
     Golem.Numerals.Format
     Golem.Numerals.Notation
+    Golem.Numerals.Number
   build-depends:
     , base  >=4.20 && <4.21
     , text  >=2.0  && <2.2

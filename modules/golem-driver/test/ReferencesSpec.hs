@@ -35,7 +35,7 @@ import Test.Tasty
 import Test.Tasty.HUnit
 
 -- | The numbers of inlines, those of the page numbers of the index inside their links (docs/adr/0267) too.
-numbersIn :: [Inline] -> [Integer]
+numbersIn :: [Inline] -> [Rational]
 numbersIn = concatMap $ \case
   Number _ n _ -> [n]
   Resolved _ _ _ xs -> numbersIn xs

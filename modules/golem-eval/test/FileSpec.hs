@@ -18,6 +18,7 @@ import Golem.Doc.IR
 import Golem.Doc.Validate (validateDocument)
 import Golem.Eval.Builtin (BuiltinInline (..), builtinBlockCommands, pluginCommandName)
 import Golem.Eval.File
+import Golem.Eval.Number (renderIRNumber)
 import Golem.Eval.Value
 import Golem.Parser (parseAst)
 import Golem.Parser.SourceSettings
@@ -246,7 +247,7 @@ stripSpans = concatMap go
       LineBreak _ -> ["<br>"]
       Note _ n _ bs -> ("<note " <> tshow n <> ">") : stripSpans (concat (noteParagraphs bs))
       Ruby _ _ segs -> ["<ruby " <> tshow (length segs) <> ">"]
-      Number _ n st -> ["<number " <> tshow n <> " " <> tshow st <> ">"]
+      Number _ n st -> ["<number " <> renderIRNumber n <> " " <> tshow st <> ">"]
       Ref _ k l -> ["<ref " <> tshow k <> " " <> l <> ">"]
       Deferred _ _ -> ["<deferred>"]
       other -> [tshow other]
@@ -453,7 +454,7 @@ tests =
         errs "[ruby: [ruby: a|b]|c]\n" @?= ["G02016"],
       testCase "number-text" $ do
         paraOf "[number-text 10 style=tcy]\n" @?= ["<number 10 Just StyleTcy>"]
-        errs "[number-text 1.5]\n" @?= ["G02019"]
+        errs "[number-text 1.5]\n" @?= []
         errs "[number-text 1 style=roman]\n" @?= ["G02019"],
       testCase "references and citations" $ do
         paraOf "[ref-number intro][cite knuth1981]\n" @?= ["<ref RefNumber intro>", "Cite (SrcSpan {spanFile = FileId 1, spanStart = 18, spanEnd = 34}) [CiteItem {citKey = \"knuth1981\", citLocator = Nothing, citPrefix = [], citSuffix = []}]"]
@@ -728,11 +729,11 @@ shorthandTests =
       testCase "##10## is a Number at the whole shorthand" $
         body "a##10##b\n" @?= [Paragraph Nothing [Text (mkSpan (FileId 1) 0 1) "a", Number (mkSpan (FileId 1) 1 7) 10 Nothing, Text (mkSpan (FileId 1) 7 8) "b"]],
       testCase "anything but ASCII digits is G02078 at the whole shorthand" $ do
-        let msg = "## と ## のあいだには算用数字、または算用数字:表記名を書きます。本文の ## は \\## と書きます"
+        let msg = "## と ## のあいだには算用数字か小数、またはその後に :表記名を書きます。本文の ## は \\## と書きます"
         mapM_
           (\(src, e) -> (src, diags src) @?= (src, [("G02078", msg, 0, e)]))
-          [("##007##\n", 7), ("##1.5##\n", 7), ("##1,000##\n", 9), ("##1 2##\n", 7), ("##12年\n", 7)]
-        body "##1.5##\n" @?= [Paragraph Nothing []],
+          [("##007##\n", 7), ("##1..5##\n", 8), ("##1,000##\n", 9), ("##1 2##\n", 7), ("##12年\n", 7)]
+        body "##1..5##\n" @?= [Paragraph Nothing []],
       testCase "inside [code: ...] it is text" $ do
         let c = ctx {ctxCharStyles = Set.fromList ["code", "strong", "note"]}
         fst (run c "[code: ##1##]\n") @?= [Paragraph Nothing [CharStyle (mkSpan (FileId 1) 0 13) "code" [Text (mkSpan (FileId 1) 7 12) "##1##"]]]
@@ -876,8 +877,8 @@ argWordTests =
         map (fmap stripSpans . paraInlines) (fst (run ctx "[number-text -3]\n")) @?= map (fmap stripSpans . paraInlines) (fst (run ctx "[number-text [= -3]]\n"))
         map (fmap stripSpans . paraInlines) (fst (run ctx "[number-text -3]\n")) @?= [Just ["<number -3 Nothing>"]]
         map (fmap stripSpans . paraInlines) (fst (run ctx "[number-text 1e3 style=kanji]\n")) @?= [Just ["<number 1000 Just StyleKanji>"]],
-      testCase "[number-text 3.14] is G02019, as [number-text [= 3.14]]" $ do
-        errs "[number-text 3.14]\n" @?= ["G02019"]
+      testCase "root ADR 0478 I1: [number-text 3.14] is the same rational as the expression" $ do
+        errs "[number-text 3.14]\n" @?= []
         msgs "[number-text 3.14]\n" @?= msgs "[number-text [= 3.14]]\n",
       testCase "a range where no range is taken is G02113, as a word and as an expression" $ do
         let g02113 w = ("G02113", "範囲を受け取らない引数に範囲を書いています: " <> w)
@@ -2080,8 +2081,8 @@ diagnosticTests =
         msgs "[color red: x]\n" @?= [("G02017", "style.toml にないスウォッチです: red")]
         msgs "[cite nope]\n" @?= [("G02021", "書誌データにないキーです: nope")],
       testCase "G02019: number-text" $ do
-        msgs "[number-text]\n" @?= [("G02019", "number-text には整数を一つ書きます")]
-        msgs "[number-text 1.5]\n" @?= [("G02019", "number-text に渡せるのは整数だけです")]
+        msgs "[number-text]\n" @?= [("G02019", "number-text には数値を一つ書きます")]
+        msgs "[number-text \"1.5\"]\n" @?= [("G02019", "number-text に渡せるのは数値だけです")]
         errs "[number-text [= 1 / 0]]\n" @?= ["G02003"],
       testCase "G02022: the position is the name" $ do
         diags "[nope: x]\n" @?= [("G02022", "未知のコマンドです: nope", 1, 5)],
@@ -2115,7 +2116,7 @@ printingsCtx lang =
 
 -- | The text of a paragraph with its numbers in digits.
 plainOf :: [Inline] -> Text
-plainOf = T.concat . map (\case Text _ t -> t; Number _ n _ -> T.pack (show n); _ -> "")
+plainOf = T.concat . map (\case Text _ t -> t; Number _ n _ -> renderIRNumber n; _ -> "")
 
 printingsTests :: TestTree
 printingsTests =

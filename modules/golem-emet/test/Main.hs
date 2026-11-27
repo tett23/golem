@@ -1,5 +1,6 @@
 module Main (main) where
 
+import Data.Ratio ((%))
 import ExportSpec (exportTests)
 import FmtSpec (fmtTests)
 import GmFigureSpec (gmFigureTests)
@@ -36,7 +37,12 @@ tests :: TestTree
 tests =
   testGroup
     "golem-emet"
-    [ languageTests,
+    [ testCase "root ADR 0478 I3: Emet identity preserves exact rational Number IR" $ do
+        let sp = mkSpan (FileId 1) 0 1
+            input = [D.Number sp (1 % 3) (Just D.StyleTcy)]
+            (encoded, carried) = IR.runEnc (IR.encodeInlines input)
+        IR.decodeInlines carried sp encoded @?= Right input,
+      languageTests,
       requirementTests,
       exportTests,
       lintTests,

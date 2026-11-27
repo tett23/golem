@@ -60,7 +60,7 @@ import Data.IntSet qualified as IntSet
 import Data.List (groupBy, mapAccumL, sort, zip4, zip5)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (catMaybes, fromMaybe, isJust, isNothing, listToMaybe, mapMaybe)
-import Data.Ratio ((%))
+import Data.Ratio (denominator, numerator, (%))
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Unsafe (lengthWord8)
@@ -78,6 +78,7 @@ import Golem.Length qualified as L
 import Golem.Numerals (kanji, kanjiDigits)
 import Golem.Numerals.Format (MarkFormat (..), defaultMarkFormat, parseMarkFormat)
 import Golem.Numerals.Notation (Notation, arabic, kanjiDigitsNotation, kanjiNotation, writeNumber)
+import Golem.Numerals.Number (renderIRNumber)
 import Golem.Project.Position (Position (..))
 import Golem.Project.Style (Dim (..), dimToSp)
 import Golem.Syntax (Diagnostic, Severity (..), SrcSpan (..), diagnostic, mkSpan, spanLength)
@@ -947,7 +948,7 @@ piecesOf env inl = case inl of
         digits = case pageLabelInlines sp label of
           [Number _ n _] -> case ceRefPageNumbers env of
             Just v | ceVertical env -> numberPieces env {ceVerticalNumbers = v} n Nothing
-            _ -> textPieces lk (T.pack (show n))
+            _ -> textPieces lk (renderIRNumber n)
           is -> textPieces lk (T.concat [t | Text _ t <- is])
      in at sp (PAnchor (`AnchorPageRef` l) : digits)
   Ref sp _ l -> at sp (textPieces lk l)
@@ -1306,14 +1307,19 @@ codePieces lk = go 0
         let (run, rest) = T.break (\c -> c == ' ' || c == '\t') t
          in (i, PCode lk run 0 0) : go (i + T.length run) rest
 
-numberPieces :: ComposeEnv -> Integer -> Maybe NumberStyle -> [Piece]
-numberPieces env n style
+numberPieces :: ComposeEnv -> Rational -> Maybe NumberStyle -> [Piece]
+numberPieces env q style
+  | denominator q /= 1 =
+      if ceVertical env && (style == Just StyleTcy || (isNothing style && ceVerticalNumbers env == VerticalFixed StyleTcy))
+        then [PBox lk (renderIRNumber q) KindTcy (lkSize lk)]
+        else textPieces lk (renderIRNumber q)
   | not (ceVertical env) = textPieces lk (T.pack (show n))
   | otherwise = case fromMaybe (verticalStyleOf (ceVerticalNumbers env) n) style of
       StyleKanji -> textPieces lk (kanji n)
       StyleKanjiDigits -> textPieces lk (kanjiDigits n)
       StyleTcy -> [PBox lk (T.pack (show n)) KindTcy (lkSize lk)]
   where
+    n = numerator q
     lk = ceLook env
 
 {- | Ruby: half-size reading above the base. Several segments, or one
@@ -1377,7 +1383,7 @@ baseChars env lk inl = case inl of
   Tcy _ t -> each t
   Warichu _ t -> each t
   Upright _ t -> each t
-  Number _ n _ -> each (T.pack (show n))
+  Number _ n _ -> each (renderIRNumber n)
   _ -> []
   where
     -- a base character with its combining characters is one base (golem-driver ADR 0036)

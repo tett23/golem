@@ -272,13 +272,13 @@ pub fn number_text(c: &CommandRequest) -> Response {
     };
     let out = if !vertical {
         match render_horizontal(num, den, form) {
-            Inline2::Number(n) => Inline::Number { span: c.span, value: n, style: None },
+            Inline2::Number(n) => Inline::Number { span: c.span, value: n.into(), style: None },
             Inline2::Text(t) => Inline::Text { span: c.span, text: t },
         }
     } else {
         match rendered {
             Rendered::Text(t) => Inline::Text { span: c.span, text: t },
-            Rendered::Tcy(n) => Inline::Number { span: c.span, value: n, style: Some(NumberStyle::Tcy) },
+            Rendered::Tcy(n) => Inline::Number { span: c.span, value: n.into(), style: Some(NumberStyle::Tcy) },
         }
     };
     Response::inlines(vec![out])

@@ -1805,7 +1805,7 @@ printingsBlock ctx sp args body = case (errors, Map.lookup "printings" (ctxMeta 
                 <> (if e == 1 then [txt "初版"] else [txt "第", num e Nothing, txt "版"])
                 <> [txt "第", num n Nothing, txt "刷発行"]
       _ -> Nothing
-    num = Number sp
+    num n = Number sp (fromInteger n)
     txt = Text sp
 
 {- | The message of G02096, an argument to a command that takes none, and of
@@ -3339,7 +3339,7 @@ evalInline ctx inHeading (A.Located sp i) = case i of
         (A.Located sp "number-text")
         (A.Located sp (A.Positional (A.Word n)) : [A.Located sp (A.Keyword (A.Located sp "style") (A.Word name)) | name <- maybe [] pure style])
         []
-    Nothing -> err "G02078" sp "## と ## のあいだには算用数字、または算用数字:表記名を書きます。本文の ## は \\## と書きます" >> pure []
+    Nothing -> err "G02078" sp "## と ## のあいだには算用数字か小数、またはその後に :表記名を書きます。本文の ## は \\## と書きます" >> pure []
   -- the hard breaks of a paragraph are split off before; this one is in a prose slot
   A.HardBreak -> err "G02056" sp "強制改行は段落の中にだけ書けます。コマンドの中では使えません" >> pure []
   A.ErrorInline -> pure []
@@ -3383,9 +3383,14 @@ shorthandNumber :: Text -> Maybe (Text, Maybe Text)
 shorthandNumber t = do
   inner <- T.stripPrefix "##" t >>= T.stripSuffix "##"
   let (digits, suffix) = T.breakOn ":" inner
-      validDigits =
-        digits == "0" || case T.uncons digits of
-          Just (c, _) -> c /= '0' && T.all (\x -> isAscii x && isDigit x) digits
+      validDigits = case T.splitOn "." digits of
+        [whole] -> integerDigits whole
+        [whole, fraction] -> integerDigits whole && not (T.null fraction) && asciiDigits fraction
+        _ -> False
+      asciiDigits = T.all (\x -> isAscii x && isDigit x)
+      integerDigits whole =
+        whole == "0" || case T.uncons whole of
+          Just (c, _) -> c /= '0' && not (T.null whole) && asciiDigits whole
           Nothing -> False
       validStyle name = case T.uncons name of
         Just (c, rest) -> isAsciiLower c && T.all (\x -> isAsciiLower x || (isAscii x && isDigit x) || x == '-') rest
@@ -3496,16 +3501,16 @@ builtinWith ctx inHeading sp b args slots = do
         val <- plainArgValue ctx sp lv
         let st = argText <$> lookup "style" kw
         case (val, st) of
-          (Right v', _) | Just n <- intOf v', not (inInt64 n) -> outOfInt64 sp >> pure []
-          (Right v', Nothing) | Just n <- intOf v' -> pure [Number sp n Nothing]
+          (Right v', _) | Just (_, n) <- numberOf v', not (inInt64 (numerator n) && inInt64 (denominator n)) -> outOfInt64 sp >> pure []
+          (Right v', Nothing) | Just (_, n) <- numberOf v' -> pure [Number sp n Nothing]
           (Right v', Just s)
-            | Just n <- intOf v',
+            | Just (_, n) <- numberOf v',
               Just ns <- lookup s [("kanji", StyleKanji), ("kanji-digits", StyleKanjiDigits), ("tcy", StyleTcy)] ->
                 pure [Number sp n (Just ns)]
-            | Just _ <- intOf v' -> err "G02019" sp ("style は kanji、kanji-digits、tcy のいずれかです: " <> s) >> pure []
+            | Just _ <- numberOf v' -> err "G02019" sp ("style は kanji、kanji-digits、tcy のいずれかです: " <> s) >> pure []
           (Left d, _) -> report d >> pure []
-          _ -> err "G02019" sp "number-text に渡せるのは整数だけです" >> pure []
-      _ -> err "G02019" sp "number-text には整数を一つ書きます" >> pure []
+          _ -> err "G02019" sp "number-text に渡せるのは数値だけです" >> pure []
+      _ -> err "G02019" sp "number-text には数値を一つ書きます" >> pure []
     BRefNumber -> refTo RefNumber pos
     BRefTitle -> refTo RefTitle pos
     BRefPage -> refTo RefPage pos

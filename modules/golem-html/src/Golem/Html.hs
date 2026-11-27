@@ -47,6 +47,7 @@ import Data.List.NonEmpty qualified as NE
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (fromMaybe, isJust, isNothing)
+import Data.Ratio (denominator, numerator)
 import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.Text (Text)
@@ -65,6 +66,7 @@ import Golem.Length qualified as L
 import Golem.Length.Decimal (showRationalDigits)
 import Golem.Numerals
 import Golem.Numerals.Notation (Notation, notationName, writeNumber)
+import Golem.Numerals.Number (renderIRNumber)
 import Golem.Syntax.Span
 import Golem.Syntax.Text (escapeXml, tshow)
 import Golem.Unicode.CharClass (CharClass (..), charClass, charClassIn)
@@ -1203,12 +1205,17 @@ inlineBody c = \case
         (first, second) = splitAt (length units `div` 2) units
         row xs = el "span" [("class", "warichu-line")] [el "span" [("class", "warichu-cell")] [textOf u] | u <- xs]
      in [el "span" [("class", "warichu")] [row first, row second]]
-  Number _ n st
-    | not (hcVertical (cCfg c)) -> [textOf (T.pack (show n))]
-    | otherwise -> case fromMaybe (verticalStyleOf (verticalNumbersNamed (hcNumberDefault (cCfg c))) n) st of
-        StyleKanji -> [textOf (kanji n)]
-        StyleKanjiDigits -> [textOf (kanjiDigits n)]
-        StyleTcy -> [el "span" [("class", "tcy")] [textOf (T.pack (show n))]]
+  Number _ q st
+    | denominator q /= 1 ->
+        let value = renderIRNumber q
+         in if hcVertical (cCfg c) && (st == Just StyleTcy || (isNothing st && hcNumberDefault (cCfg c) == "tcy"))
+              then [el "span" [("class", "tcy")] [textOf value]]
+              else [textOf value]
+    | not (hcVertical (cCfg c)) -> [textOf (renderIRNumber q)]
+    | otherwise -> case fromMaybe (verticalStyleOf (verticalNumbersNamed (hcNumberDefault (cCfg c))) (numerator q)) st of
+        StyleKanji -> [textOf (kanji (numerator q))]
+        StyleKanjiDigits -> [textOf (kanjiDigits (numerator q))]
+        StyleTcy -> [el "span" [("class", "tcy")] [textOf (renderIRNumber q)]]
   Ref _ _ l -> case Map.lookup l (bookLabels (cBook c)) of
     -- a note has no title: its number, as [ref-number] gives it (root ADR 0422)
     Just t@LabelTarget {ltNote = Just _} -> [Element "a" [("href", linkTo c (ltFile t) (ltAnchor t))] (inlines c {cPageBreaks = Map.empty} (maybe [] pure (ltNumber t)))]

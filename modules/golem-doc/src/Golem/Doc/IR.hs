@@ -416,7 +416,7 @@ data InlineF r
   | Tcy !SrcSpan Text
   | Warichu !SrcSpan Text
   | Upright !SrcSpan Text
-  | Number !SrcSpan !Integer !(Maybe NumberStyle)
+  | Number !SrcSpan !Rational !(Maybe NumberStyle)
   | Ref !SrcSpan !RefKind !Text
   | Deferred !SrcSpan DeferredExpr
   | -- | a footnote, its number in its file, its label (root ADR 0422) and its body: paragraphs without a paragraph style, whatever r is (docs/adr/0263)

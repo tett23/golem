@@ -70,7 +70,7 @@ inline-no-ruby =
   / [8, span, tstr]                                ; tate-chu-yoko
   / [27, span, tstr]                               ; warichu (root ADR 0380)
   / [28, span, tstr]                               ; upright (root ADR 0380)
-  / [9, span, int64, number-style / null]          ; number
+  / [9, span, rational, number-style / null]          ; number
   / [10, span, ref-kind, label: tstr]              ; reference
   / [11, span, expr]                               ; deferred expression (S1)
   / [14, span, terms: [1*2 tstr], readings: [1*2 tstr], kind: index-kind] ; index mark (docs/adr/0265)

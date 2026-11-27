@@ -14,6 +14,8 @@ import Data.Bits (xor)
 import Data.ByteString.Lazy qualified as BL
 import Data.Char (ord)
 import Data.Map.Strict qualified as Map
+import Data.Maybe (isNothing)
+import Data.Ratio ((%))
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
@@ -35,7 +37,27 @@ numberUnitTests :: TestTree
 numberUnitTests =
   testGroup
     "numbers kept with the units after them (docs/adr/0275)"
-    [ testGroup "W1: no break" w1Tests,
+    [ testCase "root ADR 0478 I4: decimal TCY is one whole box" $ do
+        let items' = fst (composeInlines (envWith 0 True) [IR.Number sp (1 % 10) (Just IR.StyleTcy)])
+        [bcText c | Box _ c <- items'] @?= ["0.1"],
+      testCase "root ADR 0478 I4: fractional boxes honor fixed TCY defaults and explicit overrides" $
+        mapM_
+          ( \vertical ->
+              mapM_
+                ( \def ->
+                    mapM_
+                      ( \style -> do
+                          let env = (envWith 0 vertical) {ceVerticalNumbers = def}
+                              fractionItems = fst (composeInlines env [IR.Number sp (1 % 10) style])
+                              expected = vertical && (style == Just IR.StyleTcy || (isNothing style && def == IR.VerticalFixed IR.StyleTcy))
+                          [(w, bcText c) | Box w c <- fractionItems, boxKind c == KindTcy] @?= [(fs, "0.1") | expected]
+                      )
+                      [Nothing, Just IR.StyleKanji, Just IR.StyleKanjiDigits, Just IR.StyleTcy]
+                )
+                [IR.VerticalFixed IR.StyleTcy, IR.VerticalAuto IR.StyleKanji, IR.VerticalAuto IR.StyleKanjiDigits, IR.VerticalFixed IR.StyleKanji]
+          )
+          [False, True],
+      testGroup "W1: no break" w1Tests,
       testGroup "W2: the penalty" w2Tests,
       testGroup "W3, W4: the items before the ADR" w34Tests,
       testGroup "W5: a range not broken wins" w5Tests,

@@ -233,6 +233,9 @@ HTML と EPUB は `@frame` の段落をその位置の `aside` に書き、マ�
 
 ### 数の表記
 
+`[number-text 0.10]` と `##0.1##` は、同じ有理数 1/10 を保持し、`0.1` と表示する。
+`##0.10:tcy##` は `[number-text 0.10 style=tcy]` と同じ IR を作り、縦組みでは正規化した表記全体を縦中横にする（[root ADR 0478](docs/adr/0478-accept-rational-values-in-number-text.md)）。
+
 `##17:tcy##` は `[number-text 17 style=tcy]`、`##17:kanji##` は `[number-text 17 style=kanji]` と同じ意味である（[golem-parser ADR 0014](docs/golem-parser/adr/0014-number-shorthand-with-an-explicit-style.md)）。
 書字方向に応じた数の表記を、一つの数ごとに指定できる。
 

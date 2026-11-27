@@ -85,7 +85,7 @@ write (G07110 stops the PDF) is written in Arabic numerals.
 -}
 pageLabelInlines :: SrcSpan -> PageLabel -> [Inline]
 pageLabelInlines sp l = case plNotation l of
-  Nothing -> [Number sp (plNumber l) Nothing]
+  Nothing -> [Number sp (fromInteger (plNumber l)) Nothing]
   Just _ -> [Text sp (pageLabelText l)]
 
 {- | The text of a label: its number in its notation, Arabic numerals

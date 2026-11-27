@@ -17,7 +17,7 @@ import Data.Text.Encoding qualified as TE
 import Data.Text.IO qualified as TIO
 import Golem.Assemble (inlineText)
 import Golem.Bibliography (EntryPart)
-import Golem.Doc.IR (Inline, InlineF (..))
+import Golem.Doc.IR (Inline)
 import Golem.Driver
 import Golem.Layout.Japanese (punctSpace)
 import Golem.Layout.KnuthPlass (BoxContent (..), Item (..), Line (..))
@@ -492,7 +492,7 @@ offsetsIn pat src = occurrences (TE.encodeUtf8 pat) (TE.encodeUtf8 src)
 
 -- | The text of index or bibliography inlines, page numbers as numbers.
 rendered :: [Inline] -> T.Text
-rendered = T.concat . map (\case Number _ n _ -> T.pack (show n); i -> inlineText i)
+rendered = T.concat . map inlineText
 
 {- | Lays out a one-chapter project (with extra manifest lines before
 [metadata]) and returns the text of the lines of each page.

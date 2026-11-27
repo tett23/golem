@@ -28,7 +28,7 @@ tests =
         let r = Resolved sp RefTitle "design" [Text sp "設計", Ruby sp () [RubySegment [Text sp "組版"] (Just "くみはん")]]
         decodeInlines (encodeInlines [r]) @?= Right [r]
         let n = Resolved sp RefNumber "h" [Number sp 2 Nothing]
-            bytes = toStrictByteString (encodeTerm (TList [TList [TInt 22, spT, TInt 0, TString "h", TList [TList [TInt 9, spT, TInt 2, TNull]]]]))
+            bytes = toStrictByteString (encodeTerm (TList [TList [TInt 22, spT, TInt 0, TString "h", TList [TList [TInt 9, spT, TTagged 30 (TList [TInt 2, TInt 1]), TNull]]]]))
         encodeInlines [n] @?= bytes
         decodeInlines bytes @?= Right [n]
         -- the kind of a reference is 0..2

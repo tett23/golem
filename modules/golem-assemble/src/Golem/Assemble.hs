@@ -55,6 +55,7 @@ import Golem.Assemble.Collation
 import Golem.Assemble.Numbering (TitlePiece)
 import Golem.Doc.IR
 import Golem.Numerals.Format (Unwritable (..), formatNumber, formatUsesChapter)
+import Golem.Numerals.Number (renderIRNumber)
 import Golem.Syntax
 
 data AssembleConfig = AssembleConfig
@@ -360,7 +361,7 @@ inlineText = \case
   Tcy _ t -> t
   Warichu _ t -> t
   Upright _ t -> t
-  Number _ n _ -> T.pack (show n)
+  Number _ n _ -> renderIRNumber n
   _ -> ""
 
 -- | @{n}@, @{1}.{n}@, ... @{1}.{2}.{3}.{4}.{5}.{n}@ by the level (docs/adr/0188).
@@ -696,7 +697,7 @@ collectLabels ns docs = foldl add (Map.empty, []) targets
         Block sp l _ body <- allBlocks bs,
         t <-
           [(name, LabelTarget sp num title (headingAnchor (Just name) sp) fid Nothing) | let (num, title) = describe sp body, Just name <- [l]]
-            <> [(name, LabelTarget nsp (Just (Number nsp (toInteger n) Nothing)) [] name fid (Just (NoteTarget ch n))) | (nsp, ch, n, name) <- mapMaybe noteLabel (bodyInlines body)]
+            <> [(name, LabelTarget nsp (Just (Number nsp (fromIntegral n) Nothing)) [] name fid (Just (NoteTarget ch n))) | (nsp, ch, n, name) <- mapMaybe noteLabel (bodyInlines body)]
       ]
     -- a note has a number and no title (root ADR 0422)
     noteLabel = \case
@@ -706,7 +707,7 @@ collectLabels ns docs = foldl add (Map.empty, []) targets
       _ -> Nothing
     describe sp = \case
       Heading _ _ is -> case Map.lookup sp (nsHeadings ns) of
-        Just HeadingInfo {hiNumbers = Just [n], hiTitle = t} -> (Just (Number sp n Nothing), t)
+        Just HeadingInfo {hiNumbers = Just [n], hiTitle = t} -> (Just (Number sp (fromInteger n) Nothing), t)
         Just HeadingInfo {hiNumbers = Just nums, hiTitle = t} -> (Just (Text sp (T.intercalate "." (map (T.pack . show) nums))), t)
         Just h -> (Nothing, hiTitle h)
         Nothing -> (Nothing, withoutAnchors is)
