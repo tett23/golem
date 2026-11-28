@@ -1745,6 +1745,54 @@ golem-layout は区切りを 1 行以上にする（`Paginate.hs:155`）。
    処理の成功や、前処理がカーソルの条件を保つことを別途仮定しない。
    分岐と引数は `check-causal-probe-shape.sh` で写しと比べる。
    本体の全制御や組み直す状態全体の対応は残し、[プローブの入口の依存調査](../../docs/research/0352-causal-probe-entry-dependencies.md) に記録する。
+   `PartsOffsetEntries.lean` は、段落の分割の各再帰入口で、テキスト数が最初の数 `base` と採用済み行数 `before` の和に等しいことを導く。
+   この入口の条件があれば、対応モデルの改行器の採番を `base + before` から表せる。
+   任意の状態がこの条件を持つと仮定せず、部分採用と再試行に沿って証明する。
+   [採用済み行数の依存調査](../../docs/research/0352-parts-offset-dependencies.md) に、組み直す `Built` の採番表との接続が残ることも記録する。
+   `PartsNumberedEntries.lean` は、この入口の条件と対応モデルの改行器を接続し、全再帰入口で行 ID が `base + before` から連続することを導く。
+   任意の状態で `I5_parts_lines` の前提を仮定せず、到達する入口について証明する。
+   配置結果全体の過不足と順序と、本体の `Built` の採番表との一致は残し、[入口の行 ID の依存調査](../../docs/research/0352-parts-numbered-entry-dependencies.md) に記録する。
+   `PartsNumberedOutput.lean` は、この入口の条件を `parts` の成功結果へ接続し、以前の ID 列を残して新たな連続 ID 列だけを加えることを導く。
+   具体的な対応モデルの `paragraphAt` では、採番と `hold` の条件も導く。
+   これはモデルの ID 列についての導出であり、実装の文字列の全量と `Built` の対応は残る。
+   [成功結果の依存調査](../../docs/research/0352-parts-numbered-output-dependencies.md) に、前提、24 境界、残件を記録する。
+   `BuiltFirstIds.lean` は、所有する図版の採番量も変わることを含めた二段階の走査から、現在の段落の先頭 ID の不変を導く。
+   export list だけを変更した一時コピーによる採番表の観測 12 件と、全原稿への射影が残ることを [二段階の採番の依存調査](../../docs/research/0352-built-first-id-dependencies.md) に記録する。
+   `NumberedPayload.lean` は、既成行の列に採番するとき、内容と順序を保ち、その ID が既存の `PhysicalPagination.ids` の列と等しいことを導く。
+   採用する先頭の行を分けた場合の一致と実装の行内容の観測は、[既成行の内容の依存調査](../../docs/research/0352-numbered-row-payload-dependencies.md) に記録する。
+   異なる行列に再組版する文字列の全量の保存と、その後の配置への接続は残る。
+   `ChosenSourceProgress.lean` は、選択された改行位置を走査履歴から導き、接尾部を一部採用するモデルのソース前進の条件を導く。
+   実装の組み直し 36 接尾部と次の位置の照合 85 件、未接続の範囲を [ソースの前進の依存調査](../../docs/research/0352-chosen-source-progress-dependencies.md) に記録する。
+   `RetryPrefix.lean` は、全行の配置後に末尾を減らす再試行の上限を導き、未指定から到達するモデルの各入口で未指定か正数の上限を保つ。
+   実装 1344 入力と、上限 0 について条件が必要な例、未完のほかの再試行の条件を [再試行の上限の依存調査](../../docs/research/0352-retry-prefix-dependencies.md) に記録する。
+   `RetryLastCounter.lean` は、公開の試し置きで三行を返して上限の減少を満たさない例を保ち、修正後の呼び出し元が同じ五行を一度ずつ消費することを kernel で確認する。
+   旧版の反例と [root ADR 0483](../../docs/adr/0483-finish-forced-paragraph-placement-without-repeating-the-retry.md) 後の回帰を [末尾の再試行の調査](../../docs/research/0352-last-retry-counter-dependencies.md) に記録する。
+   `BesideOwnership.lean` は、本文を選ぶキーの範囲、順序、重複のなさと、両判定が偽の単位での区切りを導く。
+   五種類の判定の 781 通りと実装の走査 8203 件の照合、任意の生成表との対応が残ることを [所有区間の依存調査](../../docs/research/0352-beside-ownership-dependencies.md) に記録する。
+   `BesideCoverage.lean` は、各キーを選ぶ必要十分条件と、区切りのない区間を連結した場合の一致を導く。
+   2930 位置の所属判定との比較と、全内容の保存までの未接続部分を [選択条件の依存調査](../../docs/research/0352-beside-coverage-dependencies.md) に記録する。
+   `BesideAdjustment.lean` は、組み直す本文の値の更新から、キーの有無と選択結果の保存を導く。
+   実装の Map の 4492 更新と、全配置への接続が残ることを [更新前後の所有キーの依存調査](../../docs/research/0352-beside-adjustment-dependencies.md) に記録する。
+   `SelectedCountPrefix.lean` は、選択キーの重複のなさと一つの値の更新から、内側の先行する本文の採番量が変わらないことを導き、二段階の先頭 ID の証明へ渡す。
+   外側の全単位の寄与は別の条件として残し、[選択キーと先行する採番量の依存調査](../../docs/research/0352-selected-count-prefix-dependencies.md) に記録する。
+   `BesideProducer.lean` は、新しく組む本文が段落だけを含むことから、図版のキーを含まないことと、図版を区切りとする判定を導く。
+   実装 2540 ジョブの照合と、このモデルでは前のラウンドの再利用を扱わないことを [本文の生成と図版の区切りの依存調査](../../docs/research/0352-beside-producer-dependencies.md) に記録する。
+   `BesideProducerRange.lean` は、一つのジョブのキーの範囲と順序、後の図版を越えないことを導き、前後のジョブの出力を分離する。
+   532 個の実装の出力キーの比較と未接続の範囲を [新しい本文の生成範囲の依存調査](../../docs/research/0352-beside-producer-range-dependencies.md) に記録する。
+   `BesideReuse.lean` は、前の本文の型の条件と再利用する区間の検査から、再利用と新規生成のどちらも現在の段落だけを選ぶことを導く。
+   前後五件の実装の比較と、内容の一致と全ラウンドの接続が残ることを [本文の再利用条件の依存調査](../../docs/research/0352-beside-reuse-dependencies.md) に記録する。
+   `BesideReuseRounds.lean` は、前の結果がない状態から任意のモデルのラウンド列へ型の条件を渡し、入力の有限な範囲から出力のキーの範囲を導く。
+   実装の六回の計算との比較と、本体の全呼び出しとの接続が残ることを [複数ラウンドの本文の型の依存調査](../../docs/research/0352-beside-reuse-rounds-dependencies.md) に記録する。
+   `BesideReuseOrder.lean` は、再利用を含む一つのジョブの順序と、後の図版による二つのジョブの分離を導く。
+   実装の十三ジョブの比較と、Map との一般の接続が残ることを [再利用を含むジョブの順序の依存調査](../../docs/research/0352-beside-reuse-order-dependencies.md) に記録する。
+   `PriorUnitCounts.lean` は、先行する図版の区切りと値の更新から、寄与の射影の外側の採番量を導き、二段階の先頭 ID の保存へ接続する。
+   実装の十二件の再採番の比較と、単位の全分岐との一般の接続が残ることを [先行する単位の採番量の依存調査](../../docs/research/0352-prior-unit-counts-dependencies.md) に記録する。
+   `MixedRoundOrder.lean` は、前後の所有者の条件から全ジョブの連結の狭義順序と重複のなさを導き、任意のモデルのラウンド列へ渡す。
+   実装の六回の系列との比較と、本体の Map との一般の接続が残ることを [全ジョブのキーの順序の依存調査](../../docs/research/0352-mixed-round-order-dependencies.md) に記録する。
+   `RoundPayloadStore.lean` は、重複しないキーから、生成済みの組の値を格納して同じキー順に読み戻す接続を導く。
+   実装の Map の有限比較と、本体との一般の接続が残ることを [格納時の本文の値の保存の依存調査](../../docs/research/0352-round-payload-store-dependencies.md) に記録する。
+   `ProducedPayloadKeys.lean` は、値を持つ新規生成と再利用からキー列の対応を導き、格納後の値の保存へ渡す。
+   実装の組んだ行数と offset の比較と、整形と IO の一般の接続が残ることを [生成する値とキーの対応の依存調査](../../docs/research/0352-produced-payload-keys-dependencies.md) に記録する。
 
 これらを終えるまで Alloy の定期実行と既存の参照を維持する。
 終えたときは、Alloy の定期実行を終え、規則やモデルを変えたときにローカルの Lean で検証し直す手順を CONTRIBUTING に書く。
@@ -1782,7 +1830,41 @@ sh experiments/pagination-proof/check.sh
 `CausalCalls.lean` は `CausalParagraphs.olean` と `WrapVerses.olean` を読み込み、失敗する試みも含む各入口の条件を検査する。
 `CausalStanzaEntries.lean` は `CausalCalls.olean` を読み込み、詩の配置と採用の相互再帰の入口を検査する。
 `CausalProbeEntries.lean` も `CausalCalls.olean` を読み込み、後続のプローブの相互再帰の入口を検査する。
+`PartsOffsetEntries.lean` も同じファイルを読み込み、段落の分割の各入口のテキスト数と採用済み行数を検査する。
+`PartsNumberedEntries.lean` は `PartsOffsetEntries.olean` を読み込み、到達する各入口の行 ID の条件を検査する。
+`check-parts-numbered-shape.sh` は、その述語と元の `parts` の分岐と引数を比較する。
+`PartsNumberedOutput.lean` は `PartsNumberedEntries.olean` を読み込み、到達入口から成功結果の行 ID の条件を検査する。
+24 入力の有限検査は、Lean の実行結果を `check.sh` で `true` と比較する。
 `CausalFirstIds.lean` は、採番の算術部分だけをほかのモデルを読み込まずに検査する。
+`BuiltFirstIds.lean` はその出力を読み込み、二段階の走査と 648 入力、対照の 2 件を検査する。
+`NumberedPayload.lean` は `Physical.olean` を読み込み、既成行の採番と ID の射影、分割する先頭の行の内容を検査する。
+`ChosenSourceProgress.lean` は `Pagination.olean` と `Physical.olean` を読み込み、選択された接尾部の改行位置と部分採用からソースの前進を検査する。
+`RetryPrefix.lean` は `Physical.olean` を読み込み、各再帰入口の上限と全行後の再試行の減少を検査する。
+`RetryLastCounter.lean` も同じモジュールを読み込み、上限と試し置きの例を保ちつつ、修正後の呼び出し元が五行を消費することを検査する。
+`RetryLastCounter.hs` は同じ行数と保持を実装の試し置きへ渡す。
+`BesideOwnership.lean` は、有限のキーの走査の順序と重複のなさ、区切りでの分離を検査する。
+`BesideCoverage.lean` は `BesideOwnership.olean` を読み込み、対象のキーを選ぶ必要十分条件と区間の連結を検査する。
+`BesideAdjustment.lean` も同じモジュールを読み込み、値を更新した前後のキーの有無と選択結果を検査する。
+`SelectedCountPrefix.lean` は `BesideAdjustment.olean` と `BuiltFirstIds.olean` を読み込み、選択キーから内側の先行する採番量の保存を検査する。
+`BesideProducer.lean` は `BesideOwnership.olean` を読み込み、新しい本文の生成から図版の区切りの条件を検査する。
+`BesideProducerRange.lean` は `BesideProducer.olean` を読み込み、新しい本文のキーの範囲と順序を検査する。
+`BesideReuse.lean` は `BesideAdjustment.olean` と `BesideProducer.olean` を読み込み、再利用する区間の検査と新規生成から本文の型の条件を検査する。
+`BesideReuseBoundary.lean` は `BesideReuse.olean` を読み込み、再利用の可否の具体例を検査する。
+`BesideReuseRounds.lean` は同じモジュールを読み込み、複数ラウンドの型と有限範囲の条件を検査する。
+`BesideReuseRoundsBoundary.lean` は `BesideReuseRounds.olean` を読み込み、ラウンド間の変更の具体例を検査する。
+`BesideReuseOrder.lean` は `BesideReuse.olean` と `BesideProducerRange.olean` を読み込み、再利用と新規生成が混在するジョブの範囲と順序を検査する。
+`BesideReuseOrderBoundary.lean` は `BesideReuseOrder.olean` を読み込み、再利用の組み合わせの具体例を検査する。
+`PriorUnitCounts.lean` は `BesideReuseOrder.olean` と `SelectedCountPrefix.olean` を読み込み、先行する単位の寄与と二段階の先頭 ID の保存を検査する。
+`PriorUnitCountsBoundary.lean` は `PriorUnitCounts.olean` を読み込み、寄与の更新と先頭 ID の具体例を検査する。
+`MixedRoundOrder.lean` は `BesideReuseOrder.olean` と `BesideReuseRounds.olean` を読み込み、全ジョブのキーとラウンド列の順序を検査する。
+`MixedRoundOrderBoundary.lean` は `MixedRoundOrder.olean` を読み込み、所有者の重複と逆順の対照を含む具体例を検査する。
+`RoundPayloadStore.lean` は `MixedRoundOrder.olean` を読み込み、重複しないキーから格納する値の保存を検査する。
+`RoundPayloadStoreBoundary.lean` と `check-side-store-shape.sh` は、格納の具体例と本体の格納呼び出しの形を検査する。
+`ProducedPayloadKeys.lean` は `RoundPayloadStore.olean` を読み込み、生成する値とキー列の対応を検査する。
+`ProducedPayloadKeysBoundary.lean` と `check-side-payload-shape.sh` は、経路ごとの値の受け渡しと本体の構築箇所の形を検査する。
+`check-parts-retry-shape.sh` はその入口の述語と `parts` の分岐と引数を比べる。
+`RetryPrefixChecks.hs` はネイティブの試し置きの採用数と、同じ再試行の上限を検査する。
+`check-built-first-ids.sh` は、依存する package 環境を渡したローカルの `RUNGHC` で、export list だけを開いた一時ソースから本体の採番表を観測する。
 `WholeOrder.lean` は `WholeNotes.olean` を読み込み、ほかの検査と並んで検査し、最後にその結果を待つ。
 `WholeRules.lean` は `Whole.olean` を読み込み、同じくほかの検査と並んで検査する。
 `WholeSlots.lean` は `Separator.olean` を読み込んで検査する。
@@ -1829,3 +1911,135 @@ sh experiments/pagination-proof/check-alloy-diff.sh 97
 `ForcedPrefix.lean` は [root ADR 0483](../../docs/adr/0483-finish-forced-paragraph-placement-without-repeating-the-retry.md)  の強制配置を採用する呼出し元の具体例を検査する。
 公開の試し置きの採用数を保ち、以前の h6 の入力で行IDを一度ずつ配置することを確かめる。
 任意本文の終了証明とは区別し、[検証範囲と公理依存](../../docs/research/0483-forced-prefix-placement.md)に記録する。
+
+`PayloadRounds.lean` は、前の round の `(key, value)` の列から得た表を、次の round の再利用判定と読み出しへ渡す。
+空の cache から始めた任意の列について、格納したキーの段落型を帰納で導き、順に並んだ図版 job の条件の下で同順の payload 読み出しを証明する。
+`PayloadRounds.hs` は、実フォントの六つの変更で観測した行数と offset を渡し、cache の再利用と新規生成を通した列を照合する。
+前の payload が新たな整形結果と一致する条件や、実装の IO とモデルとの一般的な対応は証明していない。
+根拠と残件は [payload cache の帰納の依存関係](../../docs/research/0352-payload-rounds-dependencies.md) にまとめた。
+
+`DerivedJobs.lean` は、現在の単位の添字を順に走査し、選ばれた図版だけから job を作る。
+この生成から所有者の順序と図版の条件を導き、前の payload cache の帰納へ渡す。
+`DerivedJobs.hs` は、実フォントの六つの変更で、生成した job が本体の所有者と単位数に対応すること、その job を使った cache の値を照合する。
+本体の Map の列挙と添字の全入力での対応は残る。
+根拠と残件は [図版 job の生成の依存関係](../../docs/research/0352-derived-jobs-dependencies.md) にまとめた。
+
+`FigureTable.lean` は、現在の図版の組から格納表のキーの型を導き、表だけを選択する走査と図版を検査する走査の一致を証明する。
+これにより、生成した表からの job の順序と図版の条件を接続する。
+`FigureTable.hs` は containers の有限な表を、`FigureTableFonts.hs` は実フォントの六つの変更を比較する。
+配置の計算や Map の列挙の全入力での対応は残る。
+根拠と残件は [現在の図版の表の依存関係](../../docs/research/0352-figure-table-dependencies.md) にまとめた。
+
+`FigureWindow.lean` は、格納した現在の図版を添字の範囲で読み戻すと、元の値と昇順を保つことを証明する。
+その列からの job の選択が添字の走査と一致することも示す。
+`FigureWindow.hs` と `FigureWindowFonts.hs` は、containers の有限な表と実フォントの六つの変更で、列挙と job と cache の出力を比較する。
+本体の Map の実装、Int の添字、配置の計算との一般的一致は残る。
+根拠と残件は [図版の表の昇順読み取りの依存関係](../../docs/research/0352-figure-window-dependencies.md) にまとめた。
+
+`FigureJobValues.lean` は、選んだ図版の値を job の初期状態を作る callback へ渡す。
+その値が元の組と格納表の同じキーの値であること、job の順序と図版の条件を保つことを証明する。
+`FigureJobValues.hs` は異なる値を持つ有限な表を、`FigureJobValuesFonts.hs` は実フォントの図版の実際のソース位置を job の状態へ渡して比較する。
+配置の全フィールドと IO、Map の実装との一般的な対応は残る。
+根拠と残件は [図版値と job 状態の依存関係](../../docs/research/0352-job-values-dependencies.md) にまとめた。
+
+`ClassifiedPrefix.lean` は、表を先に扱い、残りの単位は既存の skip と脇の本文の存在から分類する。
+固定の採番増分か回り込み図版の増分を選び、対象より前の添字の列から、先行する所有者の範囲を導く。
+到達した payload cache の型も使い、対象の本文の変更で先行する採番増分が変わらないことを示す。
+`ClassifiedPrefix.hs` は、表、コード、改段の制御、回り込みの制御を含む実フォントの入力で比較する。
+固定件数の計算と本体の全分岐との一般的な対応は残る。
+根拠と残件は [単位の分類と採番 prefix の依存関係](../../docs/research/0352-classified-prefix-dependencies.md) にまとめた。
+
+`OwnedFirst.lean` は、到達した cache と現在の図版の表から生成した job を使い、所有段落の先頭 ID の一致を導く。
+対象より前の本文の分割、所有者の図版の型と先行する所有者の範囲を、最終定理の自由な前提として渡さない。
+対象がその図版の選択に含まれなければ、所有段落だけの照会として `none` を返す。
+この `none` を本体の全単位の ID が存在しないという意味には使わない。
+`OwnedFirstFonts.hs` は、実フォントで配置した本文の行列を変え、本体の採番の前後と最後の公開定理を比較する。
+全 `Built` からモデルの到達と job の所属を導く一般的な接続は残る。
+根拠と残件は [到達した本文と所有段落の先頭 ID](../../docs/research/0352-owned-first-dependencies.md) にまとめた。
+
+`OwnedFirstScan.lean` は、所有段落のキーと先頭 ID の列を採番し、格納後の照会が前の先頭 ID のモデルと一致することを示す。
+対象の選択キーの重複がないことを既存の走査から導き、本文の値だけを変えても照会が保たれることへ接続する。
+`OwnedFirstScanFonts.hs` は、本体の内側の `mapAccumL` の列、変更前後の ID と最後の公開定理を比較する。
+全図版の列の連結と本体の全単位の ID の表との一般的な接続は残る。
+根拠と残件は [所有段落の採番列と格納後の照会](../../docs/research/0352-owned-scan-dependencies.md) にまとめた。
+
+`OwnedRows.lean` は、複数の図版の選択キーと採番列を job の順に連結する。
+到達した cache と現在の図版 job の生成から全キーの順序と一意性を導き、局所的な採番列の組が全列の格納後も残ることを示す。
+`OwnedRowsFonts.hs` は、本体の図版ごとの採番列の連結とその時点の格納後の照会を比較する。
+全図版の開始 ID の計算と `baseFirsts` との合成の一般的な接続は残る。
+根拠と残件は [図版ごとの採番列の連結](../../docs/research/0352-owned-rows-dependencies.md) にまとめた。
+
+`OwnedGlobal.lean` は、全図版の開始 ID を分類済みの先行寄与から計算し、全採番列の格納後の照会を局所的な先頭 ID へ接続する。
+最後の定理では、格納された値からその所有者を導き、全ての対象について、その対象自身の本文の値を変えても照会した先頭 ID が変わらないことを示す。
+所有者と対象の選択を自由な前提として渡さない。
+`OwnedGlobalFonts.hs` は、同じ計算式から得た全列と更新前後の本体の採番列を比較する。
+通常の単位の表との合成と本体の全分岐の寄与との一般的一致は残る。
+根拠と残件は [全図版の所有段落の先頭 ID](../../docs/research/0352-owned-global-dependencies.md) にまとめた。
+
+`OwnedUnion.lean` は、選ばれた所有段落の先頭 ID が左優先の表の合成後も存在し、本文の更新前後で同じ値であることを示す。
+右側の表の同一性や格納値の存在を前提として渡さない。
+`OwnedUnionFonts.hs` は、本体の最初の採番の表と所有段落の表の合成、人工的な衝突を比較する。
+本体の全呼び出し元からの選択条件と Map の一般的な意味論への接続は残る。
+根拠と残件は [ID の存在と左優先の合成](../../docs/research/0352-owned-union-dependencies.md) にまとめた。
+
+`BodyEdits.lean` は、任意の本文の値の更新履歴について、領域、制御と本文の分類、所有段落の選択が変わらないことを示す。
+空から到達した初期 cache の本文の型も、履歴の後へ引き継ぐ。
+`BodyEditsFonts.hs` は、七つの更新による八つの状態で、本体の値の列、分類と選択を比較する。
+この結果を、本文の値や ID 全体の不変性や原稿全量の保存の証明とは扱わない。
+根拠と残件は [本文の値の更新履歴](../../docs/research/0352-body-edits-dependencies.md) にまとめた。
+
+`HistoryFirst.lean` は、現在の本文の型から ID の存在と安定を導く一般の結果を使い、任意の値の更新履歴の後の再改行へ接続する。
+履歴後の新しい cache の到達を仮定せず、初期の到達と選択から必要な型と選択を導く。
+`HistoryFirstFonts.hs` は、八つの履歴の状態の後の 48 例で、現在と追加の値の更新後の本体の ID を比較する。
+別の本文の更新で初期から ID が変わる場合も許し、その現在の対象自身の再改行では同じ値が存在することを示す。
+全 `Built` と全呼び出し元への一般的な接続は残る。
+根拠と残件は [更新履歴の後の再改行 ID](../../docs/research/0352-history-first-dependencies.md) にまとめた。
+
+`SelfRetries.lean` は、履歴後の現在の対象について、同じキーへの任意の有限更新列の前後で先頭 ID が一致し、左優先の合成後も存在することを導く。
+列の各段階の型と選択は既存の保存の定理から引き継ぎ、新しい到達を仮定しない。
+`SelfRetriesFonts.hs` は、八つの履歴の状態の後の 120 列で、手で置き換えた行数と本体の採番を比較する。
+任意の有限列の一致を、実際の再試行が終了する証明とは扱わない。
+全 `Built` と全呼び出し元からの一般的な接続は残る。
+根拠と残件は [同じ段落の再試行列](../../docs/research/0352-self-retries-dependencies.md) にまとめた。
+
+`SuffixCountPrefix.lean` は、照会対象以上のキーへの一回の更新でも、先行する選択対象の同じ先頭 ID が存在することを導く。
+選択キーの昇順と現在の図版の走査の境界から、内外の先行寄与が変わらないことを導く。
+`SuffixCountPrefixFonts.hs` は、八つの履歴の状態の後の 96 例で、後続キーの行数を手で変え、本体の採番と比較する。
+全 `Built` と全呼び出し元からの選択や更新順序への接続と、制御の終了は残る。
+根拠と残件は [後続段落の更新と先行 ID](../../docs/research/0352-suffix-count-dependencies.md) にまとめた。
+
+`LaterEdits.lean` は、モデルの選択列の接尾部を先頭から任意の数だけ更新しても、その最初の対象の同じ先頭 ID が存在することを導く。
+更新キーの大小は選択列の昇順から導き、先行履歴の後の新しい到達は仮定しない。
+`LaterEditsFonts.hs` は、八つの履歴の状態の後の 192 列で、手で置き換えた全三段落の行数と本体の採番を比較する。
+全 `Built` と全呼び出し元の列への接続と、制御の終了は残る。
+根拠と残件は [選択した接尾部の更新列](../../docs/research/0352-later-edits-dependencies.md) にまとめた。
+
+`CacheNumberedRows.lean` は、更新履歴から導いた先頭 ID を使い、既に組んだ行の連結と採番、ID 列、行の値と順序の保存へ接続する。
+採用済みの行数を加えた残りの採番が、全行を同じ開始 ID から採番する結果の接尾部と一致する。
+`CacheNumberedRowsFonts.hs` は、144 例で本体の `numberedLines` の ID と既存の行の値の列を比較する。
+原稿から行を作る過程、全 `Built`、`hb`、注や印の計算への一般的な接続は残る。
+根拠と残件は [cache の ID と既存の行列の採番](../../docs/research/0352-cache-numbered-rows-dependencies.md) にまとめた。
+
+`CacheBreaker.lean` は、cache を使う番号付けのモデルから、既存の `I5_parts_lines` の採番条件 `hb` を導く。
+全状態に共通の ID の存在を初期の到達と選択から導き、行の ID と、注、はみ出し量、原稿の終了位置の保存を接続する。
+`hold` の保存条件は前提のままであり、本体の全 `Built` と実際の行を作る callback、全制御の終了への接続は残る。
+根拠と残件は [cache から導く parts の採番条件](../../docs/research/0352-cache-breaker-dependencies.md) にまとめた。
+
+`WrappedRowFold.lean` は、回り込む図版の本文の行を左から採番する fold から、内部 ID 一つと全行数の寄与、行の値と順序の保存を導く。
+`WrappedRowFoldFonts.hs` は、キャプション付きの二つの図版について本体の `numberFigure` の 64 例を比較し、うち 16 例では実際の先行単位の採番状態を使う。
+全 `Built`、図版の幾何、Map、caption の計算との一般的一致は残る。
+根拠と残件は [回り込む図版の行列の fold](../../docs/research/0352-wrapped-row-fold-dependencies.md) にまとめた。
+
+
+`BesideScanRows.lean` は、本文の先頭 ID の scan と、先行する本文の行の fold の次の ID とを接続する。
+空でない本文について、表の値と実際の行の fold が追加する最初の行の ID が一致する。
+`BesideScanRowsFonts.hs` は、64 例で本体の先頭 ID の表と行の fold を比較する。
+全 `Built`、Map の検索、全制御と改行器の一致は残る。
+根拠と残件は [本文の先頭 ID と行の fold](../../docs/research/0352-beside-scan-row-dependencies.md) にまとめた。
+
+
+`BesideScanStore.lean` は、キーが重複しない行の scan の保存と、その本文の最初の行の ID を接続する。
+本文の表からキーを選ぶモデルでは一意性を導き、保存した値と既存の `ownedFirstId` の一致を示す。
+`BesideScanRowsFonts.hs` の `BESIDE_SCAN_STORE_LEAN=1` は、前の 384 式に保存後の検索の 96 式を加える。
+全 `Built` と実際の原稿の一般的一致は残る。
+根拠と残件は [本文の先頭 ID の保存](../../docs/research/0352-beside-scan-store-dependencies.md) にまとめた。
