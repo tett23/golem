@@ -2013,3 +2013,9 @@ sh experiments/pagination-proof/check-alloy-diff.sh 97
 `LaterEditsFonts.hs` は、八つの履歴の状態の後の 192 列で、手で置き換えた全三段落の行数と本体の採番を比較する。
 全 `Built` と全呼び出し元の列への接続と、制御の終了は残る。
 根拠と残件は [選択した接尾部の更新列](../../docs/research/0352-later-edits-dependencies.md) にまとめた。
+
+`CacheNumberedRows.lean` は、更新履歴から導いた先頭 ID を使い、既に組んだ行の連結と採番、ID 列、行の値と順序の保存へ接続する。
+採用済みの行数を加えた残りの採番が、全行を同じ開始 ID から採番する結果の接尾部と一致する。
+`CacheNumberedRowsFonts.hs` は、144 例で本体の `numberedLines` の ID と既存の行の値の列を比較する。
+原稿から行を作る過程、全 `Built`、`hb`、注や印の計算への一般的な接続は残る。
+根拠と残件は [cache の ID と既存の行列の採番](../../docs/research/0352-cache-numbered-rows-dependencies.md) にまとめた。

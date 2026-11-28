@@ -347,7 +347,7 @@ if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|implemented_by|exte
   echo "unproved or unchecked Lean declaration in $numberedPayload" >&2
   exit 1
 fi
-LEAN_PATH="$tmp" "$lean" "$numberedPayload"
+LEAN_PATH="$tmp" "$lean" -o "$tmp/NumberedPayload.olean" "$numberedPayload"
 echo "root ADR 0352 I5: numbered composed rows preserve payload, order, split prefixes, and the existing Physical ID projection"
 
 # Derive source progress from the actual selected caption scan and partial trial.
@@ -671,6 +671,16 @@ fi
 LEAN_PATH="$tmp" "$lean" -o "$tmp/LaterEdits.olean" "$laterEdits"
 LEAN_PATH="$tmp" "$lean" "$root/experiments/pagination-proof/LaterEditsBoundary.lean"
 echo "root ADR 0352 I5: finite selected suffix prefixes preserve the current paragraph-begin ID"
+
+# Rebuilt cache IDs number the tail after the committed composed-row prefix.
+cacheNumberedRows=$root/experiments/pagination-proof/CacheNumberedRows.lean
+if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|implemented_by|extern|native_decide)([^A-Za-z_]|$)' "$cacheNumberedRows"; then
+  echo "unproved or unchecked Lean declaration in $cacheNumberedRows" >&2
+  exit 1
+fi
+LEAN_PATH="$tmp" "$lean" -o "$tmp/CacheNumberedRows.olean" "$cacheNumberedRows"
+LEAN_PATH="$tmp" "$lean" "$root/experiments/pagination-proof/CacheNumberedRowsBoundary.lean"
+echo "root ADR 0352 I5: derived cache IDs preserve composed prefix/tail numbering and row payload order"
 
 
 
