@@ -490,6 +490,17 @@ LEAN_PATH="$tmp" "$lean" -o "$tmp/MixedRoundOrder.olean" "$mixedRoundOrder"
 LEAN_PATH="$tmp" "$lean" "$root/experiments/pagination-proof/MixedRoundOrderBoundary.lean"
 echo "root ADR 0352 I5: legal mixed-job rounds retain globally ordered and unique keys"
 
+# Unique selected keys preserve every associated payload at the store boundary.
+roundPayloadStore=$root/experiments/pagination-proof/RoundPayloadStore.lean
+if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|implemented_by|extern|native_decide)([^A-Za-z_]|$)' "$roundPayloadStore"; then
+  echo "unproved or unchecked Lean declaration in $roundPayloadStore" >&2
+  exit 1
+fi
+sh "$root/experiments/pagination-proof/check-side-store-shape.sh"
+LEAN_PATH="$tmp" "$lean" -o "$tmp/RoundPayloadStore.olean" "$roundPayloadStore"
+LEAN_PATH="$tmp" "$lean" "$root/experiments/pagination-proof/RoundPayloadStoreBoundary.lean"
+echo "root ADR 0352 I5: unique mixed-job keys preserve opaque payloads in the modeled association store"
+
 
 
 
