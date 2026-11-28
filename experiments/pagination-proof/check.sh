@@ -682,6 +682,16 @@ LEAN_PATH="$tmp" "$lean" -o "$tmp/CacheNumberedRows.olean" "$cacheNumberedRows"
 LEAN_PATH="$tmp" "$lean" "$root/experiments/pagination-proof/CacheNumberedRowsBoundary.lean"
 echo "root ADR 0352 I5: derived cache IDs preserve composed prefix/tail numbering and row payload order"
 
+# A valid cache-backed numbering family derives the modeled parts hb premise.
+cacheBreaker=$root/experiments/pagination-proof/CacheBreaker.lean
+if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|implemented_by|extern|native_decide)([^A-Za-z_]|$)' "$cacheBreaker"; then
+  echo "unproved or unchecked Lean declaration in $cacheBreaker" >&2
+  exit 1
+fi
+LEAN_PATH="$tmp" "$lean" -o "$tmp/CacheBreaker.olean" "$cacheBreaker"
+LEAN_PATH="$tmp" "$lean" "$root/experiments/pagination-proof/CacheBreakerBoundary.lean"
+echo "root ADR 0352 I5: valid cache-backed row numbering discharges the modeled parts numbering premise"
+
 
 
 

@@ -2019,3 +2019,8 @@ sh experiments/pagination-proof/check-alloy-diff.sh 97
 `CacheNumberedRowsFonts.hs` は、144 例で本体の `numberedLines` の ID と既存の行の値の列を比較する。
 原稿から行を作る過程、全 `Built`、`hb`、注や印の計算への一般的な接続は残る。
 根拠と残件は [cache の ID と既存の行列の採番](../../docs/research/0352-cache-numbered-rows-dependencies.md) にまとめた。
+
+`CacheBreaker.lean` は、cache を使う番号付けのモデルから、既存の `I5_parts_lines` の採番条件 `hb` を導く。
+全状態に共通の ID の存在を初期の到達と選択から導き、行の ID と、注、はみ出し量、原稿の終了位置の保存を接続する。
+`hold` の保存条件は前提のままであり、本体の全 `Built` と実際の行を作る callback、全制御の終了への接続は残る。
+根拠と残件は [cache から導く parts の採番条件](../../docs/research/0352-cache-breaker-dependencies.md) にまとめた。
