@@ -17,7 +17,8 @@
 #                            step but its if and its comments, less six
 #                            spaces of indentation, joined by \n
 #   suites  RUNNER  TARGET   each target of cabal test, with each runner
-#                            whose row runs the step of cabal test: the
+#                            whose row runs cabal test or the serial rest
+#                            helper (root ADR 0481): the
 #                            targets of test-suites.sh for matrix.suites
 #
 # The steps of actions/cache/save are left out: they save caches and check
@@ -116,6 +117,11 @@ awk '
     if (!after) { if (step ~ /(^|\\n)- id: build($|\\n)/) after = 1; return }
     if (step ~ /uses: actions\/cache\/save@/) return
     ns++; S[ns] = step; I[ns] = cond
+    R[ns] = index(step, "sh scripts/ci/run-rest-suites.sh \"$SUITES\"") > 0
+    if (index(step, "scripts/ci/run-rest-suites.sh") > 0 && !R[ns])
+      die("an invocation of run-rest-suites.sh that is not read")
+    if (R[ns] && index(step, "SUITES: ${{ matrix.suites }}") == 0)
+      die("run-rest-suites.sh needs SUITES from matrix.suites")
     T[ns] = index(step, "cabal test $(sh scripts/ci/test-suites.sh \"$SUITES\")") > 0
   }
   /^  [a-z][a-z-]*:$/ { if (job == "build") flush(); job = substr($1, 1, length($1) - 1); next }
@@ -140,7 +146,10 @@ awk '
     for (s = 1; s <= ns; s++) for (row = 1; row <= nr; row++) {
       if (I[s] != "" && !eval_if(I[s])) continue
       print "step\t" M[row, "runner"] "\t" S[s]
-      if (T[s]) print "suites-of\t" M[row, "runner"] "\t" M[row, "suites"]
+      if (T[s] && R[s]) die("a step mixes direct and serial tests")
+      if (R[s] && M[row, "suites"] != "rest-a" && M[row, "suites"] != "rest-b")
+        die("run-rest-suites.sh on a row outside rest-a and rest-b")
+      if (T[s] || R[s]) print "suites-of\t" M[row, "runner"] "\t" M[row, "suites"]
     }
     if (failed) exit 1
   }

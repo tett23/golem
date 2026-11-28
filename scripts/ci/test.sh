@@ -1744,7 +1744,7 @@ step_has() {
 # the step after a line that matches $1 has the condition $2
 step_if() { awk -v s="$1" -v c="$2" 'index($0, s) { getline; if (index($0, c)) found = 1 } END { exit !found }' "$CI_YML"; }
 TEST_STEP="name: The test suites of the runner"
-if step_if "$TEST_STEP" "if: matrix.tests"; then ok; else ng "ci.yml: the tests run on the runners of the tests"; fi
+if step_if "$TEST_STEP" "if: matrix.tests && (matrix.suites == 'driver-a' || matrix.suites == 'driver-b')"; then ok; else ng "ci.yml: the driver tests run on the driver runners"; fi
 if step_has "$TEST_STEP" 'cabal test $(sh scripts/ci/test-suites.sh "$SUITES")' && step_has "$TEST_STEP" 'SUITES: ${{ matrix.suites }}'; then ok; else
   ng "ci.yml: each runner of the tests runs the suites that test-suites.sh gives for its part (docs/adr/0140)"
 fi
@@ -5449,7 +5449,13 @@ CC=$HERE/testdata/ci-checks
 run sh "$HERE/ci-checks.sh" "$CI_YML"
 # The plan and sdist checks, and the golem-color dependency check and suite,
 # were added after this ADR (root ADR 0452, root ADR 0474).
-grep -vF -e 'same-plan.sh' -e 'cabal sdist all' -e 'color-deps.sh' -e 'golem-color:test:golem-color-test' "$WORK/out" >"$WORK/a1" 2>/dev/null
+# Root ADR 0481 changes only the rest invocation, retaining the original
+# checks and environments. Normalize that adopted change for this old
+# snapshot comparison; ci-checks.sh itself reports the real steps.
+grep -vF -e 'same-plan.sh' -e 'cabal sdist all' -e 'color-deps.sh' -e 'golem-color:test:golem-color-test' "$WORK/out" |
+  sed -e 's|The rest test suites of the runner (root ADR 0481)|The test suites of the runner (docs/adr/0140)|' \
+      -e 's|sh scripts/ci/run-rest-suites.sh "\$SUITES"|cabal test $(sh scripts/ci/test-suites.sh "$SUITES")|' |
+  LC_ALL=C sort -u >"$WORK/a1"
 if [ "$CODE" = 0 ] && diff "$WORK/before" "$WORK/a1" >"$WORK/a1.diff"; then ok; else
   ng "ADR 0395 A1: the checks of a pull request are those of the commit before the ADR, on the same architectures"
   sed 's/^/  /' "$WORK/a1.diff" 2>/dev/null | head -40
@@ -6071,6 +6077,165 @@ for j in wasm visual editors-lsp verapdf; do
   if [ "$(perms_of "$CI_YML" "$j")" = "contents: read
 actions: read" ]; then ok; else ng "ci.yml: $j has contents: read and actions: read (root ADR 0442)"; fi
 done
+
+# ---------------------------------------------------------------- root ADR 0481
+# The rest runner obtains a complete list before testing, waits for each
+# cabal command and aggregates failures without changing its environment.
+R481=$WORK/r481
+mkdir -p "$R481/ci" "$R481/bin" "$R481/project"
+if [ -f "$HERE/run-rest-suites.sh" ]; then cp "$HERE/run-rest-suites.sh" "$R481/ci/run-rest-suites.sh"; fi
+printf 'test-wrapper: sentinel-wrapper\n' >"$R481/project/cabal.project.local"
+cp "$R481/project/cabal.project.local" "$R481/local-before"
+cat >"$R481/ci/test-suites.sh" <<'LIST'
+#!/bin/sh
+printf 'list %s\n' "$*" >>"$R481_DIR/events"
+printf '%s' "$R481_TARGETS"
+exit "$R481_LIST_STATUS"
+LIST
+cat >"$R481/bin/cabal" <<'CABAL'
+#!/bin/sh
+target=${3-}
+printf 'start %s\n' "$target" >>"$R481_DIR/events"
+printf 'args %s|%s|%s|%s|%s|%s|%s|%s\n' "$#" "${1-}" "${2-}" "$target" "${GOLEM_REQUIRE_EXTERNAL_TOOLS-unset}" "${GOLEM_PD_BOOKS-unset}" "${TASTY_NO_CREATE-unset}" "$PWD" >>"$R481_DIR/events"
+if ! mkdir "$R481_DIR/active" 2>/dev/null; then
+  echo overlap >>"$R481_DIR/events"
+  exit 99
+fi
+if [ "$R481_DELAY" = 1 ]; then sleep 0.05; fi
+rmdir "$R481_DIR/active"
+printf 'end %s\n' "$target" >>"$R481_DIR/events"
+[ "$#" = 3 ] && [ "${1-}" = test ] && [ "${2-}" = --jobs=1 ] || exit 98
+case " $R481_FAIL_TARGETS " in *" $target "*) exit 7 ;; esac
+exit 0
+CABAL
+chmod +x "$R481/bin/cabal" "$R481/ci/test-suites.sh"
+r481_run() {
+  : >"$R481/events"
+  run env R481_DIR="$R481" R481_TARGETS="$R481_TARGETS" R481_LIST_STATUS="$R481_LIST_STATUS" \
+    R481_DELAY="$R481_DELAY" R481_FAIL_TARGETS="$R481_FAIL_TARGETS" \
+    PATH="$R481/bin:$PATH" GOLEM_REQUIRE_EXTERNAL_TOOLS=sentinel-external \
+    GOLEM_PD_BOOKS=sentinel-books TASTY_NO_CREATE=sentinel-golden \
+    sh -c 'cd "$R481_DIR/project" && exec sh "$R481_DIR/ci/run-rest-suites.sh" "$@"' sh "$@"
+}
+r481_events() {
+  part=$1
+  shift
+  printf 'list %s\n' "$part"
+  for target in "$@"; do
+    printf 'start %s\nargs 3|test|--jobs=1|%s|sentinel-external|sentinel-books|sentinel-golden|%s/project\nend %s\n' "$target" "$target" "$R481" "$target"
+  done
+}
+r481_expect() {
+  if [ "$CODE" = "$2" ] && [ "$(cat "$R481/events")" = "$3" ]; then ok; else
+    ng "$1"
+    sed 's/^/  event: /' "$R481/events"
+  fi
+}
+R481_LIST_STATUS=0 R481_DELAY=0 R481_FAIL_TARGETS=
+R481_TARGETS=
+r481_run rest-a
+r481_expect "root ADR 0481 I1: an empty list runs no suite and succeeds" 0 "list rest-a"
+for part in rest-a rest-b; do
+  R481_TARGETS=golem-a:test:one
+  r481_run "$part"
+  r481_expect "root ADR 0481 I1, I5: $part runs one exact target with jobs one and its inherited environment" 0 "$(r481_events "$part" golem-a:test:one)"
+done
+R481_TARGETS="golem-a:test:one
+golem-b:test:two"
+R481_DELAY=1
+r481_run rest-a
+r481_expect "root ADR 0481 I1, I2: each end precedes the next start in list order" 0 "$(r481_events rest-a golem-a:test:one golem-b:test:two)"
+R481_DELAY=0
+R481_TARGETS="golem-a:test:one
+golem-b:test:two
+golem-c:test:three"
+for failed in golem-a:test:one golem-b:test:two golem-c:test:three; do
+  R481_FAIL_TARGETS=$failed
+  r481_run rest-b
+  r481_expect "root ADR 0481 I1, I3: failure of $failed retains every target and returns one" 1 "$(r481_events rest-b golem-a:test:one golem-b:test:two golem-c:test:three)"
+done
+R481_FAIL_TARGETS="golem-a:test:one golem-c:test:three"
+r481_run rest-a
+r481_expect "root ADR 0481 I3: more than one failure still runs all targets and returns one" 1 "$(r481_events rest-a golem-a:test:one golem-b:test:two golem-c:test:three)"
+R481_FAIL_TARGETS=
+R481_LIST_STATUS=7
+r481_run rest-a
+r481_expect "root ADR 0481 I4: a failing list after partial output runs no suite" 1 "list rest-a"
+R481_LIST_STATUS=0
+r481_run
+r481_expect "root ADR 0481 I4: no argument is rejected before listing or testing" 2 ""
+r481_run rest-a extra
+r481_expect "root ADR 0481 I4: an extra argument is rejected before listing or testing" 2 ""
+for part in driver driver-a driver-b rest all unknown ""; do
+  r481_run "$part"
+  r481_expect "root ADR 0481 I4: unsupported part [$part] is rejected before listing or testing" 2 ""
+done
+if cmp "$R481/local-before" "$R481/project/cabal.project.local" >/dev/null; then ok; else
+  ng "root ADR 0481 I5: the configured test wrapper is not rewritten"
+fi
+R481_REST_STEP="name: The rest test suites of the runner"
+R481_REST_IF="if: matrix.tests && (matrix.suites == 'rest-a' || matrix.suites == 'rest-b')"
+R481_DRIVER_IF="if: matrix.tests && (matrix.suites == 'driver-a' || matrix.suites == 'driver-b')"
+if step_if "$R481_REST_STEP" "$R481_REST_IF" && step_has "$R481_REST_STEP" 'sh scripts/ci/run-rest-suites.sh "$SUITES"' &&
+  step_if "$TEST_STEP" "$R481_DRIVER_IF" && step_has "$TEST_STEP" 'cabal test $(sh scripts/ci/test-suites.sh "$SUITES")'; then ok; else
+  ng "root ADR 0481 I6: only rest uses the serial helper and driver retains its original cabal command"
+fi
+for setting in 'timeout-minutes: 20' 'SUITES: ${{ matrix.suites }}' 'GOLEM_REQUIRE_EXTERNAL_TOOLS: "1"' 'GOLEM_PD_BOOKS: "1"' 'TASTY_NO_CREATE: "true"'; do
+  if step_has "$R481_REST_STEP" "$setting" && step_has "$TEST_STEP" "$setting"; then ok; else
+    ng "root ADR 0481 I5, I6: both test steps retain $setting"
+  fi
+done
+if step_has "name: Rest tests keep the build plan" 'sh scripts/ci/same-plan.sh "$RUNNER_TEMP/plan.json" dist-newstyle/cache/plan.json'; then ok; else
+  ng "root ADR 0481 A3: the rest test step is followed by the existing plan comparison"
+fi
+
+# A rest-only workflow proves that static coverage does not rely on a
+# legacy cabal command in the driver branch to enumerate rest suites.
+mkdir -p "$R481/modules/golem-emet" "$R481/modules/golem-pdf"
+printf 'name: golem-emet\ntest-suite golem-emet-test\n  type: exitcode-stdio-1.0\n' >"$R481/modules/golem-emet/golem-emet.cabal"
+printf 'name: golem-pdf\ntest-suite golem-pdf-test\n  type: exitcode-stdio-1.0\n' >"$R481/modules/golem-pdf/golem-pdf.cabal"
+cat >"$R481/rest.yml" <<'YAML'
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - runner: x
+            tests: true
+            suites: rest-a
+          - runner: x
+            tests: true
+            suites: rest-b
+          - runner: arm
+            tests: true
+            suites: rest-a
+          - runner: arm
+            tests: true
+            suites: rest-b
+    steps:
+      - id: build
+        run: cabal build
+      - name: Rest
+        if: matrix.tests
+        env:
+          SUITES: ${{ matrix.suites }}
+        run: sh scripts/ci/run-rest-suites.sh "$SUITES"
+  ci:
+    needs: [build]
+YAML
+run sh "$HERE/ci-checks.sh" "$R481/rest.yml" "$R481/modules"
+if [ "$CODE" = 0 ] && [ "$(grep '^suites' "$WORK/out")" = "suites	arm	golem-emet:test:golem-emet-test
+suites	arm	golem-pdf:test:golem-pdf-test
+suites	x	golem-emet:test:golem-emet-test
+suites	x	golem-pdf:test:golem-pdf-test" ]; then ok; else
+  ng "root ADR 0481 I6: static coverage follows a rest-only helper on both architectures"
+fi
+sed 's/suites: rest-a/suites: driver-a/' "$R481/rest.yml" >"$R481/driver.yml"
+run sh "$HERE/ci-checks.sh" "$R481/driver.yml" "$R481/modules"
+expect "root ADR 0481 I6: static coverage rejects the rest helper on a driver row" 1
+sed 's|run-rest-suites.sh "$SUITES"|run-rest-suites.sh "rest-a"|' "$R481/rest.yml" >"$R481/hardcoded.yml"
+run sh "$HERE/ci-checks.sh" "$R481/hardcoded.yml" "$R481/modules"
+expect "root ADR 0481 I6: static coverage rejects a hardcoded rest part" 1
 
 printf '%s tests, %s failures, %s skipped\n' "$COUNT" "$FAILURES" "$SKIPPED"
 [ "$FAILURES" -eq 0 ]
