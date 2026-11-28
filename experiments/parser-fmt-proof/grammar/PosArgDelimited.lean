@@ -1,7 +1,9 @@
 import PosArgTrace
 import PosArgDelimitedMetadata
+import PosArgBracketPrefix
 namespace PosArgDelimited
 open PegModel CstWrapper PosArgTrace
+set_option autoImplicit false
 
 private theorem blocked_excludes (separator target : Char)
     (blocked : WordRoundTrip.allowed separator = false)
@@ -44,26 +46,30 @@ private theorem bracket_miss (word : WordRoundTrip.Word) (c : Char)
     contradiction
 
 private theorem splat_prefixes_after_separator (word : WordRoundTrip.Word) (separator : Char) (tail : List Char)
-    (blocked : WordRoundTrip.allowed separator = false) (notBracket : separator ≠ '[') :
+    (blocked : WordRoundTrip.allowed separator = false) (bracketSafe : separator = '[' → word.chars ≠ ['*'] ∧ word.chars ≠ ['*','*']) :
     "*[".toList.isPrefixOf (word.chars ++ separator :: tail) = false ∧
     "**[".toList.isPrefixOf (word.chars ++ separator :: tail) = false := by
-  have bracketSep : ('[' == separator) = false := by
-    cases equal : ('[' == separator) with
-    | false => rfl
-    | true => exact False.elim (notBracket (eq_of_beq equal).symm)
-  have starSep := blocked_excludes separator '*' blocked (by decide)
-  cases chars : word.chars with
-  | nil => exact False.elim (word.nonempty chars)
-  | cons first rest =>
-    cases rest with
-    | nil => simp [List.append,List.isPrefixOf,bracketSep,starSep]
-    | cons second rest =>
-      have secondMiss := bracket_miss word second (by simp [chars])
+  by_cases isBracket : separator = '['
+  · subst separator
+    exact PosArgBracketPrefix.I1_no_splat_prefix word tail (bracketSafe rfl).1 (bracketSafe rfl).2
+  ·
+    have bracketSep : ('[' == separator) = false := by
+      cases equal : ('[' == separator) with
+      | false => rfl
+      | true => exact False.elim (isBracket (eq_of_beq equal).symm)
+    have starSep := blocked_excludes separator '*' blocked (by decide)
+    cases chars : word.chars with
+    | nil => exact False.elim (word.nonempty chars)
+    | cons first rest =>
       cases rest with
-      | nil => simp [List.append,List.isPrefixOf,secondMiss,bracketSep]
-      | cons third rest =>
-        have thirdMiss := bracket_miss word third (by simp [chars])
-        simp [List.append,List.isPrefixOf,secondMiss,thirdMiss]
+      | nil => simp [List.append,List.isPrefixOf,bracketSep,starSep]
+      | cons second rest =>
+        have secondMiss := bracket_miss word second (by simp [chars])
+        cases rest with
+        | nil => simp [List.append,List.isPrefixOf,secondMiss,bracketSep]
+        | cons third rest =>
+          have thirdMiss := bracket_miss word third (by simp [chars])
+          simp [List.append,List.isPrefixOf,secondMiss,thirdMiss]
 
 private theorem keyword_misses_after_separator (word : WordRoundTrip.Word) (separator : Char)
     (tail : List Char) (extra : Nat)
@@ -116,10 +122,10 @@ private theorem negative_miss (fuel : Nat) (child : Expr) (input : List Char)
   rw [miss]
 
 private theorem splat_miss (word : WordRoundTrip.Word) (separator : Char) (tail : List Char) (fuel : Nat)
-    (blocked : WordRoundTrip.allowed separator = false) (notBracket : separator ≠ '[') :
+    (blocked : WordRoundTrip.allowed separator = false) (bracketSafe : separator = '[' → word.chars ≠ ['*'] ∧ word.chars ≠ ['*','*']) :
     recognizeEnv Generated.pegGrammar [] (fuel + 3) (.ref "Splat" [])
       (word.chars ++ separator :: tail) = .ok none := by
-  have prefixes := splat_prefixes_after_separator word separator tail blocked notBracket
+  have prefixes := splat_prefixes_after_separator word separator tail blocked bracketSafe
   have first := literal_miss fuel "**[" "'**['" _ prefixes.2
   have second := literal_miss fuel "*[" "'*['" _ prefixes.1
   change runChoices (fun items => runSequence
@@ -129,7 +135,7 @@ private theorem splat_miss (word : WordRoundTrip.Word) (separator : Char) (tail 
 
 private theorem word_guards (word : WordRoundTrip.Word) (separator : Char) (tail : List Char) (extra : Nat)
     (safe : WordRoundTrip.startsComment word.chars = false)
-    (blocked : WordRoundTrip.allowed separator = false) (notEq : separator ≠ '=') (notBracket : separator ≠ '[') :
+    (blocked : WordRoundTrip.allowed separator = false) (notEq : separator ≠ '=') (bracketSafe : separator = '[' → word.chars ≠ ['*'] ∧ word.chars ≠ ['*','*']) :
     let input := word.chars ++ separator :: tail
     let budget := input.length+12+extra
     recognizeEnv Generated.pegGrammar [] budget noComment input = .ok (some input) ∧
@@ -141,10 +147,10 @@ private theorem word_guards (word : WordRoundTrip.Word) (separator : Char) (tail
   let input := word.chars ++ separator :: tail
   let n := input.length+extra
   have commentPrefix := WordRoundTrip.safe_comment_prefixes input (safe_after_separator word separator tail safe blocked)
-  have splatPrefix := splat_prefixes_after_separator word separator tail blocked notBracket
+  have splatPrefix := splat_prefixes_after_separator word separator tail blocked bracketSafe
   have comment := literal_miss (n+10) "%%" "'%%'" input commentPrefix.1
   have double := literal_miss (n+10) "**[" "'**['" input splatPrefix.2
-  have splat := splat_miss word separator tail (n+8) blocked notBracket
+  have splat := splat_miss word separator tail (n+8) blocked bracketSafe
   have keywordMiss := keyword_misses_after_separator word separator tail extra safe blocked notEq
   dsimp only at keywordMiss
   rw [show (word.chars ++ separator::tail).length+11+extra = n+11 by dsimp [n,input]; omega] at keywordMiss
@@ -154,16 +160,16 @@ private theorem word_guards (word : WordRoundTrip.Word) (separator : Char) (tail
       _ [] items input) [[.ref "Splat" [], .ref "ExprBody" [], .label (.choice [[.ref "RBr" []]]) "close"]] = _
     simp only [runChoices,foldChoice,List.foldlM]
     rw [PegModelTest.sequence_head_miss _ _ [] (.ref "Splat" []) _ input
-      (splat_miss word separator tail (n+7) blocked notBracket)]
+      (splat_miss word separator tail (n+7) blocked bracketSafe)]
     rfl
   have budget : (word.chars ++ separator::tail).length+12+extra = n+12 := by dsimp [n,input]; omega
   rw [budget]
   exact ⟨negative_miss (n+11) _ _ comment,negative_miss (n+11) _ _ keywordMiss,
     negative_miss (n+11) _ _ double,negative_miss (n+11) _ _ splat,argumentMiss⟩
 
-theorem I1_delimited_capture (word : WordRoundTrip.Word) (separator : Char) (tail : List Char) (extra : Nat)
+private theorem boundary_capture (word : WordRoundTrip.Word) (separator : Char) (tail : List Char) (extra : Nat)
     (safe : WordRoundTrip.startsComment word.chars = false)
-    (blocked : WordRoundTrip.allowed separator = false) (notEq : separator ≠ '=') (notBracket : separator ≠ '[') :
+    (blocked : WordRoundTrip.allowed separator = false) (notEq : separator ≠ '=') (bracketSafe : separator = '[' → word.chars ≠ ['*'] ∧ word.chars ≠ ['*','*']) :
     let input := word.chars ++ separator :: tail
     read Generated.pegGrammar (input.length+14+extra) input =
       .ok (some (separator :: tail,[Element.node "Argument" [Element.token "Word" word.chars]])) := by
@@ -173,7 +179,7 @@ theorem I1_delimited_capture (word : WordRoundTrip.Word) (separator : Char) (tai
   let reader : KeywordTrace.Reader := fun name args source =>
     if name == "Argument" && args.isEmpty then ArgumentTrace.read Generated.pegGrammar budget source
     else KeywordTrace.leaf Generated.pegGrammar budget name args source
-  have guards := word_guards word separator tail extra safe blocked notEq notBracket
+  have guards := word_guards word separator tail extra safe blocked notEq bracketSafe
   rcases guards with ⟨comment,keyword,doubleSplat,splat,notSplat⟩
   change recognizeEnv Generated.pegGrammar [] budget noComment input = .ok (some input) at comment
   change recognizeEnv Generated.pegGrammar [] budget noKeyword input = .ok (some input) at keyword
@@ -199,26 +205,26 @@ theorem I1_delimited_capture (word : WordRoundTrip.Word) (separator : Char) (tai
   simp [branches,choices,sequence,expression,noComment,noKeyword,noDoubleSplat,noSplat,comment,keyword,doubleSplat,splat,missing,argument,
     KeywordTrace.finish,Except.map,CstWrapper.wrap,posarg_inline]
 
-theorem I1_delimited_ast (word : WordRoundTrip.Word) (separator : Char) (tail : List Char) (extra : Nat)
+private theorem boundary_ast (word : WordRoundTrip.Word) (separator : Char) (tail : List Char) (extra : Nat)
     (safe : WordRoundTrip.startsComment word.chars = false)
-    (blocked : WordRoundTrip.allowed separator = false) (notEq : separator ≠ '=') (notBracket : separator ≠ '[') :
+    (blocked : WordRoundTrip.allowed separator = false) (notEq : separator ≠ '=') (bracketSafe : separator = '[' → word.chars ≠ ['*'] ∧ word.chars ≠ ['*','*']) :
     let input := word.chars ++ separator :: tail
     ArgumentTrace.lower (read Generated.pegGrammar (input.length+14+extra) input) =
       .ok (some (separator::tail,[.positional (.word word.chars)])) := by
   dsimp only
-  rw [I1_delimited_capture word separator tail extra safe blocked notEq notBracket]
+  rw [boundary_capture word separator tail extra safe blocked notEq bracketSafe]
   rfl
 
 private theorem word_recognizer (word : WordRoundTrip.Word) (separator : Char) (tail : List Char) (extra : Nat)
     (safe : WordRoundTrip.startsComment word.chars = false)
-    (blocked : WordRoundTrip.allowed separator = false) (notEq : separator ≠ '=') (notBracket : separator ≠ '[') :
+    (blocked : WordRoundTrip.allowed separator = false) (notEq : separator ≠ '=') (bracketSafe : separator = '[' → word.chars ≠ ['*'] ∧ word.chars ≠ ['*','*']) :
     let input := word.chars ++ separator :: tail
     recognizeEnv Generated.pegGrammar [] (input.length+14+extra) (.ref "PosArg" []) input =
       .ok (some (separator::tail)) := by
   dsimp only
   let input := word.chars ++ separator::tail
   let budget := input.length+12+extra
-  have guards := word_guards word separator tail extra safe blocked notEq notBracket
+  have guards := word_guards word separator tail extra safe blocked notEq bracketSafe
   rcases guards with ⟨comment,keyword,doubleSplat,splat,notSplat⟩
   change recognizeEnv Generated.pegGrammar [] budget noComment input = .ok (some input) at comment
   change recognizeEnv Generated.pegGrammar [] budget noKeyword input = .ok (some input) at keyword
@@ -239,17 +245,74 @@ private theorem word_recognizer (word : WordRoundTrip.Word) (separator : Char) (
   simp [branches,noComment,noKeyword,noDoubleSplat,noSplat,runChoices,foldChoice,runSequence,
     comment,keyword,doubleSplat,splat,notSplat,argument,Except.map] <;> rfl
 
+private theorem boundary_erasure (word : WordRoundTrip.Word) (separator : Char) (tail : List Char) (extra : Nat)
+    (safe : WordRoundTrip.startsComment word.chars = false)
+    (blocked : WordRoundTrip.allowed separator = false) (notEq : separator ≠ '=') (bracketSafe : separator = '[' → word.chars ≠ ['*'] ∧ word.chars ≠ ['*','*']) :
+    let input := word.chars ++ separator :: tail
+    KeywordTrace.erase (read Generated.pegGrammar (input.length+14+extra) input) =
+      recognizeEnv Generated.pegGrammar [] (input.length+14+extra) (.ref "PosArg" []) input := by
+  dsimp only
+  rw [boundary_capture word separator tail extra safe blocked notEq bracketSafe]
+  simpa only [KeywordTrace.erase,Except.map,Option.map] using (word_recognizer word separator tail extra safe blocked notEq bracketSafe).symm
+
+theorem I1_delimited_capture (word : WordRoundTrip.Word) (separator : Char) (tail : List Char) (extra : Nat)
+    (safe : WordRoundTrip.startsComment word.chars = false)
+    (blocked : WordRoundTrip.allowed separator = false) (notEq : separator ≠ '=') (notBracket : separator ≠ '[') :
+    let input := word.chars ++ separator :: tail
+    read Generated.pegGrammar (input.length+14+extra) input =
+      .ok (some (separator :: tail,[Element.node "Argument" [Element.token "Word" word.chars]])) := by
+  exact boundary_capture word separator tail extra safe blocked notEq
+    (by intro same; exact False.elim (notBracket same))
+
+theorem I1_delimited_ast (word : WordRoundTrip.Word) (separator : Char) (tail : List Char) (extra : Nat)
+    (safe : WordRoundTrip.startsComment word.chars = false)
+    (blocked : WordRoundTrip.allowed separator = false) (notEq : separator ≠ '=') (notBracket : separator ≠ '[') :
+    let input := word.chars ++ separator :: tail
+    ArgumentTrace.lower (read Generated.pegGrammar (input.length+14+extra) input) =
+      .ok (some (separator::tail,[.positional (.word word.chars)])) := by
+  exact boundary_ast word separator tail extra safe blocked notEq
+    (by intro same; exact False.elim (notBracket same))
+
 theorem I1_delimited_erasure (word : WordRoundTrip.Word) (separator : Char) (tail : List Char) (extra : Nat)
     (safe : WordRoundTrip.startsComment word.chars = false)
     (blocked : WordRoundTrip.allowed separator = false) (notEq : separator ≠ '=') (notBracket : separator ≠ '[') :
     let input := word.chars ++ separator :: tail
     KeywordTrace.erase (read Generated.pegGrammar (input.length+14+extra) input) =
       recognizeEnv Generated.pegGrammar [] (input.length+14+extra) (.ref "PosArg" []) input := by
-  dsimp only
-  rw [I1_delimited_capture word separator tail extra safe blocked notEq notBracket]
-  simpa only [KeywordTrace.erase,Except.map,Option.map] using (word_recognizer word separator tail extra safe blocked notEq notBracket).symm
+  exact boundary_erasure word separator tail extra safe blocked notEq
+    (by intro same; exact False.elim (notBracket same))
+
+theorem I1_bracket_capture (word : WordRoundTrip.Word) (tail : List Char) (extra : Nat)
+    (safe : WordRoundTrip.startsComment word.chars = false)
+    (single : word.chars ≠ ['*']) (double : word.chars ≠ ['*','*']) :
+    let input := word.chars ++ '[' :: tail
+    read Generated.pegGrammar (input.length+14+extra) input =
+      .ok (some ('[' :: tail,[Element.node "Argument" [Element.token "Word" word.chars]])) := by
+  exact boundary_capture word '[' tail extra safe (by decide) (by decide)
+    (by intro _; exact ⟨single,double⟩)
+
+theorem I1_bracket_ast (word : WordRoundTrip.Word) (tail : List Char) (extra : Nat)
+    (safe : WordRoundTrip.startsComment word.chars = false)
+    (single : word.chars ≠ ['*']) (double : word.chars ≠ ['*','*']) :
+    let input := word.chars ++ '[' :: tail
+    ArgumentTrace.lower (read Generated.pegGrammar (input.length+14+extra) input) =
+      .ok (some ('['::tail,[.positional (.word word.chars)])) := by
+  exact boundary_ast word '[' tail extra safe (by decide) (by decide)
+    (by intro _; exact ⟨single,double⟩)
+
+theorem I1_bracket_erasure (word : WordRoundTrip.Word) (tail : List Char) (extra : Nat)
+    (safe : WordRoundTrip.startsComment word.chars = false)
+    (single : word.chars ≠ ['*']) (double : word.chars ≠ ['*','*']) :
+    let input := word.chars ++ '[' :: tail
+    KeywordTrace.erase (read Generated.pegGrammar (input.length+14+extra) input) =
+      recognizeEnv Generated.pegGrammar [] (input.length+14+extra) (.ref "PosArg" []) input := by
+  exact boundary_erasure word '[' tail extra safe (by decide) (by decide)
+    (by intro _; exact ⟨single,double⟩)
 
 #print axioms I1_delimited_capture
+#print axioms I1_bracket_capture
 #print axioms I1_delimited_ast
+#print axioms I1_bracket_ast
 #print axioms I1_delimited_erasure
+#print axioms I1_bracket_erasure
 end PosArgDelimited

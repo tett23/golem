@@ -2,6 +2,9 @@
 
 ## 対象と前提
 
+この記録のソース表、依存件数と全体検証は、checkpoint `deccf1262aaf410ae71868c6cf94f4c71fe40a42` の値である。
+左角括弧への一般化による内部証明の変更は、[左角括弧の記録](0351-posarg-bracket-proof-dependencies.md) で分けて扱う。
+
 [PosArgDelimited.lean](../../experiments/parser-fmt-proof/grammar/PosArgDelimited.lean) は、[空白一文字の証明](0351-posarg-word-proof-dependencies.md) から対象を広げ、語の禁止文字で区切った位置引数の捕捉、抽象 AST と認識結果を接続する。
 基準は Word の検証済み増分を main へ合わせた `daad761a81593aa886b2116489218e0c56e5972c` と、この変更のソースである。
 [root ADR 0351](../adr/0351-prove-parser-formatter-round-trips.md) 全体は未完了のままである。

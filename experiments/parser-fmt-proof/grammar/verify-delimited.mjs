@@ -18,7 +18,7 @@ export function verifyDelimited({here,work,lean,growthEnv,original,model,generat
     }
     return result.stdout;
   };
-  for(const name of ['PosArgDelimitedMetadata','PosArgDelimited','PosArgDelimitedBoundary']) {
+  for(const name of ['PosArgBracketPrefix','PosArgDelimitedMetadata','PosArgDelimited','PosArgDelimitedBoundary']) {
     if(join(here,name+'.lean')!==join(work,name+'.lean'))copyFileSync(join(here,name+'.lean'),join(work,name+'.lean'));
     const output=compile(name,name!=='PosArgDelimitedBoundary');
     if(name==='PosArgDelimitedBoundary')assert.match(output,/48 delimited word captures, ASTs and recognizers agree; 4 lexical limits retained/);
@@ -84,5 +84,5 @@ export function verifyDelimited({here,work,lean,growthEnv,original,model,generat
   const metadataOnly=model.split('\n').map(line=>/name := "(?:Eq|Splat)"/.test(line)?line.replaceAll(/line := ([0-9]+)/g,(_,n)=>'line := '+(Number(n)+17)):line).join('\n');
   assert.notEqual(metadataOnly,model);writeFileSync(join(controls,'Generated.lean'),metadataOnly);
   compile('Generated',true,false,undefined,controls);compile('PosArgDelimitedMetadata',false,false,undefined,controls);
-  return {modules:3,fixtures:48,nativeFixtures:48,semanticMutants:3,sourceMutants:2,runtimeWitnesses:3,scopeControls:4,metadataControls:1};
+  return {modules:4,fixtures:48,nativeFixtures:48,semanticMutants:3,sourceMutants:2,runtimeWitnesses:3,scopeControls:4,metadataControls:1};
 }
