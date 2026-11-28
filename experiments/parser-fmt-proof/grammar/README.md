@@ -57,7 +57,7 @@ node experiments/parser-fmt-proof/grammar/check-deferred.mjs \
 ## 保証の範囲と残件
 
 認識モデルの結果は、残りの入力を返す成功、通常の不一致、ラベルエラーなどのエラーである。
-文法に書かれた Haskell の式（アクション）が作る AST の値や、ラベルエラー後の復旧結果は、この結果に含まれない。
+文法の Haskell アクションの戻り値、CST から作る AST の値や、ラベルエラー後の復旧結果は、この結果に含まれない。
 認識の合成は全選択肢について証明し、`deferred-choices.txt` は空になった。
 以下の各増分の選択肢の個数は、その増分を終えた時点の記録である。
 復旧後の AST や `golem fmt` の往復を証明したことにはならない。
@@ -96,7 +96,7 @@ node experiments/parser-fmt-proof/grammar/check-deferred.mjs \
 項目の解析が成功するという仮定は置かない。
 
 この証明は認識処理の合成を扱う。
-子である `ListItem` と `ItemTail` の再帰全体、Haskell のアクションが作る AST、整形の往復の証明は残る。
+子である `ListItem` と `ItemTail` の再帰全体、CST から Haskell が作る AST、整形の往復の証明は残る。
 前提と公理、直接参照と間接参照の区別は [依存関係の記録](../../../docs/research/0351-list-composition-proof-dependencies.md) にある。
 
 回帰では、各ルールの繰り返しの下限、空行の省略、最初と後続の項目種別を変え、未証明の一覧へ戻ることを確かめる。
@@ -118,7 +118,7 @@ node experiments/parser-fmt-proof/grammar/check-deferred.mjs \
 反復の下限、空行の省略、本文参照や先読みを変えた四つの native parser とも照合する。
 
 この増分は、子の解析結果を保持した認識処理の合成である。
-子である `Block` などを含む再帰全体、Haskell のアクションが作る AST の値、復旧、コメントを含む CST、整形と評価の一般的な往復は証明していない。
+子である `Block` などを含む再帰全体、CST から Haskell が作る AST の値、復旧、コメントを含む CST、整形と評価の一般的な往復は証明していない。
 全範囲が終わるまで [root ADR 0351](../../../docs/adr/0351-prove-parser-formatter-round-trips.md) の未実装の状態を保つ。
 
 ## ブロック列の合成
@@ -142,7 +142,7 @@ node experiments/parser-fmt-proof/grammar/check-deferred.mjs \
 この対照は表示指定を変えた有限の例であり、認識規則を手書きの代用品へ置き換えるものではない。
 
 この増分も認識処理の合成に限る。
-子ルールを含む再帰全体、Haskell のアクションが作る AST、復旧、コメントの保存、整形と評価の一般的な往復は未完了である。
+子ルールを含む再帰全体、CST から Haskell が作る AST、復旧、コメントの保存、整形と評価の一般的な往復は未完了である。
 [root ADR 0351](../../../docs/adr/0351-prove-parser-formatter-round-trips.md) の未実装の状態を保つ。
 
 ## ファイル入口の合成
@@ -325,4 +325,29 @@ node --test experiments/parser-fmt-proof/arguments/quoted-values.test.mjs
 ```
 
 公理、前提と残る範囲は [依存関係の記録](../../../docs/research/0351-quoted-keyword-proof-dependencies.md) にある。
+[root ADR 0351](../../../docs/adr/0351-prove-parser-formatter-round-trips.md) の未実装の状態を保つ。
+
+## 語と引用値を混ぜたキーワード引数の列
+
+`MixedKeywords.lean` は、語と引用値を任意に混ぜた列を印字して読むと、名前、Word または StringLit の種類と値が入力順に戻ることを示す。
+名前には Word の条件と、先頭が `%%` でない条件を使う。
+語の値には `%%` を含まない条件を加え、引用値は既存の Part の領域を使う。
+個数と並び順、名前の繰り返しには上限を置かない。
+
+`MixedCanonical.lean` は、この列を実際の `Generated.pegGrammar` の `Arguments` が読み、改行と任意の接尾辞を残すことを示す。
+語と引用値の各一般補題から、省略可能なコメント、位置引数の拒否、反復と引数順の検査を導く。
+公開の入口に、子の成功や結果の一致を仮定しない。
+
+共通の五つの原稿の十一の引数出現を、モデルと実際の Haskell の AST、通常の `golem fmt` の前後で照合する。
+同じ `0.10` を語と引用値にした例では、値の文字が同じでも種類は区別する。
+二度目の整形でバイト列が変わらないことも確かめる。
+Haskell の版とパッケージの選択は、引用値の検査と同じ `ast-probe.mjs` で行う。
+上の CLI のビルドの後に、次を実行する。
+
+```sh
+node --test experiments/parser-fmt-proof/arguments/mixed-values.test.mjs
+```
+
+このモデルは引数の宣言や評価時の検査、Golem の入力全体の検査を扱わず、式、展開、位置引数やコメントを自由に混ぜた引数全体の一般証明でもない。
+公理、前提と残る範囲は [依存関係の記録](../../../docs/research/0351-mixed-keyword-proof-dependencies.md) にある。
 [root ADR 0351](../../../docs/adr/0351-prove-parser-formatter-round-trips.md) の未実装の状態を保つ。

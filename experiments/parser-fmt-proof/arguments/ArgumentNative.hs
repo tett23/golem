@@ -12,7 +12,9 @@ import System.Environment (getArgs)
 argument :: A.Located A.Argument -> J.Value
 argument (A.Located _ (A.Keyword (A.Located _ name) (A.StringLit value))) =
   J.object ["name" J..= name, "kind" J..= ("StringLit" :: T.Text), "value" J..= value]
-argument _ = error "expected one quoted keyword argument"
+argument (A.Located _ (A.Keyword (A.Located _ name) (A.Word value))) =
+  J.object ["name" J..= name, "kind" J..= ("Word" :: T.Text), "value" J..= value]
+argument _ = error "expected one Word or StringLit keyword argument"
 
 main :: IO ()
 main = do
