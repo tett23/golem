@@ -1948,3 +1948,11 @@ sh experiments/pagination-proof/check-alloy-diff.sh 97
 `ClassifiedPrefix.hs` は、表、コード、改段の制御、回り込みの制御を含む実フォントの入力で比較する。
 固定件数の計算と本体の全分岐との一般的な対応は残る。
 根拠と残件は [単位の分類と採番 prefix の依存関係](../../docs/research/0352-classified-prefix-dependencies.md) にまとめた。
+
+`OwnedFirst.lean` は、到達した cache と現在の図版の表から生成した job を使い、所有段落の先頭 ID の一致を導く。
+対象より前の本文の分割、所有者の図版の型と先行する所有者の範囲を、最終定理の自由な前提として渡さない。
+対象がその図版の選択に含まれなければ、所有段落だけの照会として `none` を返す。
+この `none` を本体の全単位の ID が存在しないという意味には使わない。
+`OwnedFirstFonts.hs` は、実フォントで配置した本文の行列を変え、本体の採番の前後と最後の公開定理を比較する。
+全 `Built` からモデルの到達と job の所属を導く一般的な接続は残る。
+根拠と残件は [到達した本文と所有段落の先頭 ID](../../docs/research/0352-owned-first-dependencies.md) にまとめた。

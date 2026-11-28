@@ -572,6 +572,16 @@ LEAN_PATH="$tmp" "$lean" -o "$tmp/ClassifiedPrefix.olean" "$classifiedPrefix"
 LEAN_PATH="$tmp" "$lean" "$root/experiments/pagination-proof/ClassifiedPrefixBoundary.lean"
 echo "root ADR 0352 I5: classified prefixes derive prior owners and reached cache typing before a target update"
 
+# Connect reached payload caches and current figure jobs to owned first IDs.
+ownedFirst=$root/experiments/pagination-proof/OwnedFirst.lean
+if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|implemented_by|extern|native_decide)([^A-Za-z_]|$)' "$ownedFirst"; then
+  echo "unproved or unchecked Lean declaration in $ownedFirst" >&2
+  exit 1
+fi
+LEAN_PATH="$tmp" "$lean" -o "$tmp/OwnedFirst.olean" "$ownedFirst"
+LEAN_PATH="$tmp" "$lean" "$root/experiments/pagination-proof/OwnedFirstBoundary.lean"
+echo "root ADR 0352 I5: owned first IDs are unchanged from reached caches and current figure jobs"
+
 
 
 
