@@ -804,7 +804,7 @@ blockHtml c (Block sp lbl blang body) = case body of
         colgroup
           | null (tableWidths t) = []
           | otherwise = [el "colgroup" [] [el "col" (maybe [] (\w' -> [("style", "width: " <> w')]) (columnWidthCss w)) [] | w <- tableWidths t], nl]
-     in [el "table" (idAttr lbl <> styleClass) (nl : caption <> colgroup <> [el "thead" [] (nl : row "th" (tableHeader t)), nl, el "tbody" [] (nl : concatMap (row "td") (tableRows t)), nl]), nl]
+     in [el "table" (idAttr lbl <> styleClass) (nl : caption <> colgroup <> [el "thead" [] (nl : row "th" (tableHeader t)), nl, el "tbody" [] (nl : concatMap (row "td") (tableRows t)), nl]), nl] <> sidenotes c blang (fromMaybe [] (tableCaption t) <> concat (tableHeader t) <> concat (concat (tableRows t)))
   CodeBlock code ->
     let co = hcCode (cCfg c)
         lang = codeLang code
@@ -830,9 +830,11 @@ blockHtml c (Block sp lbl blang body) = case body of
           | perLine = intercalate [nl] (zipWith line ls (if length texts == length ls then texts else map (\l -> [textOf (clText l)]) ls))
           | otherwise = intercalate [nl] texts
         pre = el "pre" (if wrapped then [] else idAttr lbl) [el "code" (maybe [] (\l -> [("class", "sourceCode language-" <> l)]) lang) content]
-     in if wrapped
-          then [el "figure" ([("class", "listing")] <> idAttr lbl) (caption <> file <> [pre]), nl]
-          else [pre, nl]
+     in ( if wrapped
+            then [el "figure" ([("class", "listing")] <> idAttr lbl) (caption <> file <> [pre]), nl]
+            else [pre, nl]
+        )
+          <> sidenotes c blang (fromMaybe [] (codeCaption code))
   FigureBlock f ->
     let -- a paragraph of the caption with a language is a span of it (docs/adr ADR 0187)
         cap = concat [maybe id (\l x -> [el "span" (langPairs l) x]) pl (inlines c is) | Block _ _ pl (Paragraph _ is) <- figCaption f]
@@ -1314,7 +1316,7 @@ noteText c n = fromMaybe (tshow n) (writeNumber (hcNoteNotation (cCfg c)) (toInt
 
 -- | The sidenotes of a paragraph after it, in the language of the paragraph (docs/adr ADR 0187).
 sidenotes :: Ctx -> Maybe Text -> [Inline] -> [Node]
-sidenotes c lang is = concat [[el "aside" ([("class", "sidenote")] <> maybe [] langPairs lang) (el "span" [("class", "number")] [textOf (tshow n)] : concatMap (inlines c) (noteParagraphs body)), nl] | Sidenote _ n _ body <- is]
+sidenotes c lang is = concat [[el "aside" ([("class", "sidenote")] <> maybe [] langPairs (at <|> lang)) (el "span" [("class", "number")] [textOf (tshow n)] : concatMap (inlines c) (noteParagraphs body)), nl] | (at, _, n, body) <- inlineSidenotes is]
 
 -- | The text of the links of an endnote, in the notation of [endnotes] mark-format (root ADR 0412).
 endnoteText :: Ctx -> Int -> Text

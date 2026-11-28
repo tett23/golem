@@ -1,6 +1,6 @@
 # ADR 0482: 既存の注の欠落修正を既定出力の互換性の例外にする
 
-Status: accepted-pending
+Status: accepted
 
 ## 文脈
 

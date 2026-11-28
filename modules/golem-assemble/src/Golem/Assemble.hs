@@ -30,6 +30,7 @@ module Golem.Assemble
     notesTitle,
     documentNotes,
     documentEndnotes,
+    inlineSidenotes,
     endnotesTitle,
     headingAnchor,
     inlineText,
@@ -303,26 +304,37 @@ block around it (docs/adr ADR 0187).
 -}
 blockNotes :: Maybe Text -> Block -> [(Maybe Text, Inline)]
 blockNotes outer (Block _ _ blang body) = case body of
-  Paragraph _ is -> deep l is
-  Heading _ _ is -> deep l is
+  Paragraph _ is -> noteInlines l is
+  Heading _ _ is -> noteInlines l is
   BulletList items -> concatMap (concatMap (blockNotes l) . itemBlocks) items
   OrderedList items -> concatMap (concatMap (blockNotes l) . itemBlocks) items
-  DefList gs -> concatMap (\(DefGroup ts ds) -> concatMap (deep l) ts <> concatMap (concatMap (blockNotes l)) ds) gs
-  TableBlock t -> concatMap (deep l) (tableHeader t) <> concatMap (concatMap (deep l)) (tableRows t)
+  DefList gs -> concatMap (\(DefGroup ts ds) -> concatMap (noteInlines l) ts <> concatMap (concatMap (blockNotes l)) ds) gs
+  TableBlock t -> maybe [] (noteInlines l) (tableCaption t) <> concatMap (noteInlines l) (tableHeader t) <> concatMap (concatMap (noteInlines l)) (tableRows t)
+  CodeBlock c -> maybe [] (noteInlines l) (codeCaption c)
   FigureBlock f -> concatMap (blockNotes l) (figCaption f)
   FrameBlock _ bs -> concatMap (blockNotes l) bs
   _ -> []
   where
     l = blang <|> outer
-    deep at = concatMap (\i -> (at, i) : nested at i)
-    nested at = \case
-      Kenten _ _ xs -> deep at xs
-      Color _ _ xs -> deep at xs
-      CharStyle _ _ xs -> deep at xs
-      Lang _ t xs -> deep (Just t) xs
-      -- the title a [ref-title] copies may hold notes (docs/adr/0215)
-      Resolved _ _ _ xs -> deep at xs
-      _ -> []
+
+-- The note body has ordinary inlines even when the call is in a ruby base.
+-- Reconstruct only note nodes; do not widen or alter the public inline IR.
+noteInlines :: Maybe Text -> [InlineF r] -> [(Maybe Text, Inline)]
+noteInlines outer = concatMap $ \case
+  Note sp n label body -> [(outer, Note sp n label body)]
+  Sidenote sp n label body -> [(outer, Sidenote sp n label body)]
+  Endnote sp n label body -> [(outer, Endnote sp n label body)]
+  Ruby _ _ segments -> concatMap (noteInlines outer . rsBase) segments
+  Kenten _ _ xs -> noteInlines outer xs
+  Color _ _ xs -> noteInlines outer xs
+  CharStyle _ _ xs -> noteInlines outer xs
+  Lang _ language xs -> noteInlines (Just language) xs
+  Resolved _ _ _ xs -> noteInlines outer xs
+  _ -> []
+
+-- | Sidenotes under inline wrappers, without crossing a note body or a link.
+inlineSidenotes :: [Inline] -> [(Maybe Text, SrcSpan, Int, [Block])]
+inlineSidenotes is = [(language, sp, n, body) | (language, Sidenote sp n _ body) <- noteInlines Nothing is]
 
 {- | The notes of a document in order: their spans, numbers and bodies
 (golem-driver ADR 0026). A body is in a language span of the language of
@@ -697,7 +709,7 @@ collectLabels ns docs = foldl add (Map.empty, []) targets
         Block sp l _ body <- allBlocks bs,
         t <-
           [(name, LabelTarget sp num title (headingAnchor (Just name) sp) fid Nothing) | let (num, title) = describe sp body, Just name <- [l]]
-            <> [(name, LabelTarget nsp (Just (Number nsp (fromIntegral n) Nothing)) [] name fid (Just (NoteTarget ch n))) | (nsp, ch, n, name) <- mapMaybe noteLabel (bodyInlines body)]
+            <> [(name, LabelTarget nsp (Just (Number nsp (fromIntegral n) Nothing)) [] name fid (Just (NoteTarget ch n))) | (nsp, ch, n, name) <- mapMaybe noteLabel [note | (_, note) <- noteInlines Nothing (bodyInlineRoots body)]]
       ]
     -- a note has a number and no title (root ADR 0422)
     noteLabel = \case
@@ -841,14 +853,17 @@ renumberNotes cfg docs = evalState (zipWithM doc (zip (restarts (acNoteNumbering
         BulletList items -> BulletList <$> mapM item items
         OrderedList items -> OrderedList <$> mapM item items
         DefList gs -> DefList <$> mapM (\(DefGroup ts ds) -> DefGroup <$> mapM inls ts <*> mapM (mapM blk) ds) gs
-        TableBlock t -> (\h rows -> TableBlock t {tableHeader = h, tableRows = rows}) <$> mapM inls (tableHeader t) <*> mapM (mapM inls) (tableRows t)
+        TableBlock t -> (\caption h rows -> TableBlock t {tableCaption = caption, tableHeader = h, tableRows = rows}) <$> traverse inls (tableCaption t) <*> mapM inls (tableHeader t) <*> mapM (mapM inls) (tableRows t)
+        CodeBlock c -> (\caption -> CodeBlock c {codeCaption = caption}) <$> traverse inls (codeCaption c)
         FigureBlock f -> (\c -> FigureBlock f {figCaption = c}) <$> mapM blk (figCaption f)
         FrameBlock name bs' -> FrameBlock name <$> mapM blk bs'
         other -> pure other
     item (ListItem n bs) = ListItem n <$> mapM blk bs
+    inls :: [InlineF r] -> State (Int, Int, Int) [InlineF r]
     inls = mapM inl
-    inl :: Inline -> State (Int, Int, Int) Inline
+    inl :: InlineF r -> State (Int, Int, Int) (InlineF r)
     inl = \case
+      Ruby sp annotation segments -> Ruby sp annotation <$> mapM (\segment -> (\xs -> segment {rsBase = xs}) <$> inls (rsBase segment)) segments
       Note sp _ lbl xs -> do
         (n, m, e) <- get
         put (n + 1, m, e)
@@ -881,13 +896,16 @@ to the last list. The blocks are in document order; an item is at the
 block that holds it. Without a list, one range without a place.
 -}
 scopes :: (BlockBody -> Bool) -> (FileId -> Inline -> [a]) -> [Document] -> [(Maybe ListAt, [a])]
-scopes isList itemOf docs = close (foldl step ([], []) events)
+scopes isList itemOf = scopesWith isList (\fid -> concatMap (itemOf fid) . bodyInlines)
+
+scopesWith :: (BlockBody -> Bool) -> (FileId -> BlockBody -> [a]) -> [Document] -> [(Maybe ListAt, [a])]
+scopesWith isList itemsOf docs = close (foldl step ([], []) events)
   where
     events =
       [ ev
       | Document fid bs <- docs,
         Block sp _ _ body <- allBlocks bs,
-        ev <- if isList body then [Left (fid, sp)] else map Right (concatMap (itemOf fid) (bodyInlines body))
+        ev <- if isList body then [Left (fid, sp)] else map Right (itemsOf fid body)
       ]
     -- the lists so far (reversed) and the items waiting for a list (reversed)
     step (done, pending) = \case
@@ -904,7 +922,7 @@ first citation in its range, and the list and number of each mark
 numberCitations :: [Document] -> ([(Maybe ListAt, [(Text, Int)])], Map (FileId, SrcSpan) (Maybe ListAt, Int))
 numberCitations docs =
   -- the keys of a mark in the order written (docs/adr/0266)
-  let lists = scopes isBibliography (\fid -> \case Cite sp is -> [((fid, sp), citKey i) | i <- is]; _ -> []) docs
+  let lists = scopesWith isBibliography (\fid body -> [((fid, sp), key) | (sp, key) <- bodyCitationMarks body]) docs
       numbered = [(at, zip (dedupe (map snd marks)) [1 ..]) | (at, marks) <- lists]
       -- a mark of several keys: the number of its first key
       marksOf = Map.fromListWith (\_ earlier -> earlier) [(m, (at, n)) | ((at, marks), (_, nums)) <- zip lists numbered, (m, k) <- marks, Just n <- [lookup k nums]]
@@ -1067,13 +1085,7 @@ indexReferences hasPages sees =
 
 -- | Inlines of a block body, descending into inline containers.
 bodyInlines :: BlockBody -> [Inline]
-bodyInlines body = concatMap flatten $ case body of
-  Paragraph _ is -> is
-  Heading _ _ is -> is
-  DefList gs -> concat (concatMap dgTerms gs)
-  TableBlock t -> fromMaybe [] (tableCaption t) <> concat (tableHeader t) <> concat (concat (tableRows t))
-  CodeBlock c -> fromMaybe [] (codeCaption c)
-  _ -> []
+bodyInlines body = concatMap flatten (bodyInlineRoots body)
   where
     flatten i =
       i : case i of
@@ -1087,6 +1099,38 @@ bodyInlines body = concatMap flatten $ case body of
         Sidenote _ _ _ bs -> concatMap flatten (concat (noteParagraphs bs))
         Endnote _ _ _ bs -> concatMap flatten (concat (noteParagraphs bs))
         _ -> []
+
+-- The general collector retains its original non-ruby scope. Only the
+-- bibliography collector descends into ruby when it is inside a note body.
+bodyInlineRoots :: BlockBody -> [Inline]
+bodyInlineRoots body = case body of
+  Paragraph _ is -> is
+  Heading _ _ is -> is
+  DefList gs -> concat (concatMap dgTerms gs)
+  TableBlock t -> fromMaybe [] (tableCaption t) <> concat (tableHeader t) <> concat (concat (tableRows t))
+  CodeBlock c -> fromMaybe [] (codeCaption c)
+  _ -> []
+
+bodyCitationMarks :: BlockBody -> [(SrcSpan, Text)]
+bodyCitationMarks body =
+  let flat = bodyInlines body
+   in if any isRuby flat then concatMap (collect False False) (bodyInlineRoots body) else [(sp, citKey item) | Cite sp items <- flat, item <- items]
+  where
+    isRuby = \case Ruby {} -> True; _ -> False
+    collect :: Bool -> Bool -> InlineF r -> [(SrcSpan, Text)]
+    collect inRuby inNote = \case
+      Cite sp items | not inRuby || inNote -> [(sp, citKey item) | item <- items]
+      Ruby _ _ segments -> concatMap (concatMap (collect True inNote) . rsBase) segments
+      Note _ _ _ blocks -> concatMap (concatMap (collect inRuby True)) (noteParagraphs blocks)
+      Sidenote _ _ _ blocks -> concatMap (concatMap (collect inRuby True)) (noteParagraphs blocks)
+      Endnote _ _ _ blocks -> concatMap (concatMap (collect inRuby True)) (noteParagraphs blocks)
+      Kenten _ _ xs -> concatMap (collect inRuby inNote) xs
+      Color _ _ xs -> concatMap (collect inRuby inNote) xs
+      CharStyle _ _ xs -> concatMap (collect inRuby inNote) xs
+      Link _ _ xs -> concatMap (collect inRuby inNote) xs
+      Lang _ _ xs -> concatMap (collect inRuby inNote) xs
+      Resolved _ _ _ xs -> concatMap (collect inRuby inNote) xs
+      _ -> []
 
 {- | Inlines in a language span of the language of their block, if it has
 one (docs/adr ADR 0187): the title of a heading as it is copied.

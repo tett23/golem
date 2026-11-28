@@ -218,6 +218,7 @@ data CodeInfo = CodeInfo
     ciCaptionSize :: !Sp,
     ciCaptionPitch :: !Sp,
     ciCaptionSpan :: !Int,
+    ciCaptionSidenotes :: ![(Int, SrcSpan, [PartLine])],
     -- | the row at the end of a part before the last, with [code] continued
     ciContinued :: !(Maybe Line),
     -- | the bands: the first row from the first row of the block, how many rows and the colour
@@ -235,13 +236,40 @@ data CodeInfo = CodeInfo
   deriving stock (Show)
 
 -- | The caption of a code block as set (golem-driver ADR 0023): its lines, size, pitch, grid lines and index marks.
-data CodeCaption = CodeCaption
-  { ccLines :: [PartLine],
-    ccSize :: Sp,
-    ccPitch :: Sp,
-    ccSpan :: Int,
-    ccMarks :: [SrcSpan]
-  }
+data CodeCaption
+  = CodeCaption
+      { ccLines :: [PartLine],
+        ccSize :: Sp,
+        ccPitch :: Sp,
+        ccSpan :: Int,
+        ccMarks :: [SrcSpan]
+      }
+  | CodeCaptionNotes
+      { ccLines :: [PartLine],
+        ccSize :: Sp,
+        ccPitch :: Sp,
+        ccSpan :: Int,
+        ccMarks :: [SrcSpan],
+        ccFootnotes :: [(NoteId, [Line])]
+      }
+  | CodeCaptionSidenotes
+      { ccLines :: [PartLine],
+        ccSize :: Sp,
+        ccPitch :: Sp,
+        ccSpan :: Int,
+        ccMarks :: [SrcSpan],
+        ccFootnotes :: [(NoteId, [Line])],
+        ccSidenotes :: [(Int, SrcSpan, [PartLine])]
+      }
+
+captionFootnotes :: CodeCaption -> [(NoteId, [Line])]
+captionFootnotes CodeCaption {} = []
+captionFootnotes CodeCaptionNotes {ccFootnotes = notes} = notes
+captionFootnotes CodeCaptionSidenotes {ccFootnotes = notes} = notes
+
+captionSidenotes :: CodeCaption -> [(Int, SrcSpan, [PartLine])]
+captionSidenotes CodeCaptionSidenotes {ccSidenotes = notes} = notes
+captionSidenotes _ = []
 
 {- | A line of a caption or of a sidenote (docs/adr/0367): its row from
 the first line of the part, the rows of space-between included; how far
@@ -800,7 +828,7 @@ layoutFigures reuse numbered inp geom fonts figures = do
           -- numbered per page, the marks take the numbers of their pages, once the pages are settled (docs/adr/0383)
           built = (if numbered then renumberPageNotes pages else id) (built0 {bLines = alignToSpine geom pages (bLines built0)})
           metricsOf sp = let (_, size, pitch) = sidenoteMetrics (docStyle inp (spanFile sp)) geom in (pitch, size)
-          placed = [(poNumber p, placePageSidenotes geom metricsOf (bLines built) p) | p <- pages]
+          placed = [(poNumber p, placePageSidenotes geom (maybe False ((== AlignFree) . gridAlignment) (stPage (piStyle inp) >>= pageGrid)) metricsOf (bLines built) (bTableCaptions built) (bCodes built) p) | p <- pages]
           -- the pages of the table of contents, once, on the settled pages (golem-driver ADR 0009)
           hPages = headingPages (bHeadingSpans built) pages
           pageLbls = pageLabels (bookSections inp) pages
@@ -966,11 +994,13 @@ renumberPageNotes pages built
         { bLines = Map.map setLine (bLines built),
           bTableLines = Map.map (map (fmap setLine)) (bTableLines built),
           bFigures = Map.map (\pf -> pf {pfCaption = map partLine (pfCaption pf)}) (bFigures built),
-          bCodes = Map.map (\ci -> ci {ciCaption = map partLine (ciCaption ci), ciContinued = line <$> ciContinued ci}) (bCodes built),
-          bTableCaptions = Map.map (\cc -> cc {ccLines = map partLine (ccLines cc)}) (bTableCaptions built)
+          bCodes = Map.map (\ci -> ci {ciCaption = map partLine (ciCaption ci), ciCaptionSidenotes = [(row, sp, map partLine ls) | (row, sp, ls) <- ciCaptionSidenotes ci], ciContinued = line <$> ciContinued ci}) (bCodes built),
+          bTableCaptions = Map.map caption (bTableCaptions built)
         }
   where
     fe = bFlowEnv built
+    caption cc@CodeCaptionSidenotes {} = cc {ccLines = map partLine (ccLines cc), ccSidenotes = [(row, sp, map partLine ls) | (row, sp, ls) <- ccSidenotes cc]}
+    caption cc = cc {ccLines = map partLine (ccLines cc)}
     numbers = pageNoteNumbers pages built
     numberOf ch n = Map.findWithDefault n (ch, n) numbers
     env = feBodyEnv fe
@@ -1797,6 +1827,17 @@ sidenoteMetrics style geom =
   let (role, size) = paraFace style geom "sidenote"
    in (role, size, Sp (unSp (pgLinePitch geom) * unSp size `div` unSp (pgFontSize geom)))
 
+-- | Inline lists for collecting note sites, including code captions.
+blockNoteInlineLists :: Block -> [[Inline]]
+blockNoteInlineLists b@(Block _ _ _ body) = case body of
+  CodeBlock c -> maybe [] pure (codeCaption c)
+  BulletList items -> concatMap (concatMap blockNoteInlineLists . itemBlocks) items
+  OrderedList items -> concatMap (concatMap blockNoteInlineLists . itemBlocks) items
+  DefList gs -> concat [dgTerms g <> concatMap (concatMap blockNoteInlineLists) (dgDefs g) | g <- gs]
+  FigureBlock fig -> concatMap blockNoteInlineLists (figCaption fig)
+  FrameBlock _ held -> concatMap blockNoteInlineLists held
+  _ -> blockInlineLists b
+
 {- | Sidenotes the PDF cannot place (golem-driver ADR 0006): in vertical
 writing (G07032), without a sidenote column (G07034), or in a footnote or
 a caption (G07035).
@@ -1810,12 +1851,12 @@ sidenoteDiagnostics geom book
   where
     blocks = concat [bs | Document _ bs <- bookDocs book]
     -- every list of inlines of the book, captions included
-    inlineLists = concatMap blockInlineLists blocks
+    inlineLists = concatMap blockNoteInlineLists blocks
     -- each sidenote, and whether it is in the text flow
     sites = concatMap siteBlock blocks
     siteBlock b@(Block _ _ _ body) = case body of
-      FigureBlock fig -> [(sp, False) | is <- concatMap blockInlineLists (figCaption fig), (sp, _) <- concatMap (inlineSites True) is]
-      _ -> [x | is <- blockInlineLists b, x <- concatMap (inlineSites True) is]
+      FigureBlock fig -> [(sp, False) | is <- concatMap blockNoteInlineLists (figCaption fig), (sp, _) <- concatMap (inlineSites True) is]
+      _ -> [x | is <- blockNoteInlineLists b, x <- concatMap (inlineSites True) is]
     inlineSites flow = \case
       Sidenote sp _ _ nb -> (sp, flow) : concatMap (inlineSites flow) (concat (noteParagraphs nb))
       Note _ _ _ nb -> concatMap (inlineSites False) (concat (noteParagraphs nb))
@@ -1877,14 +1918,20 @@ ADR 0006): each wants the top of the line of its marker; they keep their
 order, half a body pitch apart. Takes the sidenote pitch and size of a
 sidenote by its span (docs/adr ADR 0014).
 -}
-placePageSidenotes :: PageGeometry -> (SrcSpan -> (Sp, Sp)) -> Map Int SetLine -> PageOutAt Sp -> Either [Diagnostic] [PlacedSidenote]
-placePageSidenotes geom metricsOf lineMap p =
+placePageSidenotes :: PageGeometry -> Bool -> (SrcSpan -> (Sp, Sp)) -> Map Int SetLine -> Map Int CodeCaption -> Map Int CodeInfo -> PageOutAt Sp -> Either [Diagnostic] [PlacedSidenote]
+placePageSidenotes geom free metricsOf lineMap tableCaptions codes p =
   let bodyPitch = pgLinePitch geom
       lineIds = \case
         SLine lid -> [lid]
         SHeading lid m -> [lid .. lid + m - 1]
         _ -> []
-      notes =
+      captionNotes slot = \case
+        SLine lid | Just cap <- Map.lookup lid tableCaptions -> atCaption slot (ccPitch cap) (captionSidenotes cap)
+        SCode lid _ _ | Just ci <- Map.lookup lid codes, lid == ciFirst ci -> atCaption slot (ciCaptionPitch ci) (ciCaptionSidenotes ci)
+        _ -> []
+      atCaption slot pitch entries = [(sp, slot + (if free then faceOffset bodyPitch (pgFontSize geom) else 0) + fromIntegral row * pitch, ls) | (row, sp, ls) <- entries]
+      notes = sortOn (\(_, top, _) -> top) (ordinaryNotes <> concat [captionNotes slot item | (slot, item) <- poSlots p])
+      ordinaryNotes =
         [ (sp, slot, ls)
         | (slot, s) <- sortOn fst (poSlots p),
           lid <- lineIds s,
@@ -3375,9 +3422,11 @@ noteCounts book =
 
 -- | The notes and the sidenotes of the book in its order: the channel, the number and the span of each (docs/adr/0383).
 bookNoteSites :: Book -> [(NoteChannel, Int, SrcSpan)]
-bookNoteSites book = concatMap (concatMap inlineNotes) (concatMap blockInlineLists (concat [bs | Document _ bs <- bookDocs book]))
+bookNoteSites book = concatMap (concatMap inlineNotes) (concatMap blockNoteInlineLists (concat [bs | Document _ bs <- bookDocs book]))
   where
+    inlineNotes :: InlineF r -> [(NoteChannel, Int, SrcSpan)]
     inlineNotes = \case
+      Ruby _ _ segments -> concatMap (concatMap inlineNotes . rsBase) segments
       Note sp n _ nb -> (ChannelNote, n, sp) : concatMap inlineNotes (concat (noteParagraphs nb))
       Sidenote sp n _ nb -> (ChannelSidenote, n, sp) : concatMap inlineNotes (concat (noteParagraphs nb))
       -- the endnotes are not numbered per page: their bodies alone (root ADR 0412)
@@ -4286,7 +4335,14 @@ captionLinesOf fe u lead number = \case
         -- in the style of the file of the caption (docs/adr/0389)
         ls = partLines (uStyle u) (feGeom fe) "caption" (feMeasure fe - lead) (\_ width xs -> brLines (breakParagraph captionParams width (fst (composeInlines (captionEnv fe u) xs)))) [captionInlines]
         cb = headingBlock fs pitch cs (partRows ls) 1
-     in CodeCaption ls cs (hbPitch cb) (if null ls then 0 else hbSpan cb) [sp | AnchorIndex _ sp _ <- captionAnchors]
+        notes = unitNotes fe u captionAnchors
+        lineOf = lineIndexOfItems [] (map ptLine ls)
+        sidenotes = [(ptRow row, sp, body) | (i, sp, body) <- unitSidenotes fe u 0 captionAnchors, Just row <- [listToMaybe (drop (lineOf i) ls)]]
+        spanRows = if null ls then 0 else hbSpan cb
+        marks = [sp | AnchorIndex _ sp _ <- captionAnchors]
+     in if not (null sidenotes)
+          then CodeCaptionSidenotes ls cs (hbPitch cb) spanRows marks notes sidenotes
+          else if null notes then CodeCaption ls cs (hbPitch cb) spanRows marks else CodeCaptionNotes ls cs (hbPitch cb) spanRows marks notes
   where
     fs = pgFontSize (feGeom fe)
     pitch = pgLinePitch (feGeom fe)
@@ -4465,7 +4521,7 @@ numberTable fe u tbl r nb = case r of
               (hb : rbs) -> (hb, rbs)
               [] -> ([], [])
             -- the grid lines of the caption, with its index marks on the first; the label on the first line of the table
-            captionBoxes = [LineBox lid [] (if lid == nextId then unitLabel u else []) (if k == (0 :: Int) then ccMarks cap else []) 0 | (k, lid) <- zip [0 ..] capIds]
+            captionBoxes = [LineBox lid [NoteBody key (length body) | k == (0 :: Int), (key, body) <- captionFootnotes cap] (if lid == nextId then unitLabel u else []) (if k == (0 :: Int) then ccMarks cap else []) 0 | (k, lid) <- zip [0 ..] capIds]
             {- a grid line of space before and after a table; none
             after a heading, one between two tables (golem-driver ADR 0031) -}
             spaceBefore :: Int
@@ -4477,7 +4533,7 @@ numberTable fe u tbl r nb = case r of
          in nb
               { nuNext = nextId + capN + sum heights,
                 nuFlow = nuFlow nb <> [FTable rowsStart (fromIntegral spaceBefore * pitch) headerBoxes rowBoxes captionBoxes below, FSpace pitch],
-                nuLines = Map.unions (nuLines nb : Map.fromList [(lid, SetLine emptyLine fs 0 [] [] Nothing) | lid <- capIds] : [m | (_, m, _) <- rowsOut]),
+                nuLines = Map.unions (nuLines nb : Map.fromList [(lid, SetLine emptyLine fs 0 (if lid == nextId then captionFootnotes cap else []) [] Nothing) | lid <- capIds] : [m | (_, m, _) <- rowsOut]),
                 nuTableLines = Map.unions (nuTableLines nb : [m | (_, _, m) <- rowsOut]),
                 nuTables = Map.insert rowsStart (TableGeometry (stWidth t) 0 0 (sum heights)) (nuTables nb),
                 nuTableCaptions = Map.union (Map.fromList [(c0, cap) | c0 <- take 1 capIds]) (nuTableCaptions nb)
@@ -4627,8 +4683,8 @@ numberCode :: Sp -> Unit -> SetCode -> Numbered -> Numbered
 numberCode pitch u cb nb =
   let nextId = nuNext nb
       ids = [nextId .. nextId + length (cbRows cb) - 1]
-      boxes = [LineBox lid [] (if k == 0 then unitLabel u else []) (if k == 0 then cbMarks cb else []) 0 | (k, lid) <- zip [0 :: Int ..] ids]
-      set = Map.fromList [(lid, SetLine l (cbSize cb) (cbIndent cb) [] [] Nothing) | (lid, l) <- zip ids (cbRows cb)]
+      boxes = [LineBox lid [NoteBody key (length body) | k == 0, (key, body) <- cbNotes cb] (if k == 0 then unitLabel u else []) (if k == 0 then cbMarks cb else []) 0 | (k, lid) <- zip [0 :: Int ..] ids]
+      set = Map.fromList [(lid, SetLine l (cbSize cb) (cbIndent cb) (if lid == nextId then cbNotes cb else []) [] Nothing) | (lid, l) <- zip ids (cbRows cb)]
       info = cbInfo cb
    in nb {nuNext = nextId + length ids, nuFlow = nuFlow nb <> [FCode (ciGeometry info) (fromIntegral (ciCaptionSpan info) * pitch) (cbFirstRows cb) (isJust (ciContinued info)) boxes], nuLines = Map.union (nuLines nb) set}
 
@@ -5548,6 +5604,7 @@ data SetCode = SetCode
     cbFirstRows :: Int,
     -- | the index marks of the caption
     cbMarks :: [SrcSpan],
+    cbNotes :: [(NoteId, [Line])],
     -- | G07043
     cbErrors :: [Diagnostic],
     -- | G07030
@@ -5710,6 +5767,7 @@ codeBlockOf atSource geom fonts measure capacity u lead code caption =
                 ciCaptionSize = ccSize caption,
                 ciCaptionPitch = ccPitch caption,
                 ciCaptionSpan = ccSpan caption,
+                ciCaptionSidenotes = captionSidenotes caption,
                 ciContinued = continuedLine,
                 ciBands = bands,
                 ciBorder = border,
@@ -5721,6 +5779,7 @@ codeBlockOf atSource geom fonts measure capacity u lead code caption =
               },
           cbFirstRows = length fileRows + 1,
           cbMarks = ccMarks caption,
+          cbNotes = captionFootnotes caption,
           cbErrors = take 1 errs,
           cbNotices = [notice "G07030" (uSpan u) ("コードの行を折り返しました（" <> T.pack (show wrapped) <> " 行）") | wrapped > 0]
         }
