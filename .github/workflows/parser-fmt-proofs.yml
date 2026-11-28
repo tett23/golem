@@ -28,11 +28,20 @@ jobs:
         if: matrix.model == 'grammar'
         with:
           node-version: lts/*
+      - name: cabal's directory (docs/adr/0201)
+        if: matrix.model != 'arguments/Arguments'
+        run: echo "CABAL_DIR=$HOME/.cabal" >> "$GITHUB_ENV"
       - uses: haskell-actions/setup@0f8e8c99d88aeb3fbfd523f1ef2c6f762d10d64d # v2.12.1
         if: matrix.model != 'arguments/Arguments'
         with:
           ghc-version: "9.10.3"
           cabal-version: "3.18.2.0"
+      - name: cabal uses ~/.cabal (docs/adr/0201)
+        if: matrix.model != 'arguments/Arguments'
+        run: |
+          test "$(cabal path -z --config-file)" = "$HOME/.cabal/config"
+          test "$(cabal path -z --remote-repo-cache)" = "$HOME/.cabal/packages"
+          test "$(cabal path -z --store-dir)" = "$HOME/.cabal/store"
       - name: Update the Cabal index
         if: matrix.model != 'arguments/Arguments'
         run: cabal update
@@ -70,10 +79,17 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: lts/*
+      - name: cabal's directory (docs/adr/0201)
+        run: echo "CABAL_DIR=$HOME/.cabal" >> "$GITHUB_ENV"
       - uses: haskell-actions/setup@0f8e8c99d88aeb3fbfd523f1ef2c6f762d10d64d # v2.12.1
         with:
           ghc-version: "9.10.3"
           cabal-version: "3.18.2.0"
+      - name: cabal uses ~/.cabal (docs/adr/0201)
+        run: |
+          test "$(cabal path -z --config-file)" = "$HOME/.cabal/config"
+          test "$(cabal path -z --remote-repo-cache)" = "$HOME/.cabal/packages"
+          test "$(cabal path -z --store-dir)" = "$HOME/.cabal/store"
       - name: Build the CLI from the scheduled revision
         run: |
           scripts/fetch-wasmtime.sh
