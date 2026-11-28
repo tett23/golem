@@ -1923,3 +1923,9 @@ sh experiments/pagination-proof/check-alloy-diff.sh 97
 `DerivedJobs.hs` は、実フォントの六つの変更で、生成した job が本体の所有者と単位数に対応すること、その job を使った cache の値を照合する。
 本体の Map の列挙と添字の全入力での対応は残る。
 根拠と残件は [図版 job の生成の依存関係](../../docs/research/0352-derived-jobs-dependencies.md) にまとめた。
+
+`FigureTable.lean` は、現在の図版の組から格納表のキーの型を導き、表だけを選択する走査と図版を検査する走査の一致を証明する。
+これにより、生成した表からの job の順序と図版の条件を接続する。
+`FigureTable.hs` は containers の有限な表を、`FigureTableFonts.hs` は実フォントの六つの変更を比較する。
+配置の計算や Map の列挙の全入力での対応は残る。
+根拠と残件は [現在の図版の表の依存関係](../../docs/research/0352-figure-table-dependencies.md) にまとめた。

@@ -532,6 +532,17 @@ LEAN_PATH="$tmp" "$lean" -o "$tmp/DerivedJobs.olean" "$derivedJobs"
 LEAN_PATH="$tmp" "$lean" "$root/experiments/pagination-proof/DerivedJobsBoundary.lean"
 echo "root ADR 0352 I5: source-index job generation derives the ordering and figure premises for payload readback"
 
+# Derive the figure typing of the currently constructed table before job selection.
+figureTable=$root/experiments/pagination-proof/FigureTable.lean
+if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|implemented_by|extern|native_decide)([^A-Za-z_]|$)' "$figureTable"; then
+  echo "unproved or unchecked Lean declaration in $figureTable" >&2
+  exit 1
+fi
+LEAN_PATH="$tmp" "$lean" -o "$tmp/FigureTable.olean" "$figureTable"
+LEAN_PATH="$tmp" "$lean" "$root/experiments/pagination-proof/FigureTableBoundary.lean"
+echo "root ADR 0352 I5: constructed figure tables discharge the type check in the ordered job scan"
+
+
 
 
 
