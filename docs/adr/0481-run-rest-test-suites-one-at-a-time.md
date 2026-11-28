@@ -1,6 +1,6 @@
 # ADR 0481: CI の rest の各脚でスイートを一つずつ実行する
 
-Status: proposed
+Status: accepted-pending
 
 ## 文脈
 
