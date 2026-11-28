@@ -2044,6 +2044,12 @@ sh experiments/pagination-proof/check-alloy-diff.sh 97
 全 `Built` と実際の原稿の一般的一致は残る。
 根拠と残件は [本文の先頭 ID の保存](../../docs/research/0352-beside-scan-store-dependencies.md) にまとめた。
 
+[PartialRetryRank.lean](PartialRetryRank.lean) は、部分採用の再試行が選ばれると、採用数から一行引いた上限が旧 rank 未満であることを証明する。
+正の上限を超える強制配置を除く分岐条件と、試し置きの採用数の既存の上界を使い、二本目の定理では正の上限を入口の述語から取り出す。
+上限 2 で三行を採る旧反例は同じ入力のまま保持し、この分岐が選ばれない対照とする。
+実装との照合は公開試し置き 1,792 入力と残りの行数 0〜6、Lean の境界は九つの閉じた式であり、任意の再組版の行数や実装全体の停止の証明とは区別する。
+公理、生成された展開等式、依存図と残件は [調査](../../docs/research/0352-partial-retry-rank-dependencies.md) に記す。
+
 [NumberedStore.lean](NumberedStore.lean) は、採番した行の検索、本文の行列を追加した後の検索と、それまでの番号の保存を示す。
 旧表の全キーが次の番号より小さい場合には、列からの検索が本体の旧表優先の union と一致することも証明する。
 この前提を任意の `Built` から導くことは残る。
