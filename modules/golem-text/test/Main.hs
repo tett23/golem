@@ -94,17 +94,21 @@ tests =
   testGroup
     "golem-text"
     [ testCase "root ADR 0470 I5: text keeps document occurrence when repeated sources reset note numbers" $
-        forM_ [FootnoteChannel, SidenoteChannel, EndnoteChannel] $ \channel -> do
+        forM_ [(channel, prefixCount, sameChapter) | channel <- [FootnoteChannel, SidenoteChannel, EndnoteChannel], prefixCount <- [0, 1], sameChapter <- [False, True]] $ \(channel, prefixCount, sameChapter) -> do
           let constructor = case channel of FootnoteChannel -> Note; SidenoteChannel -> Sidenote; EndnoteChannel -> Endnote
               items = [citeItem "a"]
               document = Document (FileId 0) [Block (sp 0) Nothing Nothing (Paragraph Nothing [constructor (sp 1) 0 Nothing (noteBody (sp 1) [Cite (sp 3) items])])]
-              cfg = AssembleConfig Map.empty "{n}" Map.empty NumberPerChapter [0, 1] "{n}" "{n}" Map.empty 16 NumberPerChapter
-              (base, diagnostics) = assemble cfg noEval [document, document]
-              scoped = Map.fromList [(NoteCitationContextInDocument (sp 1) channel 1 0 docIndex, (sp 3, items, [CiteText text])) | (docIndex, text) <- [(0, "DOC0"), (1, "DOC1")]]
+              chapterOf = if sameChapter then replicate (prefixCount + 2) 0 else [0 .. prefixCount + 1]
+              cfg = AssembleConfig Map.empty "{n}" Map.empty NumberPerFile chapterOf "{n}" "{n}" Map.empty 16 NumberPerFile
+              (base, diagnostics) = assemble cfg noEval (replicate prefixCount (Document (FileId 0) []) <> [document, document])
+              scoped = Map.fromList [(NoteCitationContextInDocument (sp 1) channel 1 0 docIndex, (sp 3, items, [CiteText text])) | (docIndex, text) <- [(prefixCount, "DOC0"), (prefixCount + 1, "DOC1")]]
               (_, ft) = registerFile "a.gm" emptyFileTable
               output = map snd (renderText "ja" "kanji" False (const (const (0, 0))) lists False Map.empty Horizontal ft base {bookNoteCitationPieces = scoped})
+              counts = map (\text -> (T.count "DOC0" text, T.count "DOC1" text)) output
           diagnostics @?= []
-          map (\text -> (T.count "DOC0" text, T.count "DOC1" text)) output @?= [(1, 0), (0, 1)],
+          if sameChapter && channel /= SidenoteChannel
+            then drop (prefixCount + 1) counts @?= [(1, 1)]
+            else counts @?= replicate prefixCount (0, 0) <> [(1, 0), (0, 1)],
       testCase "root ADR 0470 I5: text consumes note-local ordinals without changing shared-span legacy marks" $
         forM_ [(channel, variant) | channel <- [FootnoteChannel, SidenoteChannel, EndnoteChannel], variant <- [0 :: Int .. 3]] $ \(channel, variant) -> do
           let note = case channel of FootnoteChannel -> Note; SidenoteChannel -> Sidenote; EndnoteChannel -> Endnote

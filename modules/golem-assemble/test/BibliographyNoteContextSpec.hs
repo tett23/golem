@@ -38,14 +38,18 @@ tests :: TestTree
 tests =
   testGroup
     "S1 note citation context"
-    [ testCase "root ADR 0470 I5: repeated source documents retain separate reset note contexts" $ do
-        let config = AssembleConfig Map.empty "{n}" Map.empty NumberPerChapter [0, 1] "{n}" "{n}" Map.empty 16 NumberPerChapter
-            (book, diagnostics) = assemble config (\_ _ _ -> Right "") (notes [note FootnoteChannel 0 [citation]] <> notes [note FootnoteChannel 0 [citation]])
-            occurrences = bibliographyNoteCitations (bookDocs book)
-        diagnostics @?= []
-        map (nccNumber . ncoContext) occurrences @?= [1, 1]
-        Set.size (Set.fromList (map ncoContext occurrences)) @?= 2
-        map ncoContext occurrences @?= [NoteCitationContextInDocument sp FootnoteChannel 1 0 0, NoteCitationContextInDocument sp FootnoteChannel 1 0 1],
+    [ testCase "root ADR 0470 I5: repeated source documents retain separate reset note contexts" $
+        forM_ [(prefixCount, sameChapter) | prefixCount <- [0, 1], sameChapter <- [False, True]] $ \(prefixCount, sameChapter) -> do
+          let numbering = if sameChapter then NumberPerFile else NumberPerChapter
+              chapterOf = if sameChapter then replicate (prefixCount + 2) 0 else [0 .. prefixCount + 1]
+              config = AssembleConfig Map.empty "{n}" Map.empty numbering chapterOf "{n}" "{n}" Map.empty 16 numbering
+              documents = replicate prefixCount (Document (FileId 2) []) <> notes [note FootnoteChannel 0 [citation]] <> notes [note FootnoteChannel 0 [citation]]
+              (book, diagnostics) = assemble config (\_ _ _ -> Right "") documents
+              occurrences = bibliographyNoteCitations (bookDocs book)
+          diagnostics @?= []
+          map (nccNumber . ncoContext) occurrences @?= [1, 1]
+          Set.size (Set.fromList (map ncoContext occurrences)) @?= 2
+          map ncoContext occurrences @?= [NoteCitationContextInDocument sp FootnoteChannel 1 0 k | k <- [prefixCount, prefixCount + 1]],
       testCase "root ADR 0470 I5: document-scoped lookups retain legacy keys without bypassing an exact mismatched payload" $ do
         let config = AssembleConfig Map.empty "{n}" Map.empty NumberPerChapter [] "{n}" "{n}" Map.empty 16 NumberPerChapter
             (book, _) = assemble config (\_ _ _ -> Right "") (notes [note FootnoteChannel 1 [citation]])

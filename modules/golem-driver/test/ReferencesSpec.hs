@@ -306,8 +306,8 @@ bibliographyFormatTests =
           forM_ ["C1", "C2", "C3"] $ \token -> T.count token (allText resolved) @?= 1
         either (assertFailure . show) pure result,
     testCase "root ADR 0470 I5: PDF keeps repeated document note contexts separate" $
-      forM_ [(channel, chapterEnd, inTable) | (channel, chapterEnd) <- [(FootnoteChannel, False), (FootnoteChannel, True), (EndnoteChannel, False), (SidenoteChannel, False)], inTable <- [False, True]] $ \(channel, chapterEnd, inTable) -> do
-        let style = horizontalStyle <> "\n[notes]\nplacement='" <> (if chapterEnd then "chapter-end" else "page-foot") <> "'\n" <> if channel == SidenoteChannel then "\n[sidenotes]\nwidth='6zw'\ngap='1zw'\n" else ""
+      forM_ [(channel, chapterEnd, inTable, prefixCount, sameChapter) | (channel, chapterEnd) <- [(FootnoteChannel, False), (FootnoteChannel, True), (EndnoteChannel, False), (SidenoteChannel, False)], inTable <- [False, True], prefixCount <- [0, 1], sameChapter <- [False, True]] $ \(channel, chapterEnd, inTable, prefixCount, sameChapter) -> do
+        let style = horizontalStyle <> "\n[notes]\nnumbering='file'\nplacement='" <> (if chapterEnd then "chapter-end" else "page-foot") <> "'\n[endnotes]\nnumbering='file'\n" <> if channel == SidenoteChannel then "\n[sidenotes]\nwidth='6zw'\ngap='1zw'\n" else ""
         result <- withMiniInput fakeProvider miniManifest style "seed" [] $ \input geom fonts -> do
           let original = piBook input
               fid = case bookDocs original of Document file _ : _ -> file; _ -> FileId 0
@@ -319,12 +319,13 @@ bibliographyFormatTests =
               note = case channel of FootnoteChannel -> Note; SidenoteChannel -> Sidenote; EndnoteChannel -> Endnote
               content = [Text target "X", note target 1 Nothing [para [mark]]]
               document = Document fid [if inTable then Block target Nothing Nothing (TableBlock (plainTable [AlignLeft] [] [[content]])) else para content]
-              table = Map.fromList [(NoteCitationContextInDocument target channel 1 0 k, (citation, items, [CiteText text])) | (k, text) <- [(0, "DOCZERO"), (1, "DOCONE")]]
-              book = original {bookDocs = [document, document], bookChapterOf = [0, 1], bookNoteCitationPieces = table}
+              table = Map.fromList [(NoteCitationContextInDocument target channel 1 0 k, (citation, items, [CiteText text])) | (k, text) <- [(prefixCount, "DOCZERO"), (prefixCount + 1, "DOCONE")]]
+              chapterOf = if sameChapter then replicate (prefixCount + 2) 0 else [0 .. prefixCount + 1]
+              book = original {bookDocs = replicate prefixCount (Document fid []) <> [document, document], bookChapterOf = chapterOf, bookNoteCitationPieces = table}
               allLines layout = concat [slLine sl : concatMap snd (slNotes sl) | sl <- Map.elems (plLines layout)] <> [ptLine part | placed <- concat (Map.elems (plSidenotes layout)), part <- psLines placed]
               allText layout = T.concat [bcText box | line <- allLines layout, Box _ box <- lineItems line]
           resolved <- layoutPdf input {piBook = book} geom fonts >>= either (assertFailure . show) pure
-          forM_ ["DOCZERO", "DOCONE"] $ \token -> assertEqual (show (channel, chapterEnd, inTable, token)) 1 (T.count token (allText resolved))
+          forM_ ["DOCZERO", "DOCONE"] $ \token -> assertEqual (show (channel, chapterEnd, inTable, prefixCount, sameChapter, token)) 1 (T.count token (allText resolved))
         either (assertFailure . show) pure result,
     testGroup
       "PDF note occurrence consumers"

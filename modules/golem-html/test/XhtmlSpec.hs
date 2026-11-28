@@ -231,15 +231,19 @@ citeLinkTests =
         bodyA cfg0 (assembled [[mark], [bib fidB 0]])
           @?= "<p><span class=\"cite\">[<a href=\"b.xhtml#cite-k\">1</a>, pp.\xA0\&5\x2013\&7]</span></p>\n",
       testCase "root ADR 0470 I5: HTML and XHTML keep document occurrence for repeated reset note sources" $
-        forM_ [FootnoteChannel, SidenoteChannel, EndnoteChannel] $ \channel -> do
+        forM_ [(channel, prefixCount, sameChapter) | channel <- [FootnoteChannel, SidenoteChannel, EndnoteChannel], prefixCount <- [0, 1], sameChapter <- [False, True]] $ \(channel, prefixCount, sameChapter) -> do
           let constructor = case channel of FootnoteChannel -> Note; SidenoteChannel -> Sidenote; EndnoteChannel -> Endnote
               items = [citeItem "a"]
               one = assembled [[para 0 [constructor (at 1) 1 Nothing (noteBody (at 1) [Cite (at 3) items])]]]
-              base = one {bookDocs = bookDocs one <> bookDocs one, bookChapterOf = [0, 1]}
-              scoped = Map.fromList [(NoteCitationContextInDocument (at 1) channel 1 0 docIndex, (at 3, items, [CiteText text])) | (docIndex, text) <- [(0, "DOC0"), (1, "DOC1")]]
+              chapterOf = if sameChapter then replicate (prefixCount + 2) 0 else [0 .. prefixCount + 1]
+              base = one {bookDocs = replicate prefixCount (Document fidA []) <> bookDocs one <> bookDocs one, bookChapterOf = chapterOf}
+              scoped = Map.fromList [(NoteCitationContextInDocument (at 1) channel 1 0 docIndex, (at 3, items, [CiteText text])) | (docIndex, text) <- [(prefixCount, "DOC0"), (prefixCount + 1, "DOC1")]]
           forM_ [renderHtml, renderXhtml] $ \renderer -> do
             let output = [bodyOf page | (name, page) <- sitePages (renderer cfg0 ft base {bookNoteCitationPieces = scoped}), name == "a.html" || name == "a.xhtml"]
-            map (\text -> (T.count "DOC0" text, T.count "DOC1" text)) output @?= [(1, 0), (0, 1)],
+                counts = map (\text -> (T.count "DOC0" text, T.count "DOC1" text)) output
+            if sameChapter && channel /= SidenoteChannel
+              then drop (prefixCount + 1) counts @?= [(1, 1)]
+              else counts @?= replicate prefixCount (0, 0) <> [(1, 0), (0, 1)],
       testCase "root ADR 0470 I5: first-note pieces keep preformatted text and ordinary escaping" $ do
         let mark = para 0 [Cite (at 1) [citeItem "k"]]
             body given = bodyA cfg0 (assembled [[mark], [bib fidB 0]]) {bookCitationPieces = Map.singleton (at 1) [([citeItem "k"], [CiteNoteNumber (at 5) 12 (Just "kanji") given])]}
