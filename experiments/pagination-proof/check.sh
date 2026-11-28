@@ -552,6 +552,17 @@ LEAN_PATH="$tmp" "$lean" -o "$tmp/FigureWindow.olean" "$figureWindow"
 LEAN_PATH="$tmp" "$lean" "$root/experiments/pagination-proof/FigureWindowBoundary.lean"
 echo "root ADR 0352 I5: sorted figure-table enumeration preserves values and agrees with row-based job selection"
 
+# Preserve the selected figure value when initializing each job state.
+figureJobValues=$root/experiments/pagination-proof/FigureJobValues.lean
+if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|implemented_by|extern|native_decide)([^A-Za-z_]|$)' "$figureJobValues"; then
+  echo "unproved or unchecked Lean declaration in $figureJobValues" >&2
+  exit 1
+fi
+LEAN_PATH="$tmp" "$lean" -o "$tmp/FigureJobValues.olean" "$figureJobValues"
+LEAN_PATH="$tmp" "$lean" "$root/experiments/pagination-proof/FigureJobValuesBoundary.lean"
+echo "root ADR 0352 I5: job state initialization receives the selected original figure value"
+
+
 
 
 

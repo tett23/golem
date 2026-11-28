@@ -1935,3 +1935,9 @@ sh experiments/pagination-proof/check-alloy-diff.sh 97
 `FigureWindow.hs` と `FigureWindowFonts.hs` は、containers の有限な表と実フォントの六つの変更で、列挙と job と cache の出力を比較する。
 本体の Map の実装、Int の添字、配置の計算との一般的一致は残る。
 根拠と残件は [図版の表の昇順読み取りの依存関係](../../docs/research/0352-figure-window-dependencies.md) にまとめた。
+
+`FigureJobValues.lean` は、選んだ図版の値を job の初期状態を作る callback へ渡す。
+その値が元の組と格納表の同じキーの値であること、job の順序と図版の条件を保つことを証明する。
+`FigureJobValues.hs` は異なる値を持つ有限な表を、`FigureJobValuesFonts.hs` は実フォントの図版の実際のソース位置を job の状態へ渡して比較する。
+配置の全フィールドと IO、Map の実装との一般的な対応は残る。
+根拠と残件は [図版値と job 状態の依存関係](../../docs/research/0352-job-values-dependencies.md) にまとめた。
