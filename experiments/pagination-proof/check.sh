@@ -703,6 +703,17 @@ LEAN_PATH="$tmp" "$lean" "$root/experiments/pagination-proof/WrappedRowFoldBound
 echo "root ADR 0352 I5: wrapped row folds derive one figure ID plus row counts and preserve composed payload order"
 
 
+# Relate each besideFirsts entry to the first actual row of its chunk fold.
+besideScanRows=$root/experiments/pagination-proof/BesideScanRows.lean
+if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|implemented_by|extern|native_decide)([^A-Za-z_]|$)' "$besideScanRows"; then
+  echo "unproved or unchecked Lean declaration in $besideScanRows" >&2
+  exit 1
+fi
+LEAN_PATH="$tmp" "$lean" -o "$tmp/BesideScanRows.olean" "$besideScanRows"
+LEAN_PATH="$tmp" "$lean" "$root/experiments/pagination-proof/BesideScanRowsBoundary.lean"
+echo "root ADR 0352 I5: beside first-ID scan entries agree with their actual composed-row folds"
+
+
 
 
 

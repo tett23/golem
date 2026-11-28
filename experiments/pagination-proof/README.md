@@ -2029,3 +2029,10 @@ sh experiments/pagination-proof/check-alloy-diff.sh 97
 `WrappedRowFoldFonts.hs` は、キャプション付きの二つの図版について本体の `numberFigure` の 64 例を比較し、うち 16 例では実際の先行単位の採番状態を使う。
 全 `Built`、図版の幾何、Map、caption の計算との一般的一致は残る。
 根拠と残件は [回り込む図版の行列の fold](../../docs/research/0352-wrapped-row-fold-dependencies.md) にまとめた。
+
+
+`BesideScanRows.lean` は、本文の先頭 ID の scan と、先行する本文の行の fold の次の ID とを接続する。
+空でない本文について、表の値と実際の行の fold が追加する最初の行の ID が一致する。
+`BesideScanRowsFonts.hs` は、64 例で本体の先頭 ID の表と行の fold を比較する。
+全 `Built`、Map の検索、全制御と改行器の一致は残る。
+根拠と残件は [本文の先頭 ID と行の fold](../../docs/research/0352-beside-scan-row-dependencies.md) にまとめた。
