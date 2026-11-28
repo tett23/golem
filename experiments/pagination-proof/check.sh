@@ -422,6 +422,15 @@ fi
 LEAN_PATH="$tmp" "$lean" "$selectedCountPrefix"
 echo "root ADR 0352 I5: unique selected keys discharge the inner row-count prefix premise of two-pass numbering"
 
+# Fresh composition only emits paragraph keys, so figures provide real barriers.
+besideProducer=$root/experiments/pagination-proof/BesideProducer.lean
+if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|implemented_by|extern|native_decide)([^A-Za-z_]|$)' "$besideProducer"; then
+  echo "unproved or unchecked Lean declaration in $besideProducer" >&2
+  exit 1
+fi
+LEAN_PATH="$tmp" "$lean" -o "$tmp/BesideProducer.olean" "$besideProducer"
+echo "root ADR 0352 I5: fresh modeled producers exclude figure keys and discharge the figure-barrier guards"
+
 
 
 
