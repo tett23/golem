@@ -49,6 +49,9 @@ tests =
         contextual (\case Nothing -> Just "Oct."; Just _ -> Nothing) ["{!month}missing"] @?= Right [],
       testCase "root ADR 0480 I5, I6: an omitted guarded piece never evaluates an unwritable ordinal" $
         render ["DOI", "edition"] [("DOI", "x"), ("edition", "0")] ["{edition:ordinal-en}{!DOI}"] @?= Right "",
+      testCase "root ADR 0480 I6, I7: only parsed explicit notation slots opt fields into new number views" $ do
+        parsed <- either (assertFailure . T.unpack) pure (parseBibliographyPiece ["edition", "volume"] "\\{edition:ordinal-en\\}{!volume}{edition}{edition?:ordinal-en}{volume:kanji}")
+        [(key, notationName notation) | (key, notation) <- bibliographyPieceNumberNotations parsed] @?= [("edition", "ordinal-en"), ("volume", "kanji")],
       testCase "root ADR 0480 I6: English ordinal suffix boundaries and decimal canonicalization" $
         mapM_
           (\(value, expected) -> render ["edition"] [("edition", value)] ["{edition:ordinal-en} ed."] @?= Right (expected <> " ed."))

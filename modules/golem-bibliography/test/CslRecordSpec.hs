@@ -20,6 +20,15 @@ tests =
             map (`recordText` record) ["DOI", "ISBN", "publisher-place", "collection-title", "collection-number", "edition"] @?= map Just ["10.1000/a", "123", "Tokyo", "Series", "3", "2"]
             ceId (recordEntry record) @?= "a"
           _ -> assertFailure "expected one record",
+      testCase "root ADR 0480 I6, I7: the unscaled integer view keeps the legacy scalar and entry views unchanged" $ do
+        records <- either (assertFailure . show) pure $ decodeCslRecords "[{\"id\":\"a\",\"edition\":123456789012345678901,\"volume\":-123456789012345678901,\"small\":1e0,\"decimal\":1.0,\"string\":\"123456789012345678901\",\"fraction\":1.25,\"huge\":1e1000000000,\"tiny\":1e-1000000000,\"object\":{}}]"
+        case records of
+          [record] -> do
+            map (`recordUnscaledIntegerText` record) ["edition", "volume", "small"] @?= map Just ["123456789012345678901", "-123456789012345678901", "1"]
+            map (`recordUnscaledIntegerText` record) ["decimal", "string", "fraction", "huge", "tiny", "object", "missing"] @?= replicate 7 Nothing
+            recordText "edition" record @?= Nothing
+            ceVolume (recordEntry record) @?= Nothing
+          _ -> assertFailure "expected one record",
       testCase "root ADR 0470 I9: sort keys stay with their corresponding valid author" $ do
         records <- either (assertFailure . show) pure $ decodeCslRecords "[{\"id\":\"a\",\"author\":[{}, {\"family\":\"Kadar\",\"given\":\"Daniel\",\"golem-sort-key\":\"kadar\"}, {\"literal\":\"Team\",\"golem-sort-key\":\"team\"}]}]"
         case records of

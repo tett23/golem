@@ -7,6 +7,7 @@ module Golem.Assemble.BibliographyFormats
   ( BibliographyPiece,
     parseBibliographyPiece,
     bibliographyPieceFields,
+    bibliographyPieceNumberNotations,
     renderBibliographyPieces,
     BibliographyFragment (..),
     renderBibliographyFragments,
@@ -134,3 +135,10 @@ bibliographyPieceFields (BibliographyPiece pieces) = concatMap field pieces
     field (PNumber slot _) = [slotName slot]
     slotName (FieldSlot name _) = name
     slotName (AbsenceSlot name) = name
+
+{- | Only explicit number notations in parsed slots; literal escapes and
+absence conditions do not select a number view (root ADR 0480 I5-I7).
+-}
+bibliographyPieceNumberNotations :: BibliographyPiece -> [(Text, Notation)]
+bibliographyPieceNumberNotations (BibliographyPiece pieces) =
+  [(name, notation) | PNumber (FieldSlot name _) (Just notation) <- pieces]

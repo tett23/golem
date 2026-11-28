@@ -4,6 +4,7 @@ module Golem.Assemble.BibliographyRecords (formatBibliographyLabelWithSuffix, fo
 import Control.Applicative ((<|>))
 import Data.Map.Strict qualified as Map
 import Data.Maybe (fromMaybe, isJust)
+import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Read qualified as TR
@@ -106,6 +107,7 @@ recordFragmentsDeferring :: (Text -> Bool) -> Text -> Bool -> Maybe Integer -> B
 recordFragmentsDeferring defer suffix shortAuthor firstNote style number location record sources = do
   pieces <- traverse (parseBibliographyPiece bibliographyFields) sources
   let fields = concatMap bibliographyPieceFields pieces
+      ordinalFields = Set.fromList [key | piece <- pieces, (key, notation) <- bibliographyPieceNumberNotations piece, notationName notation == "ordinal-en"]
   located <- case location of
     Just at | "locator" `elem` fields -> do
       _ <- maybe (Left ("locator-labels." <> locatorLabelName (locLabel at) <> " がありません")) Right (citationLocatorLabel style location)
@@ -120,7 +122,10 @@ recordFragmentsDeferring defer suffix shortAuthor firstNote style number locatio
       derived = Map.fromList [("author", author), ("editor", editor), ("editor-label", editorLabel), ("number", Just (tshow number)), ("year", year), ("month", month), ("day", day), ("page", page), ("locator", located), ("first-note", tshow <$> firstNote)]
       value key notation
         | key == "month", Just _ <- notation = numericMonth
-        | otherwise = fromMaybe (recordText key record) (Map.lookup key derived)
+        | otherwise = fromMaybe (raw key) (Map.lookup key derived)
+      raw key
+        | Set.member key ordinalFields = recordUnscaledIntegerText key record <|> recordText key record
+        | otherwise = recordText key record
   fragments <- renderBibliographyFragmentsDeferring defer value pieces
   pure [(case fragment of BibliographyField "year" text -> BibliographyField "year" (text <> suffix); _ -> fragment, notation) | (fragment, notation) <- fragments]
   where
