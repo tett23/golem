@@ -582,6 +582,16 @@ LEAN_PATH="$tmp" "$lean" -o "$tmp/OwnedFirst.olean" "$ownedFirst"
 LEAN_PATH="$tmp" "$lean" "$root/experiments/pagination-proof/OwnedFirstBoundary.lean"
 echo "root ADR 0352 I5: owned first IDs are unchanged from reached caches and current figure jobs"
 
+# Preserve the keyed inner numbering scan through its modeled storage.
+ownedFirstScan=$root/experiments/pagination-proof/OwnedFirstScan.lean
+if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|implemented_by|extern|native_decide)([^A-Za-z_]|$)' "$ownedFirstScan"; then
+  echo "unproved or unchecked Lean declaration in $ownedFirstScan" >&2
+  exit 1
+fi
+LEAN_PATH="$tmp" "$lean" -o "$tmp/OwnedFirstScan.olean" "$ownedFirstScan"
+LEAN_PATH="$tmp" "$lean" "$root/experiments/pagination-proof/OwnedFirstScanBoundary.lean"
+echo "root ADR 0352 I5: keyed owned first-ID scans preserve their canonical lookup through storage"
+
 
 
 

@@ -1956,3 +1956,9 @@ sh experiments/pagination-proof/check-alloy-diff.sh 97
 `OwnedFirstFonts.hs` は、実フォントで配置した本文の行列を変え、本体の採番の前後と最後の公開定理を比較する。
 全 `Built` からモデルの到達と job の所属を導く一般的な接続は残る。
 根拠と残件は [到達した本文と所有段落の先頭 ID](../../docs/research/0352-owned-first-dependencies.md) にまとめた。
+
+`OwnedFirstScan.lean` は、所有段落のキーと先頭 ID の列を採番し、格納後の照会が前の先頭 ID のモデルと一致することを示す。
+対象の選択キーの重複がないことを既存の走査から導き、本文の値だけを変えても照会が保たれることへ接続する。
+`OwnedFirstScanFonts.hs` は、本体の内側の `mapAccumL` の列、変更前後の ID と最後の公開定理を比較する。
+全図版の列の連結と本体の全単位の ID の表との一般的な接続は残る。
+根拠と残件は [所有段落の採番列と格納後の照会](../../docs/research/0352-owned-scan-dependencies.md) にまとめた。
