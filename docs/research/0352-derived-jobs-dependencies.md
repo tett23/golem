@@ -22,7 +22,9 @@ job は、その位置、全体の個数から後ろに残る個数、その位�
 ただし、このモデルと本体の全ての job の生成との一般的一致は、証明していない。
 
 本体は、[現在の図版の表](../../modules/golem-typeset/src/Golem/Typeset/Flow.hs#L4865) を現在の `UFigure` の単位から作る。
-[job の生成](../../modules/golem-typeset/src/Golem/Typeset/Flow.hs#L4867) は、その表を `Map.toList` で列挙し、caption の行の列が空で、回り込みの exclusion がある図版を選ぶ。
+[job の生成](../../modules/golem-typeset/src/Golem/Typeset/Flow.hs#L4867) は、その表を `Map.toList` で列挙し、最初の診断列が空で、回り込みの exclusion がある図版を選ぶ。
+[表の値の型](../../modules/golem-typeset/src/Golem/Typeset/Flow.hs#L4323) では、`PlacedFigure` の直後の列が `[Diagnostic]` である。
+caption の本文は [PlacedFigure.pfCaption](../../modules/golem-typeset/src/Golem/Typeset/Flow.hs#L323) にあり、この診断列とは別である。
 モデルの選択 callback は、この図版の配置後の選択を表す。
 配置や caption の計算そのものは、この増分ではモデル化していない。
 Map の列挙の意味論と現在の単位の添字との一般的な接続も残る。

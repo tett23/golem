@@ -8,7 +8,7 @@
 この増分は、[図版 job の生成](0352-derived-jobs-dependencies.md) が検査する図版の型を、現在の図版の表の生成から導く。
 
 本体の [図版の表](../../modules/golem-typeset/src/Golem/Typeset/Flow.hs#L4865) は、現在の `UFigure` の位置だけから作る。
-[job の選択](../../modules/golem-typeset/src/Golem/Typeset/Flow.hs#L4867) は、その表の値が持つ caption と回り込みの exclusion を検査する。
+[job の選択](../../modules/golem-typeset/src/Golem/Typeset/Flow.hs#L4867) は、その表の値の最初の診断列が空で、回り込みの exclusion があることを検査する。
 job の選択で元の単位が図版かどうかをもう一度検査してはいない。
 前のモデルの `jobsFrom` は現在の単位が図版であることも検査するため、この検査が結果を変えない条件を接続する。
 
@@ -122,7 +122,7 @@ graph TD
 [FigureTableFonts.hs](../../experiments/pagination-proof/FigureTableFonts.hs) は、実フォントの初期原稿から、同じ原稿、段落の短縮、旧本文位置への図版、要素の削除、制御の挿入という六つの入力を使う。
 前の `Built` を渡す場合と渡さない場合の行数と採番も比較した。
 現在の単位と、配置された図版の表から、モデルへ配置と選択の結果を渡す。
-本体の図版の値は、caption の行の列が空で、回り込みの exclusion があるかという真偽へ射影する。
+本体の図版の値は、最初の診断列が空で、回り込みの exclusion があるかという真偽へ射影する。
 この表の列 6 件、選ばれた job の列 6 件、前の payload 表を引き継いだ出力の列 6 件の計 18 式が kernel で通った。
 job の残りの長さは、実際の単位数と所有者から算定し、本体の job に fuel のフィールドがあるとは扱わない。
 

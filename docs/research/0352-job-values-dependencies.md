@@ -115,7 +115,7 @@ private の名前は上の表の接頭辞を使う。
 
 [FigureJobValuesFonts.hs](../../experiments/pagination-proof/FigureJobValuesFonts.hs) は、実フォントの初期原稿から、同じ原稿、段落の短縮、旧本文位置への図版、要素の削除、制御の挿入という六つの入力を使う。
 前の `Built` を渡す場合と渡さない場合の行数と採番も比較した。
-図版の値は、実際の `PlacedFigure.pfSpan` の `spanStart` と、caption の行の列が空で回り込みの exclusion があるかという真偽へ射影する。
+図版の値は、実際の `PlacedFigure.pfSpan` の `spanStart` と、最初の診断列が空で回り込みの exclusion があるかという真偽へ射影する。
 観測したソース位置が負でないことを確かめ、有限な照合では Nat として渡す。
 この値のソース位置を job の初期状態へ渡し、実際の図版の表から得たソース位置と比較する。
 
