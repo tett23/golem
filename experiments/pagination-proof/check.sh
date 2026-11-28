@@ -592,6 +592,16 @@ LEAN_PATH="$tmp" "$lean" -o "$tmp/OwnedFirstScan.olean" "$ownedFirstScan"
 LEAN_PATH="$tmp" "$lean" "$root/experiments/pagination-proof/OwnedFirstScanBoundary.lean"
 echo "root ADR 0352 I5: keyed owned first-ID scans preserve their canonical lookup through storage"
 
+# Retain each local owned pair after concatenating all figure-job scans.
+ownedRows=$root/experiments/pagination-proof/OwnedRows.lean
+if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|implemented_by|extern|native_decide)([^A-Za-z_]|$)' "$ownedRows"; then
+  echo "unproved or unchecked Lean declaration in $ownedRows" >&2
+  exit 1
+fi
+LEAN_PATH="$tmp" "$lean" -o "$tmp/OwnedRows.olean" "$ownedRows"
+LEAN_PATH="$tmp" "$lean" "$root/experiments/pagination-proof/OwnedRowsBoundary.lean"
+echo "root ADR 0352 I5: concatenated owned first-ID scans retain local pairs under derived unique keys"
+
 
 
 

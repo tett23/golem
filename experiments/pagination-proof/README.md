@@ -1962,3 +1962,9 @@ sh experiments/pagination-proof/check-alloy-diff.sh 97
 `OwnedFirstScanFonts.hs` は、本体の内側の `mapAccumL` の列、変更前後の ID と最後の公開定理を比較する。
 全図版の列の連結と本体の全単位の ID の表との一般的な接続は残る。
 根拠と残件は [所有段落の採番列と格納後の照会](../../docs/research/0352-owned-scan-dependencies.md) にまとめた。
+
+`OwnedRows.lean` は、複数の図版の選択キーと採番列を job の順に連結する。
+到達した cache と現在の図版 job の生成から全キーの順序と一意性を導き、局所的な採番列の組が全列の格納後も残ることを示す。
+`OwnedRowsFonts.hs` は、本体の図版ごとの採番列の連結とその時点の格納後の照会を比較する。
+全図版の開始 ID の計算と `baseFirsts` との合成の一般的な接続は残る。
+根拠と残件は [図版ごとの採番列の連結](../../docs/research/0352-owned-rows-dependencies.md) にまとめた。
