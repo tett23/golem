@@ -29,11 +29,12 @@ import System.IO.Temp (withSystemTempDirectory)
 
 main :: IO ()
 main = withSystemTempDirectory "golem-built-firsts" $ \tmp -> do
-  rowStoreMode <- (== Just "1") <$> lookupEnv "NUMBERED_ROW_STORE_LEAN"
+  eventStoreMode <- (== Just "1") <$> lookupEnv "NUMBERED_EVENT_STORE_LEAN"
+  rowStoreMode <- (|| eventStoreMode) . (== Just "1") <$> lookupEnv "NUMBERED_ROW_STORE_LEAN"
   storeMode <- (|| rowStoreMode) . (== Just "1") <$> lookupEnv "BESIDE_SCAN_STORE_LEAN"
   leanMode <- (|| storeMode) . (== Just "1") <$> lookupEnv "BESIDE_SCAN_ROWS_LEAN"
   let report = if leanMode then hPutStrLn stderr else putStrLn
-  when leanMode $ putStrLn ((if rowStoreMode then "import NumberedStore\nimport BesideScanStore" else if storeMode then "import BesideScanStore" else "import BesideScanRows") <> "\nopen BesideScanRows BesideWrappedRowFold NumberedPayload BesideOwnership CausalFirstIds\nprivate def bodyAt (xs : List (Option (List Nat))) (key : Nat) : Option (List Nat) := match xs[key]? with | none => none | some value => value")
+  when leanMode $ putStrLn ((if eventStoreMode then "import NumberedEventStore\nimport NumberedStore\nimport BesideScanStore" else if rowStoreMode then "import NumberedStore\nimport BesideScanStore" else if storeMode then "import BesideScanStore" else "import BesideScanRows") <> "\nopen BesideScanRows BesideWrappedRowFold NumberedPayload BesideOwnership CausalFirstIds\nprivate def bodyAt (xs : List (Option (List Nat))) (key : Nat) : Option (List Nat) := match xs[key]? with | none => none | some value => value")
   TIO.writeFile (tmp </> "manifest.toml") "chapters = [\"a.gm\"]\n[metadata]\nid = \"urn:uuid:03520000-0000-4000-8000-000000000001\"\ntitle = \"0352 numbering fixture\"\nlanguage = \"ja\"\ndate = 2026-11-28\n[[metadata.creators]]\nname = \"Fixture\"\nrole = \"author\"\n[source]\nparagraph-separator = \"blank-line\"\n[targets.pdf]\n"
   TIO.writeFile (tmp </> "style.toml") "[page]\nsize = \"A5\"\nbinding = \"left\"\nwriting-mode = \"horizontal\"\n[page.grid]\nfont-size = \"10pt\"\ncharacters = 20\nlines = 30\nline-pitch = \"15pt\"\ncolumns = 1\nalignment = \"free\"\nposition = { top = \"18mm\", gutter = \"20mm\" }\n[fonts.body]\nja = \"NotoSerifJP-Regular.otf\"\n"
   TIO.appendFile (tmp </> "style.toml") "[fonts.caption]\nja = \"NotoSerifJP-Regular.otf\"\n[paragraph-styles.caption]\nfont = \"caption\"\n"
@@ -135,6 +136,14 @@ main = withSystemTempDirectory "golem-built-firsts" $ \tmp -> do
                     putStrLn ("example : " <> stored <> show ident <> " = some " <> show token <> " := by decide")
                   putStrLn ("example : " <> stored <> show first <> " = none := by decide")
                   putStrLn ("example : " <> stored <> show (F.nuNext after) <> " = none := by decide")
+                when eventStoreMode $ do
+                  let priorTable = Map.fromList oldPairs
+                      eventsExpr = "([" <> intercalate ", " [maybe ".reserve 1" (\token -> ".rows [" <> show token <> "]") (Map.lookup ident priorTable) | ident <- [0 .. first]] <> "] : List (NumberedEventStore.RowEvent Nat))"
+                      stateExpr = "(NumberedEventStore.runEvents (⟨0, []⟩ : RowState Nat) " <> eventsExpr <> ")"
+                  putStrLn ("example : (" <> stateExpr <> ".next, " <> stateExpr <> ".rows) = (" <> show (first + 1) <> ", " <> show oldPairs <> ") := by decide")
+                  putStrLn ("example : NumberedEventStore.Fresh " <> stateExpr <> " := NumberedEventStore.root_adr0352_i5_event_fold_fresh ⟨0, []⟩ " <> eventsExpr <> " (by intro key value h; cases h)")
+                  putStrLn ("example : (runChunks " <> stateExpr <> " " <> chunksExpr <> ").rows = " <> show allPairs <> " := by decide")
+                  putStrLn ("example (key : Nat) : BesideStore.fromPairs (runChunks " <> stateExpr <> " " <> chunksExpr <> ").rows key = (match BesideStore.fromPairs " <> stateExpr <> ".rows key with | some value => some value | none => BesideStore.fromPairs (numberRows " <> stateExpr <> ".next (flatten " <> chunksExpr <> ")) key) := by\n  have check := NumberedEventStore.root_adr0352_i5_initial_events_left_union " <> eventsExpr <> " " <> chunksExpr <> " 0 key\n  cases found : BesideStore.fromPairs " <> stateExpr <> ".rows key <;> simpa [found] using check")
         report "root ADR 0352 I5: 64 captioned wrapped folds agree with their Built beside first-ID tables; 16 use the actual source prefix; ordered payload and prior rows are retained"
       _ -> error "fixture evaluation or geometry failed"
   where
