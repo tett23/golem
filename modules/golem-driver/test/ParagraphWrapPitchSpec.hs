@@ -35,8 +35,7 @@ paragraphWrapPitchTests =
               let text = T.concat (lineTexts layout)
               T.filter (not . isSpace) text @?= T.filter (not . isSpace) body
               let placed = [ident | page <- plPages layout, (_, SLine ident) <- poSlots page]
-              placed @?= nub placed
-              length placed @?= Map.size (plLines layout)
+              placed @?= Map.keys (plLines layout)
               assertBool "placed rows exist" (not (null (plPages layout)))
             assertBool "forced placement finishes without repeating the same retry" (case result of Just () -> True; Nothing -> False)
         | lastKeep <- [2 :: Int, 4],

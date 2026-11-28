@@ -85,5 +85,23 @@ flowchart TD
   caller_consumes -. 間接依存 .-> Quot.sound
 ```
 
+全体の `experiments/pagination-proof/check.sh` も終了コード 0 で完了した。
+配置 156,520 入力、回り込み試行 10,368 件、回り込み原稿 4,864 件、Knuth-Plass 34,586 入力と実フォントの caption 40 例でモデルと実装が一致した。
+42 件の Alloy コマンドには Lean の対応と転記上の対応があり、この実行で Alloy solver を再実行したという意味ではない。
+`WrapCalls.lean` の `partsEntrySafe` にも同じ二つの条件を反映し、呼出し元との構造照合を通した。
+最初の全体実行ではこの構造照合が旧条件を検出して止まり、同期した後に全体を再実行した。
+
+この照合では、専用ビルドの package DB を読む `runghc-driver` と、計画や cache を書き換えず渡されたコマンドを実行する `cabal exec` 用のラッパーを使った。
+通常の Cabal 環境を暗黙に選んだ結果とは区別する。
+実行条件は次のとおりである。
+
+```sh
+PATH=/private/tmp/golem-0483-tools-nov28:$PATH \
+CABAL_PLAN=/private/tmp/golem-0483-dist-nov28/cache/plan.json \
+RUNGHC=/private/tmp/golem-0483-tools-nov28/runghc-driver \
+LEAN=/Users/tett23/.elan/toolchains/leanprover--lean4---v4.7.0/bin/lean \
+sh experiments/pagination-proof/check.sh
+```
+
 これらは有限の具体例であり、任意の本文や実装の全呼出し元に対する終了証明ではない。
 [root ADR 0352](../adr/0352-prove-pagination-in-lean.md) の `Built`、全制御、一般の caption と改行関数の実装との対応は未完了のままである。
