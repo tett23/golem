@@ -94,10 +94,17 @@ tests =
   testGroup
     "golem-text"
     [ testCase "root ADR 0470 I5: text keeps document occurrence when repeated sources reset note numbers" $
-        forM_ [(channel, prefixCount, sameChapter) | channel <- [FootnoteChannel, SidenoteChannel, EndnoteChannel], prefixCount <- [0, 1], sameChapter <- [False, True]] $ \(channel, prefixCount, sameChapter) -> do
-          let constructor = case channel of FootnoteChannel -> Note; SidenoteChannel -> Sidenote; EndnoteChannel -> Endnote
-              items = [citeItem "a"]
-              document = Document (FileId 0) [Block (sp 0) Nothing Nothing (Paragraph Nothing [constructor (sp 1) 0 Nothing (noteBody (sp 1) [Cite (sp 3) items])])]
+        forM_ [(channel, site, prefixCount, sameChapter) | channel <- [FootnoteChannel, SidenoteChannel, EndnoteChannel], site <- [0 :: Int .. 4], prefixCount <- [0, 1], sameChapter <- [False, True]] $ \(channel, site, prefixCount, sameChapter) -> do
+          let items = [citeItem "a"]
+              call :: InlineF r
+              call = (case channel of FootnoteChannel -> Note; SidenoteChannel -> Sidenote; EndnoteChannel -> Endnote) (sp 1) 0 Nothing (noteBody (sp 1) [Cite (sp 3) items])
+              body = case site of
+                1 -> TableBlock (plainTable [AlignLeft] [] [[[call]]])
+                2 -> TableBlock ((plainTable [AlignLeft] [] [[[Text (sp 0) "cell"]]]) {tableCaption = Just [call], tableNoNumber = True})
+                3 -> CodeBlock (Code Nothing Nothing Nothing (Just [call]) True [] False)
+                4 -> Paragraph Nothing [Ruby (sp 0) () [RubySegment [call] (Just "じ")]]
+                _ -> Paragraph Nothing [call]
+              document = Document (FileId 0) [Block (sp 0) Nothing Nothing body]
               chapterOf = if sameChapter then replicate (prefixCount + 2) 0 else [0 .. prefixCount + 1]
               cfg = AssembleConfig Map.empty "{n}" Map.empty NumberPerFile chapterOf "{n}" "{n}" Map.empty 16 NumberPerFile
               (base, diagnostics) = assemble cfg noEval (replicate prefixCount (Document (FileId 0) []) <> [document, document])

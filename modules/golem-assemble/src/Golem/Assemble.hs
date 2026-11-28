@@ -286,9 +286,11 @@ data Book = Book
 -}
 type ListAt = (FileId, SrcSpan)
 
--- | All citation marks, in document order, including those in notes.
+{- | Citation marks in collection order, including notes inside ruby.
+Raw ruby marks outside notes retain their legacy collection scope.
+-}
 bookCitationItems :: Book -> [(SrcSpan, [CiteItem ()])]
-bookCitationItems book = [(sp, items) | Document _ blocks <- bookDocs book, Block _ _ _ body <- allBlocks blocks, Cite sp items <- bodyInlines body]
+bookCitationItems book = concat [bodyCitationItems body | Document _ blocks <- bookDocs book, Block _ _ _ body <- allBlocks blocks]
 
 -- | A prepared mark, or the legacy numeric representation.
 citationPiecesFor :: Book -> SrcSpan -> [(CiteItem r, Maybe Int)] -> [CitePiece]
@@ -1198,14 +1200,18 @@ bodyInlineRoots body = case body of
   _ -> []
 
 bodyCitationMarks :: BlockBody -> [(SrcSpan, Text)]
-bodyCitationMarks body =
+bodyCitationMarks body = [(sp, citKey item) | (sp, items) <- bodyCitationItems body, item <- items]
+
+-- Share the accepted note-only ruby scope with the declaration payload inventory.
+bodyCitationItems :: BlockBody -> [(SrcSpan, [CiteItem ()])]
+bodyCitationItems body =
   let flat = bodyInlines body
-   in if any isRuby flat then concatMap (collect False False) (bodyInlineRoots body) else [(sp, citKey item) | Cite sp items <- flat, item <- items]
+   in if any isRuby flat then concatMap (collect False False) (bodyInlineRoots body) else [(sp, items) | Cite sp items <- flat]
   where
     isRuby = \case Ruby {} -> True; _ -> False
-    collect :: Bool -> Bool -> InlineF r -> [(SrcSpan, Text)]
+    collect :: Bool -> Bool -> InlineF r -> [(SrcSpan, [CiteItem ()])]
     collect inRuby inNote = \case
-      Cite sp items | not inRuby || inNote -> [(sp, citKey item) | item <- items]
+      Cite sp items | not inRuby || inNote -> [(sp, map void items)]
       Ruby _ _ segments -> concatMap (concatMap (collect True inNote) . rsBase) segments
       Note _ _ _ blocks -> concatMap (concatMap (collect inRuby True)) (noteParagraphs blocks)
       Sidenote _ _ _ blocks -> concatMap (concatMap (collect inRuby True)) (noteParagraphs blocks)

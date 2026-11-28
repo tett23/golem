@@ -231,10 +231,17 @@ citeLinkTests =
         bodyA cfg0 (assembled [[mark], [bib fidB 0]])
           @?= "<p><span class=\"cite\">[<a href=\"b.xhtml#cite-k\">1</a>, pp.\xA0\&5\x2013\&7]</span></p>\n",
       testCase "root ADR 0470 I5: HTML and XHTML keep document occurrence for repeated reset note sources" $
-        forM_ [(channel, prefixCount, sameChapter) | channel <- [FootnoteChannel, SidenoteChannel, EndnoteChannel], prefixCount <- [0, 1], sameChapter <- [False, True]] $ \(channel, prefixCount, sameChapter) -> do
-          let constructor = case channel of FootnoteChannel -> Note; SidenoteChannel -> Sidenote; EndnoteChannel -> Endnote
-              items = [citeItem "a"]
-              one = assembled [[para 0 [constructor (at 1) 1 Nothing (noteBody (at 1) [Cite (at 3) items])]]]
+        forM_ [(channel, site, prefixCount, sameChapter) | channel <- [FootnoteChannel, SidenoteChannel, EndnoteChannel], site <- [0 :: Int .. 4], prefixCount <- [0, 1], sameChapter <- [False, True]] $ \(channel, site, prefixCount, sameChapter) -> do
+          let items = [citeItem "a"]
+              call :: InlineF r
+              call = (case channel of FootnoteChannel -> Note; SidenoteChannel -> Sidenote; EndnoteChannel -> Endnote) (at 1) 1 Nothing (noteBody (at 1) [Cite (at 3) items])
+              body = case site of
+                1 -> TableBlock (plainTable [AlignLeft] [] [[[call]]])
+                2 -> TableBlock ((plainTable [AlignLeft] [] [[[Text (at 0) "cell"]]]) {tableCaption = Just [call], tableNoNumber = True})
+                3 -> CodeBlock (Code Nothing Nothing Nothing (Just [call]) True [] False)
+                4 -> Paragraph Nothing [Ruby (at 0) () [RubySegment [call] (Just "じ")]]
+                _ -> Paragraph Nothing [call]
+              one = assembled [[Block (at 0) Nothing Nothing body]]
               chapterOf = if sameChapter then replicate (prefixCount + 2) 0 else [0 .. prefixCount + 1]
               base = one {bookDocs = replicate prefixCount (Document fidA []) <> bookDocs one <> bookDocs one, bookChapterOf = chapterOf}
               scoped = Map.fromList [(NoteCitationContextInDocument (at 1) channel 1 0 docIndex, (at 3, items, [CiteText text])) | (docIndex, text) <- [(prefixCount, "DOC0"), (prefixCount + 1, "DOC1")]]

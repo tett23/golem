@@ -18,7 +18,7 @@ import Golem.Assemble.BibliographyStyle
 import Golem.Bibliography (EntryPart (..), entryText, formatEntry)
 import Golem.Bibliography.Csl (recordEntry, recordText)
 import Golem.Doc.Citation (CitePiece (..), citationText)
-import Golem.Doc.IR (Alignment (..), Block (..), BlockBody (..), CiteItem (..), Document (..), Inline, InlineF (..), citeItem, noteBody, plainTable)
+import Golem.Doc.IR (Alignment (..), Block (..), BlockBody (..), CiteItem (..), Code (..), Document (..), Inline, InlineF (..), citeItem, noteBody, plainTable, tableCaption)
 import Golem.Driver
 import Golem.Eval.File (EvalResult (..))
 import Golem.Evaluate (loadBibliographyRecords)
@@ -306,7 +306,7 @@ bibliographyFormatTests =
           forM_ ["C1", "C2", "C3"] $ \token -> T.count token (allText resolved) @?= 1
         either (assertFailure . show) pure result,
     testCase "root ADR 0470 I5: PDF keeps repeated document note contexts separate" $
-      forM_ [(channel, chapterEnd, inTable, prefixCount, sameChapter) | (channel, chapterEnd) <- [(FootnoteChannel, False), (FootnoteChannel, True), (EndnoteChannel, False), (SidenoteChannel, False)], inTable <- [False, True], prefixCount <- [0, 1], sameChapter <- [False, True]] $ \(channel, chapterEnd, inTable, prefixCount, sameChapter) -> do
+      forM_ [(channel, chapterEnd, site, prefixCount, sameChapter) | (channel, chapterEnd) <- [(FootnoteChannel, False), (FootnoteChannel, True), (EndnoteChannel, False), (SidenoteChannel, False)], site <- [0 :: Int .. 3], prefixCount <- [0, 1], sameChapter <- [False, True]] $ \(channel, chapterEnd, site, prefixCount, sameChapter) -> do
         let style = horizontalStyle <> "\n[notes]\nnumbering='file'\nplacement='" <> (if chapterEnd then "chapter-end" else "page-foot") <> "'\n[endnotes]\nnumbering='file'\n" <> if channel == SidenoteChannel then "\n[sidenotes]\nwidth='6zw'\ngap='1zw'\n" else ""
         result <- withMiniInput fakeProvider miniManifest style "seed" [] $ \input geom fonts -> do
           let original = piBook input
@@ -318,14 +318,22 @@ bibliographyFormatTests =
               para xs = Block target Nothing Nothing (Paragraph Nothing xs)
               note = case channel of FootnoteChannel -> Note; SidenoteChannel -> Sidenote; EndnoteChannel -> Endnote
               content = [Text target "X", note target 1 Nothing [para [mark]]]
-              document = Document fid [if inTable then Block target Nothing Nothing (TableBlock (plainTable [AlignLeft] [] [[content]])) else para content]
+              document =
+                Document
+                  fid
+                  [ case site of
+                      1 -> Block target Nothing Nothing (TableBlock (plainTable [AlignLeft] [] [[content]]))
+                      2 -> Block target Nothing Nothing (TableBlock ((plainTable [AlignLeft] [] [[[Text target "cell"]]]) {tableCaption = Just content}))
+                      3 -> Block target Nothing Nothing (CodeBlock (Code Nothing Nothing Nothing (Just content) True [] False))
+                      _ -> para content
+                  ]
               table = Map.fromList [(NoteCitationContextInDocument target channel 1 0 k, (citation, items, [CiteText text])) | (k, text) <- [(prefixCount, "DOCZERO"), (prefixCount + 1, "DOCONE")]]
               chapterOf = if sameChapter then replicate (prefixCount + 2) 0 else [0 .. prefixCount + 1]
               book = original {bookDocs = replicate prefixCount (Document fid []) <> [document, document], bookChapterOf = chapterOf, bookNoteCitationPieces = table}
               allLines layout = concat [slLine sl : concatMap snd (slNotes sl) | sl <- Map.elems (plLines layout)] <> [ptLine part | placed <- concat (Map.elems (plSidenotes layout)), part <- psLines placed]
               allText layout = T.concat [bcText box | line <- allLines layout, Box _ box <- lineItems line]
           resolved <- layoutPdf input {piBook = book} geom fonts >>= either (assertFailure . show) pure
-          forM_ ["DOCZERO", "DOCONE"] $ \token -> assertEqual (show (channel, chapterEnd, inTable, prefixCount, sameChapter, token)) 1 (T.count token (allText resolved))
+          forM_ ["DOCZERO", "DOCONE"] $ \token -> assertEqual (show (channel, chapterEnd, site, prefixCount, sameChapter, token)) 1 (T.count token (allText resolved))
         either (assertFailure . show) pure result,
     testGroup
       "PDF note occurrence consumers"
@@ -826,6 +834,19 @@ bibliographyFormatTests =
           assertEqual "text mark and body" 2 (T.count ("※" <> number) text)
           forM_ [html, xhtml] $ \output ->
             assertEqual "one HTML/XHTML callmark per sidenote" 1 (T.count ("<sup class=\"sidenote-ref\">" <> number <> "</sup>") output),
+    testCase "root ADR 0470 I5 and root ADR 0482 I2: declared citation formats reach ruby note bodies in all non-PDF media" $
+      forM_ ["note", "endnote", "sidenote"] $ \channel ->
+        withBibProject "bibliography = [\"refs.json\"]" ("[ruby: 字[" <> channel <> ": 注[cite a]]|じ]。\n\n@bibliography\n") [("refs.json", "[{\"id\":\"a\",\"type\":\"book\",\"title\":\"A\",\"DOI\":\"10.1/a\"}]")] $ \tmp -> do
+          TIO.appendFile (tmp </> "style.toml") customBibliographyDeclaration
+          TIO.appendFile (tmp </> "manifest.toml") "[targets.text]\n[targets.epub]\n"
+          result <- build (defaultOptions tmp) {optTargets = Just [TargetHtml, TargetText, TargetEpub]}
+          assertEqual "no errors" [] (filter isError (brDiagnostics result))
+          text <- TIO.readFile (tmp </> "build/text/horizontal/a.txt")
+          html <- TIO.readFile (tmp </> "build/html/a.html")
+          archive <- toArchive <$> BL.readFile (tmp </> "build/epub/book.epub")
+          let xhtml = maybe "" (TE.decodeUtf8 . BL.toStrict . fromEntry) (findEntryByPath "OEBPS/a.xhtml" archive)
+          assertEqual (T.unpack text) 1 (T.count "(ref-1)" text)
+          forM_ [html, xhtml] $ \output -> assertEqual (T.unpack output) 1 (T.count "(ref-<a href=\"#cite-a\">1</a>)" output),
     testCase "root ADR 0482 I1, I2, I3: writer notes in captions and ruby retain bodies and PDF destinations" $
       withBibProject "" "# 章\n\n本文[note: 注一]。\n\n[ruby: 字[note: 注二]|じ]。\n\n@caption 表[note: 注三]\n| A[note: 注四] |\n| --- |\n| B[note: 注五] |\n\n@caption コード[note: 注六]\n```text\ncode\n```\n" [] $ \tmp -> do
         createDirectoryIfMissing True (tmp </> "fonts")

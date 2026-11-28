@@ -3,7 +3,7 @@ module BibliographyNoteContextSpec (tests) where
 import Control.Monad (forM_)
 import Data.Map.Strict qualified as Map
 import Data.Set qualified as Set
-import Golem.Assemble (AssembleConfig (..), Book (..), NoteChannelKind (..), NoteNumbering (..), assemble, resolvedNoteCitationPieces)
+import Golem.Assemble (AssembleConfig (..), Book (..), NoteChannelKind (..), NoteNumbering (..), assemble, bookCitationItems, resolvedNoteCitationPieces)
 import Golem.Assemble.BibliographyNoteContext
 import Golem.Doc.Citation (CitePiece (..))
 import Golem.Doc.IR
@@ -102,6 +102,20 @@ tests =
                 block (FrameBlock "frame" [paragraph (body 7)])
               ]
         map (nccNumber . ncoContext) (bibliographyNoteCitations [Document (FileId 1) blocks]) @?= [1 .. 7],
+      testCase "root ADR 0470 I5 and root ADR 0482 I1: declared citation items retain ruby note payloads without collecting raw ruby" $
+        forM_ [(channel, outside) | channel <- [FootnoteChannel, SidenoteChannel, EndnoteChannel], outside <- [False, True]] $ \(channel, outside) -> do
+          let items :: [CiteItem r]
+              items = [CiteYearItem "z" (Just (Locator LocatorPage (LocNumber 3))) [Text sp "<prefix>"] [Text sp "&suffix"], item]
+              inside :: InlineF r
+              inside = Cite sp items
+              ruby xs = Ruby sp () [RubySegment xs (Just "じ")]
+              mkNote :: [Inline] -> InlineF r
+              mkNote xs = (case channel of FootnoteChannel -> Note; SidenoteChannel -> Sidenote; EndnoteChannel -> Endnote) sp 0 Nothing (noteBody sp xs)
+              written = if outside then ruby [mkNote [inside]] else mkNote [ruby [inside]]
+              cfg = AssembleConfig Map.empty "{n}" Map.empty NumberPerBook [] "{n}" "{n}" Map.empty 16 NumberPerChapter
+              (book, diagnostics) = assemble cfg (\_ _ _ -> Right "") (notes [written, ruby [Cite sp [citeItem "raw"]]])
+          diagnostics @?= []
+          bookCitationItems book @?= [(sp, items)],
       testCase "root ADR 0470 I5: year form locators affixes and item order survive the inventory" $ do
         let items = [CiteYearItem "z" (Just (Locator LocatorPage (LocNumber 3))) [Text sp "<prefix>"] [Text sp "&suffix"], item]
             occurrences = bibliographyNoteCitations (notes [note EndnoteChannel 1 [Cite sp items]])
