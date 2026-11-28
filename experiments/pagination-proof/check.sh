@@ -632,6 +632,16 @@ LEAN_PATH="$tmp" "$lean" -o "$tmp/BodyEdits.olean" "$bodyEdits"
 LEAN_PATH="$tmp" "$lean" "$root/experiments/pagination-proof/BodyEditsBoundary.lean"
 echo "root ADR 0352 I5: arbitrary value-only edit histories preserve domains, selections, and reached paragraph typing"
 
+# Current callers after edit histories derive an existing stable first ID.
+historyFirst=$root/experiments/pagination-proof/HistoryFirst.lean
+if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|implemented_by|extern|native_decide)([^A-Za-z_]|$)' "$historyFirst"; then
+  echo "unproved or unchecked Lean declaration in $historyFirst" >&2
+  exit 1
+fi
+LEAN_PATH="$tmp" "$lean" -o "$tmp/HistoryFirst.olean" "$historyFirst"
+LEAN_PATH="$tmp" "$lean" "$root/experiments/pagination-proof/HistoryFirstBoundary.lean"
+echo "root ADR 0352 I5: current targets have stable existing IDs after arbitrary value-only edit histories"
+
 
 
 

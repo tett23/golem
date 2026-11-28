@@ -1987,3 +1987,10 @@ sh experiments/pagination-proof/check-alloy-diff.sh 97
 `BodyEditsFonts.hs` は、七つの更新による八つの状態で、本体の値の列、分類と選択を比較する。
 この結果を、本文の値や ID 全体の不変性や原稿全量の保存の証明とは扱わない。
 根拠と残件は [本文の値の更新履歴](../../docs/research/0352-body-edits-dependencies.md) にまとめた。
+
+`HistoryFirst.lean` は、現在の本文の型から ID の存在と安定を導く一般の結果を使い、任意の値の更新履歴の後の再改行へ接続する。
+履歴後の新しい cache の到達を仮定せず、初期の到達と選択から必要な型と選択を導く。
+`HistoryFirstFonts.hs` は、八つの履歴の状態の後の 48 例で、現在と追加の値の更新後の本体の ID を比較する。
+別の本文の更新で初期から ID が変わる場合も許し、その現在の対象自身の再改行では同じ値が存在することを示す。
+全 `Built` と全呼び出し元への一般的な接続は残る。
+根拠と残件は [更新履歴の後の再改行 ID](../../docs/research/0352-history-first-dependencies.md) にまとめた。
