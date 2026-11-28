@@ -532,3 +532,13 @@ PosArg の語と展開の一般的な捕捉、引数列全体と、Haskell の A
 共有 48 例では、PosArg の定義を保った実パーサーの入口から Word の原綴りと残りの入力を比較し、通常原稿の診断のない受理とは区別する。
 公理、三つの意味の変異、二つの文法の変異と未完の範囲は [区切りを持つ語の位置引数](../../../docs/research/0351-posarg-delimited-proof-dependencies.md) に記す。
 Word checkpoint の検証記録を保持し、全体の実装、Haskell AST、整形と評価の一般的な往復は未完のままとする。
+
+[PosArgBracketPrefix.lean](PosArgBracketPrefix.lean) は、左角括弧で区切った語が `*` と `**` のどちらでもない場合、スプラットの接頭辞に一致しないことを語彙条件から導く。
+`PosArgDelimited` はこの場合も共通の内部証明で扱い、従来の公開三定理の型を保って、左角括弧の捕捉、抽象 AST と認識の三定理を加える。
+共有 15 例を選択した本体の PosArg 入口と比較し、通常原稿全体の受理とは区別する。
+引数列全体と整形と評価の一般的な往復は未完了で、公理、変異と保証の範囲は [左角括弧の記録](../../../docs/research/0351-posarg-bracket-proof-dependencies.md) に記す。
+
+[WordEof.lean](WordEof.lean)、[ArgumentEof.lean](ArgumentEof.lean) と [PosArgEof.lean](PosArgEof.lean) は、入力全部が非空の許可文字の語で終わり、先頭が `%%` でない場合の認識、捕捉、抽象 AST と認識の一致を接続する。
+語の内部に左角括弧がないことと Word が全入力を消費することからガードを導き、後ろへ仮の区切りを補わない。
+共有十二例を入力末尾まで読む本体の PosArg 入口と比較し、通常原稿全体の受理や Haskell AST と整形の一般的な保証とは区別する。
+公理、変異、全体検証と残件は [入力末尾の語の記録](../../../docs/research/0351-posarg-eof-proof-dependencies.md) に記す。
