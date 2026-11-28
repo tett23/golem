@@ -662,6 +662,16 @@ LEAN_PATH="$tmp" "$lean" -o "$tmp/SuffixCountPrefix.olean" "$suffixCountPrefix"
 LEAN_PATH="$tmp" "$lean" "$root/experiments/pagination-proof/SuffixCountPrefixBoundary.lean"
 echo "root ADR 0352 I5: later body updates preserve the queried earlier target's existing first ID"
 
+# Finite selected suffix prefixes derive their update order from the scan.
+laterEdits=$root/experiments/pagination-proof/LaterEdits.lean
+if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|implemented_by|extern|native_decide)([^A-Za-z_]|$)' "$laterEdits"; then
+  echo "unproved or unchecked Lean declaration in $laterEdits" >&2
+  exit 1
+fi
+LEAN_PATH="$tmp" "$lean" -o "$tmp/LaterEdits.olean" "$laterEdits"
+LEAN_PATH="$tmp" "$lean" "$root/experiments/pagination-proof/LaterEditsBoundary.lean"
+echo "root ADR 0352 I5: finite selected suffix prefixes preserve the current paragraph-begin ID"
+
 
 
 

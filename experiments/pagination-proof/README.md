@@ -2007,3 +2007,9 @@ sh experiments/pagination-proof/check-alloy-diff.sh 97
 `SuffixCountPrefixFonts.hs` は、八つの履歴の状態の後の 96 例で、後続キーの行数を手で変え、本体の採番と比較する。
 全 `Built` と全呼び出し元からの選択や更新順序への接続と、制御の終了は残る。
 根拠と残件は [後続段落の更新と先行 ID](../../docs/research/0352-suffix-count-dependencies.md) にまとめた。
+
+`LaterEdits.lean` は、モデルの選択列の接尾部を先頭から任意の数だけ更新しても、その最初の対象の同じ先頭 ID が存在することを導く。
+更新キーの大小は選択列の昇順から導き、先行履歴の後の新しい到達は仮定しない。
+`LaterEditsFonts.hs` は、八つの履歴の状態の後の 192 列で、手で置き換えた全三段落の行数と本体の採番を比較する。
+全 `Built` と全呼び出し元の列への接続と、制御の終了は残る。
+根拠と残件は [選択した接尾部の更新列](../../docs/research/0352-later-edits-dependencies.md) にまとめた。
