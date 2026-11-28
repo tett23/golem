@@ -18,14 +18,16 @@ as other text, which the composition of the citation then was.
 -}
 module CiteBreakEnum (citeBreakTests, citePrDepth) where
 
+import Control.Monad (forM_)
 import Data.Maybe (mapMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Fixtures (fs, sp)
-import Golem.Doc.Citation (citationPieces, citationText)
+import Golem.Doc.Citation (CitePiece (..), citationPieces, citationText)
 import Golem.Doc.IR qualified as IR
 import Golem.Layout.Japanese
 import Golem.Layout.KnuthPlass
+import Golem.Layout.Look (lkNoBreak)
 import Golem.TestSupport.Enum
 import LineBreakEnum (Setting (..), advance, composeEnv, normalSettings, paramsOf, parts, placings)
 import LineBreakInvariants (Breach (..), Paragraph (..), breaches, bruteLimit)
@@ -344,7 +346,63 @@ citeBreakTests :: TestTree
 citeBreakTests =
   testGroup
     "the label of a page kept with its value (docs/adr/0277)"
-    [ testCase "C1: no line ends with the label of a page, in lines of 8 to 14 em, horizontal and vertical" $
+    [ testCase "root ADR 0480 I2: formatted locators preserve the value look and internal candidates" $
+        forM_ [False, True] $ \vertical -> do
+          let env = (envOf vertical plain) {ceCitePieces = \_ _ -> Just [CiteLocatorFormatted "p." " " "alpha beta-gamma" False]}
+              its = fst (composeInlines env [citeOf Nothing])
+          assertBool "locator is not a user no-break range" (not (any (lkNoBreak . bcLook) [c | Box _ c <- its])),
+      testCase "root ADR 0480 I2: before labels change only their joining candidate" $
+        forM_ [(vertical, locatorValue) | vertical <- [False, True], locatorValue <- ["alpha beta", "5–7", "alpha-beta", "al\xADpha beta"]] $ \(vertical, locatorValue) -> do
+          let render pieces = fst (composeInlines (envOf vertical plain) {ceCitePieces = \_ _ -> Just pieces} [citeOf Nothing])
+              its = render [CiteLocatorFormatted "p." " " locatorValue False]
+              before = render [CiteText ("p. " <> locatorValue)]
+          c2Items its before @?= [],
+      testCase "root ADR 0480 I2: after labels preserve internal candidates and protect only their gap" $
+        forM_ [(vertical, locatorValue) | vertical <- [False, True], locatorValue <- ["alpha beta", "5–7", "alpha-beta", "al\xADpha beta"]] $ \(vertical, locatorValue) -> do
+          let render pieces = fst (composeInlines (envOf vertical plain) {ceCitePieces = \_ _ -> Just pieces} [citeOf Nothing])
+              its = render [CiteLocatorFormatted "p." " " locatorValue True]
+              before = render [CiteText (locatorValue <> " p.")]
+              lastGap = last [i | (i, Glue _ stretch _ _ _) <- zip [0 :: Int ..] before, stretch < filStretch]
+              (front, back) = splitAt lastGap before
+              expected = case reverse front of
+                Penalty _ p _ : _ | p >= infPenalty -> before
+                _ -> front <> [Penalty 0 infPenalty NoHyphen] <> back
+          map keyOf its @?= map keyOf expected,
+      testCase "root ADR 0480 I2: every literal delimiter space retains its width" $
+        forM_ [(vertical, labelAfter, n) | vertical <- [False, True], labelAfter <- [False, True], n <- [1 .. 4]] $ \(vertical, labelAfter, n) -> do
+          let render gap = fst (composeInlines (envOf vertical plain) {ceCitePieces = \_ _ -> Just [CiteLocatorFormatted "p." gap "alpha beta" labelAfter]} [citeOf Nothing])
+              spaces its = [w | Glue w y _ _ _ <- its, y < filStretch]
+              one = spaces (render " ")
+              many = spaces (render (T.replicate n " "))
+          length many @?= length one + n - 1
+          case one of
+            spaceWidth : _ -> sum many @?= sum one + fromIntegral (n - 1) * spaceWidth
+            [] -> assertFailure "fixture has no ordinary spaces",
+      testCase "root ADR 0480 I2: empty gaps do not split a shaped word and empty labels add no hold" $
+        forM_ [(vertical, labelAfter, label, gap) | vertical <- [False, True], labelAfter <- [False, True], (label, gap) <- [("p", ""), ("", ""), ("", " ")]] $ \(vertical, labelAfter, label, gap) -> do
+          let piece = CiteLocatorFormatted label gap "alpha beta-gamma" labelAfter
+              render pieces = fst (composeInlines (envOf vertical plain) {ceCitePieces = \_ _ -> Just pieces} [citeOf Nothing])
+          map keyOf (render [piece]) @?= map keyOf (render [CiteText (citationText [piece])]),
+      testCase "root ADR 0480 I2: long values break internally while their label remains attached" $
+        forM_ [(vertical, labelAfter) | vertical <- [False, True], labelAfter <- [False, True]] $ \(vertical, labelAfter) -> do
+          let env = (envOf vertical plain) {ceCitePieces = \_ _ -> Just [CiteLocatorFormatted "p." " " "alpha beta gamma" labelAfter]}
+              its = fst (composeInlines env [citeOf Nothing])
+              ls = brLines (breakParagraph defaultParams (const (6 * fs)) its)
+              textOf line = T.concat [bcText c | Box _ c <- lineItems line]
+          assertBool "the value has an internal line break" (length ls > 1)
+          assertBool (show (map textOf ls)) (all ((/= "p.") . textOf) ls),
+      testCase "root ADR 0480 I2: invalid soft hyphens retain their diagnostics" $
+        forM_ ["a\xAD.", "alpha \xAD beta"] $ \locatorValue -> do
+          let render pieces = softHyphenSites (envOf False plain) {ceCitePieces = \_ _ -> Just pieces} [citeOf Nothing]
+              piece = CiteLocatorFormatted "p." " " locatorValue False
+          render [piece] @?= render [CiteText (citationText [piece])],
+      testCase "root ADR 0480 I2: soft hyphens keep their joined-word context across formatted fields" $
+        forM_ [[CiteLocatorFormatted "p." " " "alpha\xAD" False, CiteText "beta"], [CiteText "alpha", CiteLocatorFormatted "" "" "\xAD\&beta" False]] $ \pieces -> do
+          let env given = (envOf False plain) {ceCitePieces = \_ _ -> Just given}
+              ordinary = [CiteText (citationText pieces)]
+          c2Items (fst (composeInlines (env pieces) [citeOf Nothing])) (fst (composeInlines (env ordinary) [citeOf Nothing])) @?= []
+          softHyphenSites (env pieces) [citeOf Nothing] @?= softHyphenSites (env ordinary) [citeOf Nothing],
+      testCase "C1: no line ends with the label of a page, in lines of 8 to 14 em, horizontal and vertical" $
         inLines locatedMarks (\its _ br -> c1Items its <> c1Lines (brLines br)),
       testCase "C1: before the ADR, the marks of the unit tests broke after the label in some of these lines"
         $ assertBool "no input broke after the label"

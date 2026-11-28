@@ -696,6 +696,9 @@ HTML と EPUB は欄の文字スタイルを `cs-` のクラスにし、PDF は 
 宣言の必須キーと名前の省略の検査は `Golem.Project.BibliographyRequirements` が行う（[root ADR 0475](adr/0475-complete-bibliography-declarations-and-citation-delimiters.md)）。
 `parseStyle` は、未選択の宣言と基礎の宣言も検査し、必須キーの不足を G03006 にする。
 書いた文献種別の差し込みが名前を参照するときは、一覧の有無によらず、その名前の書式も検査する。
+必須キーを検査する API は、`sort` が `author` を含む宣言と `citation-sort = "author-year"` の型付きの宣言について、名前の表示や書誌データの明示したキーによらず、`names.author.part-delimiter` を必須にする（[root ADR 0480](adr/0480-complete-bibliography-sorting-and-conditional-formats.md)）。
+ソートだけのために名前の表示用の設定を要求せず、区切りの空文字列も保持する。
+通常の CLI は、実際に使う文献について本の言語の並べ方と文献の言語の名前の設定を合成した後にも必須キーを検査する。
 実際に一覧で使う文献種別と位置ラベルの検査は、`bibliographyRequiredChecks` に使用状況を渡す API である。
 通常の CLI は、実際に使う文献種別と位置ラベルの不足も検査し、自作の宣言による引用と一覧を組む。
 
@@ -9406,7 +9409,7 @@ HTML と EPUB の参考文献の項目の `id` は、本の全体で一意にす
 
 HTML と EPUB の引用の印は、`<span class="cite">` の中に、括弧、区切り、位置の文字列と、番号ごとのリンクを置く（[golem-html ADR 0003](golem-html/adr/0003-cite-links-across-files.md)、[docs/adr/0266](adr/0266-citation-locators-and-multiple-keys.md)）。
 リンクの行き先は、その印が載る一覧の、その文献の項目の `id` である（`<span class="cite">[<a href="#cite-knuth1981">1</a>, p.&#xA0;5]</span>`）。
-頁の文言と値のあいだは U+00A0 である（[docs/adr/0277](adr/0277-keep-the-page-label-of-a-citation-mark-with-its-value.md)）。
+既定の書式では、頁の文言と値のあいだは U+00A0 である（[docs/adr/0277](adr/0277-keep-the-page-label-of-a-citation-mark-with-its-value.md)）。
 例の `&#xA0;` は説明のための書き方で、出力には実体参照ではなく U+00A0 の文字を書く。
 まとめた範囲の途中の番号（`[1–3]` の 2）は、文字に出ないのでリンクを持たない。
 一覧が別のファイルにあれば、そのファイルへの相対リンク（HTML では `../chapters/99.html#cite-knuth1981`、EPUB では `../chapters/99.xhtml#cite-knuth1981` など）にする。
@@ -9423,9 +9426,53 @@ HTML と EPUB の引用の印は、`<span class="cite">` の中に、括弧、�
 
 選んだ自作の宣言は、通常の CLI の PDF、HTML、EPUB、テキストの引用と一覧に適用する。
 本の言語で印全体の囲みと区切りを、文献の言語で個々の引用、名前、位置ラベルと一覧の書式を解決する（[root ADR 0475](adr/0475-complete-bibliography-declarations-and-citation-delimiters.md)）。
+種類の表と言語別の宣言の選択には、CSL の文字列の `type` と `language` を使い、それ以外は指定なしとして扱う。
+種類ごとの `citation` と `citation-year` は、通常の引用と年だけの引用の書式を上書きする（[root ADR 0480](adr/0480-complete-bibliography-sorting-and-conditional-formats.md)）。
+一致する種類の表が無ければ `types.default` を選ぶ。
+表が無い場合と、選んだ表で項目を省いた場合は、全体の同名の書式を使う。
+明示した空配列ではその書式の片を出力せず、全体の書式へ戻さない。
+種類ごとの指定があっても、全体の `citation` と、`author-year` モードの全体の `citation-year` は必須にする。
+種類の表の `pieces` も必須とし、一覧の無い本で引用だけに使う表には `pieces = []` を書く。
+種類ごとの `subsequent` も読み取り、未使用のものも含めて書式の構文と必要な名前の設定を検査する。
+片の `{!欄}` は、同じ欄の通常の差し込みが欠落する場合だけ、条件自体を出力せずに残りを組む。
+複数の不在条件はすべてが成立する場合だけ組み、通常の必須欄が欠けた片は従来どおり省く。
+DOI と URL なら `pieces = ["https://doi.org/{DOI}", "{!DOI}{URL}"]` と書き、両方の欄があるときの URL を省ける。
+不在条件に `?` や数の表記を重ねたり、未知の欄を書いたりすると G03304 にする。
+必要な名前の表の検査も不在条件へ適用する。
+`{edition:ordinal-en}` などは、読み出した欄の文字列全体を符号付き十進整数として調べ、正整数なら先頭の 0 を省いて英語の序数にする。
+11、12、13 で終わる数は `th`、それ以外は末尾の 1、2、3 に `st`、`nd`、`rd`、ほかに `th` を付ける。
+0 と負数は G03006 にし、整数として読めない `1.5` や `2nd` などの文字列はそのまま保つ。
+表記を省いた欄を暗黙に序数へ変えず、ほかの数の表記は保つ。
+これらは通常の CLI の引用と一覧に適用し、URL のリンクと媒体ごとの文字のエスケープは既存の扱いを保つ。
+
+`ordinal-en` を書いた欄は、同じ片の配列内では、JSON の数値の読み取りも共有する。
+数値は `Scientific` の係数と 10 の指数で保持しており、指数が 0 の場合は、係数を固定幅整数に切り詰めずに十進整数の文字列にする。
+たとえば、`pieces = ["{edition:ordinal-en}", " ({edition})", "{!edition}なし"]` と `edition` の数値 `123456789012345678901` なら、`123456789012345678901st (123456789012345678901)` を出す。
+同じ欄の通常の差し込みと不在条件もこの値を使い、表記を書かない差し込みには序数の接尾辞を付けない。
+別の片の配列や、`ordinal-en` を書いていない別の欄は、従来の読み取りを保つ。
+波括弧をエスケープした文字列は、表記の指定として扱わない。
+JSON の元のトークンは保持しないため、`1e0` も指数が 0 の数値になる。
+指数が 0 でない巨大整数と、JSON の非整数をこの書式へ渡す処理は、まだ実装していない。
+既定の `golem` の書誌と、巨大な指数を展開しない年の読み取りの規則は変えない（[root ADR 0035](adr/0035-security-hardening.md)）。
+
+`locator-positions` と `locator-delimiters` は、位置の 26 種類ごとにラベルの前後と区切りを指定する（[root ADR 0480](adr/0480-complete-bibliography-sorting-and-conditional-formats.md)）。
+位置は `before` ならラベル、区切り、値の順、`after` なら値、区切り、ラベルの順で組み、省略時は `before` と U+0020 一つにする。
+空文字列と空白をそのまま保持し、ラベルの文字から配置や区切りを推測しない。
+二つの表にその種類のキーが無い場合は、従来の出力を保つ。
+ラベルが空でなければ、HTML と EPUB はラベルと値のあいだに U+00A0 を使い、空のラベルでは区切りを追加しない。
+どちらかの表にその種類のキーを書いた場合は、HTML と EPUB でも区切りの文字列をそのまま使う。
+文献の言語の宣言で上書きし、未知の種類や位置、文字列でない区切りは G03006 にする。
 `citation-sort = "year"` は、一つの印の文献を発行年の古い順に動かし、各キーの位置、前置きと後置きも一緒に動かす。
 比較には `issued` の `date-parts` の数値年を使う。
 `issued.literal` と年の無い文献は、数値年のある文献より前に置き、その中では入力順を保つ。
+`citation-sort = "author-year"` は、第一著者のキー、年、入力順で一つの印の文献を並べる。
+第一著者の `golem-sort-key` を使い、無い場合と空白だけの場合は名前からキーを作る。
+名前の `literal` の値があればその値を使い、個人名では姓と名を `names.author.part-delimiter` でつなぐ。
+有効な著者名が無い場合は空のキーを使う。
+キーを小文字にし、ラテン文字の発音区別符号を除いて比べる。
+名前の区切りは文献の言語、順序の指定は本の言語から選ぶ。
+同じキーの中では、年の無い文献と `issued.literal` の文献を数値年のある文献より前に置き、年不明どうしと同年の文献は入力順を保つ。
+位置、前置きと後置きも文献と一緒に動かし、この指定だけでは G03306 を出さない。
 `[cite キー form=year]` は、`author-year` では `citation-year` の片で組み、ほかのモードでは通常の引用と同じになる。
 位置、前置き、後置きと年の接尾辞は、年だけの引用でも保つ。
 `issued.literal` の文字列も年の値として使い、暦を推測したり、ほかの暦へ換算したりしない。
@@ -9444,6 +9491,15 @@ IEEE の書籍と論文と章の三つの一次資料例と、ほかの三つの
 
 宣言を扱うライブラリ API は golem-assemble にある（[root ADR 0470](adr/0470-bibliography-styles-by-name-and-by-declaration.md)）。
 `Golem.Assemble.BibliographyStyle.bibliographyTypeFor` は文献種別に合う宣言を選び、その種別の宣言が無い場合だけ、明示した `types.default` を使う。
+型付きの宣言では、一覧の片と文字スタイルは従来の `BibliographyType` と `bsTypes` に保ち、種類ごとの引用の三つの書式は `bsTypeCitations` に保持する。
+TOML の同じ種類の表から読み、一覧と引用の表の選択には `bibliographyTypeNameFor` を共用する。
+`Golem.Assemble.BibliographyRecords.formatBibliographySubsequentCitationWithSuffix` は、`note` モードの二度目以降の引用に使う書式を選ぶ API である。
+選んだ種類の `subsequent`、全体の `subsequent`、全体の `citation` の順に選び、種類の `citation` へは戻さない。
+選んだ種類があれば `types.default` の `subsequent` へは戻さず、明示した空配列は空の片として保つ。
+最初の注の表示番号は呼出側から受け取り、`{first-note}` にはこの番号を指定した数の表記で組む。
+CSL の同名の欄から最初の注番号を推測せず、通常の引用や一覧では `{first-note}` を欠落した欄として扱う。
+この API だけでは注を作成せず、注の自動生成と実際のページ別番号への接続は実装途中である。
+
 
 引用の引数を扱うライブラリ API の `Golem.Eval.CitationArgument.decodeCitationArgument` は、位置の 26 種類と文字列の前置きと後置きを型付きの値に変換する。
 通常の `cite` は、この API で位置と文字列の前置きと後置きを読む。

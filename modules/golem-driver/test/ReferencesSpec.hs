@@ -344,6 +344,174 @@ bibliographyFormatTests =
         assertBool (T.unpack output) ("[<a>&[cite x]1?]" `T.isInfixOf` output)
         html <- TIO.readFile (tmp </> "build/html/a.html")
         assertBool (T.unpack html) ("&lt;a&gt;&amp;[cite x]" `T.isInfixOf` html),
+    testCase "root ADR 0480 I1: final record language controls the required sort separator" $
+      forM_ ["en", "ja"] $ \language ->
+        withBibProject "bibliography = [\"refs.json\"]" "本文[cite a]。\n" [("refs.json", TE.encodeUtf8 ("[{\"id\":\"a\",\"language\":\"" <> language <> "\",\"author\":[{\"family\":\"Smith\",\"given\":\"John\",\"golem-sort-key\":\"Smith\"}]}]"))] $ \tmp -> do
+          let base = fst (T.breakOn "[bibliography.styles.custom.types.book]" customBibliographyDeclaration)
+          TIO.appendFile (tmp </> "style.toml") (base <> "\n[bibliography.styles.custom.languages.ja]\nsort=['author']\n[bibliography.styles.custom.languages.ja.names.author]\npart-delimiter=''\n")
+          TIO.appendFile (tmp </> "manifest.toml") "[targets.text]\n"
+          result <- build (defaultOptions tmp) {optTargets = Just [TargetText]}
+          let errors = filter isError (brDiagnostics result)
+          if language == "en"
+            then do
+              map diagCode errors @?= [DiagnosticCode "G03006"]
+              assertBool (show errors) (all (T.isInfixOf "names.author.part-delimiter" . diagMessage) errors)
+            else assertEqual "explicit empty Japanese separator" [] errors,
+    testCase "root ADR 0480 I2: explicit locator placement and spacing reach all text outputs" $
+      forM_ [(position, delimiter) | position <- ["before", "after"], delimiter <- ["", " ", "  ", " | "]] $ \(position, delimiter) ->
+        withBibProject "bibliography = [\"refs.json\"]" "本文[cite a page=5]。\n" [("refs.json", abcJson)] $ \tmp -> do
+          createDirectoryIfMissing True (tmp </> "fonts")
+          forM_ fakeFontFiles $ \(path, bytes) -> BS.writeFile (tmp </> path) bytes
+          let base = fst (T.breakOn "[bibliography.styles.custom.types.book]" customBibliographyDeclaration)
+              expected = if position == "before" then "頁" <> delimiter <> "5" else "5" <> delimiter <> "頁"
+          TIO.appendFile (tmp </> "style.toml") (T.replace "citation=['ref-{number}']" "citation=['{locator}']" base <> "locator-labels={page=['頁','頁']}\nlocator-positions={page='" <> position <> "'}\nlocator-delimiters={page='" <> delimiter <> "'}\n")
+          TIO.appendFile (tmp </> "manifest.toml") "[targets.text]\n[targets.epub]\n"
+          result <- build (defaultOptions tmp) {optTargets = Just [TargetHtml, TargetText, TargetEpub]}
+          assertEqual "no errors" [] (filter isError (brDiagnostics result))
+          text <- TIO.readFile (tmp </> "build/text/horizontal/a.txt")
+          assertBool (T.unpack text) (("(" <> expected <> ")") `T.isInfixOf` text)
+          html <- TIO.readFile (tmp </> "build/html/a.html")
+          let visible = T.pack . outside False . T.unpack
+              outside _ [] = []
+              outside _ ('<' : cs) = outside True cs
+              outside _ ('>' : cs) = outside False cs
+              outside True (_ : cs) = outside True cs
+              outside False (c : cs) = c : outside False cs
+          assertBool (T.unpack html) (expected `T.isInfixOf` visible html)
+          assertBool "literal delimiter is preserved" (("white-space: pre\">" <> delimiter <> "</span>") `T.isInfixOf` html)
+          archive <- toArchive <$> BL.readFile (tmp </> "build/epub/book.epub")
+          let xhtml = maybe "" (TE.decodeUtf8 . BL.toStrict . fromEntry) (findEntryByPath "OEBPS/a.xhtml" archive)
+          assertBool (T.unpack xhtml) (expected `T.isInfixOf` visible xhtml)
+          BS.appendFile (tmp </> "style.toml") fakeBody
+          forM_ [False, True] $ \kept -> do
+            let mark = "[cite a page=\"" <> T.replicate 21 "1" <> "\"]"
+                source = if kept then "[style no-break: " <> mark <> "]\n" else mark <> "\n"
+            TIO.writeFile (tmp </> "a.gm") source
+            pdf <- build (defaultOptions tmp) {optTargets = Just [TargetPdf], optFonts = fakeProvider}
+            assertEqual "PDF has no errors" [] (filter isError (brDiagnostics pdf))
+            let overflowCodes = [code | d <- brDiagnostics pdf, let DiagnosticCode code = diagCode d, code `elem` ["G07105", "G07122"]]
+            assertEqual "ordinary overflow remains distinct from a user no-break range" [if kept then "G07122" else "G07105"] overflowCodes,
+    testCase "root ADR 0480 I3: citation and year templates follow the selected record type" $
+      forM_ (["typed", "global", "empty"] :: [T.Text]) $ \bookTemplate ->
+        withBibProject "bibliography = [\"refs.json\"]" "通常 [cites: [cite b]|[cite a]|[cite r]|[cite m]]。\n\n年 [cites: [cite b form=year]|[cite a form=year]|[cite r form=year]|[cite m form=year]]。\n" [("refs.json", "[{\"id\":\"b\",\"type\":\"book\",\"title\":\"Book\",\"issued\":{\"date-parts\":[[2001]]}},{\"id\":\"a\",\"type\":\"article-journal\",\"title\":\"Article\",\"issued\":{\"date-parts\":[[2002]]}},{\"id\":\"r\",\"type\":\"report\",\"title\":\"Report\",\"issued\":{\"date-parts\":[[2003]]}},{\"id\":\"m\",\"title\":\"Missing\",\"issued\":{\"date-parts\":[[2004]]}}]")] $ \tmp -> do
+          let base = fst (T.breakOn "[bibliography.styles.custom.types.book]" customBibliographyDeclaration)
+              global = T.replace "citation-mode='numeric'" "citation-mode='author-year'\ncitation-year=['GY-{year}']" (T.replace "citation=['ref-{number}']" "citation=['G-{title}']" base)
+              book = case bookTemplate of "typed" -> "citation=['B-{title}']\ncitation-year=['BY-{year}']\n"; "empty" -> "citation=[]\ncitation-year=[]\n"; _ -> ""
+              typed = "\n[bibliography.styles.custom.types.book]\npieces=[]\n" <> book <> "[bibliography.styles.custom.types.article-journal]\npieces=[]\ncitation=['A-{title}']\ncitation-year=['AY-{year}']\n[bibliography.styles.custom.types.default]\npieces=[]\ncitation=['D-{title}']\ncitation-year=['DY-{year}']\n"
+              normalBook = case bookTemplate of "typed" -> "B-Book, "; "empty" -> ""; _ -> "G-Book, "
+              yearBook = case bookTemplate of "typed" -> "BY-2001, "; "empty" -> ""; _ -> "GY-2001, "
+          TIO.appendFile (tmp </> "style.toml") (global <> typed)
+          TIO.appendFile (tmp </> "manifest.toml") "[targets.text]\n"
+          result <- build (defaultOptions tmp) {optTargets = Just [TargetText]}
+          assertEqual "no errors" [] (filter isError (brDiagnostics result))
+          output <- TIO.readFile (tmp </> "build/text/horizontal/a.txt")
+          assertBool (T.unpack output) (("(" <> normalBook <> "A-Article, D-Report, D-Missing)") `T.isInfixOf` output)
+          assertBool (T.unpack output) (("(" <> yearBook <> "AY-2002, DY-2003, DY-2004)") `T.isInfixOf` output),
+    testCase "root ADR 0480 I3: a non-string CSL type is absent rather than an inferred type name" $
+      withBibProject "bibliography = [\"refs.json\"]" "[cites: [cite n]|[cite s]|[cite absent]]\n" [("refs.json", "[{\"id\":\"n\",\"type\":1,\"title\":\"Number\"},{\"id\":\"s\",\"type\":\"1\",\"title\":\"String\"},{\"id\":\"absent\",\"type\":null,\"title\":\"Absent\"}]")] $ \tmp -> do
+        let base = fst (T.breakOn "[bibliography.styles.custom.types.book]" customBibliographyDeclaration)
+        TIO.appendFile (tmp </> "style.toml") (base <> "[bibliography.styles.custom.types.default]\npieces=[]\ncitation=['D-{title}']\n[bibliography.styles.custom.types.'1']\npieces=[]\ncitation=['S-{title}']\n")
+        TIO.appendFile (tmp </> "manifest.toml") "[targets.text]\n"
+        result <- build (defaultOptions tmp) {optTargets = Just [TargetText]}
+        assertEqual "no errors" [] (filter isError (brDiagnostics result))
+        output <- TIO.readFile (tmp </> "build/text/horizontal/a.txt")
+        assertBool (T.unpack output) ("(D-Number, S-String, D-Absent)" `T.isInfixOf` output),
+    testCase "root ADR 0480 I4: author-year order uses raw author keys stable unknown years and original citation payloads" $ do
+      let records = TE.encodeUtf8 "[{\"id\":\"b\",\"language\":\"en\",\"author\":[{\"family\":\"Beta\"}],\"issued\":{\"date-parts\":[[1900]]}},{\"id\":\"z\",\"language\":\"en\",\"author\":[{\"family\":\"Alpha\"}],\"issued\":{\"date-parts\":[[2000]]}},{\"id\":\"x\",\"language\":\"en\",\"author\":[{\"family\":\"Alpha\"}],\"issued\":{\"literal\":\"寛永某年\"}},{\"id\":\"c\",\"language\":\"en\",\"author\":[{\"family\":\"Alpha\"}]},{\"id\":\"a\",\"language\":\"en\",\"author\":[{\"family\":\"Alpha\"}],\"issued\":{\"date-parts\":[[2000]]}},{\"id\":\"g\",\"language\":\"en\",\"author\":[{\"family\":\"Gamma\",\"golem-sort-key\":\"Able\"}],\"issued\":{\"date-parts\":[[2020]]}},{\"id\":\"e\",\"language\":\"en\",\"issued\":{\"date-parts\":[[1950]]}}]"
+          source = "[cites: [cite b page=11 prefix=\"B\"]|[cite z page=22 prefix=\"A\"]|[cite x page=33 prefix=\"N\"]|[cite c page=44 prefix=\"M\"]|[cite a page=55 prefix=\"T\"]|[cite g page=66 prefix=\"G\"]|[cite e page=77 prefix=\"E\"]]\n"
+          expected = "(Eref-7 p. 77, Gref-6 p. 66, Nref-3 p. 33, Mref-4 p. 44, Aref-2 p. 22, Tref-5 p. 55, Bref-1 p. 11)"
+      withBibProject "bibliography = [\"refs.json\"]" source [("refs.json", records)] $ \tmp -> do
+        let base = fst (T.breakOn "[bibliography.styles.custom.types.book]" customBibliographyDeclaration)
+            declaration = T.replace "citation-sort='written'" "citation-sort='author-year'" (T.replace "citation=['ref-{number}']" "citation=['ref-{number}', ' {locator}']" base)
+        TIO.appendFile (tmp </> "style.toml") (declaration <> "[bibliography.styles.custom.names.author]\npart-delimiter=' '\n[bibliography.styles.custom.locator-labels]\npage=['p.', 'pp.']\n")
+        TIO.appendFile (tmp </> "manifest.toml") "[targets.text]\n[targets.epub]\n"
+        result <- build (defaultOptions tmp) {optTargets = Just [TargetHtml, TargetText, TargetEpub]}
+        assertEqual "no errors" [] (filter isError (brDiagnostics result))
+        output <- TIO.readFile (tmp </> "build/text/horizontal/a.txt")
+        assertBool (T.unpack output) (expected `T.isInfixOf` output)
+        html <- TIO.readFile (tmp </> "build/html/a.html")
+        assertBool (T.unpack html) (expected `T.isInfixOf` T.replace "\xA0" " " html)
+        archive <- toArchive <$> BL.readFile (tmp </> "build/epub/book.epub")
+        let xhtml = maybe "" (TE.decodeUtf8 . BL.toStrict . fromEntry) (findEntryByPath "OEBPS/a.xhtml" archive)
+        assertBool (T.unpack xhtml) (expected `T.isInfixOf` T.replace "\xA0" " " xhtml),
+    testCase "root ADR 0480 I4: book language chooses the order and record language chooses the author separator" $
+      forM_ ["ja", "en"] $ \bookLanguage ->
+        withBibProject "bibliography = [\"refs.json\"]" "[cites: [cite ja]|[cite en]]\n" [("refs.json", "[{\"id\":\"ja\",\"language\":\"ja\",\"author\":[{\"family\":\"AA\",\"given\":\"A\"}]},{\"id\":\"en\",\"language\":\"en\",\"author\":[{\"family\":\"A\",\"given\":\"Z\"}]}]")] $ \tmp -> do
+          let base = fst (T.breakOn "[bibliography.styles.custom.types.book]" customBibliographyDeclaration)
+          TIO.appendFile (tmp </> "style.toml") (base <> "[bibliography.styles.custom.names.author]\npart-delimiter=' '\n[bibliography.styles.custom.languages.ja]\ncitation-sort='author-year'\n[bibliography.styles.custom.languages.ja.names.author]\npart-delimiter=''\n")
+          manifest <- TIO.readFile (tmp </> "manifest.toml")
+          TIO.writeFile (tmp </> "manifest.toml") (T.replace "language = \"ja\"" ("language = \"" <> bookLanguage <> "\"") manifest <> "[targets.text]\n")
+          result <- build (defaultOptions tmp) {optTargets = Just [TargetText]}
+          assertEqual "no errors" [] (filter isError (brDiagnostics result))
+          output <- TIO.readFile (tmp </> "build/text/horizontal/a.txt")
+          let expected = if bookLanguage == "ja" then "(ref-2, ref-1)" else "(ref-1, ref-2)"
+          assertBool (T.unpack output) (expected `T.isInfixOf` output),
+    testCase "root ADR 0475 I5: non-string record languages follow the book language" $
+      withBibProject "bibliography = [\"refs.json\"]" "[cites: [cite n]|[cite en]|[cite absent]]\n" [("refs.json", "[{\"id\":\"n\",\"language\":1,\"title\":\"Number\"},{\"id\":\"en\",\"language\":\"en\",\"title\":\"English\"},{\"id\":\"absent\",\"language\":null,\"title\":\"Absent\"}]")] $ \tmp -> do
+        let base = fst (T.breakOn "[bibliography.styles.custom.types.book]" customBibliographyDeclaration)
+        TIO.appendFile (tmp </> "style.toml") (T.replace "citation=['ref-{number}']" "citation=['E-{title}']" base <> "[bibliography.styles.custom.languages.ja]\ncitation=['J-{title}']\n")
+        TIO.appendFile (tmp </> "manifest.toml") "[targets.text]\n"
+        result <- build (defaultOptions tmp) {optTargets = Just [TargetText]}
+        assertEqual "no errors" [] (filter isError (brDiagnostics result))
+        output <- TIO.readFile (tmp </> "build/text/horizontal/a.txt")
+        assertBool (T.unpack output) ("(J-Number, E-English, J-Absent)" `T.isInfixOf` output),
+    testCase "root ADR 0480 I4: citation author order adds no reading warning without an author-sorted list" $
+      withBibProject "bibliography = [\"refs.json\"]" "[cite a]\n" [("refs.json", TE.encodeUtf8 "[{\"id\":\"a\",\"author\":[{\"family\":\"山田\"}]}]")] $ \tmp -> do
+        let base = fst (T.breakOn "[bibliography.styles.custom.types.book]" customBibliographyDeclaration)
+        TIO.appendFile (tmp </> "style.toml") (T.replace "citation-sort='written'" "citation-sort='author-year'" base <> "[bibliography.styles.custom.names.author]\npart-delimiter=''\n")
+        TIO.appendFile (tmp </> "manifest.toml") "[targets.text]\n"
+        result <- build (defaultOptions tmp) {optTargets = Just [TargetText]}
+        assertEqual "no errors" [] (filter isError (brDiagnostics result))
+        assertBool (show (brDiagnostics result)) (DiagnosticCode "G03306" `notElem` map diagCode (brDiagnostics result)),
+    testCase "root ADR 0480 I5, I6: conditional links and explicit ordinals reach the shared outputs" $
+      withBibProject "bibliography = [\"refs.json\"]" "[cites: [cite a]|[cite b]|[cite c]|[cite d]|[cite e]|[cite f]]\n\n@bibliography\n" [("refs.json", "[{\"id\":\"a\",\"title\":\"A\",\"DOI\":\"10.1/<a>&\",\"URL\":\"https://example.org/hidden\",\"edition\":\"1\"},{\"id\":\"b\",\"title\":\"B\",\"DOI\":\"10.1/b\",\"edition\":\"2nd\"},{\"id\":\"c\",\"title\":\"C\",\"URL\":\"https://example.org/c?q=1&x=2\",\"edition\":\"1.5\"},{\"id\":\"d\",\"title\":\"D\",\"edition\":2},{\"id\":\"e\",\"title\":\"E\",\"DOI\":\"\",\"URL\":\"\",\"edition\":12},{\"id\":\"f\",\"title\":\"F\",\"edition\":\"123456789012345678901\"}]")] $ \tmp -> do
+        let declaration = T.replace ".types.book]" ".types.default]" (T.replace "pieces=['DOI {DOI}.']" "pieces=['{title}: ', '{edition:ordinal-en}', ' doi={DOI}', '{!DOI} url={URL}', '{!DOI}{!URL} no-link']" customBibliographyDeclaration)
+            expected = ["A: 1st doi=10.1/<a>&", "B: 2nd doi=10.1/b", "C: 1.5 url=https://example.org/c?q=1&x=2", "D: 2nd no-link", "E: 12th no-link", "F: 123456789012345678901st no-link"]
+        TIO.appendFile (tmp </> "style.toml") declaration
+        TIO.appendFile (tmp </> "manifest.toml") "[targets.text]\n[targets.epub]\n"
+        result <- build (defaultOptions tmp) {optTargets = Just [TargetHtml, TargetText, TargetEpub]}
+        assertEqual "no errors" [] (filter isError (brDiagnostics result))
+        text <- TIO.readFile (tmp </> "build/text/horizontal/a.txt")
+        assertBool (T.unpack text) (all (`T.isInfixOf` text) expected)
+        html <- TIO.readFile (tmp </> "build/html/a.html")
+        archive <- toArchive <$> BL.readFile (tmp </> "build/epub/book.epub")
+        let xhtml = maybe "" (TE.decodeUtf8 . BL.toStrict . fromEntry) (findEntryByPath "OEBPS/a.xhtml" archive)
+        forM_ [html, xhtml] $ \page -> do
+          assertBool (T.unpack page) ("A: 1st doi=10.1/&lt;a&gt;&amp;" `T.isInfixOf` page)
+          assertBool (T.unpack page) ("href=\"https://example.org/c?q=1&amp;x=2\"" `T.isInfixOf` page)
+          assertBool "DOI suppresses the alternative URL" (not ("https://example.org/hidden" `T.isInfixOf` page))
+          assertBool "literal values are escaped once" (not ("&amp;lt;" `T.isInfixOf` page)),
+    testCase "root ADR 0480 I6: zero and negative string or JSON integer ordinals report G03006" $
+      forM_ ["0", "-1", "\"0\"", "\"-1\""] $ \edition ->
+        withBibProject "bibliography = [\"refs.json\"]" "[cite a]\n\n@bibliography\n" [("refs.json", "[{\"id\":\"a\",\"edition\":" <> edition <> "}]")] $ \tmp -> do
+          TIO.appendFile (tmp </> "style.toml") (T.replace ".types.book]" ".types.default]" (T.replace "pieces=['DOI {DOI}.']" "pieces=['{edition:ordinal-en}']" customBibliographyDeclaration))
+          result <- build (defaultOptions tmp) {optTargets = Just [TargetHtml]}
+          map diagCode (filter isError (brDiagnostics result)) @?= [DiagnosticCode "G03006"],
+    testCase "root ADR 0480 I6: unscaled JSON integer coefficients reach explicit ordinal formatting without narrowing" $
+      withBibProject "bibliography = [\"refs.json\"]" "[cite a]\n\n@bibliography\n" [("refs.json", "[{\"id\":\"a\",\"edition\":123456789012345678901,\"volume\":123456789012345678903,\"issued\":{\"date-parts\":[[1e1000000000]]}}]")] $ \tmp -> do
+        TIO.appendFile (tmp </> "style.toml") (T.replace ".types.book]" ".types.default]" (T.replace "citation=['ref-{number}']" "citation=['citation={edition}', 'ref-{number}']" (T.replace "pieces=['DOI {DOI}.']" "pieces=['edition={edition:ordinal-en}', ' plain={edition}', '{!edition} ABSENT', ' other={volume}', ' year={year:kanji}']" customBibliographyDeclaration)))
+        TIO.appendFile (tmp </> "manifest.toml") "[targets.text]\n[targets.epub]\n"
+        result <- build (defaultOptions tmp) {optTargets = Just [TargetHtml, TargetText, TargetEpub]}
+        assertEqual "no errors" [] (filter isError (brDiagnostics result))
+        output <- TIO.readFile (tmp </> "build/text/horizontal/a.txt")
+        assertBool (T.unpack output) ("edition=123456789012345678901st plain=123456789012345678901" `T.isInfixOf` output)
+        assertBool "the ordinal and its absence guard use the same field availability" (not ("ABSENT" `T.isInfixOf` output))
+        assertBool "other fields, separate citation arrays and guarded years keep the existing projection" (not (any (`T.isInfixOf` output) ["other=", "citation=", "year="]))
+        html <- TIO.readFile (tmp </> "build/html/a.html")
+        archive <- toArchive <$> BL.readFile (tmp </> "build/epub/book.epub")
+        let xhtml = maybe "" (TE.decodeUtf8 . BL.toStrict . fromEntry) (findEntryByPath "OEBPS/a.xhtml" archive)
+        forM_ [html, xhtml] $ \page -> assertBool (T.unpack page) ("edition=123456789012345678901st" `T.isInfixOf` page),
+    testCase "root ADR 0480 I6: negative unscaled JSON integer coefficients retain G03006" $
+      withBibProject "bibliography = [\"refs.json\"]" "[cite a]\n\n@bibliography\n" [("refs.json", "[{\"id\":\"a\",\"edition\":-123456789012345678901}]")] $ \tmp -> do
+        TIO.appendFile (tmp </> "style.toml") (T.replace ".types.book]" ".types.default]" (T.replace "pieces=['DOI {DOI}.']" "pieces=['{edition:ordinal-en}']" customBibliographyDeclaration))
+        result <- build (defaultOptions tmp) {optTargets = Just [TargetHtml]}
+        map diagCode (filter isError (brDiagnostics result)) @?= [DiagnosticCode "G03006"],
+    testCase "root ADR 0480 I5: malformed absence guards retain G03304 and required name tables retain G03006" $
+      forM_ [("{!DOI?}", "G03304"), ("{!DOI:kanji}", "G03304"), ("{!unknown}", "G03304"), ("{!author}fallback", "G03006")] $ \(piece, code) ->
+        withBibProject "bibliography = [\"refs.json\"]" "[cite a]\n\n@bibliography\n" [("refs.json", abcJson)] $ \tmp -> do
+          TIO.appendFile (tmp </> "style.toml") (T.replace ".types.book]" ".types.default]" (T.replace "pieces=['DOI {DOI}.']" ("pieces=['" <> piece <> "']") customBibliographyDeclaration))
+          result <- build (defaultOptions tmp) {optTargets = Just [TargetHtml]}
+          assertBool (show (brDiagnostics result)) (DiagnosticCode code `elem` map diagCode (filter isError (brDiagnostics result))),
     testCase "root ADR 0475 I1: no list needs no entry type declaration" $
       withBibProject "bibliography = [\"refs.json\"]" "本文[cite a]。\n" [("refs.json", abcJson)] $ \tmp -> do
         TIO.appendFile (tmp </> "style.toml") (fst (T.breakOn "[bibliography.styles.custom.types.book]" customBibliographyDeclaration))

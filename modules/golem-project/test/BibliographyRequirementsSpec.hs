@@ -30,6 +30,26 @@ tests =
              testCase "root ADR 0475 I1: author-year and language sort have conditional requirements" $ do
                assertContains "citation-year" (paths base {bsCitationMode = Just "author-year"})
                assertContains "language-order" (paths base {bsSort = Just ["language"]}),
+             testCase "root ADR 0480 I1: author sorting requires its own separator without name rendering" $
+               mapM_
+                 (\style -> paths style @?= ["names.author.part-delimiter"])
+                 [base {bsSort = Just ["author"]}, base {bsCitationSort = Just "author-year"}],
+             testCase "root ADR 0480 I1: sorting alone requires no name-rendering options and keeps an empty separator" $
+               paths base {bsSort = Just ["author"], bsNames = Map.singleton "author" emptyBibliographyNames {bnPartDelimiter = Just ""}} @?= [],
+             testCase "root ADR 0480 I1: given-family rendering still needs the explicit author sort separator" $ do
+               let names = emptyBibliographyNames {bnOrder = Just "given-family", bnInitials = Just False, bnDelimiter = Just ", ", bnLastDelimiter = Just " and "}
+                   style = base {bsSort = Just ["author"], bsTypes = Map.singleton "book" (BibliographyType (Just ["{author}"]) Map.empty), bsNames = Map.singleton "author" names}
+               paths style @?= ["names.author.part-delimiter"]
+               paths style {bsNames = Map.singleton "author" names {bnPartDelimiter = Just " "}} @?= [],
+             testCase "root ADR 0480 I1: final book and record languages cannot borrow a different language separator" $ do
+               let japanese = emptyBibliographyStyle {bsCitationSort = Just "author-year", bsNames = Map.singleton "author" emptyBibliographyNames {bnPartDelimiter = Just ""}}
+                   style = base {bsLanguages = Map.singleton "ja" japanese}
+               bibliographyAllRequiredChecks (Bibliography "mine" (Map.singleton "mine" style)) @?= []
+               combined <- either (\problem -> assertFailure (show problem) >> pure base) pure (bibliographyForLanguages "ja" "en" style)
+               paths combined @?= ["names.author.part-delimiter"],
+             testCase "root ADR 0480 I1: author rendering and sorting report one missing separator" $ do
+               let names = emptyBibliographyNames {bnOrder = Just "family-given", bnInitials = Just False, bnDelimiter = Just ", ", bnLastDelimiter = Just " and "}
+               paths base {bsSort = Just ["author"], bsTypes = Map.singleton "book" (BibliographyType (Just ["{author}"]) Map.empty), bsNames = Map.singleton "author" names} @?= ["names.author.part-delimiter"],
              testCase "root ADR 0475 I1: optional author slots require short-name options before omission" $ do
                let style = base {bsCitation = Just ["{author?}"]}
                assertContains "names.short.delimiter" (paths style)

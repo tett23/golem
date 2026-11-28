@@ -7,6 +7,7 @@ module Golem.Assemble.BibliographyFormats
   ( BibliographyPiece,
     parseBibliographyPiece,
     bibliographyPieceFields,
+    bibliographyPieceNumberNotations,
     renderBibliographyPieces,
     BibliographyFragment (..),
     renderBibliographyFragments,
@@ -18,30 +19,39 @@ where
 import Data.Bifunctor (first)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
-import Data.Maybe (fromMaybe, isNothing)
+import Data.Maybe (fromMaybe, isJust, isNothing)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Read qualified as TR
-import Golem.Assemble.Formats (Braces (..), Notation, Piece (..), Slot (..), formatReason, notationName, parseFormat, unknownSlot, writeNumber)
+import Golem.Assemble.Formats (Braces (..), Notation, Piece (..), Slot (..), formatReason, notationName, notations, ordinalEnNotation, parseFormatWithNotations, unknownSlot, writeNumber)
 import Golem.Bibliography (EntryPart (..))
 
 -- | One conditional piece, parsed once; a slot keeps its name and @?@.
-newtype BibliographyPiece = BibliographyPiece [Piece (Text, Bool)]
+newtype BibliographyPiece = BibliographyPiece [Piece BibliographySlot]
+  deriving stock (Eq, Show)
+
+data BibliographySlot = FieldSlot !Text !Bool | AbsenceSlot !Text
   deriving stock (Eq, Show)
 
 {- | Reads one piece using the common brace and notation syntax. Names
 must be in the supplied table; @{volume?}@ is optional and
-@{volume?:kanji}@ is its optional form with a notation.
+@{volume?:kanji}@ is its optional form with a notation. @{!DOI}@ keeps a
+piece only when DOI is unavailable and never writes a value itself.
 -}
 parseBibliographyPiece :: [Text] -> Text -> Either Text BibliographyPiece
 parseBibliographyPiece names source = do
-  (pieces, _) <- first formatReason (parseFormat EscapesOnly table source)
+  (pieces, _) <- first formatReason (parseFormatWithNotations (notations <> [ordinalEnNotation]) EscapesOnly table source)
   pure (BibliographyPiece pieces)
   where
+    table written
+      | Just name <- T.stripPrefix "!" written =
+          if not (T.null name) && name `elem` names
+            then Right (TextSlot (AbsenceSlot name))
+            else Left (unknownSlot ("未知の不在条件です: {" <> written <> "}"))
     table written =
       let (name, optional) = maybe (written, False) (,True) (T.stripSuffix "?" written)
        in if not (T.null name) && name `elem` names
-            then Right (NumberSlot (name, optional))
+            then Right (NumberSlot (FieldSlot name optional))
             else Left (unknownSlot ("未知の差し込みです: {" <> written <> "}"))
 
 {- | Concatenates the retained pieces. A missing required value removes
@@ -84,12 +94,16 @@ renderBibliographyFragmentsWith value = fmap concat . traverse render
       | otherwise = concat <$> traverse substitute pieces
     missing = \case
       PLit _ -> False
-      PText (name, optional) -> not optional && isNothing (present name Nothing)
-      PNumber (name, optional) notation -> not optional && isNothing (present name notation)
+      PText slot -> missingSlot slot Nothing
+      PNumber slot notation -> missingSlot slot notation
+    missingSlot (FieldSlot name optional) notation = not optional && isNothing (present name notation)
+    missingSlot (AbsenceSlot name) _ = isJust (present name Nothing)
     substitute = \case
       PLit t -> Right (literal t)
-      PText (name, _) -> Right (field name (fromMaybe "" (present name Nothing)))
-      PNumber (name, _) notation -> case present name notation of
+      PText (AbsenceSlot _) -> Right []
+      PNumber (AbsenceSlot _) _ -> Right []
+      PText (FieldSlot name _) -> Right (field name (fromMaybe "" (present name Nothing)))
+      PNumber (FieldSlot name _) notation -> case present name notation of
         Nothing -> Right []
         Just t -> case (notation, integer t) of
           (Just n, Just k) -> case writeNumber n k of
@@ -108,5 +122,14 @@ bibliographyPieceFields :: BibliographyPiece -> [Text]
 bibliographyPieceFields (BibliographyPiece pieces) = concatMap field pieces
   where
     field (PLit _) = []
-    field (PText (name, _)) = [name]
-    field (PNumber (name, _) _) = [name]
+    field (PText slot) = [slotName slot]
+    field (PNumber slot _) = [slotName slot]
+    slotName (FieldSlot name _) = name
+    slotName (AbsenceSlot name) = name
+
+{- | Only explicit number notations in parsed slots; literal escapes and
+absence conditions do not select a number view (root ADR 0480 I5-I7).
+-}
+bibliographyPieceNumberNotations :: BibliographyPiece -> [(Text, Notation)]
+bibliographyPieceNumberNotations (BibliographyPiece pieces) =
+  [(name, notation) | PNumber (FieldSlot name _) (Just notation) <- pieces]

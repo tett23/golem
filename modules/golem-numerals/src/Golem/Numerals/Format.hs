@@ -12,6 +12,7 @@ module Golem.Numerals.Format
     FormatError (..),
     unknownSlot,
     parseFormat,
+    parseFormatWithNotations,
     singleNumber,
     escapeLiteral,
     MarkFormat (..),
@@ -31,6 +32,7 @@ module Golem.Numerals.Format
 where
 
 import Data.Bifunctor (bimap, first)
+import Data.List (find)
 import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
@@ -108,7 +110,13 @@ the front, its cause and its reason in Japanese; the uses of the forms to
 be retired come with the pieces.
 -}
 parseFormat :: Braces -> (Text -> Either FormatError (Slot a)) -> Text -> Either FormatError ([Piece a], [Legacy])
-parseFormat braces table = fmap finish . go [] [] . T.unpack
+parseFormat = parseFormatWithNotations notations
+
+{- | Reads with the caller's notation table. Bibliography declarations add
+their own notations without extending the formats of marks or headings.
+-}
+parseFormatWithNotations :: [Notation] -> Braces -> (Text -> Either FormatError (Slot a)) -> Text -> Either FormatError ([Piece a], [Legacy])
+parseFormatWithNotations allowed braces table = fmap finish . go [] [] . T.unpack
   where
     finish (ps, ls) = (merge (reverse ps), reverse ls)
     go ps ls = \case
@@ -139,9 +147,9 @@ parseFormat braces table = fmap finish . go [] [] . T.unpack
                   | otherwise -> Left (FormatError NotationOnText ("数でない差し込みには表記を書けません: {" <> written <> "}"))
                 NumberSlot a
                   | T.null colon -> Right (PNumber a Nothing, Nothing)
-                  | otherwise -> case notationNamed notationOf of
+                  | otherwise -> case find ((== notationOf) . notationName) allowed of
                       Just n -> Right (PNumber a (Just n), Nothing)
-                      Nothing -> Left (FormatError UnknownNotation ("表にない表記です: {" <> written <> "}。" <> T.intercalate "、" (map notationName notations) <> " のどれかを書きます"))
+                      Nothing -> Left (FormatError UnknownNotation ("表にない表記です: {" <> written <> "}。" <> T.intercalate "、" (map notationName allowed) <> " のどれかを書きます"))
                 SampleSlot a n
                   | T.null colon -> Right (PNumber a (Just n), Just (LegacySample name n))
                   | otherwise -> Left (FormatError NotationOnSample ("表にない差し込みです: {" <> written <> "}"))

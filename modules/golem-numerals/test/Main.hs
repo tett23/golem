@@ -22,7 +22,18 @@ tests :: TestTree
 tests =
   testGroup
     "golem-numerals"
-    [ testGroup
+    [ testCase "root ADR 0480 I6: English ordinal notation has an unbounded positive domain" $ do
+        notationRange ordinalEnNotation @?= (1, Nothing)
+        map (writeNumber ordinalEnNotation) [0, -1, 1, 2, 3, 11, 12, 13, 21, 10 ^ (100 :: Int) + 23]
+          @?= [Nothing, Nothing, Just "1st", Just "2nd", Just "3rd", Just "11th", Just "12th", Just "13th", Just "21st", Just (T.pack (show (10 ^ (100 :: Int) + 23 :: Integer)) <> "rd")],
+      testCase "root ADR 0480 I6, I7: English ordinals require a caller that opts into the notation" $ do
+        notationNamed "ordinal-en" @?= Nothing
+        assertBool "note marks do not opt in" (isLeft (parseMarkFormat "{n:ordinal-en}"))
+        assertBool "heading numbers do not opt in" (isLeft (parseHeadingNumberFormatText "{n:ordinal-en}"))
+        let table name = if name == "edition" then Right (NumberSlot ()) else Left (unknownSlot name)
+        parseFormatWithNotations (notations <> [ordinalEnNotation]) EscapesOnly table "{edition:ordinal-en}"
+          @?= Right ([PNumber () (Just ordinalEnNotation)], []),
+      testGroup
         "the integers of the IR are int64 (golem-doc ADR 0006)"
         [ testCase "kanji up to the ends of int64" $ do
             kanji (2 ^ (63 :: Int) - 1) @?= "九百二十二京三千三百七十二兆三百六十八億五千四百七十七万五千八百七"

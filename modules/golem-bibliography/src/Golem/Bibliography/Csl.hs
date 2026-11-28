@@ -11,6 +11,7 @@ module Golem.Bibliography.Csl
     recordEntry,
     recordValue,
     recordText,
+    recordUnscaledIntegerText,
     recordNames,
     recordDate,
     cslEntry,
@@ -79,6 +80,16 @@ recordValue key (CslRecord _ object) = KM.lookup (JK.fromText key) object
 -- | A nonblank string or a bounded integer as text, by its CSL field name.
 recordText :: T.Text -> CslRecord -> Maybe T.Text
 recordText key (CslRecord _ object) = strOrInt key object
+
+{- | A JSON number whose Scientific exponent is zero, without narrowing its
+already parsed coefficient. This neither expands a power of ten nor changes
+'recordText', the legacy entry view or the guarded CSL year projection.
+The original JSON token is not retained.
+-}
+recordUnscaledIntegerText :: T.Text -> CslRecord -> Maybe T.Text
+recordUnscaledIntegerText key record = case recordValue key record of
+  Just (J.Number n) | base10Exponent n == 0 -> Just (T.pack (show (coefficient n)))
+  _ -> Nothing
 
 -- | Eligible names in order, each retaining its own explicit sort key.
 recordNames :: T.Text -> CslRecord -> [CslPerson]

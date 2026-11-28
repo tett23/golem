@@ -355,6 +355,7 @@ boxKind = toEnum . bcTag
 data Piece
   = PChar !Look !Char !Text -- the character and its variation selectors; kenten is in the look
   | PWord !Look !Text ![Int] !(Maybe WordShys) -- a Latin word (no spaces), where the soft hyphens taken out of it were (docs/adr ADR 0272), and what they make of it in the joined word (docs/adr ADR 0285)
+  | PLocator !Look !Text !Text !Text !Bool ![(Int -> Int, Piece)] -- structured literal locator, with only its joining boundary held
   | PSpace !Look !Bool -- an inter-word space, and whether no line breaks at it (docs/adr/0277)
   | PBox !Look !Text !BoxKind !Sp -- ruby, tcy, …: an unbreakable box of a given width
   | PWarichu !Look !Text !Text !Sp
@@ -392,6 +393,7 @@ displayedInlines env = foldMap (foldMap (display . snd) . piecesOf env)
     display = \case
       PChar _ ch selectors -> T.cons ch selectors
       PWord _ text _ _ -> text
+      PLocator _ label delimiter value after _ -> citationText [CiteLocatorFormatted label delimiter value after]
       PSpace {} -> " "
       PBox _ text _ _ -> text
       PWarichu _ a b _ -> a <> b
@@ -419,16 +421,19 @@ composeInlinesTree env inls =
       leaves = [l | (l, _, _) <- sourced0]
       -- padCode and scriptRanges keep one piece for each piece
       pieces = scriptRanges env (padCode (map snd sourced))
-      (items, anchors, codeSpaces) = foldl' emit ([], [], IntSet.empty) (zip5 leaves (map fst sourced) prevs (zip leads pieces) nexts)
-      emit (acc, as, cs) (_, _, _, (_, PAnchor f), _) = (acc, (length acc, f) : as, cs)
+      (items, anchors, codeSpaces, locatorBounds) = foldl' emit ([], [], IntSet.empty, []) (zip5 leaves (map fst sourced) prevs (zip leads pieces) nexts)
+      emit (acc, as, cs, bounds) (_, _, _, (_, PAnchor f), _) = (acc, (length acc, f) : as, cs, bounds)
+      emit (acc, as, cs, bounds) (l, (src, offs), pv, (lead, PLocator lk label delimiter value after inner), nx) =
+        let (new, boundary) = locatorItems env {ceBoxSource = src, ceBoxAt = offs, ceLeaf = l} lead pv nx lk label delimiter value after inner
+         in (acc <> new, as, cs, bounds <> [(length acc + a, length acc + b) | (a, b) <- boundary])
       -- the boxes of a piece carry its source (golem-cli ADR 0008) and its leaf (docs/adr ADR 0183)
-      emit (acc, as, cs) (l, (src, offs), pv, (lead, p), nx) =
+      emit (acc, as, cs, bounds) (l, (src, offs), pv, (lead, p), nx) =
         let new = itemsFor env {ceBoxSource = src, ceBoxAt = offs, ceLeaf = l} lead pv p nx
             -- the glue of a space of inline code, by its index (golem-layout ADR 0037)
             cs' = case p of
               PSpace lk _ | lkCode lk -> IntSet.union cs (IntSet.fromList [length acc + k | (k, Glue {}) <- zip [0 ..] new])
               _ -> cs
-         in (acc <> new, as, cs')
+         in (acc <> new, as, cs', bounds)
       -- the neighbours of each piece, anchors and breaks between mono ruby bases skipped
       solid = \case
         PAnchor _ -> False
@@ -442,10 +447,11 @@ composeInlinesTree env inls =
       leads = map (== Just True) (scanl latinBefore Nothing pieces)
       latinBefore acc = \case
         PWord lk w _ _ | not (isScript lk) -> Just (acc == Just True || T.any (\c -> not (isExtending c) && c `notElem` ("-‐–—" :: String)) w)
+        PLocator lk label delimiter value after _ -> foldl' latinBefore acc (textPieces lk (citationText [CiteLocatorFormatted label delimiter value after]))
         q | solid q -> Nothing
         _ -> acc
       nexts = drop 1 (scanr (\p acc -> if solid p then Just p else acc) Nothing pieces)
-      spaced = normalize env codeSpaces (kernPairs env items)
+      spaced = holdLocatorGaps items locatorBounds (normalize env codeSpaces (kernPairs env items))
       -- anchors index the normalized items: the spacing inserted before a box shifts it, a space taken out the items after it
       positions = alignPositions items spaced
       {- the spaces between words (golem-layout ADR 0032) and the spaces of
@@ -489,7 +495,9 @@ source ('ceSourceAt'; -1 where the source does not have it), and why.
 softHyphenSites :: ComposeEnv -> [Inline] -> [(SrcSpan, Int, SoftHyphenNote)]
 softHyphenSites env inls =
   let (nodes, sourced) = structured env inls
-      here = [(snd src, offs 0, note) | (_, (src, offs), PShy _ _ (Just note)) <- sourced]
+      here = [(snd src, offs (at' 0), note) | (_, (src, offs), piece) <- sourced, (at', PShy _ _ (Just note)) <- inside piece]
+      inside (PLocator _ _ _ _ _ inner) = inner
+      inside piece = [(id, piece)]
    in here <> concatMap (softHyphenSites env) (concatMap bodies nodes)
   where
     bodies = \case
@@ -1102,16 +1110,100 @@ text joined, as other text, the space between the label of each locator
 and its value held (docs/adr/0277): a line does not break at it.
 -}
 citeTextPieces :: Look -> [CitePiece] -> [Piece]
-citeTextPieces lk pieces = [hold (at' 0) p | (at', p) <- textPiecesAt lk (citationText pieces)]
+citeTextPieces lk pieces = case break formatted pieces of
+  (plain, []) -> ordinary plain
+  (plain, CiteLocatorFormatted label delimiter value after : rest) -> ordinary plain <> [PLocator lk label delimiter value after (locatorPieces lk label delimiter value after)] <> citeTextPieces lk rest
+  (plain, _) -> ordinary plain
   where
-    -- the index in the text of each space between a label and its value
-    held = IntSet.fromList (concat (snd (mapAccumL place 0 pieces)))
-    place i piece = case piece of
-      CiteLocator l v -> (i + T.length l + 1 + T.length v, [i + T.length l])
-      _ -> (i + T.length (citationText [piece]), [])
-    hold i = \case
-      PSpace l _ | IntSet.member i held -> PSpace l True
+    formatted CiteLocatorFormatted {} = True
+    formatted _ = False
+    ordinary plain = [hold (at' 0) p | (at', p) <- textPiecesAt lk (citationText plain)]
+      where
+        held = IntSet.fromList (concat (snd (mapAccumL place 0 plain)))
+        place i piece = case piece of
+          CiteLocator l v -> (i + T.length l + 1 + T.length v, [i + T.length l])
+          _ -> (i + T.length (citationText [piece]), [])
+        hold i = \case
+          PSpace l _ | IntSet.member i held -> PSpace l True
+          p -> p
+
+{- | Expand one locator without splitting a shaped word at a field boundary.
+The interval records the last box on the left and the first on the right.
+-}
+locatorItems :: ComposeEnv -> Bool -> Maybe Piece -> Maybe Piece -> Look -> Text -> Text -> Text -> Bool -> [(Int -> Int, Piece)] -> ([Item], [(Int, Int)])
+locatorItems env lead previous following lk label delimiter value after inner =
+  (items, [(i, j) | not (T.null left || T.null right), (i, _, _) <- take 1 (reverse [b | b@(_, start, _) <- boxes, start < low]), (j, _, _) <- take 1 [b | b@(_, _, end) <- boxes, end > high], i < j])
+  where
+    (left, right) = if after then (value, label) else (label, value)
+    low = T.length left
+    high = low + T.length delimiter
+    raw = [(at', relook p) | (at', p) <- inner]
+    relook = \case
+      PChar _ c marks -> PChar lk c marks
+      PWord _ w shys joined -> PWord lk w shys joined
+      PSpace _ held -> PSpace lk held
+      PCode _ t a b -> PCode lk t a b
+      PDashes _ t -> PDashes lk t
+      PShy _ inWord note -> PShy lk inWord note
       p -> p
+    ps = padCode (map snd raw)
+    solid = \case
+      PAnchor _ -> False
+      PShy {} -> False
+      PRubyBreak -> False
+      _ -> True
+    prevs = scanl (\a q -> if solid q then Just q else a) previous ps
+    nexts = drop 1 (scanr (\q a -> if solid q then Just q else a) following ps)
+    latinBefore a = \case
+      PWord look word _ _ | not (isScript look) -> Just (a == Just True || T.any (\c -> not (isExtending c) && c `notElem` ("-‐–—" :: String)) word)
+      q | solid q -> Nothing
+      _ -> a
+    leads = map (== Just True) (scanl latinBefore (if lead then Just True else Nothing) ps)
+    (items, boxes) = foldl' emit ([], []) (zip5 (map fst raw) prevs leads ps nexts)
+    emit (acc, coordinates) (at', pv, before, p, nx) =
+      let new = itemsFor env {ceBoxAt = id} before pv p nx
+          positions = [(length acc + i, at' (bcAt c), at' (bcAt c + T.length (bcText c))) | (i, Box _ c) <- zip [0 ..] new]
+          restore = \case
+            Box w c -> Box w c {bcAt = ceBoxAt env (at' (bcAt c))}
+            x -> x
+       in (acc <> map restore new, coordinates <> positions)
+
+-- | Ordinary word and soft-hyphen analysis, with the literal joining spaces retained.
+locatorPieces :: Look -> Text -> Text -> Text -> Bool -> [(Int -> Int, Piece)]
+locatorPieces lk label delimiter value after =
+  raw
+  where
+    (left, right) = if after then (value, label) else (label, value)
+    text = left <> delimiter <> right
+    low = T.length left
+    high = low + T.length delimiter
+    raw = concatMap literalSpaces (textPiecesAt lk text)
+    literalSpaces pair@(at', p) = case p of
+      PSpace {} ->
+        let start = at' 0
+            end = start + T.length (T.takeWhile (== ' ') (T.drop start text))
+            literal = max 0 (min end high - max start low)
+            ordinary = if start < low || end > high then 1 else 0
+         in replicate (if literal == 0 then 1 else literal + ordinary) pair
+      _ -> [pair]
+
+{- | Keep widths and glyphs, suppressing candidates only across the joining gap.
+No Look is marked as a user-written no-break range.
+-}
+holdLocatorGaps :: [Item] -> [(Int, Int)] -> [Item] -> [Item]
+holdLocatorGaps _ [] xs = xs
+holdLocatorGaps raw bounds xs = go False 0 xs
+  where
+    positions = alignPositions raw xs
+    held = IntSet.fromList [k | (a, b) <- bounds, Just i <- [lookup a positions], Just j <- [lookup b positions], k <- [i + 1 .. j - 1]]
+    go _ _ [] = []
+    go previous i (x : rest) =
+      let current = case x of
+            Penalty w p h | IntSet.member i held && p > negate infPenalty -> Penalty w infPenalty h
+            _ -> x
+          extra = [Penalty 0 infPenalty NoHyphen | IntSet.member i held, not previous, Glue {} <- [x]]
+          guarded = case current of Penalty _ p _ -> p >= infPenalty; _ -> False
+       in extra <> [current] <> go guarded (i + 1) rest
 
 -- | The soft hyphen, U+00AD (docs/adr ADR 0272).
 softHyphen :: Char
@@ -1550,6 +1642,7 @@ pieceLook :: Piece -> Maybe Look
 pieceLook = \case
   PChar lk _ _ -> Just lk
   PWord lk _ _ _ -> Just lk
+  PLocator lk _ _ _ _ _ -> Just lk
   PSpace lk _ -> Just lk
   PBox lk _ _ _ -> Just lk
   PWarichu lk _ _ _ -> Just lk
@@ -1591,6 +1684,7 @@ scriptRanges env = go
     charsOf = \case
       PChar lk c _ -> [(lk, c)]
       PWord lk t _ _ -> [(lk, c) | c <- T.unpack t]
+      PLocator lk label delimiter value after _ -> [(lk, c) | c <- T.unpack (citationText [CiteLocatorFormatted label delimiter value after])]
       PSpace lk _ -> [(lk, ' ')]
       PBox lk t _ _ -> [(lk, c) | c <- T.unpack t]
       PWarichu lk a b _ -> [(lk, c) | c <- T.unpack (a <> b)]
@@ -1601,6 +1695,7 @@ scriptRanges env = go
     settle pos glyphs = \case
       PChar lk c vs -> PChar (set lk) c vs
       PWord lk t shys ws -> PWord (set lk) t shys ws
+      PLocator lk label delimiter value after inner -> PLocator (set lk) label delimiter value after inner
       PSpace lk held -> PSpace (set lk) held
       PBox lk t kind w -> PBox (set lk) t kind (if w == lkSize lk then lkSize (set lk) else w)
       PRuby lk kind base looks reading -> PRuby (set lk) kind base (map set looks) reading
@@ -1630,6 +1725,7 @@ and dashes at its start (docs/adr ADR 0280).
 -}
 itemsFor :: ComposeEnv -> Bool -> Maybe Piece -> Piece -> Maybe Piece -> [Item]
 itemsFor env lead prev p next = case p of
+  PLocator lk label delimiter value after inner -> fst (locatorItems env lead prev next lk label delimiter value after inner)
   PChar lk c vs ->
     let cls = lookClass lk c
         fs = lkSize lk
@@ -2102,8 +2198,21 @@ or with such a character before it or after it, is not a break, and is
 G07124 (docs/adr ADR 0297).
 -}
 joinShys :: [(Int, Sourced, Piece)] -> [(Int, Sourced, Piece)]
-joinShys = go
+joinShys source
+  | any locator source = restore source (go (concatMap expand source))
+  | otherwise = go source
   where
+    locator (_, _, PLocator {}) = True
+    locator _ = False
+    expand (leaf, (src, offs), PLocator _ _ _ _ _ inner) = [(leaf, (src, offs . at'), p) | (at', p) <- inner]
+    expand x = [x]
+    restore [] _ = []
+    restore ((leaf, src, PLocator lk label delimiter value after inner) : rest) joined =
+      let (inside, remaining) = splitAt (length inner) joined
+          updated = [(at', p) | ((at', _), (_, _, p)) <- zip inner inside]
+       in (leaf, src, PLocator lk label delimiter value after updated) : restore rest remaining
+    restore (_ : rest) (x : remaining) = x : restore rest remaining
+    restore _ [] = []
     go xs = case break member xs of
       (before, []) -> before
       (before, rest) -> let (run, after) = span (\x -> member x || anchor x) rest in before <> joinRun run <> go after

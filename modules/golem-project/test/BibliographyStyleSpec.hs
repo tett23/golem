@@ -2,6 +2,7 @@ module BibliographyStyleSpec (tests) where
 
 import Data.Map.Strict qualified as Map
 import Data.Text (Text)
+import Data.Text qualified as T
 import Golem.Assemble.BibliographyStyle qualified as Bib
 import Golem.Project.Style
 import Golem.Syntax
@@ -15,7 +16,7 @@ tests =
       testCase "root ADR 0470 I2: a named custom declaration is read" $
         readable "[bibliography]\nstyle = 'mine'\n[bibliography.styles.mine]\ncitation-mode = 'author-year'\ncitation = ['({author}, {year})']\ncitation-year = ['({year})']\ncitation-delimiter = '; '\ncitation-sort = 'year'\nsubsequent = ['{author} ({first-note})']\nnote-channel = 'endnote'\nsort = ['language', 'author', 'year', 'title', 'citation']\nlanguage-order = ['ja', 'en', '*']\nlabel = '[{number}]'\nhanging-indent = '1zw'\nyear-suffix = true\npage-range = 'minimal'\nrange-delimiter = '–'\nmonths = ['Jan.', 'Feb.', 'Mar.', 'Apr.', 'May', 'Jun.', 'Jul.', 'Aug.', 'Sep.', 'Oct.', 'Nov.', 'Dec.']\n[bibliography.styles.mine.types.default]\npieces = ['{author}', '. {title}', '. {year}']\nchar-styles = { title = 'emphasis' }\n[bibliography.styles.mine.locator-labels]\npage = ['p.', 'pp.']\n[bibliography.styles.mine.names.author]\norder = 'first-family-given'\npart-delimiter = ', '\ninitials = true\ninitial-format = '{i}.'\ninitial-delimiter = ' '\ndelimiter = ', '\nlast-delimiter = ' & '\nmax = 6\nuse-first = 3\net-al = ' et al.'\n[bibliography.styles.mine.names.editor]\nlabel = ['ed.', 'eds.']\n[bibliography.styles.mine.names.short]\ndelimiter = ', '\nlast-delimiter = ' and '\nmax = 3\nuse-first = 1\net-al = ' et al.'\n[bibliography.styles.mine.languages.ja]\ncitation-delimiter = '、'\n[bibliography.styles.mine.languages.ja.types.book]\npieces = ['{author}', '『{title}』', '、{year:kanji}年']\n",
       testCase "root ADR 0470 I2: declarations retain their typed values" $ do
-        value <- declaration "[bibliography]\nstyle = 'mine'\n[bibliography.styles.mine]\ncitation-mode = 'note'\nnote-channel = 'endnote'\ncitation = ['{author}']\nsort = ['author', 'year']\nhanging-indent = '1zw'\nyear-suffix = false\ncitation-delimiter = ', '\ncitation-sort = 'written'\npage-range = 'full'\nrange-delimiter = '–'\n[bibliography.styles.mine.names.author]\norder = 'given-family'\ndelimiter = ', '\nlast-delimiter = ' and '\nmax = 0\nuse-first = 0\ninitials = false\net-al = ''\n[bibliography.styles.mine.types.book]\npieces = ['{title}']\nchar-styles = { title = 'emphasis' }\n"
+        value <- declaration "[bibliography]\nstyle = 'mine'\n[bibliography.styles.mine]\ncitation-mode = 'note'\nnote-channel = 'endnote'\ncitation = ['{author}']\nsort = ['author', 'year']\nhanging-indent = '1zw'\nyear-suffix = false\ncitation-delimiter = ', '\ncitation-sort = 'written'\npage-range = 'full'\nrange-delimiter = '–'\n[bibliography.styles.mine.names.author]\norder = 'given-family'\npart-delimiter = ' '\ndelimiter = ', '\nlast-delimiter = ' and '\nmax = 0\nuse-first = 0\ninitials = false\net-al = ''\n[bibliography.styles.mine.types.book]\npieces = ['{title}']\nchar-styles = { title = 'emphasis' }\n"
         Bib.bsCitationMode value @?= Just "note"
         Bib.bsNoteChannel value @?= Just "endnote"
         Bib.bsCitation value @?= Just ["{author}"]
@@ -47,6 +48,46 @@ tests =
              readable ("[bibliography]\nstyle = '" <> name <> "'\n")
          | name <- ["golem", "ieee", "vancouver", "sist02", "unified-linguistics", "chicago-notes-bibliography", "chicago-author-date", "apa"]
          ]
+      <> [ testCase ("root ADR 0480 I2: explicit locator position " <> show (label, position)) $
+             mapM_
+               (\delimiter -> readable (locatorDeclaration <> "locator-positions={" <> label <> "='" <> position <> "'}\nlocator-delimiters={" <> label <> "='" <> delimiter <> "'}\n"))
+               ["", " ", " | "]
+         | label <- Bib.bibliographyLocatorNames,
+           position <- ["before", "after"]
+         ]
+      <> [ testCase "root ADR 0480 I2: locator overrides use the same explicit keys" $
+             readable (locatorDeclaration <> "locator-positions={page='before'}\nlocator-delimiters={page=' '}\n[bibliography.styles.mine.languages.ja]\nlocator-positions={page='after'}\nlocator-delimiters={page=''}\n"),
+           testCase "root ADR 0480 I2: invalid locator settings report G03006" $
+             mapM_
+               (\setting -> codes (locatorDeclaration <> setting <> "\n") @?= ["G03006"])
+               ["locator-positions={unknown='before'}", "locator-positions={page='middle'}", "locator-positions={page=true}", "locator-delimiters={unknown=''}", "locator-delimiters={page=false}"]
+         ]
+      <> [ testCase "root ADR 0480 I3: type tables accept every citation template and explicit empty arrays" $
+             mapM_ (\template -> readable (locatorDeclaration <> "[bibliography.styles.mine.types.book]\npieces=[]\ncitation=" <> template <> "\ncitation-year=" <> template <> "\nsubsequent=" <> template <> "\n")) ["[]", "['{title}']"],
+           testCase "root ADR 0480 I3: a partial language type inherits its mandatory pieces" $
+             readable (locatorDeclaration <> "[bibliography.styles.mine.types.book]\npieces=[]\ncitation=['base']\n[bibliography.styles.mine.languages.ja.types.book]\ncitation=['Japanese']\ncitation-year=[]\nsubsequent=[]\n"),
+           testCase "root ADR 0480 I3: type templates retain explicit empty arrays including subsequent" $ do
+             value <- declaration (locatorDeclaration <> "[bibliography.styles.mine.types.book]\npieces=[]\ncitation=['book']\ncitation-year=[]\nsubsequent=['short']\n")
+             Map.lookup "book" (Bib.bsTypeCitations value) @?= Just (Bib.BibliographyTypeCitations (Just ["book"]) (Just []) (Just ["short"]))
+             Map.lookup "book" (Bib.bsTypes value) @?= Just (Bib.BibliographyType (Just []) Map.empty),
+           testCase "root ADR 0480 I3: typed templates do not replace mandatory global templates" $ do
+             codes (T.replace "citation=[]\n" "" locatorDeclaration <> "[bibliography.styles.mine.types.book]\npieces=[]\ncitation=[]\n") @?= ["G03006"]
+             codes (T.replace "citation-mode='numeric'" "citation-mode='author-year'" locatorDeclaration <> "[bibliography.styles.mine.types.book]\npieces=[]\ncitation-year=[]\n") @?= ["G03006"],
+           testCase "root ADR 0480 I3: citation-only type declarations still require pieces" $
+             codes (locatorDeclaration <> "[bibliography.styles.mine.types.book]\ncitation=[]\n") @?= ["G03006"],
+           testCase "root ADR 0480 I3: every unused type citation template is syntax checked" $
+             mapM_ (\key -> codes (locatorDeclaration <> "[bibliography.styles.mine.types.unused]\npieces=[]\n" <> key <> "=['{typo}']\n") @?= ["G03304"]) ["citation", "citation-year", "subsequent"],
+           testCase "root ADR 0480 I3: unused type citation templates require their short names" $
+             mapM_
+               ( \key -> case parseStyle (FileId 0) (locatorDeclaration <> "[bibliography.styles.mine.types.unused]\npieces=[]\n" <> key <> "=['{author}']\n") of
+                   Right _ -> assertFailure "missing short-name declarations were accepted"
+                   Left diagnostics -> assertBool (show diagnostics) (any (\d -> "names.short.delimiter" `T.isInfixOf` diagMessage d) diagnostics)
+               )
+               ["citation", "citation-year", "subsequent"]
+         ]
+      <> [ testCase "root ADR 0480 I4: author-year citation order accepts an explicit empty author separator" $
+             readable (T.replace "citation-sort='written'" "citation-sort='author-year'" locatorDeclaration <> "[bibliography.styles.mine.names.author]\npart-delimiter=''\n")
+         ]
       <> [ testCase ("root ADR 0470 I7: invalid declaration value " <> show value) $
              codes ("[bibliography.styles.mine]\n" <> value <> "\n") @?= ["G03006"]
          | value <- ["citation-mode = 'unknown'", "citation = 'wrong'", "citation-sort = 'author'", "note-channel = 'sidenote'", "sort = ['unknown']", "hanging-indent = '-1pt'", "months = ['Jan.']", "unknown = true"]
@@ -70,3 +111,6 @@ declaration :: Text -> IO (Bib.BibliographyStyle Dim)
 declaration input = case parseStyle (FileId 0) input of
   Right style -> maybe (assertFailure "missing declaration" >> fail "missing declaration") pure (Map.lookup "mine" (Bib.bibStyles (stBibliography style)))
   Left diagnostics -> assertFailure (show diagnostics) >> fail "declaration did not read"
+
+locatorDeclaration :: Text
+locatorDeclaration = "[bibliography.styles.mine]\ncitation-mode='numeric'\ncitation=[]\ncitation-delimiter=''\ncitation-sort='written'\nsort=[]\nhanging-indent='0pt'\nyear-suffix=false\npage-range='full'\nrange-delimiter='–'\n"
