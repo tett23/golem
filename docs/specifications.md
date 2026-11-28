@@ -8633,6 +8633,15 @@ Golem はこの形を**チャネル**として一般化する。
 Golem は決定性を重視する[note: 同じ入力からバイト単位で同じ出力を得る性質。]。
 ```
 
+組版前の採番では、有効な脚注、傍注と章末注を、原稿の順にチャネルごとに一度ずつ数える（[root ADR 0482](adr/0482-fix-note-loss-as-a-default-output-compatibility-exception.md)）。
+本文に加えて、表のキャプションとセル、コードのキャプションの注も数える。
+PDF では、表とコードのキャプションの注を印と本文の行先に関連付け、コードを分割したり次の段へ送ったりしても、その注を保持する。
+
+HTML、EPUB とテキストでは、ルビの親文字に置いた注の印と本文も保持する。
+注本文の中の引用は、ルビの親文字に含まれていても参考文献の番号と関連付ける。
+注の外のルビの親文字にある引用と、索引の走査範囲は変えない。
+PDF のルビ内の注の配置は未対応であり、「既知の不具合」の節に制約を記す。
+
 脚注の本文は、印の位置に直接書くか、名前を付けたブロックに書く。
 `[note: 本文]` の本文は、段落スタイルのない段落一つになる。
 二つ以上の段落の注は、本文に名前を付けてブロックコマンド `@note` で書き、本文の位置に `[note 名前]` を書く（[ADR 0263](adr/0263-notes-with-more-than-one-paragraph.md)）。
@@ -11388,6 +11397,7 @@ PDF 経路は、最重量の工程（フォントのサブセット化と PDF/X-
 テストを足すときに見つかったものは、該当する場合をテストに入れずに残している。
 直すときは、仕様とコードのどちらに合わせるかを決め、必要なら ADR を作成する。
 
+- **PDF のルビの親文字内の注**：注の印や本文が欠ける。`[endnote]` では、[G07107](diagnostics.md#g07107) と [G07120](diagnostics.md#g07120) で PDF の生成を中止する場合もある。ルビ内の注の配置は [root ADR 0482](adr/0482-fix-note-loss-as-a-default-output-compatibility-exception.md) の対象外であり、未決として残す。注をルビの前後に書けば、既存の注の配置を使える。
 - **`[ref-number]` の図番号とリスト番号と表番号が、`[figures]` と `[code]` と `[tables]` の `number` の書式に従わない**：`[ref-number]` は、図版とキャプションのあるコードブロックと番号のある表を `章の番号-番号`（`2-2` の形）で返す。`[figures]` の `number` を `"図{chapter}.{n}"` にすると、キャプションの図番号は「図 2.2」、本文の `[ref-number ...]` は「2-2」になり、二つが食い違う。`[code]` の `number` とリスト番号、`[tables]` の `number` と表番号も同じである。仕様は、書式を変えたときの `[ref-number]` の表記を定めていない。`complex-horizontal`（[ADR 0175](adr/0175-complex-typesetting-fixture.md)）が、今の表記を固定している。
 - **HTML で本文の段落の前の空きが、すべての段落に当たる**：`style.toml` の本文（`[paragraph-styles.body]`）の `space-before` は、HTML の `style.css` で `p` の規則として書かれる（[`Html.hs`](https://github.com/tett23/golem/blob/16045dd620f382484894d4fa817f4731e52972e0/modules/golem-html/src/Golem/Html.hs#L1183-L1192)）。`p` はどの段落スタイルの段落にも当たるので、`space-before = 0` を書いた段落スタイルの段落にも、本文の前の空きが付く。PDF では付かない（[docs/adr/0217](adr/0217-html-spaces-of-paragraph-styles-redefined-in-files.md) の実装で見つかった）。
 - **HTML で本文の段落のあいだの空きが、どのスタイルの段落の後にも当たる**：本文の `space-between` と、前後の空きを 0 に戻す規則は、`p + p` として書かれる（[`Html.hs`](https://github.com/tett23/golem/blob/16045dd620f382484894d4fa817f4731e52972e0/modules/golem-html/src/Golem/Html.hs#L1153-L1166)）。この規則は、本文の段落どうしだけでなく、どの段落スタイルの段落の後の段落にも当たる（[docs/adr/0217](adr/0217-html-spaces-of-paragraph-styles-redefined-in-files.md) の実装で見つかった）。

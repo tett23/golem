@@ -378,6 +378,10 @@ CSV や TSV の表は `@table data/sizes.csv` のように書き、ファイル�
 
 ### 注、索引、リンク
 
+脚注と章末の注、横組みの傍注は、表とコードのキャプションでも番号と本文を保つ。
+HTML、EPUB とテキストでは、ルビの親文字に置いた注の本文も出力する。
+PDF のルビ内の注の配置は未対応である（[root ADR 0482](docs/adr/0482-fix-note-loss-as-a-default-output-compatibility-exception.md)）。
+
 傍注は組み込みの段落スタイル `sidenote` の `font` と `size` で組み、`[sidenotes]` には傍注の領域の幅、版面との間隔、置く側（`side`）、本文側の印と、その「※」の文字スタイル（`marker-style`）を書く。
 PDF の図版、表、コードブロックのキャプションと傍注の本文は、段落スタイル `caption` と `sidenote` の字下げ、`space-between`、`line-breaks` も当てて、部品の幅で組む（[ADR 0367](./docs/adr/0367-caption-sidenote-paragraphs.md)）。
 キャプションの字下げは、そのキャプションを含むファイルのスタイルから引く。
