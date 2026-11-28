@@ -501,6 +501,17 @@ LEAN_PATH="$tmp" "$lean" -o "$tmp/RoundPayloadStore.olean" "$roundPayloadStore"
 LEAN_PATH="$tmp" "$lean" "$root/experiments/pagination-proof/RoundPayloadStoreBoundary.lean"
 echo "root ADR 0352 I5: unique mixed-job keys preserve opaque payloads in the modeled association store"
 
+# Derive the key projection from fresh/cache producers carrying opaque payloads.
+producedPayloadKeys=$root/experiments/pagination-proof/ProducedPayloadKeys.lean
+if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|implemented_by|extern|native_decide)([^A-Za-z_]|$)' "$producedPayloadKeys"; then
+  echo "unproved or unchecked Lean declaration in $producedPayloadKeys" >&2
+  exit 1
+fi
+sh "$root/experiments/pagination-proof/check-side-payload-shape.sh"
+LEAN_PATH="$tmp" "$lean" -o "$tmp/ProducedPayloadKeys.olean" "$producedPayloadKeys"
+LEAN_PATH="$tmp" "$lean" "$root/experiments/pagination-proof/ProducedPayloadKeysBoundary.lean"
+echo "root ADR 0352 I5: payload producers discharge their key projection and preserve the generated pairs through storage"
+
 
 
 

@@ -1791,6 +1791,8 @@ golem-layout は区切りを 1 行以上にする（`Paginate.hs:155`）。
    実装の六回の系列との比較と、本体の Map との一般の接続が残ることを [全ジョブのキーの順序の依存調査](../../docs/research/0352-mixed-round-order-dependencies.md) に記録する。
    `RoundPayloadStore.lean` は、重複しないキーから、生成済みの組の値を格納して同じキー順に読み戻す接続を導く。
    実装の Map の有限比較と、本体との一般の接続が残ることを [格納時の本文の値の保存の依存調査](../../docs/research/0352-round-payload-store-dependencies.md) に記録する。
+   `ProducedPayloadKeys.lean` は、値を持つ新規生成と再利用からキー列の対応を導き、格納後の値の保存へ渡す。
+   実装の組んだ行数と offset の比較と、整形と IO の一般の接続が残ることを [生成する値とキーの対応の依存調査](../../docs/research/0352-produced-payload-keys-dependencies.md) に記録する。
 
 これらを終えるまで Alloy の定期実行と既存の参照を維持する。
 終えたときは、Alloy の定期実行を終え、規則やモデルを変えたときにローカルの Lean で検証し直す手順を CONTRIBUTING に書く。
@@ -1858,6 +1860,8 @@ sh experiments/pagination-proof/check.sh
 `MixedRoundOrderBoundary.lean` は `MixedRoundOrder.olean` を読み込み、所有者の重複と逆順の対照を含む具体例を検査する。
 `RoundPayloadStore.lean` は `MixedRoundOrder.olean` を読み込み、重複しないキーから格納する値の保存を検査する。
 `RoundPayloadStoreBoundary.lean` と `check-side-store-shape.sh` は、格納の具体例と本体の格納呼び出しの形を検査する。
+`ProducedPayloadKeys.lean` は `RoundPayloadStore.olean` を読み込み、生成する値とキー列の対応を検査する。
+`ProducedPayloadKeysBoundary.lean` と `check-side-payload-shape.sh` は、経路ごとの値の受け渡しと本体の構築箇所の形を検査する。
 `check-parts-retry-shape.sh` はその入口の述語と `parts` の分岐と引数を比べる。
 `RetryPrefixChecks.hs` はネイティブの試し置きの採用数と、同じ再試行の上限を検査する。
 `check-built-first-ids.sh` は、依存する package 環境を渡したローカルの `RUNGHC` で、export list だけを開いた一時ソースから本体の採番表を観測する。
