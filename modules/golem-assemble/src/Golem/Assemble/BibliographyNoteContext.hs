@@ -1,4 +1,5 @@
-{- | Citation occurrences in S1 notes (root ADR 0470 I5). The note identity
+{- | Citation occurrences and caller-resolved formatting in S1 notes
+(root ADR 0470 I5). The note identity
 and the occurrence within it remain distinct even when a plugin reuses
 one source span and identical citation items. This inventory neither
 chooses the first note of a work nor changes documents or outputs.
@@ -7,17 +8,22 @@ module Golem.Assemble.BibliographyNoteContext
   ( NoteCitationContext (..),
     NoteCitationOccurrence (..),
     bibliographyNoteCitations,
+    formatBibliographyNoteCitations,
     citationOffsets,
     citationCount,
   )
 where
 
 import Control.Monad (void)
+import Data.Bifunctor (first)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (fromMaybe)
 import Data.Set qualified as Set
+import Data.Text (Text)
 import Golem.Assemble (NoteChannelKind (..), NoteCitationContext (..))
-import Golem.Doc.Citation (citationCount, citationOffsets)
+import Golem.Assemble.BibliographyCitations (BibliographyCitationRecord, formatBibliographyCitationMark)
+import Golem.Assemble.BibliographyStyle (BibliographyStyle)
+import Golem.Doc.Citation (CitePiece, citationCount, citationOffsets)
 import Golem.Doc.IR
 import Golem.Syntax (SrcSpan)
 
@@ -27,6 +33,24 @@ data NoteCitationOccurrence = NoteCitationOccurrence
     ncoItems :: ![CiteItem ()]
   }
   deriving stock (Eq, Show)
+
+{- | Build the consumer table from already numbered S1 note occurrences.
+The caller explicitly resolves each record's language, list number, year
+suffix and initial/subsequent use, including the chosen first-note target.
+Each item is resolved with its zero-based position in the original mark,
+so identical items can receive distinct explicit formatting uses.
+Formatting may sort the pieces, but lookup retains the original item order.
+The first resolver or formatter error retains its structural occurrence;
+no partial table is returned. This pass neither generates notes nor chooses
+between note channels, and it does not connect the normal CLI's note mode.
+-}
+formatBibliographyNoteCitations :: BibliographyStyle d -> (NoteCitationOccurrence -> Int -> CiteItem () -> Either Text (BibliographyCitationRecord d)) -> [Document] -> Either (NoteCitationOccurrence, Text) (Map.Map NoteCitationContext (SrcSpan, [CiteItem ()], [CitePiece]))
+formatBibliographyNoteCitations global resolve documents = Map.fromList <$> traverse format (bibliographyNoteCitations documents)
+  where
+    format occurrence = first (occurrence,) $ do
+      values <- traverse (\(index, item) -> fmap (item,) (resolve occurrence index item)) (zip [0 ..] (ncoItems occurrence))
+      pieces <- formatBibliographyCitationMark global values
+      pure (ncoContext occurrence, (ncoSpan occurrence, ncoItems occurrence, pieces))
 
 -- | Read already numbered S1 documents, preserving document order.
 bibliographyNoteCitations :: [Document] -> [NoteCitationOccurrence]

@@ -49,7 +49,7 @@ test-suite golem-assemble-test
   type:             exitcode-stdio-1.0
   hs-source-dirs:   test
   main-is:          Main.hs
-  other-modules:    WriterNotesSpec BibliographyCitationsSpec BibliographyNotesSpec BibliographyNoteContextSpec BibliographyRangesSpec Bibliography0475Spec BibliographyFormatsSpec BibliographyNamesSpec BibliographySortSpec BibliographyStyleSpec AssembleSpec IndexSpec ListMarkersSpec NumberingSpec TableNumberSpec
+  other-modules:    WriterNotesSpec BibliographyCitationsSpec BibliographyNotesSpec BibliographyNoteContextSpec BibliographyNoteTableSpec BibliographyRangesSpec Bibliography0475Spec BibliographyFormatsSpec BibliographyNamesSpec BibliographySortSpec BibliographyStyleSpec AssembleSpec IndexSpec ListMarkersSpec NumberingSpec TableNumberSpec
   build-depends:
     , base
     , containers
