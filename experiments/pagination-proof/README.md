@@ -1781,6 +1781,8 @@ golem-layout は区切りを 1 行以上にする（`Paginate.hs:155`）。
    532 個の実装の出力キーの比較と未接続の範囲を [新しい本文の生成範囲の依存調査](../../docs/research/0352-beside-producer-range-dependencies.md) に記録する。
    `BesideReuse.lean` は、前の本文の型の条件と再利用する区間の検査から、再利用と新規生成のどちらも現在の段落だけを選ぶことを導く。
    前後五件の実装の比較と、内容の一致と全ラウンドの接続が残ることを [本文の再利用条件の依存調査](../../docs/research/0352-beside-reuse-dependencies.md) に記録する。
+   `BesideReuseRounds.lean` は、前の結果がない状態から任意のモデルのラウンド列へ型の条件を渡し、入力の有限な範囲から出力のキーの範囲を導く。
+   実装の六回の計算との比較と、本体の全呼び出しとの接続が残ることを [複数ラウンドの本文の型の依存調査](../../docs/research/0352-beside-reuse-rounds-dependencies.md) に記録する。
 
 これらを終えるまで Alloy の定期実行と既存の参照を維持する。
 終えたときは、Alloy の定期実行を終え、規則やモデルを変えたときにローカルの Lean で検証し直す手順を CONTRIBUTING に書く。
@@ -1838,6 +1840,8 @@ sh experiments/pagination-proof/check.sh
 `BesideProducerRange.lean` は `BesideProducer.olean` を読み込み、新しい本文のキーの範囲と順序を検査する。
 `BesideReuse.lean` は `BesideAdjustment.olean` と `BesideProducer.olean` を読み込み、再利用する区間の検査と新規生成から本文の型の条件を検査する。
 `BesideReuseBoundary.lean` は `BesideReuse.olean` を読み込み、再利用の可否の具体例を検査する。
+`BesideReuseRounds.lean` は同じモジュールを読み込み、複数ラウンドの型と有限範囲の条件を検査する。
+`BesideReuseRoundsBoundary.lean` は `BesideReuseRounds.olean` を読み込み、ラウンド間の変更の具体例を検査する。
 `check-parts-retry-shape.sh` はその入口の述語と `parts` の分岐と引数を比べる。
 `RetryPrefixChecks.hs` はネイティブの試し置きの採用数と、同じ再試行の上限を検査する。
 `check-built-first-ids.sh` は、依存する package 環境を渡したローカルの `RUNGHC` で、export list だけを開いた一時ソースから本体の採番表を観測する。
