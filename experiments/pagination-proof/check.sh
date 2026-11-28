@@ -777,6 +777,17 @@ LEAN_PATH="$tmp" "$lean" -o "$tmp/NumberedWindowStore.olean" "$numberedWindowSto
 LEAN_PATH="$tmp" "$lean" "$root/experiments/pagination-proof/NumberedWindowStoreBoundary.lean"
 echo "root ADR 0352 I5: lookup windows retain arbitrary table values, and reached fresh event snapshots are reconstructed"
 
+# The four numberText flow-construction branches preserve the numbered rows.
+numberTextOrder=$root/experiments/pagination-proof/NumberTextOrder.lean
+if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|implemented_by|extern|native_decide)([^A-Za-z_]|$)' "$numberTextOrder"; then
+  echo "unproved or unchecked Lean declaration in $numberTextOrder" >&2
+  exit 1
+fi
+LEAN_PATH="$tmp" "$lean" -o "$tmp/NumberTextOrder.olean" "$numberTextOrder"
+LEAN_PATH="$tmp" "$lean" "$root/experiments/pagination-proof/NumberTextOrderBoundary.lean"
+echo "root ADR 0352 I5: numberText ordinary, stanza, boxed-stanza and transparent controls preserve composed row order"
+
+
 
 
 
