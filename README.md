@@ -233,6 +233,9 @@ HTML と EPUB は `@frame` の段落をその位置の `aside` に書き、マ�
 
 ### 数の表記
 
+縦中横の外側は和文一字として扱い、既定では前後の和文との間に余分な四分アキを入れない。
+`[tcy: 12]`、`[number-text 12 style=tcy]`、`##12:tcy##` に同じ外側の規則を使い、明示した字間とアキは保つ（[root ADR 0479](docs/adr/0479-treat-tate-chu-yoko-as-a-japanese-character.md)）。
+
 `[number-text 0.10]` と `##0.1##` は、同じ有理数 1/10 を保持し、`0.1` と表示する。
 `##0.10:tcy##` は `[number-text 0.10 style=tcy]` と同じ IR を作り、縦組みでは正規化した表記全体を縦中横にする（[root ADR 0478](docs/adr/0478-accept-rational-values-in-number-text.md)）。
 
@@ -298,6 +301,7 @@ PDF の柱とノンブルに当てる文字スタイルは、マスターペー�
 自由な配置では、整数行のほか寸法で指定できる（[root ADR 0397](./docs/adr/0397-paragraph-line-pitch-and-dimensional-spacing.md)）。
 これらの値やインデント、文字色はプロジェクトのスタイルにまとめ、Emet のブロック関数からそのスタイルを付けられる。
 台本専用の固定値は設けない。
+回り込み段落で保持条件を満たせず空の段へ強制配置した場合は、その配置を採用して残りの原稿へ進む（[root ADR 0483](docs/adr/0483-finish-forced-paragraph-placement-without-repeating-the-retry.md)）。
 
 `next-style` は次の段落の段落スタイルを、`initial-style` は段落の先頭の一字の文字スタイルを決め、`opening-indent = "half"` は始め括弧類で始まる段落の字下げを PDF、HTML、EPUB で半角減らす（[ADR 0374](./docs/adr/0374-paragraph-style-controls.md)、[root ADR 0469](./docs/adr/0469-opening-indent-in-html-and-epub.md)）。
 見出しでは、`[headings.<階層>]` の `paragraph-style` に結び付けた段落スタイルの `next-style` が、直後の段落に当たる（[root ADR 0468](docs/adr/0468-paragraph-styles-for-headings-and-lists.md)）。
@@ -376,6 +380,10 @@ CSV や TSV の表は `@table data/sizes.csv` のように書き、ファイル�
 キャプションを表の上と下のどちらに置くかは `[tables]` の `caption-position` で決める（[docs/adr/0262](./docs/adr/0262-table-numbers-captions-column-widths-and-cell-styles.md)）。
 
 ### 注、索引、リンク
+
+脚注と章末の注、横組みの傍注は、表とコードのキャプションでも番号と本文を保つ。
+HTML、EPUB とテキストでは、ルビの親文字に置いた注の本文も出力する。
+PDF のルビ内の注の配置は未対応である（[root ADR 0482](docs/adr/0482-fix-note-loss-as-a-default-output-compatibility-exception.md)）。
 
 傍注は組み込みの段落スタイル `sidenote` の `font` と `size` で組み、`[sidenotes]` には傍注の領域の幅、版面との間隔、置く側（`side`）、本文側の印と、その「※」の文字スタイル（`marker-style`）を書く。
 PDF の図版、表、コードブロックのキャプションと傍注の本文は、段落スタイル `caption` と `sidenote` の字下げ、`space-between`、`line-breaks` も当てて、部品の幅で組む（[ADR 0367](./docs/adr/0367-caption-sidenote-paragraphs.md)）。
@@ -901,7 +909,10 @@ x86-64 では、さらに次のことを行う。
 x86-64 では同じコミットを七つのランナーでビルドする。
 `tests-driver-a` と `tests-driver-b` が golem-driver のテストのスイートを二つに分けて、`tests-rest-a` と `tests-rest-b` がそのほかのスイートを二つに分けて（振り分けは `scripts/ci/test-suites.sh` が `.cabal` から決める）受け持つ（[docs/adr/0416](./docs/adr/0416-shorten-the-build-of-the-pull-request-ci.md)、[docs/adr/0457](./docs/adr/0457-split-the-tests-rest-runner-in-two.md)）。
 `tests-driver-a` は golem-driver-pdf-test、golem-driver-cli-test、golem-driver-global-test を、`tests-driver-b` は golem-driver-page-test、golem-driver-output-test、golem-driver-parallel-test を走らせる。
-`tests-rest-a` は golem-emet-test と golem-parser-test を、`tests-rest-b` はそのほかのスイートを走らせる。
+`tests-rest-a` は golem-emet-test、golem-parser-test、golem-typeset-test を、`tests-rest-b` はそのほかのスイートを走らせる。
+rest の両脚は、`scripts/ci/run-rest-suites.sh` が一覧の順に一つずつ `cabal test --jobs=1 TARGET` を呼ぶ。
+途中で失敗しても残りを実行し、一つでも失敗したら脚を失敗にする（[root ADR 0481](./docs/adr/0481-run-rest-test-suites-one-at-a-time.md)）。
+driver の両脚は、従来どおり一覧を一度の `cabal test` に渡す。
 `outputs` は、ほかのジョブが待つ成果物（`editors-lsp` の golem、見た目の回帰テストの PDF（`visual` を待たせないよう最初に組む）、`wasm` と比べるネイティブの一覧、`verapdf` の PDF）を作る。
 `outputs-checks` は、そのほかの出力の手順（epubcheck、決定性の検査の出力、マニュアル）を、`env` は環境を変える検査を受け持つ（[docs/adr/0395](./docs/adr/0395-bring-the-pull-request-ci-under-five-minutes.md)）。
 aarch64 では五つのランナーでビルドし、x86-64 と同じく `tests-driver-a`、`tests-driver-b`、`tests-rest-a`、`tests-rest-b` がテストのスイートを、`outputs` が決定性の検査の出力を受け持つ。

@@ -38,7 +38,7 @@ numberUnitTests =
   testGroup
     "numbers kept with the units after them (docs/adr/0275)"
     [ testCase "root ADR 0478 I4: decimal TCY is one whole box" $ do
-        let items' = fst (composeInlines (envWith 0 True) [IR.Number sp (1 % 10) (Just IR.StyleTcy)])
+        let items' = fst (composeInlines (envWith 0 True) [IR.Tcy sp (IR.TcyNumber (1 % 10))])
         [bcText c | Box _ c <- items'] @?= ["0.1"],
       testCase "root ADR 0478 I4: fractional boxes honor fixed TCY defaults and explicit overrides" $
         mapM_

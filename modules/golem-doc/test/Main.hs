@@ -47,7 +47,7 @@ cddlValidator = do
 
 tests :: TestTree
 tests =
-  testGroup "golem-doc" [rationalNumberTests, cbor, CborExprSpec.tests, verticalNumbers, int64Tests, LinkSpec.tests, LangSpec.tests, ResolvedSpec.tests, TableSpec.tests, StyleRefSpec.tests, NoteSpec.tests, CiteSpec.tests, IndexSpec.tests, headingLevelTests]
+  testGroup "golem-doc" [unifiedTcyTests, rationalNumberTests, cbor, CborExprSpec.tests, verticalNumbers, int64Tests, LinkSpec.tests, LangSpec.tests, ResolvedSpec.tests, TableSpec.tests, StyleRefSpec.tests, NoteSpec.tests, CiteSpec.tests, IndexSpec.tests, headingLevelTests]
 
 -- | The levels of a heading are 1 to 6 (docs/adr/0188).
 headingLevelTests :: TestTree
@@ -469,3 +469,23 @@ rationalNumberTests =
   where
     wire value = toStrictByteString (encodeTerm (TList [TList [TInt 9, TList [TInt 0, TInt 0, TInt 1], value, TNull]]))
     rejected value = case decodeInlines (wire value) of Left _ -> True; Right _ -> False
+
+unifiedTcyTests :: TestTree
+unifiedTcyTests =
+  testGroup
+    "root ADR 0479 common TCY CBOR"
+    [ testCase "root ADR 0479 I4: literal payload preserves leading zeroes" $ roundtrip (TList [TInt 0, TString "001"]),
+      testCase "root ADR 0479 I4: numeric payload preserves an exact rational" $ roundtrip (TList [TInt 1, TTagged 30 (TList [TInt 1, TInt 3])]),
+      testCase "root ADR 0479 I4: legacy tag 8 string payload is rejected" $ rejected (wire (TString "001")),
+      testCase "root ADR 0479 I4: malformed numeric TCY is rejected" $
+        mapM_ (rejected . wire . TList . (TInt 1 :) . pure) [TString "0.1", TTagged 30 (TList [TInt 1, TInt 0]), TTagged 30 (TList [TInt 2, TInt 4]), TTagged 30 (TList [TInteger 9223372036854775808, TInt 1])],
+      testCase "root ADR 0479 I3: Number with StyleTcy is rejected" $
+        rejected (toStrictByteString (encodeTerm (TList [TList [TInt 9, spT, TTagged 30 (TList [TInt 1, TInt 1]), TInt 2]])))
+    ]
+  where
+    spT = TList [TInt 0, TInt 0, TInt 1]
+    wire value = toStrictByteString (encodeTerm (TList [TList [TInt 8, spT, value]]))
+    roundtrip value = case decodeInlines (wire value) of
+      Right nodes -> encodeInlines nodes @?= wire value
+      Left e -> assertFailure (show e)
+    rejected value = case decodeInlines value of Left _ -> pure (); Right nodes -> assertFailure (show nodes)

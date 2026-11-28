@@ -487,6 +487,16 @@ golem-typeset-test は、golem-pdf-test と golem-layout-test と同じランナ
 | `tests-rest-a` | golem-emet-test、golem-parser-test、golem-typeset-test |
 | `tests-rest-b` | golem-driver に属さないスイートのうち、`tests-rest-a` のほかのすべて |
 
+rest の両脚では、`scripts/ci/run-rest-suites.sh` が `test-suites.sh` の一覧と終了コードを受け取ってから、一覧の順に各対象を `cabal test --jobs=1 TARGET` で一つずつ実行する（[root ADR 0481](adr/0481-run-rest-test-suites-one-at-a-time.md)）。
+一覧の取得が失敗したら、スイートを実行せず失敗する。
+空の一覧なら成功し、一つ以上のスイートが失敗しても残りを実行して終了コード 1 を返す。
+未知の脚と引数の過不足は、実行前に終了コード 2 で拒む。
+driver の両脚は、従来どおり一覧を一度の `cabal test` に渡す。
+
+テストのラッパーは `cabal.project.local` から使い、スイートごとの上限、手順の 20 分の上限、試験用の環境変数を保つ。
+rest のテストの後にも、ビルド済みの計画との要素の一覧を `scripts/ci/same-plan.sh` で照合する。
+直列化後も、CI 全体の 300 秒の予算と 20 回の測定は残る（[root ADR 0457](adr/0457-split-the-tests-rest-runner-in-two.md)）。
+
 四つのスイート golem-driver-pdf-test、golem-driver-page-test、golem-driver-output-test、golem-driver-cli-test は、一つだった golem-driver-test を領域ごとに分けたもので、テストの名前と数は分ける前と同じである（[ADR 0416](adr/0416-shorten-the-build-of-the-pull-request-ci.md) の I1）。
 四つは、共通の stanza `driver-suite` の設定と依存を読み、テストを助けるモジュール（`Support` と、ほかのモジュールが読む `PdfSpec`、`LinkSpec` などの `*Spec` のモジュール）を、それぞれの `other-modules` に挙げて組む。
 テストを助けるモジュールをパッケージの内部のライブラリにしないので、テストだけの依存の検査（`scripts/ci/test-only-deps.sh`）は変わらない。
@@ -2598,7 +2608,23 @@ HTML と EPUB は版面の段組みを出力せず、CSS の `columns` も `colu
 
 ### 縦組みの数の表記
 
-`number-text` は自然数、整数、有理数を受け付け、`Number` は正確な有理数と任意の表記を持つ（[root ADR 0478](adr/0478-accept-rational-values-in-number-text.md)）。
+明示した縦中横の意味論 IR は、文字列と数値を共通の `Tcy` ノードで表す（[root ADR 0479](adr/0479-treat-tate-chu-yoko-as-a-japanese-character.md)）。
+中身は原綴りを保つ `TcyLiteral Text` か、正確な値を保つ `TcyNumber Rational` である。
+`##1:tcy##` と `[number-text 1 style=tcy]` は、位置を除いて同じ `TcyNumber` の IR を作る。
+`Number` の `StyleTcy` は許さず、生成時に `TcyNumber` へ変える。
+表記を省いた `Number` が本の設定から縦中横に決まった場合も、出力へ渡す箱は同じにする。
+
+縦中横の箱は、外側の文字クラスと禁則の判定では通常の漢字一字として扱う。
+既定では和文と縦中横の間、および縦中横どうしの間に和欧混植の四分アキを入れない。
+外側の欧文や約物との間は、和文一字に隣接する既存の規則を使う。
+中身の数字や約物のクラスを、外側の空きや改行制御へ漏らさない。
+明示したトラッキングとアキ、注の呼出印を前の字に付ける規則は保つ。
+HTML と EPUB は中身を根拠に空白や余白を加えず、既存の `letter-spacing` を保つ。
+
+横組みの PDF では、文字列の `TcyLiteral` は既存の一字分の箱、`TcyNumber` は通常の数値の文字列として出す。
+テキストは文字列の原綴りと、数値に対する既存の整数の漢数字の規則を保つ。
+
+`number-text` は自然数、整数、有理数を受け付け、縦中横を明示しない `Number` は正確な有理数と任意の表記を持つ（[root ADR 0478](adr/0478-accept-rational-values-in-number-text.md)）。
 `##0.10:tcy##` と `[number-text 0.10 style=tcy]` は、位置を除く全フィールドが同じ IR を作る。
 既約な分子は符号付き 64 ビット整数、分母は 1 以上 9223372036854775807 以下に限り、範囲外は G02091 とする。
 引用符付きの文字列は数値へ変換しない。
@@ -3657,6 +3683,10 @@ Emet の `Block` は、キーのある段落を `KeyedParagraph String (List Sty
 `keep-with-next` と `page-break` は、文書の最上位の段落にだけ当て、リストの項目、表のセル、注の本文、定義リストの中の段落には当てない。
 HTML と EPUB の `style.css` には、既定でない値を `break-after: avoid`、`break-inside: avoid`、`orphans`、`widows`、`break-before` として書く。
 プレーンテキストは何も出力しない。
+
+回り込み段落の再試行で、正の採用行数の上限を超える強制配置が返った場合は、その配置と保持の未達情報を採用し、残りの原稿を既存の段送りと再改行へ渡す。
+同じ状態で行数を減らす再試行は繰り返さない。
+上限以下の結果の再試行と、空の段や見出しだけの段で入るだけ置く公開 API の規則は変えない（[root ADR 0483](adr/0483-finish-forced-paragraph-placement-without-repeating-the-retry.md)）。
 
 行の調整の四つのキーは、行を詰めるか空けるかの選び方と順を決める（[ADR 0274](adr/0274-prefer-pulling-in-and-limit-the-stretch-of-lines.md)、[ADR 0278](adr/0278-use-the-places-of-line-adjustment-in-the-order-of-jlreq.md)）。
 これらも `based-on` で引き継ぎ、書いた値が勝つ。
@@ -8619,6 +8649,15 @@ Golem はこの形を**チャネル**として一般化する。
 Golem は決定性を重視する[note: 同じ入力からバイト単位で同じ出力を得る性質。]。
 ```
 
+組版前の採番では、有効な脚注、傍注と章末注を、原稿の順にチャネルごとに一度ずつ数える（[root ADR 0482](adr/0482-fix-note-loss-as-a-default-output-compatibility-exception.md)）。
+本文に加えて、表のキャプションとセル、コードのキャプションの注も数える。
+PDF では、表とコードのキャプションの注を印と本文の行先に関連付け、コードを分割したり次の段へ送ったりしても、その注を保持する。
+
+HTML、EPUB とテキストでは、ルビの親文字に置いた注の印と本文も保持する。
+注本文の中の引用は、ルビの親文字に含まれていても参考文献の番号と関連付ける。
+注の外のルビの親文字にある引用と、索引の走査範囲は変えない。
+PDF のルビ内の注の配置は未対応であり、「既知の不具合」の節に制約を記す。
+
 脚注の本文は、印の位置に直接書くか、名前を付けたブロックに書く。
 `[note: 本文]` の本文は、段落スタイルのない段落一つになる。
 二つ以上の段落の注は、本文に名前を付けてブロックコマンド `@note` で書き、本文の位置に `[note 名前]` を書く（[ADR 0263](adr/0263-notes-with-more-than-one-paragraph.md)）。
@@ -11374,6 +11413,7 @@ PDF 経路は、最重量の工程（フォントのサブセット化と PDF/X-
 テストを足すときに見つかったものは、該当する場合をテストに入れずに残している。
 直すときは、仕様とコードのどちらに合わせるかを決め、必要なら ADR を作成する。
 
+- **PDF のルビの親文字内の注**：注の印や本文が欠ける。`[endnote]` では、[G07107](diagnostics.md#g07107) と [G07120](diagnostics.md#g07120) で PDF の生成を中止する場合もある。ルビ内の注の配置は [root ADR 0482](adr/0482-fix-note-loss-as-a-default-output-compatibility-exception.md) の対象外であり、未決として残す。注をルビの前後に書けば、既存の注の配置を使える。
 - **`[ref-number]` の図番号とリスト番号と表番号が、`[figures]` と `[code]` と `[tables]` の `number` の書式に従わない**：`[ref-number]` は、図版とキャプションのあるコードブロックと番号のある表を `章の番号-番号`（`2-2` の形）で返す。`[figures]` の `number` を `"図{chapter}.{n}"` にすると、キャプションの図番号は「図 2.2」、本文の `[ref-number ...]` は「2-2」になり、二つが食い違う。`[code]` の `number` とリスト番号、`[tables]` の `number` と表番号も同じである。仕様は、書式を変えたときの `[ref-number]` の表記を定めていない。`complex-horizontal`（[ADR 0175](adr/0175-complex-typesetting-fixture.md)）が、今の表記を固定している。
 - **HTML で本文の段落の前の空きが、すべての段落に当たる**：`style.toml` の本文（`[paragraph-styles.body]`）の `space-before` は、HTML の `style.css` で `p` の規則として書かれる（[`Html.hs`](https://github.com/tett23/golem/blob/16045dd620f382484894d4fa817f4731e52972e0/modules/golem-html/src/Golem/Html.hs#L1183-L1192)）。`p` はどの段落スタイルの段落にも当たるので、`space-before = 0` を書いた段落スタイルの段落にも、本文の前の空きが付く。PDF では付かない（[docs/adr/0217](adr/0217-html-spaces-of-paragraph-styles-redefined-in-files.md) の実装で見つかった）。
 - **HTML で本文の段落のあいだの空きが、どのスタイルの段落の後にも当たる**：本文の `space-between` と、前後の空きを 0 に戻す規則は、`p + p` として書かれる（[`Html.hs`](https://github.com/tett23/golem/blob/16045dd620f382484894d4fa817f4731e52972e0/modules/golem-html/src/Golem/Html.hs#L1153-L1166)）。この規則は、本文の段落どうしだけでなく、どの段落スタイルの段落の後の段落にも当たる（[docs/adr/0217](adr/0217-html-spaces-of-paragraph-styles-redefined-in-files.md) の実装で見つかった）。

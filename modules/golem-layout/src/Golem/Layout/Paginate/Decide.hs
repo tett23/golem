@@ -96,7 +96,7 @@ nextNeed env = \case
   (FBlank _ n : rest) -> let r = nextNeed env rest in r {needGrid = min capacity (min capacity n + needGrid r)}
   (FCode g caption first cont ls : _)
     | null ls -> mempty
-    | otherwise -> let k = min (length ls) (max 1 first) in grid (caption + codeSpan g (k + (if cont && k < length ls then 1 else 0)))
+    | otherwise -> let k = min (length ls) (max 1 first) in Need (caption + codeSpan g (k + (if cont && k < length ls then 1 else 0))) (noteLinesOf (take k ls))
   -- a heading before the index columns on a page of one column keeps their first line
   (FSwitchColumns _ : rest) | csColumns (envBase env) == 1 -> nextNeed env rest
   (FSwitchColumns _ : _) -> mempty

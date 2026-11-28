@@ -13,6 +13,7 @@ import IdeSpec (ideTests)
 import LanguageSpec (languageTests)
 import LintSpec (lintTests)
 import RequirementSpec (requirementTests)
+import Support qualified as S
 import Test.Tasty
 import Test.Tasty.HUnit
 import Test.Tasty.Runners (NumThreads (..))
@@ -37,11 +38,25 @@ tests :: TestTree
 tests =
   testGroup
     "golem-emet"
-    [ testCase "root ADR 0478 I3: Emet identity preserves exact rational Number IR" $ do
+    [ testCase "root ADR 0479 I4: Emet identity preserves both TCY contents" $ do
         let sp = mkSpan (FileId 1) 0 1
-            input = [D.Number sp (1 % 3) (Just D.StyleTcy)]
+            input = [D.Tcy sp (D.TcyLiteral "001"), D.Tcy sp (D.TcyNumber (1 % 3))]
             (encoded, carried) = IR.runEnc (IR.encodeInlines input)
         IR.decodeInlines carried sp encoded @?= Right input,
+      testCase "root ADR 0479 I4: an actual Emet identity keeps both TCY contents" $ do
+        let sp = S.callSpan
+            input = [D.Tcy sp (D.TcyLiteral "001"), D.Tcy sp (D.TcyNumber (1 % 3))]
+            (encoded, carried) = IR.runEnc (IR.encodeInlines input)
+        result <- S.call "identity :: Inlines -> Inlines\nidentity xs = xs\n" "identity" [encoded] >>= S.ok
+        IR.decodeInlines carried sp result @?= Right input,
+      testCase "root ADR 0479 I3, I4: Emet constructs literal and normalized numeric TCY" $ do
+        result <- S.call "make :: Inlines\nmake = [Inline.Tcy (Inline.TcyLiteral \"001\"), Inline.Tcy (Inline.TcyNumber (1 / 10))]\n" "make" [] >>= S.ok
+        IR.decodeInlines IR.emptyCarried S.callSpan result @?= Right [D.Tcy S.callSpan (D.TcyLiteral "001"), D.Tcy S.callSpan (D.TcyNumber (1 % 10))],
+      testCase "root ADR 0479 I3: Emet Number TateChuYoko is rejected" $ do
+        result <- S.call "make :: Inlines\nmake = [Inline.Number 12 (Just Inline.TateChuYoko)]\n" "make" [] >>= S.ok
+        case IR.decodeInlines IR.emptyCarried S.callSpan result of
+          Left _ -> pure ()
+          Right nodes -> assertFailure (show nodes),
       languageTests,
       requirementTests,
       exportTests,

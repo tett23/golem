@@ -3,8 +3,15 @@
 
 レイアウトエンジンは、意味論 IR の段落と図版を、ページの上の位置と大きさに置く部分である。[index reading=れいあうとえんじん: レイアウトエンジン]
 行分け、禁則、改ページは golem-layout が、ページの幾何（版面、段、傍注の領域）は golem-layout-spec が、PDF の描画は golem-typeset が受け持つ（第[ref-number modules]章）。
-この章は、領域の形を表すパスと、文字を置く領域と避ける領域を表すボックスモデルを説明する。
+この章は、回り込み段落の強制配置、領域の形を表すパス、文字を置く領域と避ける領域を表すボックスモデルを説明する。
 規則の全体は、仕様書にある。[note: [style url: https://github.com/tett23/golem/blob/main/docs/specifications.md#パスとボックスモデル]（仕様書の「パスとボックスモデル」の節）]
+
+## 回り込み段落の強制配置
+
+[code: causalFreeFlow] の [code: paragraph.parts] は、残りの段落を次の段の行幅で組み直す。
+末尾の保持行数が足りなければ現在段の採用行数の上限を減らして試し直すが、正の上限より多い採用数が返れば、その強制配置を採用する（root ADR 0483）。
+配置状態、緩めた保持設定、[code: ShortPart] などの未達情報を保ち、残りの原稿を既存の段送りへ渡す。
+公開 API の [code: trialParagraphPartLimit] は、空の段や見出しだけの段で入るだけ置く従来の規則を保つ。
 
 ## パス
 

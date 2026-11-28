@@ -1,6 +1,6 @@
 # ADR 0479: 縦中横の外側を和文一字として扱い、縦中横の IR を共通にする
 
-Status: accepted-pending
+Status: accepted
 
 ## 文脈
 

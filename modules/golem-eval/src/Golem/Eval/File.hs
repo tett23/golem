@@ -561,7 +561,8 @@ unwritableText = concatMap blockDiags . docBlocks
       Kenten _ _ xs -> inlines xs
       Color _ _ xs -> inlines xs
       CharStyle _ _ xs -> inlines xs
-      Tcy sp t -> at sp t
+      Tcy sp (TcyLiteral t) -> at sp t
+      Tcy _ (TcyNumber _) -> []
       Warichu sp t -> at sp t
       Upright sp t -> at sp t
       Note _ _ _ bs -> concatMap inlines (noteParagraphs bs)
@@ -3492,8 +3493,8 @@ builtinWith ctx inHeading sp b args slots = do
     BTcy -> oneSlot $ \case
       [Text _ t]
         -- G02063: a number reads better as a number (golem-syntax ADR 0002)
-        | not (T.null t) && T.all isDigit t && T.all isAscii t -> report (notice "G02063" sp ("数の縦中横は [number-text " <> t <> " style=tcy] でも書けます")) >> pure [Tcy sp t]
-        | otherwise -> pure [Tcy sp t]
+        | not (T.null t) && T.all isDigit t && T.all isAscii t -> report (notice "G02063" sp ("数の縦中横は [number-text " <> t <> " style=tcy] でも書けます")) >> pure [Tcy sp (TcyLiteral t)]
+        | otherwise -> pure [Tcy sp (TcyLiteral t)]
       [] -> pure []
       _ -> err "G02040" sp "縦中横の中身は地の文に限ります" >> pure []
     BNumberText -> case [A.Located asp v | A.Located asp (A.Positional v) <- args] of
@@ -3506,7 +3507,7 @@ builtinWith ctx inHeading sp b args slots = do
           (Right v', Just s)
             | Just (_, n) <- numberOf v',
               Just ns <- lookup s [("kanji", StyleKanji), ("kanji-digits", StyleKanjiDigits), ("tcy", StyleTcy)] ->
-                pure [Number sp n (Just ns)]
+                pure [if ns == StyleTcy then Tcy sp (TcyNumber n) else Number sp n (Just ns)]
             | Just _ <- numberOf v' -> err "G02019" sp ("style は kanji、kanji-digits、tcy のいずれかです: " <> s) >> pure []
           (Left d, _) -> report d >> pure []
           _ -> err "G02019" sp "number-text に渡せるのは数値だけです" >> pure []

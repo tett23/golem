@@ -55,6 +55,7 @@ module Golem.Doc.IR
     RubySize (..),
     defaultRubyOptions,
     NumberStyle (..),
+    TcyContent (..),
     VerticalNumbers (..),
     verticalStyleOf,
     verticalNumbersNamed,
@@ -413,7 +414,7 @@ data InlineF r
   | Kenten !SrcSpan !(Maybe Text) [InlineF r]
   | Color !SrcSpan !Text [InlineF r]
   | CharStyle !SrcSpan !Text [InlineF r]
-  | Tcy !SrcSpan Text
+  | Tcy !SrcSpan !TcyContent
   | Warichu !SrcSpan Text
   | Upright !SrcSpan Text
   | Number !SrcSpan !Rational !(Maybe NumberStyle)
@@ -509,6 +510,10 @@ pattern RubySegment base reading <- RubySegmentData base reading _ _
     RubySegment base reading = RubySegmentData base reading Nothing defaultRubyOptions
 
 {-# COMPLETE RubySegment #-}
+
+-- | The shared tate-chu-yoko payload, retaining literal spelling or an exact value.
+data TcyContent = TcyLiteral !Text | TcyNumber !Rational
+  deriving stock (Eq, Show)
 
 data NumberStyle = StyleKanji | StyleKanjiDigits | StyleTcy
   deriving stock (Eq, Show, Enum, Bounded)

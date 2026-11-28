@@ -739,7 +739,7 @@ tests =
     testCase "kenten is a span with the class of its shape" $
       bodyA cfg0 (bookOf [para 0 [Kenten (at 1) (Just "dot") [txt "傍点"]]]) @?= "<p><span class=\"kenten kenten-dot\">傍点</span></p>\n",
     testCase "tate-chu-yoko is a span of class tcy" $
-      bodyA cfg0 (bookOf [para 0 [Tcy (at 1) "12"]]) @?= "<p><span class=\"tcy\">12</span></p>\n",
+      bodyA cfg0 (bookOf [para 0 [Tcy (at 1) (TcyLiteral "12")]]) @?= "<p><span class=\"tcy\">12</span></p>\n",
     testCase "a number is kanji in a vertical book" $
       bodyA cfg0 {hcVertical = True} (bookOf [para 0 [Number (at 1) 12 Nothing]]) @?= "<p>十二</p>\n",
     testCase "a number is arabic in a horizontal book" $

@@ -124,12 +124,12 @@ topText c = T.concat . go False Nothing Nothing
 file :: Ctx -> Document -> [Document] -> Text
 file c (Document _ bs) chapter =
   let body = topText c bs
-      notes = [(n, noteParagraphs nb) | Document _ cbs <- chapter, Note _ n _ nb <- concatMap blockInlines cbs]
+      notes = [(n, paragraphs) | d <- chapter, (_, n, paragraphs) <- documentNotes d]
       noteMark n = (if cVariant c == Vertical then "※" else "*") <> T.pack (show n)
       -- the first paragraph after the mark, each other on a line of its own (docs/adr/0263)
       listText title ns = T.intercalate "\n" (title : [noteMark n <> " " <> T.intercalate "\n" (map (inlines c) ps) | (n, ps) <- ns])
       -- the endnotes after the notes, under a title of their own (root ADR 0412)
-      endnotes = [(n, noteParagraphs nb) | Document _ cbs <- chapter, Endnote _ n _ nb <- concatMap blockInlines cbs]
+      endnotes = [(n, paragraphs) | d <- chapter, (_, n, paragraphs) <- documentEndnotes d]
       lists = [listText (notesTitle (cLanguage c)) notes | not (null notes)] <> [listText (endnotesTitle (cLanguage c)) endnotes | not (null endnotes)]
       noteText = T.intercalate "\n\n" lists
       full
@@ -165,7 +165,7 @@ block c ind (Block sp _ _ body) = case body of
   TableBlock t ->
     let caption = [numbered sp Nothing (inlines c is) (Map.lookup sp (bookTables (cBook c))) | Just is <- [tableCaption t]]
         rows = map (T.intercalate "\t" . map (inlines c)) (tableHeader t : tableRows t)
-     in T.intercalate "\n" (if cTableCaptionBelow c then rows <> caption else caption <> rows)
+     in T.intercalate "\n" (if cTableCaptionBelow c then rows <> caption else caption <> rows) <> sidenotes (fromMaybe [] (tableCaption t) <> concat (tableHeader t) <> concat (concat (tableRows t)))
   -- the caption, the file name, the diff marks and the callouts (golem-driver ADR 0023)
   CodeBlock code ->
     let num = Map.lookup sp (bookListings (cBook c))
@@ -177,7 +177,7 @@ block c ind (Block sp _ _ body) = case body of
           Just DiffContext -> " "
           Nothing -> ""
         line l = mark l <> clText l <> T.concat [" " <> circled n | n <- clCallouts l]
-     in T.intercalate "\n" (caption <> maybe [] pure (codeFile code) <> map line (codeLines code))
+     in T.intercalate "\n" (caption <> maybe [] pure (codeFile code) <> map line (codeLines code)) <> sidenotes (fromMaybe [] (codeCaption code))
   FigureBlock f ->
     let num = Map.lookup sp (bookFigures (cBook c))
         cap = T.intercalate "" [inlines c is | Block _ _ _ (Paragraph _ is) <- figCaption f]
@@ -224,29 +224,7 @@ block c ind (Block sp _ _ body) = case body of
       (Block _ _ _ (Paragraph Nothing is) : rest) | not (any isLineBreak is) -> T.intercalate "\n" (inlines c is : map (block inItem i) rest)
       _ -> T.intercalate "\n" (map (block inItem i) bs)
     sidenotes is =
-      T.concat ["\n※" <> T.pack (show n) <> " " <> T.intercalate "\n" (map (inlines c) (noteParagraphs nb)) | Sidenote _ n _ nb <- is]
-
-blockInlines :: Block -> [Inline]
-blockInlines (Block _ _ _ body) = case body of
-  Paragraph _ is -> deep is
-  Heading _ _ is -> deep is
-  BulletList items -> concatMap (concatMap blockInlines . itemBlocks) items
-  OrderedList items -> concatMap (concatMap blockInlines . itemBlocks) items
-  DefList gs -> concatMap (\(DefGroup ts ds) -> concatMap deep ts <> concatMap (concatMap blockInlines) ds) gs
-  TableBlock t -> concatMap deep (tableHeader t) <> concatMap (concatMap deep) (tableRows t)
-  FigureBlock f -> concatMap blockInlines (figCaption f)
-  FrameBlock _ bs -> concatMap blockInlines bs
-  _ -> []
-  where
-    deep = concatMap (\i -> i : nested i)
-    nested = \case
-      Kenten _ _ xs -> deep xs
-      Color _ _ xs -> deep xs
-      CharStyle _ _ xs -> deep xs
-      Link _ _ xs -> deep xs
-      Lang _ _ xs -> deep xs
-      Resolved _ _ _ xs -> deep xs
-      _ -> []
+      T.concat ["\n※" <> T.pack (show n) <> " " <> T.intercalate "\n" (map (inlines c) (noteParagraphs nb)) | (_, _, n, nb) <- inlineSidenotes is]
 
 inlines :: Ctx -> [InlineF r] -> Text
 inlines c = T.concat . map (inline c)
@@ -258,7 +236,8 @@ inline c = \case
   Kenten _ _ xs -> inlines c xs
   Color _ _ xs -> inlines c xs
   CharStyle _ _ xs -> inlines c xs
-  Tcy _ t -> t
+  Tcy _ (TcyLiteral t) -> t
+  Tcy _ (TcyNumber q) -> renderNumber (cVariant c) (cNumberDefault c) q (Just StyleTcy)
   Warichu _ t -> t
   Upright _ t -> t
   Number _ n st -> renderNumber (cVariant c) (cNumberDefault c) n st

@@ -66,8 +66,8 @@ tateChuYokoTests =
           forM_ ["10", "11", "12"] $ \n -> assertBool ("the marker " <> T.unpack n <> ": " <> show (map oText occs)) (n `elem` map oText occs)
           holdAll "the list" occs
           breakSome "the list, drawn as before" [1, 2, 3, 5, 6] (map stacked (filter ((> 1) . T.length . oText) occs)),
-      -- I7: the boxes of the lines and the faces of the lines, as before the ADR
-      goldenVsString "I7: the layout of the paragraphs is that of before the ADR" "test/golden/tcy-layout.txt" $
+      -- root ADR 0479: preserve the TCY boxes while removing the outer quarter-em gaps
+      goldenVsString "root ADR 0479 I1, I2: paragraph layout has ideograph TCY boundaries" "test/golden/tcy-layout.txt" $
         withProject "" paragraphs layoutText,
       testCase "I8: in horizontal text a tate-chu-yoko is drawn as the text around it: upright glyphs of the horizontal font, unscaled, no Tz" $
         withHorizontalProject "あ[tcy: 12]月。\n" $ \dir -> do

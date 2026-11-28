@@ -207,7 +207,8 @@ spanErrors fileSize (SrcSpan f s e) = case fileSize f of
 inlineErrors :: (FileId -> Maybe Int) -> [DeferredExpr] -> InlineF r -> [Text]
 inlineErrors fileSize allowed i =
   spanErrors fileSize (inlineSpan i) <> case i of
-    Number _ q _ -> ["数が意味論 IR の有理数の範囲外です" | not (inInt64 (numerator q) && inInt64 (denominator q)) || denominator q < 1 || gcd (numerator q) (denominator q) /= 1]
+    Tcy _ (TcyNumber q) -> rationalErrors q
+    Number _ q st -> rationalErrors q <> ["明示した縦中横は TcyNumber で表します" | st == Just StyleTcy]
     Ruby _ _ segs -> concatMap (\seg -> rubyErrors seg <> concatMap (inlineErrors fileSize allowed) (rsBase seg)) segs
     Kenten _ _ xs -> sub xs
     Color _ _ xs -> sub xs
@@ -239,6 +240,7 @@ inlineErrors fileSize allowed i =
     Resolved {} -> ["解決した参照は文書の組み立てだけが作ります"]
     _ -> []
   where
+    rationalErrors q = ["数が意味論 IR の有理数の範囲外です" | not (inInt64 (numerator q) && inInt64 (denominator q)) || denominator q < 1 || gcd (numerator q) (denominator q) /= 1]
     sub :: [InlineF q] -> [Text]
     sub = concatMap (inlineErrors fileSize allowed)
     {- the body of a footnote: one paragraph or more, of a sidenote: one

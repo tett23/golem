@@ -3288,6 +3288,12 @@ def limitRank (limit : Option Nat) (total : Nat) : Nat :=
   | some n => n
   | none => total + 1
 
+/-- A forced empty-column placement exceeds a positive retry bound (root ADR 0483). -/
+def forcedPrefix (limit : Option Nat) (count : Nat) : Bool :=
+  match limit with
+  | some n => 0 < n && n < count
+  | none => false
+
 /-- The item after the break of the `count`-th line. -/
 def nextItem (tail : List (Line × Nat)) (count start : Nat) : Nat :=
   ((tail.drop (count - 1)).head?.map (·.2)).getD start
@@ -3315,7 +3321,7 @@ def parts (env : Env) (region : Region) (breaker : St → Nat → Nat → List (
     parts env region breaker items lastWanted follows hold none relaxed isStart start before moved
   | .ok (.placed count placed relaxed) =>
     if (breaker at' before start).length ≤ count then
-      if follows (checkWaits placed) || (breaker at' before start).isEmpty then .ok (hold (checkWaits placed))
+      if follows (checkWaits placed) || (breaker at' before start).isEmpty || forcedPrefix limit count then .ok (hold (checkWaits placed))
       else if h1 : minimumFront isStart lastWanted k ≤ count - max lastWanted (max 1 relaxed.last) ∧ relaxed.all = false then
         if h2 : count - max lastWanted (max 1 relaxed.last) < limitRank limit (breaker at' before start).length then
           parts env region breaker items lastWanted follows hold (some (count - max lastWanted (max 1 relaxed.last)))
@@ -3325,7 +3331,7 @@ def parts (env : Env) (region : Region) (breaker : St → Nat → Nat → List (
         parts env region breaker items lastWanted follows hold none k isStart start before (moveCursor env region at')
       else .ok (hold (checkWaits placed))
     else if h4 : start < nextItem (breaker at' before start) count start ∧ start < items then
-      if (breaker (moveCursor env region placed) (before + count) (nextItem (breaker at' before start) count start)).length
+      if !forcedPrefix limit count && (breaker (moveCursor env region placed) (before + count) (nextItem (breaker at' before start) count start)).length
           < relaxed.last then
         if h5 : minimumFront isStart lastWanted k < count then
           if h6 : count - 1 < limitRank limit (breaker at' before start).length then
