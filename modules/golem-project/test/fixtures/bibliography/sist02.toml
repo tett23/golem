@@ -1,0 +1,27 @@
+# SIST 02 (2007), primary example transcribed in docs/research/bibliography-styles.md.
+# https://warp.ndl.go.jp/20220119/20220113214833/jipsti.jst.go.jp/sist/handbook/sist02_2007/main.htm
+# This fixture covers only this transcribed article, not a complete bundled style.
+# The explicit name bound is the example author count, not a publication-wide rule.
+[bibliography]
+style = 'example'
+[bibliography.styles.example]
+citation-mode = 'numeric'
+citation = ['[{number}]']
+sort = ['citation']
+page-range = 'full'
+range-delimiter = '-'
+months = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12']
+[bibliography.styles.example.names.author]
+order = 'family-given'
+part-delimiter = ''
+initials = false
+initial-format = '{i}'
+initial-delimiter = ''
+delimiter = ', '
+last-delimiter = ', '
+max = 2
+use-first = 2
+et-al = ''
+[bibliography.styles.example.types.article-journal]
+pieces = ['{author}', '. {title}', '. {container-title}', '. {year}', ', vol. {volume}', ', no. {issue}', ', p. {page}', '.']
+char-styles = {  }

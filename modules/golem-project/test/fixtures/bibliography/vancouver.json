@@ -1,0 +1,34 @@
+[
+  {
+    "id": "halpern2002",
+    "type": "article-journal",
+    "author": [
+      {
+        "family": "Halpern",
+        "given": "S.D."
+      },
+      {
+        "family": "Ubel",
+        "given": "P.A."
+      },
+      {
+        "family": "Caplan",
+        "given": "A.L."
+      }
+    ],
+    "title": "Solid-organ transplantation in HIV-infected patients",
+    "container-title": "N Engl J Med",
+    "volume": 347,
+    "issue": 4,
+    "page": "284-287",
+    "issued": {
+      "date-parts": [
+        [
+          2002,
+          7,
+          25
+        ]
+      ]
+    }
+  }
+]

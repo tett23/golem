@@ -50,6 +50,7 @@ data BuiltinInline
     BEndnote
   | BIndex
   | BCite
+  | BCites
   | BAki
   | -- | a link to an external URL (docs/adr ADR 0182)
     BLink
@@ -85,6 +86,7 @@ builtinName = \case
   BEndnote -> "endnote"
   BIndex -> "index"
   BCite -> "cite"
+  BCites -> "cites"
   BAki -> "aki"
   BLink -> "link"
   BLang -> "lang"
@@ -120,6 +122,7 @@ takesNoSlot = \case
   BEndnote -> False
   BIndex -> False
   BCite -> True
+  BCites -> False
   -- [aki] reports a slot as G02055 itself (docs/adr ADR 0019)
   BAki -> False
   -- the prose slot of [link] may be left out (docs/adr ADR 0182)

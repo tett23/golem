@@ -7,6 +7,7 @@ module StyleSchemaSpec (tests) where
 
 import Data.ByteString qualified as BS
 import Data.List (isPrefixOf)
+import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
@@ -48,7 +49,7 @@ docWith steps leaf = go [] steps
       SName : rest ->
         let n = if here == ["headings"] then "1" else "x"
          in Table (table [(n, go (here <> [n]) rest)])
-      SIndex : rest -> List [go (here <> ["[]"]) rest]
+      SIndex : rest -> List (go (here <> ["[]"]) rest : replicate (fromMaybe 1 (bibliographyArrayLength here) - 1) (Text "x"))
     -- Physical anchors are meaningful only without a gutter in single mode.
     physical = keysOf steps `elem` [["page", "grid", "position", "left"], ["page", "grid", "position", "right"]]
     requiredFor here k
@@ -103,6 +104,7 @@ cmyk = List [Integer 0, Integer 0, Integer 0, Integer 0]
 -- | A value the decoder reads for the node at the path.
 sample :: [Text] -> Node -> Value
 sample here node = case (reverse here, node) of
+  (_, NArray _) | Just count <- bibliographyArrayLength here -> List (replicate count (Text "x"))
   (k : _, _) | k `elem` ["content", "even", "odd"], "running-head" `elem` here -> Text "title"
   ("cmyk" : _, _) -> cmyk
   (k : "[]" : "rules" : _, _) | k `elem` ["optimum", "minimum", "maximum"] -> Text "四分"
@@ -132,6 +134,15 @@ sample here node = case (reverse here, node) of
       LEnum (v : _) -> Text v
       LEnum [] -> Text "x"
       LRef _ -> Text "x"
+
+-- | The bibliography schema has arrays with fixed cardinalities.
+bibliographyArrayLength :: [Text] -> Maybe Int
+bibliographyArrayLength here
+  | take 1 here /= ["bibliography"] = Nothing
+  | take 1 (reverse here) == ["months"] = Just 12
+  | "locator-labels" `elem` here, take 1 (reverse here) /= ["locator-labels"] = Just 2
+  | take 3 (reverse here) == ["label", "editor", "names"] = Just 2
+  | otherwise = Nothing
 
 -- | The path of keys of the steps, with the names of 'docWith'.
 keysOf :: [Step] -> [Text]

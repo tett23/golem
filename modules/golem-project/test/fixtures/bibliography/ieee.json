@@ -1,0 +1,30 @@
+[
+  {
+    "id": "chiampi2011",
+    "type": "article-journal",
+    "author": [
+      {
+        "family": "Chiampi",
+        "given": "M.M."
+      },
+      {
+        "family": "Zilberti",
+        "given": "L.L."
+      }
+    ],
+    "title": "Induction of electric field in human bodies moving near MRI: An efficient BEM computational procedure",
+    "container-title": "IEEE Trans. Biomed. Eng.",
+    "volume": 58,
+    "issue": 10,
+    "page": "2787-2793",
+    "issued": {
+      "date-parts": [
+        [
+          2011,
+          10
+        ]
+      ]
+    },
+    "DOI": "10.1109/TBME.2011.2158315"
+  }
+]

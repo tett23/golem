@@ -17,6 +17,11 @@ library
   hs-source-dirs:   src
   exposed-modules:
     Golem.Assemble
+    Golem.Assemble.BibliographyRanges
+    Golem.Assemble.BibliographySort
+    Golem.Assemble.BibliographyNames
+    Golem.Assemble.BibliographyFormats
+    Golem.Assemble.BibliographyStyle
     Golem.Assemble.Collation
     Golem.Assemble.Formats
     Golem.Assemble.ListMarkers
@@ -25,9 +30,11 @@ library
     , base          >=4.20 && <4.21
     , bytestring    >=0.11 && <0.13
     , containers    >=0.6  && <0.8
+    , golem-bibliography
     , golem-doc
     , golem-numerals
     , golem-syntax
+    , golem-unicode
     , mtl           >=2.3  && <2.4
     , text          >=2.0  && <2.2
   default-language: GHC2021
@@ -37,11 +44,12 @@ test-suite golem-assemble-test
   type:             exitcode-stdio-1.0
   hs-source-dirs:   test
   main-is:          Main.hs
-  other-modules:    WriterNotesSpec AssembleSpec IndexSpec ListMarkersSpec NumberingSpec TableNumberSpec
+  other-modules:    WriterNotesSpec BibliographyRangesSpec BibliographyFormatsSpec BibliographyNamesSpec BibliographySortSpec BibliographyStyleSpec AssembleSpec IndexSpec ListMarkersSpec NumberingSpec TableNumberSpec
   build-depends:
     , base
     , containers
     , golem-assemble
+    , golem-bibliography
     , golem-doc
     , golem-numerals
     , golem-syntax

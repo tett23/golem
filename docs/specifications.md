@@ -568,7 +568,7 @@ flowchart TD
     numerals["golem-numerals<br/>数の表記（最下層）"]
     syntax["golem-syntax<br/>diagnostic とソース位置（最下層）"]
     length["golem-length<br/>長さの型と単位の変換（最下層）"]
-    unicode["golem-unicode<br/>書記素と語の分割、文字クラス（最下層）"]
+    unicode["golem-unicode<br/>書記素と語の分割、文字クラス<br/>ラテン文字のキー（最下層）"]
     geometry["golem-geometry<br/>パスと矩形、閉じたパスの内側"]
     preflight["golem-preflight<br/>プリフライトの設定と検査"]
     subgraph pdfpath["PDF 経路"]
@@ -587,7 +587,9 @@ flowchart TD
         text["golem-text<br/>プレーンテキスト（縦書きと横書き）"]
     end
     assemble --> doc
+    assemble --> bibliography
     assemble --> numerals
+    assemble --> unicode
     cli --> driver
     cli --> lsp
     doc --> parser
@@ -605,9 +607,7 @@ flowchart TD
     fmt --> parser
     html --> assemble
     html --> bibliography
-    html --> unicode
     layout --> project
-    layout --> unicode
     layoutspec --> pdf
     layoutspec --> project
     lint --> eval
@@ -644,7 +644,10 @@ PDF 経路のモジュールだけが、レイアウト IR、シェイピング[
 - golem-font は長さを持たず、位置と寸法をフォントの単位で返すので、golem-length に依存しない。
 - golem-unicode は base、containers、text だけに依存し、golem のどのパッケージにも依存しない（[docs/adr/0411](adr/0411-segment-graphemes-and-words-in-haskell.md)）。
   UAX #29 の拡張書記素クラスタの分割（`Golem.Unicode.Grapheme`）と語の境界（`Golem.Unicode.Word`）、一般カテゴリが L か N かの判定（`Golem.Unicode.Category`）、JLReq の文字クラス（`Golem.Unicode.CharClass`）を持つ。
-  分割は Haskell の純粋な関数であり、FFI を使わないので、wasm でもそのまま組める。
+  ラテン文字のソートキーは `Golem.Unicode.Latin` が作り、golem-assemble が名前の並べ替えに使う（[root ADR 0470](adr/0470-bibliography-styles-by-name-and-by-declaration.md)）。
+  `Golem.Unicode.Script` は Unicode 17.0.0 の Script が Han、Hiragana、Katakana のいずれかに当たるかを判定する。
+  golem-assemble の `authorNeedsSortKeyWarning` は、その判定を使って、著者順の一覧に載る第一著者の姓に並べ替えのキーが必要かを返す。
+  これらは Haskell の純粋な関数であり、FFI を使わないので、wasm でもそのまま組める。
   分割の規則は libgrapheme 3.0.0 の実装に倣い、字の性質の表は Unicode 17.0.0 のデータから `scripts/gen-unicode-segmentation.sh` が生成する。
   golem-html と golem-unicode のライブラリが golem-layout と golem-project に依存しないことは、`scripts/ci/test.sh` が `.cabal` を読んで確かめる。
 - golem-geometry は base、text、golem-length だけに依存し、パスと矩形の型、パスのデータの読み込み、曲線を折れ線に直すことと、閉じたパスの内側の区間を持つ（[root ADR 0437](adr/0437-paths-and-the-box-model.md)、「パスとボックスモデル」）。
@@ -664,6 +667,58 @@ golem-doc は意味論 IR とプラグインの ABI（`schema/golem-doc.cddl`）
 golem-numerals は golem のどのパッケージにも依存せず、golem-bibliography は golem-syntax だけに依存する。
 golem-doc はこの三つに依存せず、golem-bibliography と golem-numerals は golem-doc に依存しない。
 この向きは、cabal が解決した計画を読む `scripts/ci/doc-deps.sh` が CI の `build` ジョブで確かめる。
+
+参考文献の宣言の差し込み片は、golem-assemble の `Golem.Assemble.BibliographyFormats` が読み、値を引く関数を受けて展開する（[root ADR 0470](adr/0470-bibliography-styles-by-name-and-by-declaration.md)）。
+使える差し込みの名前は呼出側が渡し、数の表記と括弧のエスケープは共通の書式の処理を使う。
+必須の値が無い片は句読点ごと省き、`?` のある差し込みは値だけを省く。
+数として読めない値には数の表記を当てず、そのまま書く。
+
+`renderBibliographyFragments` は、欄の値とリテラルの断片を分け、欄名を保持する。
+片を省く規則と数の表記は文字列を返す API と共通で、書式の解釈を二重に持たない。
+`renderBibliographyFragmentsWith` は、値を引く関数に、差し込みで明示した数の表記も渡す。
+呼出側は、`{month}` に月名を、`{month:kanji}` に数の月を返せる。
+必須の値が無いかどうかも、その差し込みの表記で選んだ値で判定する。
+既存の `renderBibliographyFragments` は、数の表記によらず同じ値を使う。
+`bibliographyEntryParts` は、断片の欄名に対応する文字スタイルを `EntryStyled` にし、句読点はスタイルの外に保つ。
+`URL` の欄は `EntryUrl` を保ち、文字スタイルの中でも従来の URL の扱いを使う。
+HTML と EPUB は欄の文字スタイルを `cs-` のクラスにし、PDF は `CharStyle` のインラインにする。
+テキストは文字スタイルの中の文字を出す。
+
+宣言向けの書誌データは、golem-bibliography の `decodeCslRecords` で読み、`recordText`、`recordNames`、`recordDate` から欄を引く（[root ADR 0470](adr/0470-bibliography-styles-by-name-and-by-declaration.md)）。
+編者と DOI などの欄、名前ごとの `golem-sort-key` も保持する。
+既定の書式で使う `decodeCslJson` と `recordEntry` の項目の形、読み込む順、不正な文字の検査は従来と同じである。
+
+`[bibliography]` の名前と宣言の構造は、`Golem.Project.Bibliography` が読み、`Style` の `stBibliography` に保持する（[root ADR 0470](adr/0470-bibliography-styles-by-name-and-by-declaration.md)）。
+宣言の型 `Golem.Assemble.BibliographyStyle` は、キーの省略と空の値を区別し、言語ごとの部分的な上書きも保持する。
+書式の誤りは値ごとの G03304、無いスタイルの選択は G03303、決まった名前の再定義は G03305 にする。
+キーの型と範囲の誤りは G03006 にする。
+
+名前の書式は `Golem.Assemble.BibliographyNames` が、解決済みのオプションを受けて組む（[root ADR 0470](adr/0470-bibliography-styles-by-name-and-by-declaration.md)）。
+姓名の順、頭文字、名前の列の区切りと人数の上限を扱い、頭文字には書記素クラスタを使う。
+省略を示す接尾の文字列は、前の空きや区切りも含め、呼出側が指定する。
+この API は、宣言で省略したキーの既定値を決めない。
+
+`applyBibliographyNames` と `applyBibliographyNameList` は、呼出側の完全なオプションに、宣言で書いたキーだけを重ねる。
+`et-al` の値を接尾辞へ写す関数も、呼出側が渡す。
+`bibliographyEditorLabel` は、明示した単数と複数のラベルから編者の人数に合うものを返し、編者がいなければ値を返さない。
+
+文献の並べ替えは `Golem.Assemble.BibliographySort` が、項目とそのキーを一緒に動かす安定ソートで行う。
+著者のキーは、明示した読み、無ければ指定の区切りでつないだ姓と名から作り、小文字にしてラテン文字の正準分解による発音区別符号を除く。
+2 件以上がある同著者同年のグループに、文献キーの順に `a`、`b` などの年の接尾辞を割り当てる。
+
+ページ範囲の数の終端は、`Golem.Assemble.BibliographyRanges.formatBibliographyRange` が組む。
+0 以上の二つの終端と、方式と区切り文字列を呼出側が渡す。
+`full` は終端を略さず、`minimal` は同じ桁数の昇順の範囲で共通する上の桁を終端から省く（`284-7` など）。
+
+ラテン文字の表は Unicode 17.0.0 の `UnicodeData.txt` と `Scripts.txt` から `scripts/gen-unicode-latin.sh` で作り、両入力の SHA-256 を固定する。
+
+部分宣言の上書きは、`overlayBibliographyStyle` と `overlayBibliographyNames` が行う。
+明示した空文字列、空配列、`false`、ゼロは上書きの値として保ち、書かなかったキーは引き継ぐ。
+種類ごとの書式、名前の書式、言語の表は、キーごとに重ねる。
+
+一次資料の書誌例は、`modules/golem-project/test/fixtures/bibliography/` の TOML 宣言と CSL-JSON を読み、差し込み片と名前と範囲の API で組んで照合する。
+IEEE、NLM、SIST の論文の 3 例と、Mouton の Heller の章の 1 例を対象にする。
+対照用の宣言の名前の上限は、各書誌例の人数を明示した値である。
 
 ### golem-evaluate と golem-driver
 
@@ -9269,9 +9324,16 @@ CSL-JSON は、文献管理ソフトが書き出せる標準の形式である�
 
 - 位置引数のすべてを、書いた順に書誌データのキーとして読む。キーは名前か文字列で書き、`[= ...]` の値が文字列でもよい。`*[式]` で配列を展開してもよい。
 - `page` は引用した文献の頁である。値は 0 以上の整数（`page=5`）、0 以上の端を持つ範囲（`page=5...7`）、空でない文字列（`page=xii`、`page="5f."`）のいずれかである。
-- `page` は、キーが一つの引用にだけ書ける。文献ごとに頁が要るときは、`[cite a page=5][cite b page=7]` と書く。
+- `page` は、キーが一つの引用にだけ書ける。文献ごとに頁が要るときは、`[cites: [cite a page=5]|[cite b page=7]]` で一つの印にまとめられる。
 - 散文スロットは取らない（[G02038](diagnostics.md#g02038)）。
 - 書誌データにないキー（[G02021](diagnostics.md#g02021)）、一つの引用に二度書いたキー（[G02147](diagnostics.md#g02147)）、頁として読めない `page`（[G02148](diagnostics.md#g02148)）、キーが二つ以上の引用の `page`（[G02149](diagnostics.md#g02149)）、キーとして読めない位置引数（[G02150](diagnostics.md#g02150)）、キーのない `[cite]`（[G02151](diagnostics.md#g02151)）はエラーとする。一つの `[cite]` に原因が二つ以上あれば、それぞれを書いた順に報告し、引用を作らない。
+
+`[cites: …]` は、スロットごとの単一キーの `cite` を一つの引用にまとめる（[root ADR 0385](adr/0385-bibliography-and-citation-styles.md)、[root ADR 0470](adr/0470-bibliography-styles-by-name-and-by-declaration.md)）。
+引数は取らず、各スロットの前後の空白は無視する。
+スロットのない呼び出しや、単一キーの `cite` が一つでないスロットは G02038 とする。
+キーが重複したときは、二度目以降のキーの位置で G02147 とする。
+子の `cite` のエラーと重複するキーは、書いた順に報告する。
+エラーが一つでもあれば、外側の引用を作らない。
 
 引用された文献だけがチャネルに送られ、`@bibliography` の位置に一覧として出る。
 
@@ -9289,7 +9351,7 @@ CSL-JSON は、文献管理ソフトが書き出せる標準の形式である�
 PDF とプレーンテキストの文字列は、組の文言と値を U+0020 でつなぐ。
 
 1. 位置を持つ件が一つもなければ、番号を昇順に並べ、三つ以上連続する番号を `a–b`（U+2013 EN DASH）にまとめ、残りを `, ` で区切る。`[1, 2]`、`[1–3]`、`[1, 3–5, 7]` になる。
-2. 位置を持つ件があれば、件を書いた順に並べ、`; ` で区切る。位置は番号の後に `, ` をはさんで置く。記法から作れるのは `[1, p. 5]` のような一件の引用だけである。
+2. 位置を持つ件があれば、件を書いた順に並べ、`; ` で区切る。位置は番号の後に `, ` をはさんで置く。`[cites: [cite a page=5]|[cite b page=7]]` は `[1, p. 5; 2, p. 7]` のように組む。
 3. `page` の位置は、数と文字列を `p. 5`、`p. xii`、範囲を `pp. 5–7` と組む。両端の等しい範囲は `p. 5` と組む。
 4. 番号を引けない件は、PDF ではキーを組み（1 では番号の後に書いた順で並べる）、HTML とプレーンテキストでは印の全体を出さない。
 
@@ -9336,6 +9398,14 @@ HTML と EPUB の引用の印は、`<span class="cite">` の中に、括弧、�
 一件は文字列と URL の部分の列であり、URL の部分だけを出力が区別して組む。
 書誌データにないキーは、キーをそのまま出す。
 参考文献のスタイル（誌ごとの書式、TeX と互換の書式）は選べず、どの本もこの節の書式で組む（スタイルを選べるようにする予定は [docs/roadmap.md](roadmap.md)）。
+
+宣言を扱うライブラリ API は golem-assemble にある（[root ADR 0470](adr/0470-bibliography-styles-by-name-and-by-declaration.md)）。
+`Golem.Assemble.BibliographyStyle.bibliographyTypeFor` は文献種別に合う宣言を選び、その種別の宣言が無い場合だけ、明示した `types.default` を使う。
+
+引用の引数を扱うライブラリ API の `Golem.Eval.CitationArgument.decodeCitationArgument` は、位置の 26 種類と文字列の前置きと後置きを型付きの値に変換する。
+`cite` の `page` の値も、この API で読む。
+`validateCitationLocatorArguments` は、名前と値の位置を持つ引数列について、位置の種類の競合と重複、未知の引数名、不正な位置の値を入力順に検査する。
+この検査 API は通常の CLI には接続していない。
 
 書式は、項目ごとに和文の項目か欧文の項目かで変わる。
 項目の `language` があれば、その主の副タグ（最初の `-` の前を英小文字にしたもの）が `ja` のとき和文の項目とし、それ以外は欧文の項目とする。
@@ -9855,7 +9925,7 @@ ABI のバージョンと、ABI を変えるときの規則は、下の「シリ
 
 | 使う場所 | 上書きできる | 上書きできない |
 | --- | --- | --- |
-| インライン | すべての組み込みのコマンド（`strong`、`bold`、`italic`、`code`、`ruby`、`kenten`、`color`、`style`、`warichu`、`upright`、`tcy`、`number-text`、`ref-number`、`ref-title`、`ref-page`、`note`、`sidenote`、`endnote`、`index`、`cite`、`aki`、`link`、`lang`、`shy` の二十四） | なし |
+| インライン | すべての組み込みのコマンド（`strong`、`bold`、`italic`、`code`、`ruby`、`kenten`、`color`、`style`、`warichu`、`upright`、`tcy`、`number-text`、`ref-number`、`ref-title`、`ref-page`、`note`、`sidenote`、`endnote`、`index`、`cite`、`cites`、`aki`、`link`、`lang`、`shy` の二十五） | なし |
 | ブロック | `toc`、`index`、`bibliography`、`printings`、`separator`、改ページと行の指定（`page-break`、`column-break`、`no-page-break`、`need-lines`、`page-lines`、`blank-line`）、図表とコード（`figure`、`table`、`listing`）、`style`、`lang`、注（`note`、`endnote`）の十八 | Golem の仕組みを決めるもの（`import`、`set`、`channel`、`manifest`、`style-def`、`hyphenation-exceptions` と、属性の `label`、`toc-title`、`number`、`nonumber`、`notoc`、`caption`、`column-widths`）と、`frame` の十四 |
 
 上書きできないコマンドは、二つの種類に限る。

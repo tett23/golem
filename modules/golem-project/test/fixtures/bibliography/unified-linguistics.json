@@ -1,0 +1,44 @@
+[
+  {
+    "id": "heller2001",
+    "type": "chapter",
+    "author": [
+      {
+        "family": "Heller",
+        "given": "Monica"
+      }
+    ],
+    "editor": [
+      {
+        "family": "Pavlenko",
+        "given": "Aneta"
+      },
+      {
+        "family": "Blackledge",
+        "given": "Adrian"
+      },
+      {
+        "family": "Piller",
+        "given": "Ingrid"
+      },
+      {
+        "family": "Teutsch-Dwyer",
+        "given": "Marya"
+      }
+    ],
+    "title": "Gender and public space in a bilingual school",
+    "container-title": "Multilingualism, second language learning, and gender",
+    "collection-title": "Language, Power and Social Process",
+    "collection-number": 6,
+    "publisher-place": "Berlin & New York",
+    "publisher": "Mouton de Gruyter",
+    "page": "257-282",
+    "issued": {
+      "date-parts": [
+        [
+          2001
+        ]
+      ]
+    }
+  }
+]

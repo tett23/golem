@@ -590,6 +590,33 @@ cabal build all
 cabal test all
 ```
 
+`[cites: [cite a page=5]|[cite b page=7]]` は、文献ごとの頁を一つの引用の印にまとめる（[root ADR 0385](docs/adr/0385-bibliography-and-citation-styles.md)）。
+各スロットには単一キーの `cite` を一つ置き、同じキーを二度書くと、そのキーの位置で G02147 になる。
+
+引用の引数を扱うライブラリ API の `Golem.Eval.CitationArgument.decodeCitationArgument` は、位置の 26 種類と文字列の前置き・後置きを型付きの値に変換する。
+`cite` の `page` の値も、この API で読む。
+`validateCitationLocatorArguments` は、名前と値の位置を持つ引数列について、位置の種類の競合と重複、未知の引数名、不正な位置の値を入力順に検査する。
+この検査 API は通常の CLI には接続していない。
+
+参考文献の宣言の差し込み片を扱うライブラリ API は、golem-assemble の `Golem.Assemble.BibliographyFormats` にある（[root ADR 0470](docs/adr/0470-bibliography-styles-by-name-and-by-declaration.md)）。
+差し込み片のテストは `cabal test golem-assemble-test --test-options='-p /0470/'` で実行する。
+宣言向けの書誌データは `Golem.Bibliography.Csl.decodeCslRecords` で読み、編者、DOI、名前の並べ替えのキーなどを保持する。
+書誌データの読み取りのテストは `cabal test golem-bibliography-test` で実行する。
+スタイル宣言の型は `Golem.Assemble.BibliographyStyle`、TOML の読み取りと書式の検査は `Golem.Project.Bibliography` にある。
+宣言のテストは `cabal test golem-project-test --test-options='-p /0470/'` で実行する。
+差し込み片の `renderBibliographyFragments` は、欄の値と句読点を分け、値の欄名を保持する。
+`renderBibliographyFragmentsWith` は値を引く関数に数の表記も渡し、月名と数の月を選べるようにする。
+`bibliographyEntryParts` が欄ごとの文字スタイルを付け、HTML、EPUB、PDF はスタイルを、テキストはその中の文字を出す。
+名前の書式と文献の並べ替えは `Golem.Assemble.BibliographyNames` と `Golem.Assemble.BibliographySort` にあり、解決済みのオプションとキーを受け取る。
+部分宣言の上書きは `overlayBibliographyStyle` が行い、省略されたキーの既定値を追加しない。
+`bibliographyTypeFor` は文献種別の宣言を選び、その種別の宣言が無いときは明示した `types.default` を使う。
+`applyBibliographyNames` は、呼出側の明示したオプションに、宣言で書いた名前のキーだけを重ねる。
+数で渡したページ範囲は、`Golem.Assemble.BibliographyRanges` が明示した `full` または `minimal` と区切り文字列で組む。
+ラテン文字のソートキーは `Golem.Unicode.Latin` が Unicode 17.0.0 の表から作る。
+`authorNeedsSortKeyWarning` は、一覧に載せるか、著者順で並べるか、並べ替えのキーがあるかと第一著者の姓から、警告が必要かを返す。
+姓の漢字・かなの判定は `Golem.Unicode.Script` が Unicode 17.0.0 の Script の表を使って行う。
+一次資料の書誌例 4 件と、その例を組む宣言は `modules/golem-project/test/fixtures/bibliography/` にある。
+
 依存のバージョンは `cabal.project.freeze` で固定している。
 このファイルを消してビルドすると、依存のバージョンが変わりうる。
 

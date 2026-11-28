@@ -1,7 +1,7 @@
 # 参考文献の書式の調査
 
 この文書は、[Golem ADR 0385](../adr/0385-bibliography-and-citation-styles.md) の文献スタイルを決めるために、広く使われる参考文献の書式と、組版の見本の論文の投稿先の書式を調べたものである。
-調べたのは 2026-11-26 で、エージェントがウェブの資料を読んだ。
+最初の調査は 2026-11-26 で、エージェントがウェブの資料を読んだ。
 一次資料を読めなかったところは、その旨と、代わりに読んだ資料を書く。
 
 ## 調べ方
@@ -201,8 +201,11 @@ SIST の事業は 2011 年度の末に終わり、サイトは更新されてい
 
 - 書籍：`Chomsky, Noam. 1986. *Knowledge of language: Its nature, origin, and use*. New York: Praeger.`
 - 論文：`Neuman, Yair, Yotam Lurie & Michele Rosenthal. 2001. A watermelon without seeds: A case study in rhetorical rationality. *Text* 21(4). 543–565.`
-- 章：`Heller, Monica. 2001. Gender and public space in a bilingual school. In Aneta Pavlenko, … & Marya Teutsch-Dwyer (eds.), *Multilingualism, second language learning, and gender* (Language, Power and Social Process 6), 257–282. Berlin & New York: Mouton de Gruyter.`
+- 章：`Heller, Monica. 2001. Gender and public space in a bilingual school. In Aneta Pavlenko, Adrian Blackledge, Ingrid Piller & Marya Teutsch-Dwyer (eds.), *Multilingualism, second language learning, and gender* (Language, Power and Social Process 6), 257–282. Berlin & New York: Mouton de Gruyter.`
 - 日本語の題：`Haga, Yasushi. 1998. *Nihongo no Shakai Shinri* [Social psychology in the Japanese language]. Tokyo: Ningen no Kagaku Sha.`
+
+2026-11-27 に Mouton Journal Style Sheet v1.3 の 8 ページで、Heller の章の編者を再確認した。
+編者は Aneta Pavlenko、Adrian Blackledge、Ingrid Piller、Marya Teutsch-Dwyer の 4 人であり、上の例の省略記号を名前に置き換えた。
 
 ほかの候補の Journal of Pragmatics（Elsevier、`https://www.sciencedirect.com/journal/journal-of-pragmatics/publish/guide-for-authors`）は、ページを読めなかった。
 検索の要約によれば、著者と年の引用で、投稿の時点ではどの書式でも一貫していればよく、校正で出版社の書式に直す。
