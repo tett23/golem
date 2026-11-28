@@ -1,6 +1,6 @@
 # ADR 0483: 行数を減らせない強制配置を採用し、同じ再試行を繰り返さない
 
-Status: proposed
+Status: accepted-pending
 
 ## 文脈
 
