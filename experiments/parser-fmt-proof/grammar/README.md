@@ -444,3 +444,27 @@ node --test experiments/parser-fmt-proof/arguments/trace-values.test.mjs \
 
 公理、前提と残る範囲は [依存関係の記録](../../../docs/research/0351-keyword-capture-proof-dependencies.md) にある。
 [root ADR 0351](../../../docs/adr/0351-prove-parser-formatter-round-trips.md) の未実装の状態を保つ。
+
+## KwArg の通常のキーワード経路をつなぐ段階
+
+KwArgTrace.lean は、実際の KwArg が先頭の KeywordArgument の経路で成功する場合を扱う。
+任意の語と引用値のキーワードについて、子の capture、同じ fuel の生成規則の認識、モデルの名前、種類と値を接続する。
+KwArg 自体は inline なので、外側に KwArg の node を追加しない。
+主定理では、子の成功や結果の一致を未証明の前提にしない。
+
+KwArgMetadata.lean は、引数がないこと、先頭の参照と inline の指定を検査する。
+残りの選択肢は生成文法から取り出し、別の固定した規則で代用しない。
+SplatArgument の経路では capture モデルが明示的な未対応となり、実際の parser が受理する対照を置く。
+この対照を、parser の拒否する反例には数えない。
+
+十二例を共通のデータからモデルに渡し、実際の CST、parseAst と通常の整形の照合にも同じデータを使う。
+三つのモデル変異は定理と実行時の回帰の両方が拒否することを確かめる。
+二つの source の変異と、行番号だけを変える AST の対照は、fresh な Generated と metadata の証明で確かめる。
+上の CLI と Cabal plan の選択の後、共通の実装の観測器は次で実行する。
+
+```sh
+node --test experiments/parser-fmt-proof/arguments/trace-values.test.mjs
+```
+
+公理、前提、再現手順と残る範囲は [依存関係の記録](../../../docs/research/0351-kwarg-capture-proof-dependencies.md) にある。
+[root ADR 0351](../../../docs/adr/0351-prove-parser-formatter-round-trips.md) の未実装の状態を保つ。
