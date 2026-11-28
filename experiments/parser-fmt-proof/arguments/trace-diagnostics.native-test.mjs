@@ -32,7 +32,7 @@ test('root ADR 0351 I2, I3: bare percent values retain G01102 bytes and fixes; f
           assert.match(fmt.stdout+fmt.stderr,/G01102/);
           assert.deepEqual(readFileSync(file),before);
         }catch(error){
-          saveProjectFailure('arguments',work,source,error,'trace-diagnostic-'+index,'trace-diagnostics.test.mjs');
+          saveProjectFailure('arguments',work,source,error,'trace-diagnostic-'+index,'trace-diagnostics.native-test.mjs');
           throw error;
         }finally{rmSync(work,{recursive:true,force:true});}
       });

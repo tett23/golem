@@ -32,7 +32,7 @@ test('root ADR 0351 I1, I2, I3: generated keyword captures and decoded fields ma
           run(process.env.GOLEM??'golem',['fmt',file],{cwd:work});
           assert.deepEqual(readFileSync(file),once);
         } catch(error) {
-          saveProjectFailure('arguments',work,source,error,'trace-fields-'+index,'trace-values.test.mjs');
+          saveProjectFailure('arguments',work,source,error,'trace-fields-'+index,'trace-values.native-test.mjs');
           throw error;
         } finally {rmSync(work,{recursive:true,force:true});}
       });

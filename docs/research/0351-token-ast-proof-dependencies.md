@@ -161,7 +161,7 @@ grammar の [README](../../experiments/parser-fmt-proof/grammar/README.md) に�
 同じ README の CLI のビルドと Cabal plan の選択の後、AST と整形の照合は次で実行できる。
 
 ```sh
-node --test experiments/parser-fmt-proof/arguments/token-values.test.mjs
+node --test experiments/parser-fmt-proof/arguments/token-values.native-test.mjs
 ```
 
 この一般証明は、語と引用値の単独 token と、構築したキーワードの CST の値を扱う。

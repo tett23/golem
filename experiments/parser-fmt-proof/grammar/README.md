@@ -321,7 +321,7 @@ Haskell の AST の照合は、既存の arguments の検査で動く。
 ```sh
 cabal build exe:golem
 export GOLEM="$(cabal list-bin exe:golem)"
-node --test experiments/parser-fmt-proof/arguments/quoted-values.test.mjs
+node --test experiments/parser-fmt-proof/arguments/quoted-values.native-test.mjs
 ```
 
 公理、前提と残る範囲は [依存関係の記録](../../../docs/research/0351-quoted-keyword-proof-dependencies.md) にある。
@@ -345,7 +345,7 @@ Haskell の版とパッケージの選択は、引用値の検査と同じ `ast-
 上の CLI のビルドの後に、次を実行する。
 
 ```sh
-node --test experiments/parser-fmt-proof/arguments/mixed-values.test.mjs
+node --test experiments/parser-fmt-proof/arguments/mixed-values.native-test.mjs
 ```
 
 このモデルは引数の宣言や評価時の検査、Golem の入力全体の検査を扱わず、式、展開、位置引数やコメントを自由に混ぜた引数全体の一般証明でもない。
@@ -365,7 +365,7 @@ Word と StringLit の種類、空の引用値、エスケープ、Unicode、同
 上の CLI のビルドの後、同じ Cabal plan で次を実行する。
 
 ```sh
-node --test experiments/parser-fmt-proof/arguments/lowered-cst.test.mjs
+node --test experiments/parser-fmt-proof/arguments/lowered-cst.native-test.mjs
 ```
 
 内部へ自由に trivia を差したこの CST のすべてが、実 PEG の像だとは証明しない。
@@ -386,7 +386,7 @@ Word、StringLit と Eq が任意の接尾辞の前で読む区間から、原�
 上の CLI のビルドの後、同じ Cabal plan で次を実行する。
 
 ```sh
-node --test experiments/parser-fmt-proof/arguments/raw-cst.test.mjs
+node --test experiments/parser-fmt-proof/arguments/raw-cst.native-test.mjs
 ```
 
 文字単位のモデルと UTF-8 の byte offset の一般的な対応、通常の node の隙間に補う Text token、原稿全体の CST の生成は未証明である。
@@ -411,7 +411,7 @@ Word は原綴りを保ち、StringLit は引用符とエスケープを除く�
 上の CLI のビルドの後、同じ Cabal plan で次を実行する。
 
 ```sh
-node --test experiments/parser-fmt-proof/arguments/token-values.test.mjs
+node --test experiments/parser-fmt-proof/arguments/token-values.native-test.mjs
 ```
 
 公理、前提と残る範囲は [依存関係の記録](../../../docs/research/0351-token-ast-proof-dependencies.md) にある。
@@ -438,8 +438,8 @@ Word は先頭が %% でないことと区切りの条件を使い、引用値�
 上の CLI と Cabal plan を選択した後、次を実行する。
 
 ```sh
-node --test experiments/parser-fmt-proof/arguments/trace-values.test.mjs \
-  experiments/parser-fmt-proof/arguments/trace-diagnostics.test.mjs
+node --test experiments/parser-fmt-proof/arguments/trace-values.native-test.mjs \
+  experiments/parser-fmt-proof/arguments/trace-diagnostics.native-test.mjs
 ```
 
 公理、前提と残る範囲は [依存関係の記録](../../../docs/research/0351-keyword-capture-proof-dependencies.md) にある。
@@ -463,8 +463,45 @@ SplatArgument の経路では capture モデルが明示的な未対応となり
 上の CLI と Cabal plan の選択の後、共通の実装の観測器は次で実行する。
 
 ```sh
-node --test experiments/parser-fmt-proof/arguments/trace-values.test.mjs
+node --test experiments/parser-fmt-proof/arguments/trace-values.native-test.mjs
 ```
 
 公理、前提、再現手順と残る範囲は [依存関係の記録](../../../docs/research/0351-kwarg-capture-proof-dependencies.md) にある。
 [root ADR 0351](../../../docs/adr/0351-prove-parser-formatter-round-trips.md) の未実装の状態を保つ。
+
+## 通常引数の語と引用値をつなぐ段階
+
+`ArgumentTrace.lean` は、実際の `Argument` から `ArgValue` を読み、語と引用文字列の token を持つ node を返す。
+任意の語と引用値について、同じ fuel の生成規則の認識、子の capture と、モデルの `positional` の種類と値を接続する。
+子の成功や結果の一致を未証明の前提にしない。
+
+`ArgumentMetadata.lean` は、実際の参照先、全選択肢と node の分類を検査する。
+三つのモデル変異を定理と実行時の回帰が拒否し、二つの文法変異を fresh な生成 AST と native parser で照合する。
+式の値は native parser が受理するが、今回の capture モデルは明示的な未対応を返す。
+
+同じ十二例をモデルと実装に渡し、CST、位置を除く AST、通常の整形後の AST と二度目のバイト列を比較する。
+上記の CLI と Cabal plan を指定した後、実装との照合は次で実行する。
+
+```sh
+node --test experiments/parser-fmt-proof/arguments/positional-values.native-test.mjs
+```
+
+`PosArg` の先読み、引数列全体、CST の位置、Haskell の AST と整形の一般的な対応は残る。
+公理と定理、実装との有限の照合、再現手順は [通常引数の capture の記録](../../../docs/research/0351-positional-capture-proof-dependencies.md) にある。
+[root ADR 0351](../../../docs/adr/0351-prove-parser-formatter-round-trips.md) の未実装の状態を保つ。
+
+## ローカルでの全実行と CI の境界
+
+新しい native observer は `arguments/*.native-test.mjs` の八ファイルである。
+語と引用値、混合値、CST の token と node、AST への変換、keyword の capture と diagnostic、通常引数の capture を観測する。
+上記の GHC、Cabal plan、PEG_HS、Lean と GOLEM を指定し、次で証明と正負の例、変異、全 native observer、既存の引数テストをまとめて実行する。
+失敗しても後続を検査し、最後に失敗を返す。
+
+```sh
+sh experiments/parser-fmt-proof/check-local.sh
+```
+
+`native-runner.mjs` は八ファイルの一覧とディレクトリを照合し、一つでも欠けた場合や、新しい observer が一覧にない場合は失敗する。
+この検査自体にも、各ファイルの欠落と一覧への追加を試す回帰がある。
+既存の CI は構成と `*.test.mjs` の検査を保ち、新しい native observer はこのローカルの経路で検証する。
+CI の所要時間と成否を、新しい native observer の通過の証拠にはしない。

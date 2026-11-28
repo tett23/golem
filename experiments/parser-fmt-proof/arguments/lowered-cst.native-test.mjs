@@ -34,7 +34,7 @@ test('root ADR 0351 I1: constructed CST keyword fields match actual Lower', asyn
           writeFileSync(join(failure, 'failure.txt'), String(error.stack || error) + '\n');
           writeFileSync(join(failure, 'reproduce.txt'),
             'From the source repository with the same built Cabal plan and GHC:\n' +
-            'node --test experiments/parser-fmt-proof/arguments/lowered-cst.test.mjs\n' +
+            'node --test experiments/parser-fmt-proof/arguments/lowered-cst.native-test.mjs\n' +
             'Fixture: lower-cst-' + index + '\n');
           throw error;
         }

@@ -286,8 +286,8 @@ grammar の [README](../../experiments/parser-fmt-proof/grammar/README.md) に�
 同じ CLI と Cabal plan の選択の後、次で CST、AST と diagnostics の実装を照合できる。
 
 ```sh
-node --test experiments/parser-fmt-proof/arguments/trace-values.test.mjs \
-  experiments/parser-fmt-proof/arguments/trace-diagnostics.test.mjs
+node --test experiments/parser-fmt-proof/arguments/trace-values.native-test.mjs \
+  experiments/parser-fmt-proof/arguments/trace-diagnostics.native-test.mjs
 ```
 
 公理と直接参照の一覧は、別途、次の一時ファイルを使って再取得した。

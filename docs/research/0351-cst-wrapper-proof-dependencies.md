@@ -171,7 +171,7 @@ node experiments/parser-fmt-proof/grammar/test.mjs
 Haskell の CST と照合する場合は、README の通常 CLI のビルドと Cabal plan の選択の後に、次を実行する。
 
 ```sh
-node --test experiments/parser-fmt-proof/arguments/raw-cst.test.mjs
+node --test experiments/parser-fmt-proof/arguments/raw-cst.native-test.mjs
 ```
 
 ## 生成された補助宣言

@@ -23,7 +23,7 @@ test('root ADR 0351 I1: canonical keyword CST retains raw token spelling', async
           writeFileSync(file, source);
           assert.deepEqual(JSON.parse(run(probe, [file])), expectedWrapper(row));
         } catch (error) {
-          saveProjectFailure('arguments', work, source, error, 'raw-cst-' + index, 'raw-cst.test.mjs');
+          saveProjectFailure('arguments', work, source, error, 'raw-cst-' + index, 'raw-cst.native-test.mjs');
           throw error;
         } finally {
           rmSync(work, { recursive: true, force: true });

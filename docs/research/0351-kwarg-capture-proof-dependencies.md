@@ -182,7 +182,7 @@ grammar の [README](../../experiments/parser-fmt-proof/grammar/README.md) に�
 同じ CLI と Cabal plan の選択の後、共通の実装の観測器は次で実行する。
 
 ```sh
-node --test experiments/parser-fmt-proof/arguments/trace-values.test.mjs
+node --test experiments/parser-fmt-proof/arguments/trace-values.native-test.mjs
 ```
 
 ### 既存成果物のソースの照合
