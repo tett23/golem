@@ -525,3 +525,10 @@ PosArg の語と展開の一般的な捕捉、引数列全体と、Haskell の A
 共有 12 例をモデルで確認し、明示的なローカル観測器では本体の AST と通常の整形が成功する 11 例と、内部の `%%` により G01102 と整形の拒否を保つ一例を区別する。
 公理、論理依存と未完の範囲は [空白で区切った語の位置引数](../../../docs/research/0351-posarg-word-proof-dependencies.md) に記す。
 全ローカル実行は `sh experiments/parser-fmt-proof/check-local.sh` で、追加した本体観測を既存 CI の保証へ含めない。
+
+[PosArgDelimited.lean](PosArgDelimited.lean) は、語の禁止文字のうち `=` と `[` を除く区切りへ、捕捉、抽象 AST と認識結果の三定理を広げる。
+語の非空、各文字の許可と先頭が `%%` でないことから実文法のガードを導き、子の成功や結論を前提にしない。
+`PosArgDelimitedMetadata.lean` は Eq と Splat の実構造を独立に検査する。
+共有 48 例では、PosArg の定義を保った実パーサーの入口から Word の原綴りと残りの入力を比較し、通常原稿の診断のない受理とは区別する。
+公理、三つの意味の変異、二つの文法の変異と未完の範囲は [区切りを持つ語の位置引数](../../../docs/research/0351-posarg-delimited-proof-dependencies.md) に記す。
+Word checkpoint の検証記録を保持し、全体の実装、Haskell AST、整形と評価の一般的な往復は未完のままとする。

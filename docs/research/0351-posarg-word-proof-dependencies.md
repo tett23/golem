@@ -4,6 +4,9 @@
 
 [PosArgWord.lean](../../experiments/parser-fmt-proof/grammar/PosArgWord.lean) は、空白一文字で区切った語について、`PosArg` の捕捉、抽象 AST への変換と認識結果の一致を示す。
 基準は引用値の増分 `33f0d15d700e3b48d90d6b26dbdb49a2037309c0` と同じ製品コードである。
+この記録の全体実行とソース表は、Word の checkpoint `08c5b87bf590c071257049f36eb7760b51cbae57` を対象とする。
+全体実行の件数を再現するときは、この版の worktree を使う。
+後続の区切りの一般化とその全体検証は、[別の記録](0351-posarg-delimited-proof-dependencies.md) にまとめる。
 [root ADR 0351](../adr/0351-prove-parser-formatter-round-trips.md) 全体を完了したとは記録しない。
 
 入力は `WordRoundTrip.Word` の文字列、空白一文字、任意の後続文字列を連結したものである。
