@@ -1,3 +1,4 @@
+{-# LANGUAGE DeriveFunctor #-}
 {-# LANGUAGE PatternSynonyms #-}
 
 {- | The semantic IR (golem-doc ADR 0001): evaluated content with no
@@ -65,6 +66,7 @@ module Golem.Doc.IR
     SeeKind (..),
     CiteItem (..),
     citeItem,
+    citationYearOnly,
     citeInlines,
     Locator (..),
     LocatorLabel (..),
@@ -442,7 +444,7 @@ data InlineF r
     Lang !SrcSpan !Text [InlineF r]
   | -- | [ref-number] and [ref-title] after S1: the kind, the label and the inlines they resolve to (docs/adr/0215)
     Resolved !SrcSpan !RefKind !Text [InlineF r]
-  deriving stock (Eq, Show)
+  deriving stock (Eq, Show, Functor)
 
 -- | The amount of an [aki]: in zw (the size of the type there), or absolute in sp.
 data AkiAmount = AkiZw !Rational | AkiAbs !Sp
@@ -577,13 +579,26 @@ data SeeKind = SeeAuto | SeeOnly | SeeAlso
 where in the work it cites, and the text before and after it. The fields
 start with @cit@ not to meet 'ciKey' of a channel item.
 -}
-data CiteItem r = CiteItem
-  { citKey :: !Text,
-    citLocator :: !(Maybe Locator),
-    citPrefix :: ![InlineF r],
-    citSuffix :: ![InlineF r]
-  }
-  deriving stock (Eq, Show)
+data CiteItem r
+  = CiteItem
+      { citKey :: !Text,
+        citLocator :: !(Maybe Locator),
+        citPrefix :: ![InlineF r],
+        citSuffix :: ![InlineF r]
+      }
+  | -- | Explicit @form=year@ (root ADR 0470); the selected style decides its output.
+    CiteYearItem
+      { citKey :: !Text,
+        citLocator :: !(Maybe Locator),
+        citPrefix :: ![InlineF r],
+        citSuffix :: ![InlineF r]
+      }
+  deriving stock (Eq, Show, Functor)
+
+-- | Whether the source explicitly requested the year-only citation form.
+citationYearOnly :: CiteItem r -> Bool
+citationYearOnly CiteYearItem {} = True
+citationYearOnly CiteItem {} = False
 
 -- | An item of a key alone: no locator, no prefix, no suffix.
 citeItem :: Text -> CiteItem r
@@ -710,7 +725,9 @@ noRuby = \case
 
 -- | An item of a citation whose prefix and suffix have no ruby (docs/adr/0266).
 itemNoRuby :: CiteItem () -> Maybe (CiteItem Void)
-itemNoRuby (CiteItem k l p q) = CiteItem k l <$> traverse noRuby p <*> traverse noRuby q
+itemNoRuby item = constructor (citKey item) (citLocator item) <$> traverse noRuby (citPrefix item) <*> traverse noRuby (citSuffix item)
+  where
+    constructor = if citationYearOnly item then CiteYearItem else CiteItem
 
 {- | The inlines of the paragraphs of the body of a note, in order
 (docs/adr/0263); the other blocks, which the evaluation and Validate do

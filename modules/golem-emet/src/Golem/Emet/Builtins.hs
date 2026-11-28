@@ -78,7 +78,7 @@ inlineSource =
       "",
       "pub data RubySegment = RubySegment (List Inline) (Maybe String)",
       "",
-      "pub data CiteItem = CiteItem String (Maybe Locator) (List Inline) (List Inline)",
+      "pub data CiteItem = CiteItem String (Maybe Locator) (List Inline) (List Inline) | CiteYearItem String (Maybe Locator) (List Inline) (List Inline)",
       "",
       "pub data Locator = Locator String LocatorValue",
       "",

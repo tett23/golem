@@ -86,6 +86,8 @@ Harvard は、著者と年の方式の書式の一群で、管理する団体を
 
 *IEEE Reference Guide*（V 3.28.2025、IEEE Publication Operations）が定める（`https://journals.ieeeauthorcenter.ieee.org/wp-content/uploads/sites/7/IEEE_Reference_Guide.pdf`）。
 引用は、引用した順に番号を振る `[1]` の形である。
+2026-11-27 に、[同じ案内の PDF](https://journals.ieeeauthorcenter.ieee.org/wp-content/uploads/sites/7/IEEE_Reference_Guide.pdf?WT.ac=journals) で、著者名は六人まで全員を書き、七人以上は第一著者の後を `et al.` にする規則を確認した。
+本文の複数の番号も、範囲に略さず `[1], [2], [3]` のように一つずつ書く。
 次の例は、この案内のとおりである。
 
 - 書籍：`B. Klaus and P. Horn, *Robot Vision*. Cambridge, MA, USA: MIT Press, 1986.`
@@ -261,6 +263,18 @@ SIST の事業は 2011 年度の末に終わり、サイトは更新されてい
 10. Kádár, Dániel Z. & Michael Haugh. 2013. *Understanding politeness*. Cambridge: Cambridge University Press. https://doi.org/10.1017/CBO9781139382717
 11. Pizziconi, Barbara. 2011. Honorifics: The cultural specificity of a universal mechanism in Japanese. In Dániel Z. Kádár & Sara Mills (eds.), *Politeness in East Asia*, 45–70. Cambridge: Cambridge University Press. https://doi.org/10.1017/CBO9780511977886.005 （編者は https://pure.hud.ac.uk/en/publications/politeness-in-east-asia/ による）
 ```
+
+## 見本で使う著者名の並べ替えのキー
+
+2026-11-27 に、日本語と欧文を混ぜる見本の第一著者のローマ字表記を確認した。
+この表記を使い、姓と名をコンマと空白でつないだ `golem-sort-key` を明示する。
+漢字から読みを推し量る処理は使わない。
+
+| 著者 | キー | 確認した資料 |
+| --- | --- | --- |
+| 宇佐美まゆみ | `Usami, Mayumi` | [CiNii Books の著者情報 DA10762367](https://ci.nii.ac.jp/author/DA10762367) |
+| 井出祥子 | `Ide, Sachiko` | [CiNii Books の著者情報 DA0072655X](https://ci.nii.ac.jp/author/DA0072655X) |
+| 滝浦真人 | `Takiura, Masato` | [国立国語研究所の著者紹介](https://kotoba.ninjal.ac.jp/kokugoken-author/takiura-masato/) |
 
 ## 文献スタイルの設計への示唆
 

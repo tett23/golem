@@ -198,20 +198,28 @@ impl Inline {
     }
 }
 
-/// An item of a citation (docs/adr/0266): the key, where in the work, the
-/// text before and after. The host sets only a page and no prefix nor suffix yet.
+/// The source form of a citation (root ADR 0470), before the style is selected.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum CitationForm {
+    #[default]
+    Normal,
+    Year,
+}
+
+/// An item of a citation: its key, locator, literal affixes and explicit form.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CiteItem {
     pub key: String,
     pub locator: Option<Locator>,
     pub prefix: Vec<Inline>,
     pub suffix: Vec<Inline>,
+    pub form: CitationForm,
 }
 
 impl CiteItem {
     /// An item of a key alone.
     pub fn key(key: impl Into<String>) -> CiteItem {
-        CiteItem { key: key.into(), locator: None, prefix: vec![], suffix: vec![] }
+        CiteItem { key: key.into(), locator: None, prefix: vec![], suffix: vec![], form: CitationForm::Normal }
     }
 }
 
@@ -564,7 +572,11 @@ fn cite_item_value(i: &CiteItem) -> Value {
         };
         Value::Array(vec![text(&l.label), value])
     });
-    Value::Array(vec![text(&i.key), locator, inlines_value(&i.prefix), inlines_value(&i.suffix)])
+    let mut fields = vec![text(&i.key), locator, inlines_value(&i.prefix), inlines_value(&i.suffix)];
+    if i.form == CitationForm::Year {
+        fields.push(text("year"));
+    }
+    Value::Array(fields)
 }
 
 pub fn blocks_value(bs: &[Block]) -> Value {
@@ -635,26 +647,29 @@ fn index_kind_of(v: &Value) -> R<IndexKind> {
 }
 
 fn cite_item_of(v: &Value) -> R<CiteItem> {
-    match arr(v)? {
-        [k, l, p, q] => Ok(CiteItem {
-            key: text_of(k)?,
-            locator: opt(l, |l| match arr(l)? {
-                [label, value] => Ok(Locator {
-                    label: text_of(label)?,
-                    value: match arr(value)? {
-                        [i, n] if u64_of(i)? == 0 => LocatorValue::Number(u64_of(n)?),
-                        [i, a, b] if u64_of(i)? == 1 => LocatorValue::Range(u64_of(a)?, u64_of(b)?),
-                        [i, t] if u64_of(i)? == 2 => LocatorValue::Text(text_of(t)?),
-                        _ => return Err(DecodeError::Shape("locator value")),
-                    },
-                }),
-                _ => Err(DecodeError::Shape("locator")),
-            })?,
-            prefix: inlines_of(p)?,
-            suffix: inlines_of(q)?,
-        }),
-        _ => Err(DecodeError::Shape("cite item")),
-    }
+    let (k, l, p, q, form) = match arr(v)? {
+        [k, l, p, q] => (k, l, p, q, CitationForm::Normal),
+        [k, l, p, q, Value::Text(form)] if form == "year" => (k, l, p, q, CitationForm::Year),
+        _ => return Err(DecodeError::Shape("cite item")),
+    };
+    Ok(CiteItem {
+        key: text_of(k)?,
+        locator: opt(l, |l| match arr(l)? {
+            [label, value] => Ok(Locator {
+                label: text_of(label)?,
+                value: match arr(value)? {
+                    [i, n] if u64_of(i)? == 0 => LocatorValue::Number(u64_of(n)?),
+                    [i, a, b] if u64_of(i)? == 1 => LocatorValue::Range(u64_of(a)?, u64_of(b)?),
+                    [i, t] if u64_of(i)? == 2 => LocatorValue::Text(text_of(t)?),
+                    _ => return Err(DecodeError::Shape("locator value")),
+                },
+            }),
+            _ => Err(DecodeError::Shape("locator")),
+        })?,
+        prefix: inlines_of(p)?,
+        suffix: inlines_of(q)?,
+        form,
+    })
 }
 
 fn opt<T>(v: &Value, f: impl Fn(&Value) -> R<T>) -> R<Option<T>> {
@@ -1025,12 +1040,38 @@ mod tests {
         let p = Inline::Cite {
             span: sp(0, 1),
             items: vec![
-                CiteItem { key: "a".into(), locator: Some(Locator { label: "page".into(), value: LocatorValue::Range(5, 7) }), prefix: vec![], suffix: vec![] },
-                CiteItem { key: "b".into(), locator: Some(Locator { label: "page".into(), value: LocatorValue::Text("xii".into()) }), prefix: vec![], suffix: vec![] },
-                CiteItem { key: "c".into(), locator: Some(Locator { label: "chapter".into(), value: LocatorValue::Number(2) }), prefix: vec![], suffix: vec![] },
+                CiteItem { key: "a".into(), locator: Some(Locator { label: "page".into(), value: LocatorValue::Range(5, 7) }), prefix: vec![], suffix: vec![], form: CitationForm::Normal },
+                CiteItem { key: "b".into(), locator: Some(Locator { label: "page".into(), value: LocatorValue::Text("xii".into()) }), prefix: vec![], suffix: vec![], form: CitationForm::Normal },
+                CiteItem { key: "c".into(), locator: Some(Locator { label: "chapter".into(), value: LocatorValue::Number(2) }), prefix: vec![], suffix: vec![], form: CitationForm::Normal },
             ],
         };
         assert_eq!(inline_of(&decode(&encode(&inline_value(&p))).unwrap()).unwrap(), p);
+    }
+
+    #[test]
+    fn citation_year_only_bytes() {
+        let source = Value::Array(vec![text("a"), Value::Null, Value::Array(vec![]), Value::Array(vec![]), text("year")]);
+        let decoded = cite_item_of(&source).expect("root ADR 0470 year form");
+        assert_eq!(cite_item_value(&decoded), source);
+    }
+
+    #[test]
+    fn citation_year_only_stays_with_its_locator_and_affixes() {
+        let mut year = CiteItem::key("a");
+        year.form = CitationForm::Year;
+        year.locator = Some(Locator { label: "chapter".into(), value: LocatorValue::Number(3) });
+        year.prefix = vec![Inline::Text { span: sp(0, 1), text: "<see>& ".into() }];
+        year.suffix = vec![Inline::Text { span: sp(0, 1), text: "!".into() }];
+        let input = Inline::Cite { span: sp(0, 1), items: vec![CiteItem::key("b"), year] };
+        assert_eq!(inline_of(&decode(&encode(&inline_value(&input))).unwrap()).unwrap(), input);
+    }
+
+    #[test]
+    fn citation_year_only_rejects_unknown_forms() {
+        for form in [text("author"), text("YEAR"), text(""), int(0u8), Value::Null] {
+            let source = Value::Array(vec![text("a"), Value::Null, Value::Array(vec![]), Value::Array(vec![]), form]);
+            assert!(cite_item_of(&source).is_err());
+        }
     }
 
     /// the bytes of an index mark are those of the host: [14, span, terms, readings, kind] (docs/adr/0265)

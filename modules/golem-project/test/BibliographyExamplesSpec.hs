@@ -4,18 +4,22 @@ docs/research/bibliography-styles.md, through explicit declarations.
 module BibliographyExamplesSpec (tests) where
 
 import Control.Applicative ((<|>))
+import Control.Monad (forM_)
 import Data.ByteString.Lazy qualified as BL
 import Data.Map.Strict qualified as Map
 import Data.Text (Text)
 import Data.Text qualified as T
+import Data.Text.Encoding qualified as TE
 import Data.Text.IO qualified as TIO
 import Data.Text.Read qualified as TR
 import Golem.Assemble.BibliographyFormats
 import Golem.Assemble.BibliographyNames qualified as Names
 import Golem.Assemble.BibliographyRanges
+import Golem.Assemble.BibliographyRecords (formatBibliographyRecord)
 import Golem.Assemble.BibliographyStyle qualified as Decl
 import Golem.Bibliography qualified as Csl
 import Golem.Bibliography.Csl qualified as Json
+import Golem.Project.Bibliography.Builtin (bundledBibliographyDeclaration, bundledBibliographySource)
 import Golem.Project.Style (parseStyle, stBibliography)
 import Golem.Syntax (FileId (..))
 import Numeric.Natural (Natural)
@@ -29,7 +33,25 @@ tests =
   testGroup
     "primary bibliography examples"
     ( [example name | name <- ["ieee", "vancouver", "sist02", "unified-linguistics"]]
-        <> [ testCase "root ADR 0470 I8: an explicit numeric month overrides the declared month label" $
+        <> [bundledExample name | name <- ["ieee", "vancouver", "sist02", "unified-linguistics"]]
+        <> [ testCase "root ADR 0470: bundled IEEE lists six names and abbreviates seven to the first" $ do
+               declaration <- either (failure . show) pure (bundledBibliographyDeclaration (FileId 0) "ieee") >>= require "bundled IEEE declaration"
+               options <- require "IEEE author options" (Map.lookup "author" (Decl.bsNames declaration))
+               (format, extras) <- either (failure . T.unpack) pure (Names.resolveBibliographyNames options)
+               let people n = [Names.PersonalName (Just ("N" <> T.pack (show i))) (Just "A") | i <- [1 :: Int .. n]]
+               Names.formatBibliographyNamesWith extras format (people 6) @?= "A. N1, A. N2, A. N3, A. N4, A. N5, and A. N6"
+               Names.formatBibliographyNamesWith extras format (people 7) @?= "A. N1 et al.",
+             testCase "root ADR 0470 I8: literal issued dates survive the selected record formatter" $ do
+               let declaration = Decl.emptyBibliographyStyle {Decl.bsTypes = Map.singleton "default" (Decl.BibliographyType (Just ["{year:kanji}", " ({month})", " ({day})"]) Map.empty)}
+               forM_ ["n.d.", "circa 2020", "2020/21", "寛永某年", "ヒジュラ暦1445年"] $ \literal -> do
+                 let source = "[{\"id\":\"a\",\"issued\":{\"literal\":\"" <> literal <> "\"}}]"
+                 records <- either (failure . show) pure (Json.decodeCslRecords (BL.fromStrict (TE.encodeUtf8 source)))
+                 case records of
+                   [record] -> do
+                     parts <- either (failure . T.unpack) pure (formatBibliographyRecord declaration 1 record)
+                     Csl.entryText parts @?= literal
+                   _ -> failure "one literal-date record required",
+             testCase "root ADR 0470 I8: an explicit numeric month overrides the declared month label" $
                verifyExample "ieee" (T.replace "{month?}" "{month?:kanji} ") (T.replace "Oct. " "十 "),
              testCase "root ADR 0470 I6: an unlisted type uses the explicit default without changing its example" $
                verifyExample "vancouver" (T.replace ".types.article-journal]" ".types.default]") id
@@ -38,6 +60,25 @@ tests =
 
 example :: String -> TestTree
 example name = testCase ("root ADR 0470 I6: explicit " <> name <> " declaration matches its primary-source example") (verifyExample name id id)
+
+bundledExample :: String -> TestTree
+bundledExample name = testCase ("root ADR 0470 I2, I6: bundled " <> name <> " equals its file, writer copy and primary examples") $ do
+  source <- TIO.readFile ("data/bibliography/" <> name <> ".toml")
+  let styleName = T.pack name
+  bundledBibliographySource styleName @?= Just source
+  declaration <- either (failure . show) pure (bundledBibliographyDeclaration (FileId 0) styleName) >>= require "bundled declaration"
+  let copy = T.replace ("[bibliography.styles." <> styleName) "[bibliography.styles.writer-copy" (T.replace ("style = '" <> styleName <> "'") "style = 'writer-copy'" source)
+  copied <- either (failure . show) pure (parseStyle (FileId 0) copy)
+  Map.lookup "writer-copy" (Decl.bibStyles (stBibliography copied)) @?= Just declaration
+  forM_ (if name == "ieee" then [name, "ieee-book", "ieee-chapter"] else [name]) $ \exampleName -> do
+    let fixture extension = "test/fixtures/bibliography/" <> exampleName <> extension
+    records <- BL.readFile (fixture ".json") >>= either (failure . show) pure . Json.decodeCslRecords
+    case records of
+      [record] -> do
+        parts <- either (failure . T.unpack) pure (formatBibliographyRecord declaration 1 record)
+        expected <- T.stripEnd <$> TIO.readFile (fixture ".txt")
+        Csl.entryText parts @?= expected
+      _ -> failure "exactly one primary example required"
 
 verifyExample :: String -> (Text -> Text) -> (Text -> Text) -> Assertion
 verifyExample name changeDeclaration changeExpected = do
@@ -98,6 +139,8 @@ verifyExample name changeDeclaration changeExpected = do
   let parts = bibliographyEntryParts (Decl.btCharStyles entry) fragments
   expected <- TIO.readFile (path ".txt") >>= require "expected example ends with newline" . T.stripSuffix "\n"
   Csl.entryText parts @?= changeExpected expected
+  selectedParts <- either (failure . T.unpack) pure (formatBibliographyRecord declaration 1 record)
+  selectedParts @?= parts
   [(styleName, Csl.entryText body) | Csl.EntryStyled styleName body <- parts]
     @?= case name of
       "ieee" -> [("italic", "IEEE Trans. Biomed. Eng.")]

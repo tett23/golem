@@ -1,0 +1,281 @@
+[
+  {
+    "id": "usami2001-keigo",
+    "type": "article-journal",
+    "title": "「ディスコース・ポライトネス」という観点から見た敬語使用の機能：敬語使用の新しい捉え方がポライトネスの談話理論に示唆すること",
+    "author": [
+      {
+        "family": "宇佐美",
+        "given": "まゆみ",
+        "golem-sort-key": "Usami, Mayumi"
+      }
+    ],
+    "issued": {
+      "date-parts": [
+        [
+          2001
+        ]
+      ]
+    },
+    "language": "ja",
+    "volume": "6",
+    "page": "1-29",
+    "publisher": "東京外国語大学",
+    "DOI": "10.15026/21937",
+    "URL": "https://cir.nii.ac.jp/crid/1390014183332890752",
+    "container-title": "語学研究所論集"
+  },
+  {
+    "id": "usami2001-discourse",
+    "type": "chapter",
+    "title": "談話のポライトネス：ポライトネスの談話理論構想",
+    "author": [
+      {
+        "family": "宇佐美",
+        "given": "まゆみ",
+        "golem-sort-key": "Usami, Mayumi"
+      }
+    ],
+    "issued": {
+      "date-parts": [
+        [
+          2001
+        ]
+      ]
+    },
+    "language": "ja",
+    "page": "9-58",
+    "publisher": "国立国語研究所",
+    "DOI": "10.15084/00003587",
+    "URL": "https://cir.nii.ac.jp/crid/1390855965512482816",
+    "container-title": "談話のポライトネス"
+  },
+  {
+    "id": "usami2002-dp",
+    "type": "article-journal",
+    "title": "ポライトネス理論の展開(10) ディスコース・ポライトネス理論構想(4) DP理論の骨格",
+    "author": [
+      {
+        "family": "宇佐美",
+        "given": "まゆみ",
+        "golem-sort-key": "Usami, Mayumi"
+      }
+    ],
+    "issued": {
+      "date-parts": [
+        [
+          2002
+        ]
+      ]
+    },
+    "language": "ja",
+    "volume": "31",
+    "issue": "11",
+    "page": "98-103",
+    "publisher": "大修館書店",
+    "URL": "https://cir.nii.ac.jp/crid/1520010379869814144",
+    "container-title": "言語"
+  },
+  {
+    "id": "usami2002-book",
+    "type": "book",
+    "title": "Discourse Politeness in Japanese Conversation: Some Implications for a Universal Theory of Politeness",
+    "author": [
+      {
+        "family": "Usami",
+        "given": "Mayumi"
+      }
+    ],
+    "issued": {
+      "date-parts": [
+        [
+          2002
+        ]
+      ]
+    },
+    "language": "en",
+    "publisher": "Hituzi Syobo",
+    "URL": "https://cir.nii.ac.jp/crid/1971712334836707329"
+  },
+  {
+    "id": "usami2008",
+    "type": "chapter",
+    "title": "相互作用と学習：ディスコース・ポライトネス理論の観点から",
+    "author": [
+      {
+        "family": "宇佐美",
+        "given": "まゆみ",
+        "golem-sort-key": "Usami, Mayumi"
+      }
+    ],
+    "issued": {
+      "date-parts": [
+        [
+          2008
+        ]
+      ]
+    },
+    "language": "ja",
+    "page": "150-181",
+    "publisher": "ひつじ書房",
+    "editor": [
+      {
+        "family": "西原",
+        "given": "鈴子"
+      },
+      {
+        "family": "西郡",
+        "given": "仁朗"
+      }
+    ],
+    "URL": "https://cir.nii.ac.jp/crid/1010282257009750788",
+    "container-title": "教育・学習",
+    "collection-title": "講座社会言語科学",
+    "collection-number": "4"
+  },
+  {
+    "id": "usami2015",
+    "type": "article-journal",
+    "title": "『総合的会話分析』の趣旨と方法",
+    "author": [
+      {
+        "family": "宇佐美",
+        "given": "まゆみ",
+        "golem-sort-key": "Usami, Mayumi"
+      }
+    ],
+    "issued": {
+      "date-parts": [
+        [
+          2015
+        ]
+      ]
+    },
+    "language": "ja",
+    "volume": "162",
+    "page": "34-49",
+    "DOI": "10.20721/nihongokyoiku.162.0_34",
+    "URL": "https://cir.nii.ac.jp/crid/1390282680138738816",
+    "container-title": "日本語教育"
+  },
+  {
+    "id": "brown-levinson1987",
+    "type": "book",
+    "title": "Politeness: Some Universals in Language Usage",
+    "author": [
+      {
+        "family": "Brown",
+        "given": "Penelope"
+      },
+      {
+        "family": "Levinson",
+        "given": "Stephen C."
+      }
+    ],
+    "issued": {
+      "date-parts": [
+        [
+          1987
+        ]
+      ]
+    },
+    "language": "en",
+    "publisher": "Cambridge University Press",
+    "DOI": "10.1017/CBO9780511813085",
+    "URL": "https://doi.org/10.1017/CBO9780511813085"
+  },
+  {
+    "id": "ide1989",
+    "type": "article-journal",
+    "title": "Formal forms and discernment: Two neglected aspects of universals of linguistic politeness",
+    "author": [
+      {
+        "family": "Ide",
+        "given": "Sachiko"
+      }
+    ],
+    "issued": {
+      "date-parts": [
+        [
+          1989
+        ]
+      ]
+    },
+    "language": "en",
+    "volume": "8",
+    "issue": "2–3",
+    "page": "223-248",
+    "DOI": "10.1515/mult.1989.8.2-3.223",
+    "URL": "https://doi.org/10.1515/mult.1989.8.2-3.223",
+    "container-title": "Multilingua"
+  },
+  {
+    "id": "matsumoto1988",
+    "type": "article-journal",
+    "title": "Reexamination of the universality of face: Politeness phenomena in Japanese",
+    "author": [
+      {
+        "family": "Matsumoto",
+        "given": "Yoshiko"
+      }
+    ],
+    "issued": {
+      "date-parts": [
+        [
+          1988
+        ]
+      ]
+    },
+    "language": "en",
+    "volume": "12",
+    "issue": "4",
+    "page": "403-426",
+    "DOI": "10.1016/0378-2166(88)90003-3",
+    "URL": "https://doi.org/10.1016/0378-2166(88)90003-3",
+    "container-title": "Journal of Pragmatics"
+  },
+  {
+    "id": "takiura2008",
+    "type": "book",
+    "title": "ポライトネス入門",
+    "author": [
+      {
+        "family": "滝浦",
+        "given": "真人",
+        "golem-sort-key": "Takiura, Masato"
+      }
+    ],
+    "issued": {
+      "date-parts": [
+        [
+          2008
+        ]
+      ]
+    },
+    "language": "ja",
+    "publisher": "研究社",
+    "URL": "https://cir.nii.ac.jp/crid/1970586434891254668"
+  },
+  {
+    "id": "ide2006",
+    "type": "book",
+    "title": "わきまえの語用論",
+    "author": [
+      {
+        "family": "井出",
+        "given": "祥子",
+        "golem-sort-key": "Ide, Sachiko"
+      }
+    ],
+    "issued": {
+      "date-parts": [
+        [
+          2006
+        ]
+      ]
+    },
+    "language": "ja",
+    "publisher": "大修館書店",
+    "URL": "https://cir.nii.ac.jp/crid/1971993809775993474"
+  }
+]

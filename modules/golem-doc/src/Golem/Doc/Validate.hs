@@ -260,13 +260,14 @@ inlineErrors fileSize allowed i =
       ["引用は一つ以上の文献を持ちます" | null is]
         <> ["引用に同じキーが二度あります: " <> k | k <- twice (map citKey is)]
         <> concat [locatorErrors l | Just l <- map citLocator is]
-        <> ["まだ組めない引用の値です: 前置きと後置き" | any (\it -> not (null (citPrefix it) && null (citSuffix it))) is]
-    locatorErrors (Locator label v) =
-      ["まだ組めない引用の値です: 位置の種類 " <> locatorLabelName label | label /= LocatorPage]
-        <> case v of
-          LocNumber n -> ["引用の位置の数が負です" | n < 0]
-          LocRange a b -> ["引用の位置の範囲が負か逆向きです" | a < 0 || b < a]
-          LocText t -> ["引用の位置の文字列が空です" | T.null t]
+        <> ["まだ組めない引用の値です: 前置きと後置き" | any (any nonLiteral . citeInlines . pure) is]
+    nonLiteral = \case
+      Text {} -> False
+      _ -> True
+    locatorErrors (Locator _ v) = case v of
+      LocNumber n -> ["引用の位置の数が負です" | n < 0]
+      LocRange a b -> ["引用の位置の範囲が負か逆向きです" | a < 0 || b < a]
+      LocText t -> ["引用の位置の文字列が空です" | T.null t]
     twice ks = nub [k | (n, k) <- zip [0 :: Int ..] ks, k `elem` take n ks]
     sends :: InlineF q -> Bool
     sends = \case

@@ -38,7 +38,17 @@ tests :: TestTree
 tests =
   testGroup
     "golem-emet"
-    [ testCase "root ADR 0479 I4: Emet identity preserves both TCY contents" $ do
+    [ testCase "root ADR 0470: Emet identity retains citation forms, locators and affixes" $ do
+        let sp = S.callSpan
+            year = D.CiteYearItem "a" (Just (D.Locator D.LocatorChapter (D.LocNumber 3))) [D.Text sp "<see>& "] [D.Text sp "!"]
+            input = [D.Cite sp [year, D.citeItem "b"]]
+            (encoded, carried) = IR.runEnc (IR.encodeInlines input)
+        result <- S.call "identity :: Inlines -> Inlines\nidentity xs = xs\n" "identity" [encoded] >>= S.ok
+        IR.decodeInlines carried sp result @?= Right input,
+      testCase "root ADR 0470: Emet can construct the explicit year citation form" $ do
+        result <- S.call "make :: Inlines\nmake = [Inline.Cite [Inline.CiteYearItem \"a\" Nothing [] []]]\n" "make" [] >>= S.ok
+        IR.decodeInlines IR.emptyCarried S.callSpan result @?= Right [D.Cite S.callSpan [D.CiteYearItem "a" Nothing [] []]],
+      testCase "root ADR 0479 I4: Emet identity preserves both TCY contents" $ do
         let sp = mkSpan (FileId 1) 0 1
             input = [D.Tcy sp (D.TcyLiteral "001"), D.Tcy sp (D.TcyNumber (1 % 3))]
             (encoded, carried) = IR.runEnc (IR.encodeInlines input)

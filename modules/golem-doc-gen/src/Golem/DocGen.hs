@@ -77,7 +77,7 @@ genInlineWith mr =
     para = (\sp is -> Block sp Nothing Nothing (Paragraph Nothing is)) <$> genSpan <*> Gen.list (Range.linear 0 3) genInline
     citeItems = do
       keys <- nub <$> Gen.list (Range.linear 1 3) genText
-      traverse (\k -> CiteItem k <$> Gen.maybe genLocator <*> sub <*> sub) keys
+      traverse (\k -> do constructor <- Gen.element [CiteItem, CiteYearItem]; constructor k <$> Gen.maybe genLocator <*> sub <*> sub) keys
     genLocator = Locator <$> Gen.enumBounded <*> Gen.choice [LocNumber <$> genNonNegative64, range, LocText <$> Gen.text (Range.linear 1 8) (Gen.element ("ixv5f." :: String))]
     range = (\a b -> LocRange (min a b) (max a b)) <$> genNonNegative64 <*> genNonNegative64
 

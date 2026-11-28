@@ -594,9 +594,9 @@ cabal test all
 各スロットには単一キーの `cite` を一つ置き、同じキーを二度書くと、そのキーの位置で G02147 になる。
 
 引用の引数を扱うライブラリ API の `Golem.Eval.CitationArgument.decodeCitationArgument` は、位置の 26 種類と文字列の前置き・後置きを型付きの値に変換する。
-`cite` の `page` の値も、この API で読む。
+通常の `cite` は、この API で位置と文字列の前置き・後置きを読む。
 `validateCitationLocatorArguments` は、名前と値の位置を持つ引数列について、位置の種類の競合と重複、未知の引数名、不正な位置の値を入力順に検査する。
-この検査 API は通常の CLI には接続していない。
+通常の CLI も同じように検査し、引数名と値の位置で誤りを報告する。
 
 参考文献の宣言の差し込み片を扱うライブラリ API は、golem-assemble の `Golem.Assemble.BibliographyFormats` にある（[root ADR 0470](docs/adr/0470-bibliography-styles-by-name-and-by-declaration.md)）。
 差し込み片のテストは `cabal test golem-assemble-test --test-options='-p /0470/'` で実行する。
@@ -606,7 +606,12 @@ cabal test all
 宣言のテストは `cabal test golem-project-test --test-options='-p /0470/'` で実行する。
 `parseStyle` は、未選択の宣言も含めて必須キーを検査する（[root ADR 0475](docs/adr/0475-complete-bibliography-declarations-and-citation-delimiters.md)）。
 名前の先頭と末尾の保持、二人のときの区切り、言語別の上書き、引用全体の囲みを扱う API もある。
-この段階では、宣言による引用と書誌出力は通常 CLI に接続していない。
+通常の CLI は、選んだ自作の宣言から引用と一覧の共通の出力を作る。
+名前の書式、文献ごとの言語、引用全体の囲み、引用の年順と同著者同年の接尾辞、位置の英語ラベル、前置きと後置きを扱い、PDF、HTML、EPUB、テキストで使う。
+`[cite キー form=year]` は、著者と年のスタイルでは `citation-year` で組み、番号と注のスタイルでは通常の引用と同じになる。
+注の引用、一覧の並べ替えとぶら下げ字下げ、同梱のスタイルは実装途中である。
+IEEE、Vancouver、SIST 02、Unified Style Sheet for Linguistics の同梱宣言は `modules/golem-project/data/bibliography/` にあり、同じ読み手を使って選び、別名に写した宣言と同じ文字列を組む。
+IEEE の三つの一次資料例とほかの三つのスタイルの一例ずつ、IEEE の著者名の六人と七人の境界を照合している。
 差し込み片の `renderBibliographyFragments` は、欄の値と句読点を分け、値の欄名を保持する。
 `renderBibliographyFragmentsWith` は値を引く関数に数の表記も渡し、月名と数の月を選べるようにする。
 `bibliographyEntryParts` が欄ごとの文字スタイルを付け、HTML、EPUB、PDF はスタイルを、テキストはその中の文字を出す。

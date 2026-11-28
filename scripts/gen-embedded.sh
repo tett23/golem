@@ -1,11 +1,16 @@
 #!/bin/sh
-# Generates the two modules that embed files of the repository
+# Generates the modules that embed files of the repository
 # (docs/adr/0203), in place of Template Haskell, which the build for wasm
-# cannot run in a package that depends on golem-font: that of golem-driver,
-# and that of golem-evaluate (root ADR 0434):
+# cannot run in a package that depends on golem-font (root ADR 0434).
+# The same generator embeds bundled declarations in golem-project
+# (root ADR 0470):
 #
 #   modules/golem-driver/src/Golem/Driver/Version/Embedded.hs       VERSION
 #   modules/golem-evaluate/src/Golem/Evaluate/Explain/Embedded.hs   docs/diagnostics.md
+#   modules/golem-project/src/Golem/Project/Bibliography/Builtin/IEEE.hs  modules/golem-project/data/bibliography/ieee.toml
+#   modules/golem-project/src/Golem/Project/Bibliography/Builtin/Vancouver.hs  modules/golem-project/data/bibliography/vancouver.toml
+#   modules/golem-project/src/Golem/Project/Bibliography/Builtin/Sist02.hs  modules/golem-project/data/bibliography/sist02.toml
+#   modules/golem-project/src/Golem/Project/Bibliography/Builtin/UnifiedLinguistics.hs  modules/golem-project/data/bibliography/unified-linguistics.toml
 #
 #   sh scripts/gen-embedded.sh
 #
@@ -13,7 +18,7 @@
 # with newlines, so the constant is the file byte for byte and a change of
 # one line of the file changes one line of the module. Only \ and " are
 # escaped; UTF-8 is written as it is. A tab or another control character
-# (U+0000 to U+001F, U+007F) fails with the line number, and neither module
+# (U+0000 to U+001F, U+007F) fails with the line number, and no module
 # is written. CI runs this and checks that the modules have no diff.
 set -eu
 if [ "$#" -ne 0 ]; then
@@ -23,10 +28,15 @@ fi
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 DSRC=$ROOT/modules/golem-driver/src/Golem/Driver
 ESRC=$ROOT/modules/golem-evaluate/src/Golem/Evaluate
+PSRC=$ROOT/modules/golem-project/src/Golem/Project/Bibliography/Builtin
 
 # gen FILE MODULE NAME USER OUT: the module MODULE at OUT with the constant
 # NAME, the content of FILE (relative to the root), which USER embeds
 gen() {
+  if [ ! -f "$ROOT/$1" ] || [ ! -r "$ROOT/$1" ]; then
+    printf '%s: missing or unreadable input\n' "$1" >&2
+    return 1
+  fi
   # the last byte is a newline (or the file is empty): the list ends with ""
   if [ -z "$(tail -c 1 "$ROOT/$1")" ]; then nl=1; else nl=0; fi
   # NUL becomes U+0001, which fails as well: awk cannot hold NUL
@@ -82,12 +92,24 @@ END {
 
 VOUT=$DSRC/Version/Embedded.hs
 EOUT=$ESRC/Explain/Embedded.hs
-mkdir -p "$DSRC/Version" "$ESRC/Explain"
+POUT=$PSRC/IEEE.hs
+PVOUT=$PSRC/Vancouver.hs
+PSOUT=$PSRC/Sist02.hs
+PUOUT=$PSRC/UnifiedLinguistics.hs
+mkdir -p "$DSRC/Version" "$ESRC/Explain" "$PSRC"
 if gen VERSION Golem.Driver.Version.Embedded versionText Golem.Driver.Version "$VOUT" &&
-  gen docs/diagnostics.md Golem.Evaluate.Explain.Embedded documentText Golem.Evaluate.Explain "$EOUT"; then
+  gen docs/diagnostics.md Golem.Evaluate.Explain.Embedded documentText Golem.Evaluate.Explain "$EOUT" &&
+  gen modules/golem-project/data/bibliography/ieee.toml Golem.Project.Bibliography.Builtin.IEEE sourceText Golem.Project.Bibliography.Builtin "$POUT" &&
+  gen modules/golem-project/data/bibliography/vancouver.toml Golem.Project.Bibliography.Builtin.Vancouver sourceText Golem.Project.Bibliography.Builtin "$PVOUT" &&
+  gen modules/golem-project/data/bibliography/sist02.toml Golem.Project.Bibliography.Builtin.Sist02 sourceText Golem.Project.Bibliography.Builtin "$PSOUT" &&
+  gen modules/golem-project/data/bibliography/unified-linguistics.toml Golem.Project.Bibliography.Builtin.UnifiedLinguistics sourceText Golem.Project.Bibliography.Builtin "$PUOUT"; then
   mv "$VOUT.tmp" "$VOUT"
   mv "$EOUT.tmp" "$EOUT"
+  mv "$POUT.tmp" "$POUT"
+  mv "$PVOUT.tmp" "$PVOUT"
+  mv "$PSOUT.tmp" "$PSOUT"
+  mv "$PUOUT.tmp" "$PUOUT"
 else
-  rm -f "$VOUT.tmp" "$EOUT.tmp"
+  rm -f "$VOUT.tmp" "$EOUT.tmp" "$POUT.tmp" "$PVOUT.tmp" "$PSOUT.tmp" "$PUOUT.tmp"
   exit 1
 fi

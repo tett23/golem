@@ -1,0 +1,63 @@
+# IEEE Reference Guide V 3.28.2025, primary source.
+# https://journals.ieeeauthorcenter.ieee.org/wp-content/uploads/sites/7/IEEE_Reference_Guide.pdf?WT.ac=journals
+# Examples and name rules: docs/research/bibliography-styles.md.
+# Complete root ADR 0470 acceptance checks remain pending.
+[bibliography]
+style = 'ieee'
+
+[bibliography.styles.ieee]
+citation-mode = 'numeric'
+citation = ['[{number}', ', {locator}', ']']
+citation-delimiter = ', '
+citation-sort = 'written'
+sort = ['citation']
+label = '[{number}]'
+hanging-indent = '1.5zw'
+year-suffix = false
+page-range = 'full'
+range-delimiter = '–'
+months = ['Jan. ', 'Feb. ', 'Mar. ', 'Apr. ', 'May ', 'Jun. ', 'Jul. ', 'Aug. ', 'Sep. ', 'Oct. ', 'Nov. ', 'Dec. ']
+
+[bibliography.styles.ieee.locator-labels]
+page = ['p.', 'pp.']
+chapter = ['Ch.', 'Ch.']
+section = ['Sec.', 'Sec.']
+
+[bibliography.styles.ieee.names.author]
+order = 'given-family'
+part-delimiter = ' '
+initials = true
+initial-format = '{i}.'
+initial-delimiter = ' '
+delimiter = ', '
+last-delimiter = ', and '
+pair-delimiter = ' and '
+max = 6
+use-first = 1
+et-al = ' et al.'
+
+[bibliography.styles.ieee.names.editor]
+order = 'given-family'
+part-delimiter = ' '
+initials = true
+initial-format = '{i}.'
+initial-delimiter = ' '
+delimiter = ', '
+last-delimiter = ', and '
+pair-delimiter = ' and '
+label = ['Ed.', 'Eds.']
+
+[bibliography.styles.ieee.types.book]
+pieces = ['{author}, ', '{editor}, {editor-label}, ', '{title}', '. {publisher-place}', ': {publisher}', ', {year}', '.']
+char-styles = { title = 'italic' }
+
+[bibliography.styles.ieee.types.article-journal]
+pieces = ['{author}, ', '"{title}," ', '{container-title}', ', vol. {volume}', ', no. {issue}', ', pp. {page}', ', {month?}{year}', ', doi: {DOI}', '.']
+char-styles = { container-title = 'italic' }
+
+[bibliography.styles.ieee.types.chapter]
+pieces = ['{author}, ', '"{title}," in ', '{container-title}', ', {editor}, {editor-label}', ', {publisher-place}', ': {publisher}', ', {year}', ', pp. {page}', '.']
+char-styles = { container-title = 'italic' }
+
+[bibliography.styles.ieee.types.default]
+pieces = ['{author}, ', '{title}', ', {year}', '.']

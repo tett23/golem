@@ -11,10 +11,14 @@ import Data.Maybe (mapMaybe)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Text.IO qualified as TIO
-import Golem.Assemble (IndexGroup (..), IndexLocator (..), IndexSection (..))
-import Golem.Bibliography (EntryPart (..), entryText)
-import Golem.Doc.IR (Inline, InlineF (..))
+import Golem.Assemble (IndexGroup (..), IndexLocator (..), IndexSection (..), citationPiecesFor)
+import Golem.Bibliography (EntryPart (..), entryText, formatEntry)
+import Golem.Bibliography.Csl (recordEntry, recordText)
+import Golem.Doc.Citation (citationText)
+import Golem.Doc.IR (Block (..), BlockBody (..), CiteItem (..), Document (..), Inline, InlineF (..), citeItem)
 import Golem.Driver
+import Golem.Eval.File (EvalResult (..))
+import Golem.Evaluate (loadBibliographyRecords)
 import Golem.Layout.KnuthPlass (AdjustOrder (..), BoxContent (..), Item (..), Line (..), glueRatio, noLeaf, placeLine)
 import Golem.Layout.Look (Look (..), noBoxSource, plainLook)
 import Golem.Layout.PageLabel (PageLabel (..), plainLabel)
@@ -210,13 +214,225 @@ bibPartsOf bibLine files = withBibProject bibLine "本文。\n" files $ \tmp -> 
       (ds, _, m) <- loadBibliography (diskFiles tmp) (projectManifest (evProject e))
       pure (ds, m)
 
+customBibliographyDeclaration :: T.Text
+customBibliographyDeclaration =
+  T.unlines
+    [ "[bibliography]",
+      "style='custom'",
+      "[bibliography.styles.custom]",
+      "citation-mode='numeric'",
+      "citation=['ref-{number}']",
+      "citation-delimiter=', '",
+      "citation-prefix='('",
+      "citation-suffix=')'",
+      "citation-sort='written'",
+      "sort=['citation']",
+      "hanging-indent='0pt'",
+      "year-suffix=false",
+      "page-range='full'",
+      "range-delimiter='–'",
+      "[bibliography.styles.custom.types.book]",
+      "pieces=['DOI {DOI}.']"
+    ]
+
 -- | A Japanese entry, by a literal author, as CSL-JSON.
 jaRefsJson :: BS.ByteString
 jaRefsJson = TE.encodeUtf8 "[{\"id\": \"jisx4061\", \"title\": \"JIS X 4061:1996 日本語文字列照合順番\", \"publisher\": \"日本規格協会\", \"issued\": {\"date-parts\": [[1996]]}}, {\"id\": \"lit\", \"author\": [{\"literal\": \"日本規格協会\", \"family\": \"x\"}], \"title\": \"照合順番\", \"issued\": {\"literal\": \"n.d.\"}}]"
 
 bibliographyFormatTests :: [TestTree]
 bibliographyFormatTests =
-  [ testCase "root ADR 0482 I1, I2: non-PDF sidenote bodies in ruby captions and cells occur once" $
+  [ testCase "root ADR 0470: project loading retains the last complete CSL record without changing legacy entries"
+      $ withBibProject
+        "bibliography = [\"first.json\", \"second.json\"]"
+        "本文。\n"
+        [ ("first.json", "[{\"id\":\"shared\",\"title\":\"Earlier\",\"DOI\":\"old\"}]"),
+          ("second.json", "[{\"id\":\"shared\",\"title\":\"Later\",\"DOI\":\"10.1/later\",\"publisher-place\":\"Kyoto\"}]")
+        ]
+      $ \tmp -> do
+        ev <- evaluateProject Dev tmp
+        case ev of
+          Left failure -> assertFailure (show (pfDiagnostics failure))
+          Right e -> do
+            let files = diskFiles tmp
+                manifest = projectManifest (evProject e)
+            (ds, keys, records) <- loadBibliographyRecords files manifest
+            (legacyDs, legacyKeys, legacy) <- loadBibliography files manifest
+            ds @?= []
+            (legacyDs, legacyKeys) @?= (ds, keys)
+            keys @?= Map.keysSet records
+            (Map.lookup "shared" records >>= recordText "DOI") @?= Just "10.1/later"
+            (Map.lookup "shared" records >>= recordText "publisher-place") @?= Just "Kyoto"
+            legacy @?= Map.map (formatEntry . recordEntry) records,
+    testCase "root ADR 0385 I1: locator and literal affixes reach every text output" $
+      withBibProject "bibliography = [\"refs.json\"]" "[cite a chapter=2 prefix=\"<a>&[cite x]\" suffix=\"?\"]\n\n@bibliography\n" [("refs.json", abcJson)] $ \tmp -> do
+        let declaration = T.replace "citation=['ref-{number}']" "citation=['ref-{number}', ', {locator}']" (T.replace ".types.book]" ".types.default]" customBibliographyDeclaration)
+        TIO.appendFile (tmp </> "style.toml") (declaration <> "\n[bibliography.styles.custom.locator-labels]\nchapter=['ch.', 'chs.']\n")
+        TIO.appendFile (tmp </> "manifest.toml") "[targets.text]\n[targets.epub]\n"
+        result <- build (defaultOptions tmp) {optTargets = Just [TargetHtml, TargetText, TargetEpub]}
+        assertEqual "no errors" [] (map diagCode (filter isError (brDiagnostics result)))
+        output <- TIO.readFile (tmp </> "build/text/horizontal/a.txt")
+        assertBool (T.unpack output) ("(<a>&[cite x]ref-1, ch. 2?)" `T.isInfixOf` output)
+        html <- TIO.readFile (tmp </> "build/html/a.html")
+        assertBool (T.unpack html) ("&lt;a&gt;&amp;[cite x]ref-" `T.isInfixOf` html)
+        archive <- toArchive <$> BL.readFile (tmp </> "build/epub/book.epub")
+        let xhtml = maybe "" (TE.decodeUtf8 . BL.toStrict . fromEntry) (findEntryByPath "OEBPS/a.xhtml" archive)
+        assertBool (T.unpack xhtml) ("&lt;a&gt;&amp;[cite x]ref-" `T.isInfixOf` xhtml),
+    testCase "root ADR 0470 I6: a selected bundled IEEE book matches the primary example" $
+      let records = "[{\"id\":\"robot\",\"type\":\"book\",\"author\":[{\"family\":\"Klaus\",\"given\":\"B.\"},{\"family\":\"Horn\",\"given\":\"P.\"}],\"title\":\"Robot Vision\",\"publisher\":\"MIT Press\",\"publisher-place\":\"Cambridge, MA, USA\",\"issued\":{\"date-parts\":[[1986]]}}]"
+       in withBibProject "bibliography = [\"refs.json\"]" "[cite robot]\n\n@bibliography\n" [("refs.json", records)] $ \tmp -> do
+            TIO.appendFile (tmp </> "style.toml") "\n[bibliography]\nstyle='ieee'\n"
+            TIO.appendFile (tmp </> "manifest.toml") "[targets.text]\n"
+            result <- build (defaultOptions tmp) {optTargets = Just [TargetText]}
+            assertEqual "no errors" [] (map diagCode (filter isError (brDiagnostics result)))
+            output <- TIO.readFile (tmp </> "build/text/horizontal/a.txt")
+            assertBool (T.unpack output) ("B. Klaus and P. Horn, Robot Vision. Cambridge, MA, USA: MIT Press, 1986." `T.isInfixOf` output),
+    testCase "root ADR 0470 I4: same-author years receive key-ordered suffixes after number notation" $
+      forM_ [False, True] $ \languageOverride ->
+        let records = "[{\"id\":\"z\",\"type\":\"book\",\"language\":\"en\",\"title\":\"Z\",\"author\":[{\"family\":\"Author\",\"given\":\"One\"}],\"issued\":{\"date-parts\":[[1988]]}},{\"id\":\"a\",\"type\":\"book\",\"language\":\"en\",\"title\":\"A\",\"author\":[{\"family\":\"Author\",\"given\":\"One\"}],\"issued\":{\"date-parts\":[[1988]]}},{\"id\":\"unused\",\"type\":\"book\",\"author\":[{\"family\":\"Author\",\"given\":\"One\"}],\"issued\":{\"date-parts\":[[1988]]}}]"
+         in withBibProject "bibliography = [\"refs.json\"]" "[cite z] [cite a]\n\n@bibliography\n" [("refs.json", records)] $ \tmp -> do
+              let base = T.replace "citation=['ref-{number}']" "citation=['{year:kanji-digits}']" (T.replace "pieces=['DOI {DOI}.']" "pieces=['{title} {year:kanji-digits}.']" customBibliographyDeclaration)
+                  declaration = if languageOverride then base <> "\n[bibliography.styles.custom.languages.ja]\nyear-suffix=true\n" else T.replace "year-suffix=false" "year-suffix=true" base
+              TIO.appendFile (tmp </> "style.toml") declaration
+              TIO.appendFile (tmp </> "manifest.toml") "[targets.text]\n"
+              result <- build (defaultOptions tmp) {optTargets = Just [TargetText]}
+              assertEqual "no errors" [] (map diagCode (filter isError (brDiagnostics result)))
+              output <- TIO.readFile (tmp </> "build/text/horizontal/a.txt")
+              assertBool (T.unpack output) (all (`T.isInfixOf` output) ["(一九八八b) (一九八八a)", "Z 一九八八b.", "A 一九八八a."])
+              -- Separate bibliography scopes do not disambiguate each other.
+              TIO.writeFile (tmp </> "a.gm") "[cite z]\n\n@bibliography\n\n[cite a]\n\n@bibliography\n"
+              scoped <- build (defaultOptions tmp) {optTargets = Just [TargetText]}
+              assertEqual "scoped errors" [] (map diagCode (filter isError (brDiagnostics scoped)))
+              scopedText <- TIO.readFile (tmp </> "build/text/horizontal/a.txt")
+              T.count "(一九八八)" scopedText @?= 2
+              -- An uncited peer does not make a single cited work ambiguous.
+              TIO.writeFile (tmp </> "a.gm") "[cite z]\n\n@bibliography\n"
+              single <- build (defaultOptions tmp) {optTargets = Just [TargetText]}
+              assertEqual "single errors" [] (map diagCode (filter isError (brDiagnostics single)))
+              singleText <- TIO.readFile (tmp </> "build/text/horizontal/a.txt")
+              T.count "(一九八八)" singleText @?= 1,
+    testCase "root ADR 0470: citation year order keeps locators and affixes on their keys" $
+      forM_ [False, True] $ \languageOverride ->
+        let records = "[{\"id\":\"a\",\"language\":\"en\",\"issued\":{\"date-parts\":[[1990]]}},{\"id\":\"b\",\"language\":\"en\",\"issued\":{\"date-parts\":[[1970]]}},{\"id\":\"c\",\"language\":\"en\",\"issued\":{\"date-parts\":[[1985]]}}]"
+         in withBibProject "bibliography = [\"refs.json\"]" "[cites: [cite a page=11 prefix=\"A\"]|[cite b page=22 prefix=\"B\"]|[cite c page=33 prefix=\"C\"]]\n" [("refs.json", records)] $ \tmp -> do
+              let base = fst (T.breakOn "[bibliography.styles.custom.types.book]" customBibliographyDeclaration)
+                  ordered = if languageOverride then base <> "\n[bibliography.styles.custom.languages.ja]\ncitation-sort='year'\n" else T.replace "citation-sort='written'" "citation-sort='year'" base
+                  declaration = T.replace "citation=['ref-{number}']" "citation=['ref-{number}', ', {locator}']" ordered
+              TIO.appendFile (tmp </> "style.toml") (declaration <> "\n[bibliography.styles.custom.locator-labels]\npage=['p.', 'pp.']\n")
+              TIO.appendFile (tmp </> "manifest.toml") "[targets.text]\n"
+              result <- build (defaultOptions tmp) {optTargets = Just [TargetText]}
+              assertEqual "no errors" [] (map diagCode (filter isError (brDiagnostics result)))
+              output <- TIO.readFile (tmp </> "build/text/horizontal/a.txt")
+              assertBool (T.unpack output) ("(Bref-2, p. 22, Cref-3, p. 33, Aref-1, p. 11)" `T.isInfixOf` output),
+    testCase "root ADR 0470: formatted citation numbers retain bibliography links" $
+      withBibProject "bibliography = [\"refs.json\"]" "[cite a]\n\n@bibliography\n" [("refs.json", abcJson)] $ \tmp -> do
+        let declaration = T.replace "ref-{number}" "{number:kanji}" (T.replace ".types.book]" ".types.default]" customBibliographyDeclaration)
+        TIO.appendFile (tmp </> "style.toml") declaration
+        TIO.appendFile (tmp </> "manifest.toml") "[targets.epub]\n"
+        result <- build (defaultOptions tmp) {optTargets = Just [TargetHtml, TargetEpub]}
+        assertEqual "no errors" [] (map diagCode (filter isError (brDiagnostics result)))
+        html <- TIO.readFile (tmp </> "build/html/a.html")
+        assertBool (T.unpack html) ("#cite-a\">一</a>" `T.isInfixOf` html)
+        archive <- toArchive <$> BL.readFile (tmp </> "build/epub/book.epub")
+        let xhtml = maybe "" (TE.decodeUtf8 . BL.toStrict . fromEntry) (findEntryByPath "OEBPS/a.xhtml" archive)
+        assertBool (T.unpack xhtml) ("#cite-a\">一</a>" `T.isInfixOf` xhtml),
+    testCase "root ADR 0385: default style emits literal affixes in every text output" $
+      withBibProject "bibliography = [\"refs.json\"]" "[cite a prefix=\"<a>&[cite x]\" suffix=\"?\"]\n\n@bibliography\n" [("refs.json", abcJson)] $ \tmp -> do
+        TIO.appendFile (tmp </> "manifest.toml") "[targets.text]\n[targets.epub]\n"
+        result <- build (defaultOptions tmp) {optTargets = Just [TargetHtml, TargetText, TargetEpub]}
+        assertEqual "no errors" [] (map diagCode (filter isError (brDiagnostics result)))
+        output <- TIO.readFile (tmp </> "build/text/horizontal/a.txt")
+        assertBool (T.unpack output) ("[<a>&[cite x]1?]" `T.isInfixOf` output)
+        html <- TIO.readFile (tmp </> "build/html/a.html")
+        assertBool (T.unpack html) ("&lt;a&gt;&amp;[cite x]" `T.isInfixOf` html),
+    testCase "root ADR 0475 I1: no list needs no entry type declaration" $
+      withBibProject "bibliography = [\"refs.json\"]" "本文[cite a]。\n" [("refs.json", abcJson)] $ \tmp -> do
+        TIO.appendFile (tmp </> "style.toml") (fst (T.breakOn "[bibliography.styles.custom.types.book]" customBibliographyDeclaration))
+        TIO.appendFile (tmp </> "manifest.toml") "[targets.text]\n"
+        result <- build (defaultOptions tmp) {optTargets = Just [TargetText]}
+        assertEqual "no errors" [] (map diagCode (filter isError (brDiagnostics result)))
+        output <- TIO.readFile (tmp </> "build/text/horizontal/a.txt")
+        assertBool (T.unpack output) ("(ref-1)" `T.isInfixOf` output),
+    testCase "root ADR 0470: citation uses explicitly declared short names" $
+      withBibProject "bibliography = [\"refs.json\"]" "本文[cite knuth1981]。\n\n@bibliography\n" [("refs.json", refsJson)] $ \tmp -> do
+        let declaration = T.replace "citation-mode='numeric'" "citation-mode='author-year'\ncitation-year=[]" (T.replace "citation=['ref-{number}']" "citation=['{author}, {year}']" (T.replace ".types.book]" ".types.default]" customBibliographyDeclaration))
+        TIO.appendFile (tmp </> "style.toml") (declaration <> "\n[bibliography.styles.custom.names.short]\ndelimiter=''\nlast-delimiter=''\n")
+        TIO.appendFile (tmp </> "manifest.toml") "[targets.text]\n"
+        result <- build (defaultOptions tmp) {optTargets = Just [TargetText]}
+        assertEqual "no errors" [] (map diagCode (filter isError (brDiagnostics result)))
+        output <- TIO.readFile (tmp </> "build/text/horizontal/a.txt")
+        assertBool (T.unpack output) ("(Knuth, 1981)" `T.isInfixOf` output),
+    testCase "root ADR 0470: year-only citation selects citation-year only in author-year mode" $
+      forM_ ["numeric", "author-year"] $ \mode ->
+        withBibProject "bibliography = [\"refs.json\"]" "本文[cite knuth1981 form=year prefix=\"before \" suffix=\" after\"]。\n\n@bibliography\n" [("refs.json", refsJson)] $ \tmp -> do
+          let base = T.replace "citation-mode='numeric'" ("citation-mode='" <> mode <> "'\ncitation-year=['{year}']") (T.replace ".types.book]" ".types.default]" customBibliographyDeclaration)
+              declaration = if mode == "author-year" then T.replace "citation=['ref-{number}']" "citation=['{author}, {year}']" base else base
+          TIO.appendFile (tmp </> "style.toml") (declaration <> "\n[bibliography.styles.custom.names.short]\ndelimiter=''\nlast-delimiter=''\n")
+          TIO.appendFile (tmp </> "manifest.toml") "[targets.text]\n"
+          result <- build (defaultOptions tmp) {optTargets = Just [TargetText]}
+          assertEqual "no errors" [] (map diagCode (filter isError (brDiagnostics result)))
+          output <- TIO.readFile (tmp </> "build/text/horizontal/a.txt")
+          let expected = if mode == "author-year" then "(before 1981 after)" else "(before ref-1 after)"
+          assertBool (T.unpack output) (expected `T.isInfixOf` output),
+    testCase "root ADR 0470 I4: two citation marks may share a plugin source span" $
+      withBibProject "bibliography = [\"refs.json\"]" "[cite a] と [cite b]。\n\n@bibliography\n" [("refs.json", abcJson)] $ \tmp -> do
+        TIO.appendFile (tmp </> "style.toml") (T.replace ".types.book]" ".types.default]" customBibliographyDeclaration)
+        evaluated <- evaluateProject Dev tmp
+        case evaluated of
+          Left failure -> assertFailure (show (pfDiagnostics failure))
+          Right e -> do
+            let shared = mkSpan (fst (Map.findMin (evResults e))) 0 1
+                rewrite (Document fid blocks) = Document fid [case blockBody b of Paragraph st xs -> b {blockBody = Paragraph st [case inline of Cite _ items -> Cite shared items; _ -> inline | inline <- xs]}; _ -> b | b <- blocks]
+                results = Map.map (\r -> r {erDocument = rewrite (erDocument r)}) (evResults e)
+            case evReassemble e results of
+              (Nothing, ds) -> assertFailure (show ds)
+              (Just book, ds) -> do
+                assertEqual "no errors" [] (map diagCode (filter isError ds))
+                citationText (citationPiecesFor book shared [(citeItem "a", Just 1)]) @?= "(ref-1)"
+                citationText (citationPiecesFor book shared [(citeItem "b", Just 2)]) @?= "(ref-2)",
+    testCase "root ADR 0470: ordinary and year forms of the same key retain a shared plugin span" $
+      withBibProject "bibliography = [\"refs.json\"]" "[cite knuth1981 form=year] と [cite knuth1981]。\n\n@bibliography\n" [("refs.json", refsJson)] $ \tmp -> do
+        let declaration = T.replace "citation-mode='numeric'" "citation-mode='author-year'\ncitation-year=['{year}']" (T.replace "citation=['ref-{number}']" "citation=['{author}, {year}']" (T.replace ".types.book]" ".types.default]" customBibliographyDeclaration))
+        TIO.appendFile (tmp </> "style.toml") (declaration <> "\n[bibliography.styles.custom.names.short]\ndelimiter=''\nlast-delimiter=''\n")
+        evaluated <- evaluateProject Dev tmp
+        case evaluated of
+          Left failure -> assertFailure (show (pfDiagnostics failure))
+          Right e -> do
+            let shared = mkSpan (fst (Map.findMin (evResults e))) 0 1
+                rewrite (Document fid blocks) = Document fid [case blockBody b of Paragraph st xs -> b {blockBody = Paragraph st [case inline of Cite _ items -> Cite shared items; _ -> inline | inline <- xs]}; _ -> b | b <- blocks]
+                results = Map.map (\r -> r {erDocument = rewrite (erDocument r)}) (evResults e)
+            case evReassemble e results of
+              (Nothing, ds) -> assertFailure (show ds)
+              (Just book, ds) -> do
+                assertEqual "no errors" [] (map diagCode (filter isError ds))
+                citationText (citationPiecesFor book shared [(CiteYearItem "knuth1981" Nothing [] [], Just 1)]) @?= "(1981)"
+                citationText (citationPiecesFor book shared [(citeItem "knuth1981", Just 1)]) @?= "(Knuth, 1981)",
+    testCase "root ADR 0470: an actual SDK Wasm filter preserves the explicit year form" $ do
+      wasm <- BS.readFile (".." </> ".." </> "plugins" </> "wasm" </> "auto-tcy.wasm")
+      withBibProject "bibliography = [\"refs.json\"]" "12\n\n[cite knuth1981 form=year]。\n" [("refs.json", refsJson), ("auto-tcy.wasm", wasm)] $ \tmp -> do
+        TIO.writeFile (tmp </> "style.toml") (T.replace "writing-mode = \"horizontal\"" "writing-mode = \"vertical\"" (TE.decodeUtf8 horizontalStyle))
+        let declaration = T.replace "citation-mode='numeric'" "citation-mode='author-year'\ncitation-year=['{year}']" (T.replace "citation=['ref-{number}']" "citation=['{author}, {year}']" (T.replace ".types.book]" ".types.default]" customBibliographyDeclaration))
+        TIO.appendFile (tmp </> "style.toml") (declaration <> "\n[bibliography.styles.custom.names.short]\ndelimiter=''\nlast-delimiter=''\n")
+        TIO.appendFile (tmp </> "manifest.toml") "[plugins.auto-tcy]\npath='auto-tcy.wasm'\n[[filters]]\nplugin='auto-tcy'\nfilter='auto-tcy'\nfiles=['a.gm']\n"
+        result <- build (defaultOptions tmp) {optTargets = Just [TargetHtml]}
+        assertEqual "no errors" [] (map diagCode (filter isError (brDiagnostics result)))
+        html <- TIO.readFile (tmp </> "build/html/a.html")
+        assertBool (T.unpack html) ("<span class=\"tcy\">12</span>" `T.isInfixOf` html)
+        assertBool (T.unpack html) ("(1981)" `T.isInfixOf` html),
+    testCase "root ADR 0470: selected declaration formats retained CSL metadata in HTML" $
+      withBibProject "bibliography = [\"refs.json\"]" "本文[cite custom]。\n\n@bibliography\n" [("refs.json", "[{\"id\":\"custom\",\"type\":\"book\",\"title\":\"Legacy title\",\"DOI\":\"10.1/example\"}]")] $ \tmp -> do
+        TIO.appendFile (tmp </> "style.toml") customBibliographyDeclaration
+        TIO.appendFile (tmp </> "manifest.toml") "[targets.text]\n[targets.epub]\n"
+        r <- build (defaultOptions tmp) {optTargets = Just [TargetHtml, TargetText, TargetEpub]}
+        assertEqual "no errors" [] (map diagCode (filter isError (brDiagnostics r)))
+        page <- TIO.readFile (tmp </> "build/html/a.html")
+        assertBool (T.unpack page) ("DOI 10.1/example." `T.isInfixOf` page)
+        text <- TIO.readFile (tmp </> "build/text/horizontal/a.txt")
+        assertBool (T.unpack text) ("DOI 10.1/example." `T.isInfixOf` text)
+        assertBool (T.unpack text) ("(ref-1)" `T.isInfixOf` text)
+        archive <- toArchive <$> BL.readFile (tmp </> "build/epub/book.epub")
+        let xhtml = maybe "" (TE.decodeUtf8 . BL.toStrict . fromEntry) (findEntryByPath "OEBPS/a.xhtml" archive)
+        assertBool (T.unpack xhtml) ("DOI 10.1/example." `T.isInfixOf` xhtml),
+    testCase "root ADR 0482 I1, I2: non-PDF sidenote bodies in ruby captions and cells occur once" $
       withBibProject "" "# 章\n\n本文[sidenote: 注一]。\n\n[ruby: 字[sidenote: 注二]|じ]。\n\n@caption 表[sidenote: 注三]\n| A[sidenote: 注四] |\n| --- |\n| B[sidenote: 注五] |\n\n@caption コード[sidenote: 注六]\n```text\ncode\n```\n" [] $ \tmp -> do
         TIO.appendFile (tmp </> "manifest.toml") "[targets.text]\n[targets.epub]\n"
         result <- build (defaultOptions tmp) {optTargets = Just [TargetHtml, TargetText, TargetEpub]}
