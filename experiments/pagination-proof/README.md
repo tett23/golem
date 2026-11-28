@@ -2066,3 +2066,9 @@ sh experiments/pagination-proof/check-alloy-diff.sh 97
 `NUMBERED_EVENT_STORE_LEAN=1` の実フォント 64 例は旧表のスナップショットから操作列を再構成し、旧 955 例に 256 例を加えて 1,211 例をカーネルで確認する。
 任意の unit の実行順を操作列へ形式的に写したものではなく、全 `Built` や本文の全量と順序の実装への一般的な接続は残る。
 公理、生成された宣言と未完範囲は [予約 ID を含む採番](../../docs/research/0352-numbered-event-store-dependencies.md) に記す。
+
+[NumberedWindowStore.lean](NumberedWindowStore.lean) は、任意の検索関数の有限区間から採番操作を作り、区間内の検索が元の表と一致することを示す。
+番号の条件を満たす表や、空の表から予約と行追加の操作を重ねた表では、全検索キーで結果を保つ再構成にも接続する。
+`NUMBERED_WINDOW_STORE_LEAN=1` は旧 1,211 例に、64 スナップショットの区間と検索の 256 例を加え、全 1,467 例をカーネルで確認する。
+生成ファイルの未定義の識別子を暗黙の変数にせず、任意の unit の実行を操作列へ写す証明は未完のままにする。
+公理、境界と未完範囲は [表の区間からの再構成](../../docs/research/0352-numbered-window-store-dependencies.md) に記す。
