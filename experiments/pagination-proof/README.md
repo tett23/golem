@@ -2024,3 +2024,8 @@ sh experiments/pagination-proof/check-alloy-diff.sh 97
 全状態に共通の ID の存在を初期の到達と選択から導き、行の ID と、注、はみ出し量、原稿の終了位置の保存を接続する。
 `hold` の保存条件は前提のままであり、本体の全 `Built` と実際の行を作る callback、全制御の終了への接続は残る。
 根拠と残件は [cache から導く parts の採番条件](../../docs/research/0352-cache-breaker-dependencies.md) にまとめた。
+
+`WrappedRowFold.lean` は、回り込む図版の本文の行を左から採番する fold から、内部 ID 一つと全行数の寄与、行の値と順序の保存を導く。
+`WrappedRowFoldFonts.hs` は、キャプション付きの二つの図版について本体の `numberFigure` の 64 例を比較し、うち 16 例では実際の先行単位の採番状態を使う。
+全 `Built`、図版の幾何、Map、caption の計算との一般的一致は残る。
+根拠と残件は [回り込む図版の行列の fold](../../docs/research/0352-wrapped-row-fold-dependencies.md) にまとめた。

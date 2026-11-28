@@ -692,6 +692,16 @@ LEAN_PATH="$tmp" "$lean" -o "$tmp/CacheBreaker.olean" "$cacheBreaker"
 LEAN_PATH="$tmp" "$lean" "$root/experiments/pagination-proof/CacheBreakerBoundary.lean"
 echo "root ADR 0352 I5: valid cache-backed row numbering discharges the modeled parts numbering premise"
 
+# The wrapped figure row fold derives its contribution and preserves payload order.
+wrappedRowFold=$root/experiments/pagination-proof/WrappedRowFold.lean
+if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|implemented_by|extern|native_decide)([^A-Za-z_]|$)' "$wrappedRowFold"; then
+  echo "unproved or unchecked Lean declaration in $wrappedRowFold" >&2
+  exit 1
+fi
+LEAN_PATH="$tmp" "$lean" -o "$tmp/WrappedRowFold.olean" "$wrappedRowFold"
+LEAN_PATH="$tmp" "$lean" "$root/experiments/pagination-proof/WrappedRowFoldBoundary.lean"
+echo "root ADR 0352 I5: wrapped row folds derive one figure ID plus row counts and preserve composed payload order"
+
 
 
 
