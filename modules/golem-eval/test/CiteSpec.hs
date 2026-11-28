@@ -36,7 +36,26 @@ tests :: TestTree
 tests =
   testGroup
     "citations (docs/adr/0266)"
-    [ testCase "root ADR 0385 I1: cites aggregation preserves the locator and affix IR" $
+    [ testCase "root ADR 0475 I6: citation affixes are literal text, including markup and empty strings" $
+        forM_ ["", "<a>&[cite x]", "参照: {year}"] $ \literal ->
+          let source = "[cite a prefix=" <> ("\"" <> literal <> "\"") <> " suffix=" <> ("\"" <> literal <> "\"") <> "]\n"
+              (items, ds) = citesOf source
+           in (ds, [[([t | Text _ t <- citPrefix item], [t | Text _ t <- citSuffix item]) | item <- xs] | xs <- items])
+                @?= ([], [[([literal], [literal])]]),
+      testCase "root ADR 0475 I1, I6: every non-string affix reports G02299 and removes the citation" $
+        forM_ ["prefix", "suffix"] $ \name ->
+          forM_ ["7", "[= true]", "[= nil]", "[= [1]]", "[= 1/2]", "2...4"] $ \value ->
+            let (items, ds) = citesOf ("[cite a " <> name <> "=" <> value <> "]\n")
+             in (items, map fst ds) @?= ([], ["G02299"]),
+      testCase "root ADR 0475 I6: each cites slot preserves its own affixes" $
+        let (items, ds) = citesOf "[cites: [cite a prefix=\"A\" suffix=\"!\"]|[cite b prefix=\"B\" suffix=\"?\"]]\n"
+         in (ds, [[(citKey item, [t | Text _ t <- citPrefix item], [t | Text _ t <- citSuffix item]) | item <- xs] | xs <- items])
+              @?= ([], [[("a", ["A"], ["!"]), ("b", ["B"], ["?"])]]),
+      testCase "root ADR 0475 I1, I6: affix errors point at numeric and expression values" $
+        forM_ [("[cite a prefix=7]\n", (15, 16)), ("[cite a suffix=[= true]]\n", (15, 23))] $ \(source, expected) ->
+          let (ds, _) = evalSource ctx source
+           in [(diagCodeText d, (spanStart (diagSpan d), spanEnd (diagSpan d))) | d <- ds] @?= [("G02299", expected)],
+      testCase "root ADR 0385 I1: cites aggregation preserves the locator and affix IR" $
         let command = PluginCommand $ \args _ at -> case args of
               [PluginPositional (VString key)] -> Right ([Cite at [CiteItem key (Just (Locator LocatorChapter (LocNumber 2))) [Text at "cf. "] [Text at "!"]]], [])
               _ -> Left []

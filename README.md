@@ -604,6 +604,9 @@ cabal test all
 書誌データの読み取りのテストは `cabal test golem-bibliography-test` で実行する。
 スタイル宣言の型は `Golem.Assemble.BibliographyStyle`、TOML の読み取りと書式の検査は `Golem.Project.Bibliography` にある。
 宣言のテストは `cabal test golem-project-test --test-options='-p /0470/'` で実行する。
+`parseStyle` は、未選択の宣言も含めて必須キーを検査する（[root ADR 0475](docs/adr/0475-complete-bibliography-declarations-and-citation-delimiters.md)）。
+名前の先頭と末尾の保持、二人のときの区切り、言語別の上書き、引用全体の囲みを扱う API もある。
+この段階では、宣言による引用と書誌出力は通常 CLI に接続していない。
 差し込み片の `renderBibliographyFragments` は、欄の値と句読点を分け、値の欄名を保持する。
 `renderBibliographyFragmentsWith` は値を引く関数に数の表記も渡し、月名と数の月を選べるようにする。
 `bibliographyEntryParts` が欄ごとの文字スタイルを付け、HTML、EPUB、PDF はスタイルを、テキストはその中の文字を出す。

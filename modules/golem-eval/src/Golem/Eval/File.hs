@@ -3846,6 +3846,7 @@ cite ctx sp args = do
           | k `elem` ks -> (ks, es <> [Right ("G02147", "一つの引用に同じキーを二度書いています: " <> k)])
           | not (Set.member k (ctxCiteKeys ctx)) -> (ks <> [k], es <> [Right ("G02021", "書誌データにないキーです: " <> k)])
           | otherwise -> (ks <> [k], es)
+  affixes <- mapM affix [(name, asp, value) | A.Located asp (A.Keyword (A.Located _ name) value) <- args, name `elem` ["prefix", "suffix"]]
   pageValue <- traverse (\(A.Located asp v) -> argValue ctx asp v) (keywordAt "page" args)
   let (locator, pageErrors) = case pageValue of
         Nothing -> (Nothing, [])
@@ -3855,10 +3856,25 @@ cite ctx sp args = do
           Nothing -> (Nothing, [Right ("G02148", "page には頁の数、範囲、文字列を書きます: " <> valueText v)])
       manyKeys = [Right ("G02149", "page は文献を一つだけ引く cite に書きます") | isJust pageValue, length keys >= 2]
       noKey = [Right ("G02151", "cite には書誌データのキーを書きます") | null positional]
-      problems = keyErrors <> pageErrors <> manyKeys <> noKey
+      affixErrors = [Left d | Left d <- affixes]
+      prefix = concat [text | Right ("prefix", text) <- affixes]
+      suffix = concat [text | Right ("suffix", text) <- affixes]
+      problems = keyErrors <> pageErrors <> affixErrors <> manyKeys <> noKey
   mapM_ (either report (\(code, msg) -> err code sp msg)) problems
-  pure [Cite sp [CiteItem k locator [] [] | k <- keys] | null problems]
+  pure [Cite sp [CiteItem k locator prefix suffix | k <- keys] | null problems]
   where
+    -- Affixes are literal text, never source to parse again (root ADR 0475).
+    affix (name, asp, value) = do
+      result <- argValue ctx asp value
+      let at = case value of
+            A.ExprArg (A.Located valueAt _) -> valueAt
+            A.CommandArg (A.Located valueAt _) -> valueAt
+            A.Word word -> mkSpan (spanFile asp) (max (spanStart asp) (spanEnd asp - T.length word)) (spanEnd asp)
+            A.StringLit _ -> asp
+      pure $ case result of
+        Left d -> Left d
+        Right (VString text) -> Right (name, [Text at text])
+        Right _ -> Left (diagnostic "G02299" Error at ("cite の " <> name <> " には文字列を書きます"))
     keyValue asp v = fmap keyOf <$> argValue ctx asp v
     keyOf = \case
       VString k -> Just k
