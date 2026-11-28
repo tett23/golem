@@ -126,8 +126,8 @@ tests =
       testCase "a ruby of several segments split by the match" $
         para digits [ruby [(["a"], Just "x"), (["1"], Just "y")]] @?= [ruby' [([Text sp "a"], Just "x"), ([CharStyle sp "n" [Text sp "1"]], Just "y")]],
       testCase "tcy is one replacement character" $ do
-        para digits [t "a", Tcy sp "12", t "b"] @?= [t "a", Tcy sp "12", t "b"]
-        para (rules [("body", [(".", "n")])]) [Tcy sp "12"] @?= [cs "n" [Tcy sp "12"]]
+        para digits [t "a", Tcy sp (TcyLiteral "12"), t "b"] @?= [t "a", Tcy sp (TcyLiteral "12"), t "b"]
+        para (rules [("body", [(".", "n")])]) [Tcy sp (TcyLiteral "12")] @?= [cs "n" [Tcy sp (TcyLiteral "12")]]
         para (rules [("body", [("a.b", "n")])]) [t "a", Number sp 3 Nothing, t "b"] @?= [cs "n" [t "a", Number sp 3 Nothing, t "b"]],
       testCase "the body of a note is matched separately" $
         para digits [t "a", Note sp 1 Nothing (noteBody sp [t "12"])] @?= [t "a", Note sp 1 Nothing (noteBody sp [cs "n" [t "12"]])],

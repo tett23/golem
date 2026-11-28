@@ -192,7 +192,7 @@ tests =
         testCase "a number is kanji in vertical text" $
           only (vertical (bookOf [para 0 [Number (at 1) 12 Nothing, txt "章"]])) @?= "十二章\n",
         testCase "a tate-chu-yoko number is kanji in vertical text" $
-          only (vertical (bookOf [para 0 [Number (at 1) 12 (Just StyleTcy)]])) @?= "十二\n",
+          only (vertical (bookOf [para 0 [Tcy (at 1) (TcyNumber 12)]])) @?= "十二\n",
         testCase "kanji-digits is kept in vertical text" $
           only (vertical (bookOf [para 0 [Number (at 1) 2026 (Just StyleKanjiDigits)]])) @?= "二〇二六\n",
         -- golem-parser ADR 0011

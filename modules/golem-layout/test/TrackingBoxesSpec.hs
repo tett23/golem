@@ -69,7 +69,7 @@ tests =
     trackings0414 = [-100, 0, 100]
     char = Text sp "字"
     sequences0414 n = concat [replicateM k [tcy, ruby, groupRuby, char] | k <- [0 .. n]]
-    tcy = Tcy sp "12"
+    tcy = Tcy sp (TcyLiteral "12")
     ruby = Ruby sp () [RubySegment [Text sp "漢"] (Just "かん")]
     groupRuby = Ruby sp () [RubySegment [Text sp "漢字"] (Just "かんじ")]
     env t = (defaultComposeEnv 1000) {ceLook = (plainLook "body" 1000) {lkTracking = t}}

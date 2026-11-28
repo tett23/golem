@@ -305,7 +305,7 @@ htmlSyntaxTests =
   testGroup
     "the HTML target in the HTML syntax (root ADR 0432)"
     [ testCase "root ADR 0478 I2, I4: decimal HTML and XHTML use one normalized TCY span" $ do
-        let body = bookOf [Block (at 0) Nothing Nothing (Paragraph Nothing [Number (at 0) (1 % 10) (Just StyleTcy)])]
+        let body = bookOf [Block (at 0) Nothing Nothing (Paragraph Nothing [Tcy (at 0) (TcyNumber (1 % 10))])]
         mapM_
           (\site -> assertBool "one normalized whole TCY" ("<span class=\"tcy\">0.1</span>" `T.isInfixOf` T.concat (map snd (sitePages site))))
           [renderHtml (cfg0 {hcVertical = True}) ft body, renderXhtmlWithPageBreaks (cfg0 {hcVertical = True}) ft body Map.empty],

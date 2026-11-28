@@ -370,7 +370,7 @@ inlineText = \case
   Link _ _ xs -> foldMap inlineText xs
   Lang _ _ xs -> foldMap inlineText xs
   Resolved _ _ _ xs -> foldMap inlineText xs
-  Tcy _ t -> t
+  Tcy _ t -> case t of TcyLiteral literal -> literal; TcyNumber q -> renderIRNumber q
   Warichu _ t -> t
   Upright _ t -> t
   Number _ n _ -> renderIRNumber n

@@ -119,6 +119,14 @@ CBOR のタグ 9 の値の欄は、タグ 30 を付けた分子と分母の組�
 数の糖衣構文と明示コマンドは、位置を除いて同じ IR を作る。
 ABI のバージョンは、リリース済みかどうかを調べて root ADR 0052 の規則で決める。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0478-accept-rational-values-in-number-text.md]（root ADR 0478「number-text で有理数を受け付け、小数を含む糖衣構文を追加する」）]
 
+明示した縦中横は、共通の [code: Tcy] ノードを使う。
+中身は原綴りを保つ [code: TcyLiteral Text] か、正確な有理数を保つ [code: TcyNumber Rational] である。
+[code: Number] に [code: StyleTcy] を残さず、明示した数の縦中横を [code: TcyNumber] へ変える。
+糖衣構文も位置を除いて同じ IR になり、本の設定から縦中横に決まる数も同じ箱へ解決する。
+CBOR のインラインのタグ 8 は、中身を文字列なら [code: \[0, tstr\]]、数値なら [code: \[1, rational\]] にする。
+旧文字列ペイロードと、タグ 9 の表記 2 は拒否する。
+横組みでは文字列の既存の箱と数値の通常の表示を保つため、数値を意味論 IR の段階で文字列へ潰さない。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0479-treat-tate-chu-yoko-as-a-japanese-character.md]（root ADR 0479「縦中横の外側を和文一字として扱い、縦中横の IR を共通にする」）]
+
 ## 文書とブロック
 
 ファイル一つ分の文書は、ABI のバージョン、ファイルの番号、ブロックの列である。
@@ -194,7 +202,7 @@ code-line = [text: tstr, number: uint64 / null, diff-mark: (0..2) / null,
 | 5 | 圏点 | 形、インラインの列 |
 | 6 | 色 | スウォッチの名前、インラインの列 |
 | 7 | 文字スタイル | スタイルの名前、インラインの列 |
-| 8 | 縦中横 | 文字列 |
+| 8 | 縦中横 | 文字列か有理数を表すタグ付きの中身 |
 | 9 | 数 | 既約な有理数、縦組みでの表記 |
 | 10 | 参照 | 種類（番号、題、ページ）、ラベル |
 | 11 | 遅延した式 | S1 で評価する式 |
