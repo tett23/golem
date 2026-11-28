@@ -110,7 +110,13 @@ tests :: TestTree
 tests =
   testGroup
     "the ranges, the references and the headings of the index (docs/adr/0265)"
-    [ testCase "I3: the pairs of every sequence of points, begins and ends up to five are those of brackets" $
+    [ testCase "root ADR 0482 I5: ruby index marks keep the existing uncollected scope" $ do
+        let docs = docsOf [Ruby (sp 0) () [RubySegment [IndexMark (sp 1) (IndexEntry ["語"] ["じ"] IndexPoint)] (Just "じ")]]
+            (book, ds) = assemble cfg noEval docs
+        codes ds @?= []
+        indexGroups docs @?= []
+        groupsOf book @?= [],
+      testCase "I3: the pairs of every sequence of points, begins and ends up to five are those of brackets" $
         forM_ sequences $ \syms -> do
           let (book, ds) = bookOf [mark i "語" "ご" (kindOf s) | (i, s) <- zip [0 ..] syms]
               (locs, begins, ends) = naive syms

@@ -839,7 +839,11 @@ firstNeed cfg hasNotes wanted = \case
   FCode {fcGeometry = geometry, fcCaption = caption, fcFirst = first, fcContinued = continued, fcRows = rows} : _ ->
     let count = min (length rows) (max first (max 1 wanted))
         continuation = if continued && count < length rows then 1 else 0
-     in caption + fromIntegral (codeSpan geometry (count + continuation)) * physicalPagePitch cfg
+        extent = caption + fromIntegral (codeSpan geometry (count + continuation)) * physicalPagePitch cfg
+        notes = sum [nbLines note | row <- take count rows, note <- lbNotes row]
+        separator = if notes > 0 && not hasNotes then physicalSeparator cfg else 0
+        complete = extent + separator + fromIntegral notes * physicalPagePitch cfg
+     in if complete <= physicalCapacity cfg then complete else extent + separator + (if notes > 0 then physicalPagePitch cfg else 0)
   _ -> 0
   where
     prefixCount keep start total =
@@ -1839,26 +1843,46 @@ placeCode cfg st0 geometry caption first continued rows0 = go st0 True rows0
             boundarySpace = if empty st then 0 else psPendingSpace st
             origin = psUsed st + boundarySpace
             before = minimum (room cfg st - boundarySpace : [max 0 (a - origin) | a <- cutsRoom st origin])
-            fittingRows = length (takeWhile (\n -> spanOf n <= before) [1 .. total])
-            count = if fittingRows >= minimumRows then fittingRows else 0
+            fullNeed n = spanOf n + fromIntegral (sum [nbLines note | row <- take n rows, note <- lbNotes row]) * pitch + (if psNotesUsed st == 0 && not (all (null . lbNotes) (take n rows)) then physicalSeparator cfg else 0)
+            fittingRows = length (takeWhile (\n -> fullNeed n <= before) [1 .. total])
+            minimumNeed = headingNeed cfg st minimumExtent (take minimumRows rows)
+            count
+              | fittingRows >= minimumRows = fittingRows
+              | empty st && null (cutsRoom st origin) && minimumNeed <= physicalCapacity cfg = minimumRows
+              | otherwise = 0
          in if minimumExtent > physicalCapacity cfg
               then Left (PhysicalCodeTooTall (lbId firstRow))
               else
-                if count == 0
-                  then
-                    if null (cutsRoom st origin)
-                      then go (nextColumn cfg st) isFirst rows
-                      else case spotIn cfg st ident origin minimumExtent of
-                        -- past the frame, as at the top of a column (root ADR 0456)
-                        SpotAt v | v /= origin -> go st {psUsed = v, psPendingSpace = 0, psBlankActive = False, psBlankSpans = []} isFirst rows
-                        SpotUnplaced -> Right st {psUnmet = psUnmet st <> [UnplacedBlock ident]}
-                        _ -> go (nextColumn cfg st) isFirst rows
+                if minimumNeed > physicalCapacity cfg
+                  then case [nbId note | row <- take minimumRows rows, note <- lbNotes row] of
+                    note : _ -> Left (PhysicalFootnoteTooTall note)
+                    [] -> Left (PhysicalCodeTooTall (lbId firstRow))
                   else
-                    let (here, later) = splitAt count rows
-                        gridLines = codeSpan geometry (count + if continued && not (null later) then 1 else 0)
-                        ready = fit cfg st (spanOf count)
-                        placed = putSlot ready (spanOf count) (SCode (lbId firstRow) count gridLines) (concatMap lbLabels here) (concatMap lbMarks here)
-                     in -- the next part past a frame in the column, or in the next column
+                    if count == 0
+                      then
+                        if null (cutsRoom st origin)
+                          then go (nextColumn cfg st) isFirst rows
+                          else case spotIn cfg st ident origin minimumExtent of
+                            -- past the frame, as at the top of a column (root ADR 0456)
+                            SpotAt v | v /= origin -> go st {psUsed = v, psPendingSpace = 0, psBlankActive = False, psBlankSpans = []} isFirst rows
+                            SpotUnplaced -> Right st {psUnmet = psUnmet st <> [UnplacedBlock ident]}
+                            _ -> go (nextColumn cfg st) isFirst rows
+                      else do
+                        let (here, later) = splitAt count rows
+                            gridLines = codeSpan geometry (count + if continued && not (null later) then 1 else 0)
+                            extent = spanOf count
+                            ready = fit cfg st (headingNeed cfg st extent here)
+                            slot = SCode (lbId firstRow) count gridLines
+                            notes = concatMap lbNotes here
+                        placed <-
+                          if null notes
+                            then Right (putSlot ready extent slot (concatMap lbLabels here) (concatMap lbMarks here))
+                            else do
+                              let virtual = LineBox (lbId firstRow) notes (concatMap lbLabels here) (concatMap lbMarks here) 0
+                                  settings = cfg {physicalPitches = Map.insert (lbId firstRow) extent (physicalPitches cfg)}
+                              attached <- putLine settings ready virtual
+                              pure attached {psSlots = psSlots ready <> [(psUsed ready, slot)]}
+                        -- the next part past a frame in the column, or in the next column
                         if null later then Right placed else go (if null (cutsRoom placed (psUsed placed)) then nextColumn cfg placed else placed) False later
 
 {- | Reserve each indivisible table part before accepting its notes. A

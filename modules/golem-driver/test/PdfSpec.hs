@@ -1265,6 +1265,12 @@ kentenTests =
       n <- buildNotified [("manifest.toml", miniManifest), ("style.toml", horizontalStyle <> "\n[fonts.body]\nja = \"fonts/sans.otf\"\n"), ("a.gm", TE.encodeUtf8 "[kenten shape=open-sesame: 漢]\n"), ("fonts/sans.otf", sans)] (\o -> o {optFonts = golemFontProvider})
       [(c, diagMessage d) | d <- nDiagnostics n, let DiagnosticCode c = diagCode d, c == "G08009"]
         @?= [("G08009", "役割 body の和文の書体に圏点の形 open-sesame の字（U+FE46）がありません")],
+    testCase "root ADR 0482 I5: note-free code captions retain their existing notice scope" $
+      forM_ ["[ruby: [kenten: 字]|じ]", "ab[shy]。"] $ \caption -> do
+        let src = "# 章\n\n@caption " <> caption <> "\n```text\ncode\n```\n"
+        n <- buildNotified ([("manifest.toml", miniManifest), ("style.toml", withBodyFont horizontalStyle <> "\n[fonts.code]\nlatin = \"fonts/w.otf\"\n"), ("a.gm", TE.encodeUtf8 src)] <> fakeFontFiles) id
+        nDiagnostics n @?= []
+        assertBool "the PDF" (any ((".pdf" `isSuffixOf`) . fst) (nOutputs n)),
     testCase "G07045: kenten in a ruby base is a notice; the PDF is written" $
       forM_ [("[ruby: [kenten: 漢]|かん]\n", 7)] $ \(src, at) -> do
         n <- buildNotified ([("manifest.toml", miniManifest), ("style.toml", withBodyFont horizontalStyle), ("a.gm", TE.encodeUtf8 src)] <> fakeFontFiles) id
