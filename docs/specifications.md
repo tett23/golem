@@ -487,6 +487,16 @@ golem-typeset-test は、golem-pdf-test と golem-layout-test と同じランナ
 | `tests-rest-a` | golem-emet-test、golem-parser-test、golem-typeset-test |
 | `tests-rest-b` | golem-driver に属さないスイートのうち、`tests-rest-a` のほかのすべて |
 
+rest の両脚では、`scripts/ci/run-rest-suites.sh` が `test-suites.sh` の一覧と終了コードを受け取ってから、一覧の順に各対象を `cabal test --jobs=1 TARGET` で一つずつ実行する（[root ADR 0481](adr/0481-run-rest-test-suites-one-at-a-time.md)）。
+一覧の取得が失敗したら、スイートを実行せず失敗する。
+空の一覧なら成功し、一つ以上のスイートが失敗しても残りを実行して終了コード 1 を返す。
+未知の脚と引数の過不足は、実行前に終了コード 2 で拒む。
+driver の両脚は、従来どおり一覧を一度の `cabal test` に渡す。
+
+テストのラッパーは `cabal.project.local` から使い、スイートごとの上限、手順の 20 分の上限、試験用の環境変数を保つ。
+rest のテストの後にも、ビルド済みの計画との要素の一覧を `scripts/ci/same-plan.sh` で照合する。
+直列化後も、CI 全体の 300 秒の予算と 20 回の測定は残る（[root ADR 0457](adr/0457-split-the-tests-rest-runner-in-two.md)）。
+
 四つのスイート golem-driver-pdf-test、golem-driver-page-test、golem-driver-output-test、golem-driver-cli-test は、一つだった golem-driver-test を領域ごとに分けたもので、テストの名前と数は分ける前と同じである（[ADR 0416](adr/0416-shorten-the-build-of-the-pull-request-ci.md) の I1）。
 四つは、共通の stanza `driver-suite` の設定と依存を読み、テストを助けるモジュール（`Support` と、ほかのモジュールが読む `PdfSpec`、`LinkSpec` などの `*Spec` のモジュール）を、それぞれの `other-modules` に挙げて組む。
 テストを助けるモジュールをパッケージの内部のライブラリにしないので、テストだけの依存の検査（`scripts/ci/test-only-deps.sh`）は変わらない。
