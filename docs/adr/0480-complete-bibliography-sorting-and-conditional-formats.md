@@ -1,6 +1,6 @@
 # ADR 0480: 文献宣言の並べ替えと条件付きの書式を補う
 
-Status: accepted-pending
+Status: superseded-pending [{"part":"I7（既定出力の互換性）の注欠落修正の例外","by":["docs/adr/0482-fix-note-loss-as-a-default-output-compatibility-exception.md"],"kind":"supplement"}]
 
 ## 文脈
 
