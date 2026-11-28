@@ -26,6 +26,8 @@ import System.IO.Temp (withSystemTempDirectory)
 main :: IO ()
 main = withSystemTempDirectory "golem-built-firsts" $ \tmp -> do
   coverage <- (== Just "1") <$> lookupEnv "BESIDE_COVERAGE"
+  adjustment <- (== Just "1") <$> lookupEnv "BESIDE_ADJUSTMENT"
+  when (coverage && adjustment) (error "choose one observation mode")
   TIO.writeFile (tmp </> "manifest.toml") "chapters = [\"a.gm\"]\n[metadata]\nid = \"urn:uuid:03520000-0000-4000-8000-000000000001\"\ntitle = \"0352 numbering fixture\"\nlanguage = \"ja\"\ndate = 2026-11-28\n[[metadata.creators]]\nname = \"Fixture\"\nrole = \"author\"\n[source]\nparagraph-separator = \"blank-line\"\n[targets.pdf]\n"
   TIO.writeFile (tmp </> "style.toml") "[page]\nsize = \"A5\"\nbinding = \"left\"\nwriting-mode = \"horizontal\"\n[page.grid]\nfont-size = \"10pt\"\ncharacters = 12\nlines = 30\nline-pitch = \"15pt\"\ncolumns = 1\nalignment = \"free\"\nposition = { top = \"18mm\", gutter = \"20mm\" }\n[fonts.body]\nja = \"NotoSerifJP-Regular.otf\"\n"
   TIO.writeFile (tmp </> "a.gm") ("前文です。\n\n@nonumber\n@figure tiny.jpg alt=\"fixture\" wrap=start width=3zw\n\n" <> T.replicate 25 "あ" <> "\n\n" <> T.replicate 13 "い" <> "\n\n@nonumber\n@figure tiny.jpg alt=\"second\" wrap=start width=3zw\n\n" <> T.replicate 5 "う" <> "\n")
@@ -51,7 +53,7 @@ main = withSystemTempDirectory "golem-built-firsts" $ \tmp -> do
         figure <- case [u | (_, u) <- units, F.UFigure _ <- [F.uKind u]] of
           first : _ -> pure first
           [] -> error "fixture has no figure prototype"
-        putStrLn ((if coverage then "import BesideCoverage" else "import BesideOwnership") <> "\nopen BesideOwnership")
+        putStrLn ((if adjustment then "import BesideAdjustment" else if coverage then "import BesideCoverage" else "import BesideOwnership") <> "\nopen BesideOwnership")
         let patterns = concat [replicateM n [P, C, X, M, Q] | n <- [0 .. 4]]
             maps tags =
               let pairs = zip [1 ..] tags
@@ -68,6 +70,16 @@ main = withSystemTempDirectory "golem-built-firsts" $ \tmp -> do
         count <- forM patterns $ \tags -> do
           example 1 tags (actual 0 tags)
           when coverage (coverageExamples tags (actual 0 tags))
+          when adjustment $ do
+            let (us, bs) = maps tags
+            forM_ [0 .. length tags + 1] $ \target -> do
+              let changed = Map.adjust (\(c, offset) -> (c {F.cLines = []}, offset)) target bs
+                  original = F.besideParagraphs us bs 0
+                  updated = F.besideParagraphs us changed 0
+              unless
+                (Map.keys bs == Map.keys changed && original == updated)
+                (error "rebreaking changed the side-job domain or selected keys")
+              adjustmentExample tags target (Map.map (length . F.cLines . fst) bs) updated
           forM_ [0 .. length tags] $ \splitAt -> do
             let before = take splitAt tags
                 after = drop splitAt tags
@@ -109,3 +121,25 @@ coverageExamples tags selected = forM_ (zip [0 ..] tags) $ \(index, tag) -> do
     flags Q = "⟨true,true⟩"
     flags X = "⟨false,false⟩"
     flags M = "⟨false,false⟩"
+
+-- A payload update may remove every row but does not remove its map key.
+adjustmentExample :: [Tag] -> Int -> Map.Map Int Int -> [Int] -> IO ()
+adjustmentExample tags target counts selected =
+  putStrLn
+    ( "example : scan 1 (classes (adjustBeside (fun (_ : Nat) => 0) "
+        <> show target
+        <> " (fun _k : Nat => "
+        <> lookupExpr (Map.toAscList counts)
+        <> ")) (fun _k : Nat => "
+        <> controlExpr
+        <> ") 1 "
+        <> show (length tags)
+        <> ") = "
+        <> show selected
+        <> " := by decide"
+    )
+  where
+    lookupExpr [] = "none"
+    lookupExpr ((key, count) : rest) = "if _k = " <> show key <> " then some " <> show count <> " else " <> lookupExpr rest
+    controls = [key | (key, tag) <- zip [1 :: Int ..] tags, tag == C || tag == Q]
+    controlExpr = "decide (_k ∈ (" <> show controls <> " : List Nat))"

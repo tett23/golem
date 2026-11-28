@@ -404,6 +404,15 @@ fi
 LEAN_PATH="$tmp" "$lean" "$besideCoverage"
 echo "root ADR 0352 I5: modeled side-job membership is exactly the eligible prefix, with no eligible row lost"
 
+# A value-only Map.adjust preserves the side-job key domain and selection.
+besideAdjustment=$root/experiments/pagination-proof/BesideAdjustment.lean
+if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|implemented_by|extern|native_decide)([^A-Za-z_]|$)' "$besideAdjustment"; then
+  echo "unproved or unchecked Lean declaration in $besideAdjustment" >&2
+  exit 1
+fi
+LEAN_PATH="$tmp" "$lean" "$besideAdjustment"
+echo "root ADR 0352 I5: modeled rebreaking preserves the side-job domain, guards, and selected keys"
+
 
 
 
