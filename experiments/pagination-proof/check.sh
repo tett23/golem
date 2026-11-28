@@ -522,6 +522,17 @@ LEAN_PATH="$tmp" "$lean" -o "$tmp/PayloadRounds.olean" "$payloadRounds"
 LEAN_PATH="$tmp" "$lean" "$root/experiments/pagination-proof/PayloadRoundsBoundary.lean"
 echo "root ADR 0352 I5: reachable payload tables derive their paragraph typing and preserve ordered readback"
 
+# Derive job legality from a source-index scan before connecting cache rounds.
+derivedJobs=$root/experiments/pagination-proof/DerivedJobs.lean
+if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|implemented_by|extern|native_decide)([^A-Za-z_]|$)' "$derivedJobs"; then
+  echo "unproved or unchecked Lean declaration in $derivedJobs" >&2
+  exit 1
+fi
+LEAN_PATH="$tmp" "$lean" -o "$tmp/DerivedJobs.olean" "$derivedJobs"
+LEAN_PATH="$tmp" "$lean" "$root/experiments/pagination-proof/DerivedJobsBoundary.lean"
+echo "root ADR 0352 I5: source-index job generation derives the ordering and figure premises for payload readback"
+
+
 
 
 

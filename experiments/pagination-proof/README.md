@@ -1917,3 +1917,9 @@ sh experiments/pagination-proof/check-alloy-diff.sh 97
 `PayloadRounds.hs` は、実フォントの六つの変更で観測した行数と offset を渡し、cache の再利用と新規生成を通した列を照合する。
 前の payload が新たな整形結果と一致する条件や、実装の IO とモデルとの一般的な対応は証明していない。
 根拠と残件は [payload cache の帰納の依存関係](../../docs/research/0352-payload-rounds-dependencies.md) にまとめた。
+
+`DerivedJobs.lean` は、現在の単位の添字を順に走査し、選ばれた図版だけから job を作る。
+この生成から所有者の順序と図版の条件を導き、前の payload cache の帰納へ渡す。
+`DerivedJobs.hs` は、実フォントの六つの変更で、生成した job が本体の所有者と単位数に対応すること、その job を使った cache の値を照合する。
+本体の Map の列挙と添字の全入力での対応は残る。
+根拠と残件は [図版 job の生成の依存関係](../../docs/research/0352-derived-jobs-dependencies.md) にまとめた。
