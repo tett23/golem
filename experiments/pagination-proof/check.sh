@@ -327,8 +327,468 @@ if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|implemented_by|exte
   echo "unproved or unchecked Lean declaration in $causalFirstIds" >&2
   exit 1
 fi
-"$lean" "$causalFirstIds"
+"$lean" -o "$tmp/CausalFirstIds.olean" "$causalFirstIds"
 echo "the arithmetic first-ID scan preserves the current unit's ID under rebreaking"
+
+# Model the owning figure's contribution and the following beside scan.
+builtFirstIds=$root/experiments/pagination-proof/BuiltFirstIds.lean
+if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|implemented_by|extern|native_decide)([^A-Za-z_]|$)' "$builtFirstIds"; then
+  echo "unproved or unchecked Lean declaration in $builtFirstIds" >&2
+  exit 1
+fi
+LEAN_PATH="$tmp" "$lean" -o "$tmp/BuiltFirstIds.olean" "$builtFirstIds" > "$tmp/built-first-ids"
+printf '%s\n' true > "$tmp/built-first-ids-expected"
+diff -u "$tmp/built-first-ids-expected" "$tmp/built-first-ids"
+echo "root ADR 0352 I5: two-pass owner and beside numbering preserves the rebroken paragraph's first ID; 648 boundaries and 2 counterchecks pass"
+
+# Retain the composed row payload as well as the existing Physical ID list.
+numberedPayload=$root/experiments/pagination-proof/NumberedPayload.lean
+if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|implemented_by|extern|native_decide)([^A-Za-z_]|$)' "$numberedPayload"; then
+  echo "unproved or unchecked Lean declaration in $numberedPayload" >&2
+  exit 1
+fi
+LEAN_PATH="$tmp" "$lean" -o "$tmp/NumberedPayload.olean" "$numberedPayload"
+echo "root ADR 0352 I5: numbered composed rows preserve payload, order, split prefixes, and the existing Physical ID projection"
+
+# Derive source progress from the actual selected caption scan and partial trial.
+chosenSourceProgress=$root/experiments/pagination-proof/ChosenSourceProgress.lean
+if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|implemented_by|extern|native_decide)([^A-Za-z_]|$)' "$chosenSourceProgress"; then
+  echo "unproved or unchecked Lean declaration in $chosenSourceProgress" >&2
+  exit 1
+fi
+LEAN_PATH="$tmp" "$lean" "$chosenSourceProgress"
+echo "root ADR 0352 I4: chosen fresh-suffix breaks and partial trials discharge the modeled source-progress guard"
+
+# Check the caller-derived positive cutoffs and the complete front retry rank.
+retryPrefix=$root/experiments/pagination-proof/RetryPrefix.lean
+if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|implemented_by|extern|native_decide)([^A-Za-z_]|$)' "$retryPrefix"; then
+  echo "unproved or unchecked Lean declaration in $retryPrefix" >&2
+  exit 1
+fi
+sh "$root/experiments/pagination-proof/check-parts-retry-shape.sh"
+LEAN_PATH="$tmp" "$lean" -o "$tmp/RetryPrefix.olean" "$retryPrefix"
+(cd "$root" && cabal exec -v0 -- "$runghc" -f "$ghc" -hide-all-packages -package=base -package=containers \
+  -package-id=golem-layout-0.1.0-inplace -package-id=golem-length-0.1.0-inplace \
+  experiments/pagination-proof/RetryPrefixChecks.hs)
+echo "root ADR 0352 I4: all modeled retry entries have positive cutoffs and a decreasing complete-front retry rank"
+
+# Derive the proper-prefix retry rank from the actual branch guard.
+partialRetryRank=$root/experiments/pagination-proof/PartialRetryRank.lean
+if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|implemented_by|extern|native_decide)([^A-Za-z_]|$)' "$partialRetryRank"; then
+  echo "unproved or unchecked Lean declaration in $partialRetryRank" >&2
+  exit 1
+fi
+LEAN_PATH="$tmp" "$lean" -o "$tmp/PartialRetryRank.olean" "$partialRetryRank"
+LEAN_PATH="$tmp" "$lean" "$root/experiments/pagination-proof/PartialRetryRankBoundary.lean"
+(cd "$root" && cabal exec -v0 -- "$runghc" -f "$ghc" -hide-all-packages -package=base -package=containers \
+  -package-id=golem-layout-0.1.0-inplace -package-id=golem-length-0.1.0-inplace \
+  experiments/pagination-proof/PartialRetryRankChecks.hs)
+echo "root ADR 0352 I4: the selected proper-prefix retry has a smaller rank; forced and zero-cutoff counterexamples remain"
+
+# Retain the public-counter/rank counterexample and check the adopted caller fix.
+lastRetryCounter=$root/experiments/pagination-proof/RetryLastCounter.lean
+if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|implemented_by|extern|native_decide)([^A-Za-z_]|$)' "$lastRetryCounter"; then
+  echo "unproved or unchecked Lean declaration in $lastRetryCounter" >&2
+  exit 1
+fi
+LEAN_PATH="$tmp" "$lean" "$lastRetryCounter"
+(cd "$root" && cabal exec -v0 -- "$runghc" -f "$ghc" -hide-all-packages -package=base -package=containers -package=text \
+  -package-id=golem-layout-0.1.0-inplace -package-id=golem-syntax-0.1.0-inplace \
+  -package-id=golem-length-0.1.0-inplace -package-id=golem-doc-0.1.0-inplace \
+  -package-id=golem-project-0.1.0-inplace \
+  experiments/pagination-proof/RetryLastCounter.hs)
+echo "root ADR 0352 I4: unchanged public trial/rank counterexample and forced caller consumption are checked by the kernel"
+
+# Side-job unit keys remain ordered and separate at a hard barrier.
+besideOwnership=$root/experiments/pagination-proof/BesideOwnership.lean
+if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|implemented_by|extern|native_decide)([^A-Za-z_]|$)' "$besideOwnership"; then
+  echo "unproved or unchecked Lean declaration in $besideOwnership" >&2
+  exit 1
+fi
+"$lean" -o "$tmp/BesideOwnership.olean" "$besideOwnership"
+echo "root ADR 0352 I5: modeled side-job keys are unique, ordered, and separate across figure barriers"
+
+# All and only eligible rows before a barrier enter the side job.
+besideCoverage=$root/experiments/pagination-proof/BesideCoverage.lean
+if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|implemented_by|extern|native_decide)([^A-Za-z_]|$)' "$besideCoverage"; then
+  echo "unproved or unchecked Lean declaration in $besideCoverage" >&2
+  exit 1
+fi
+LEAN_PATH="$tmp" "$lean" "$besideCoverage"
+echo "root ADR 0352 I5: modeled side-job membership is exactly the eligible prefix, with no eligible row lost"
+
+# A value-only Map.adjust preserves the side-job key domain and selection.
+besideAdjustment=$root/experiments/pagination-proof/BesideAdjustment.lean
+if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|implemented_by|extern|native_decide)([^A-Za-z_]|$)' "$besideAdjustment"; then
+  echo "unproved or unchecked Lean declaration in $besideAdjustment" >&2
+  exit 1
+fi
+LEAN_PATH="$tmp" "$lean" -o "$tmp/BesideAdjustment.olean" "$besideAdjustment"
+echo "root ADR 0352 I5: modeled rebreaking preserves the side-job domain, guards, and selected keys"
+
+# Derive unchanged earlier row counts from unique selected keys and one-key updates.
+selectedCountPrefix=$root/experiments/pagination-proof/SelectedCountPrefix.lean
+if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|implemented_by|extern|native_decide)([^A-Za-z_]|$)' "$selectedCountPrefix"; then
+  echo "unproved or unchecked Lean declaration in $selectedCountPrefix" >&2
+  exit 1
+fi
+LEAN_PATH="$tmp" "$lean" -o "$tmp/SelectedCountPrefix.olean" "$selectedCountPrefix"
+echo "root ADR 0352 I5: unique selected keys discharge the inner row-count prefix premise of two-pass numbering"
+
+# Fresh composition only emits paragraph keys, so figures provide real barriers.
+besideProducer=$root/experiments/pagination-proof/BesideProducer.lean
+if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|implemented_by|extern|native_decide)([^A-Za-z_]|$)' "$besideProducer"; then
+  echo "unproved or unchecked Lean declaration in $besideProducer" >&2
+  exit 1
+fi
+LEAN_PATH="$tmp" "$lean" -o "$tmp/BesideProducer.olean" "$besideProducer"
+echo "root ADR 0352 I5: fresh modeled producers exclude figure keys and discharge the figure-barrier guards"
+
+# Each fresh job stays after its owner and before a later figure.
+besideProducerRange=$root/experiments/pagination-proof/BesideProducerRange.lean
+if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|implemented_by|extern|native_decide)([^A-Za-z_]|$)' "$besideProducerRange"; then
+  echo "unproved or unchecked Lean declaration in $besideProducerRange" >&2
+  exit 1
+fi
+LEAN_PATH="$tmp" "$lean" -o "$tmp/BesideProducerRange.olean" "$besideProducerRange"
+echo "root ADR 0352 I5: fresh jobs preserve source-key order and stay separated by later figures"
+
+# Reused composition checks the previous domain and the current surrounding units.
+besideReuse=$root/experiments/pagination-proof/BesideReuse.lean
+if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|implemented_by|extern|native_decide)([^A-Za-z_]|$)' "$besideReuse"; then
+  echo "unproved or unchecked Lean declaration in $besideReuse" >&2
+  exit 1
+fi
+LEAN_PATH="$tmp" "$lean" -o "$tmp/BesideReuse.olean" "$besideReuse"
+echo "root ADR 0352 I5: cached and fresh jobs preserve the paragraph-kind invariant"
+LEAN_PATH="$tmp" "$lean" "$root/experiments/pagination-proof/BesideReuseBoundary.lean"
+
+# Carry the previous-domain premise through arbitrary modeled cache rounds.
+besideReuseRounds=$root/experiments/pagination-proof/BesideReuseRounds.lean
+if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|implemented_by|extern|native_decide)([^A-Za-z_]|$)' "$besideReuseRounds"; then
+  echo "unproved or unchecked Lean declaration in $besideReuseRounds" >&2
+  exit 1
+fi
+LEAN_PATH="$tmp" "$lean" -o "$tmp/BesideReuseRounds.olean" "$besideReuseRounds"
+LEAN_PATH="$tmp" "$lean" "$root/experiments/pagination-proof/BesideReuseRoundsBoundary.lean"
+echo "root ADR 0352 I5: modeled cache rounds preserve paragraph kinds and finite input bounds"
+
+# Derive separation and source order for cached/fresh mixed jobs.
+besideReuseOrder=$root/experiments/pagination-proof/BesideReuseOrder.lean
+if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|implemented_by|extern|native_decide)([^A-Za-z_]|$)' "$besideReuseOrder"; then
+  echo "unproved or unchecked Lean declaration in $besideReuseOrder" >&2
+  exit 1
+fi
+LEAN_PATH="$tmp" "$lean" -o "$tmp/BesideReuseOrder.olean" "$besideReuseOrder"
+LEAN_PATH="$tmp" "$lean" "$root/experiments/pagination-proof/BesideReuseOrderBoundary.lean"
+echo "root ADR 0352 I5: mixed cached/fresh jobs preserve order and remain separated by figures"
+
+# Derive the outer contribution prefix from prior figure ownership ranges.
+priorUnitCounts=$root/experiments/pagination-proof/PriorUnitCounts.lean
+if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|implemented_by|extern|native_decide)([^A-Za-z_]|$)' "$priorUnitCounts"; then
+  echo "unproved or unchecked Lean declaration in $priorUnitCounts" >&2
+  exit 1
+fi
+LEAN_PATH="$tmp" "$lean" -o "$tmp/PriorUnitCounts.olean" "$priorUnitCounts"
+LEAN_PATH="$tmp" "$lean" "$root/experiments/pagination-proof/PriorUnitCountsBoundary.lean"
+echo "root ADR 0352 I5: selected target updates preserve modeled prior-unit contributions and two-pass first IDs"
+
+# Carry per-job source order into complete rounds and their retained caches.
+mixedRoundOrder=$root/experiments/pagination-proof/MixedRoundOrder.lean
+if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|implemented_by|extern|native_decide)([^A-Za-z_]|$)' "$mixedRoundOrder"; then
+  echo "unproved or unchecked Lean declaration in $mixedRoundOrder" >&2
+  exit 1
+fi
+LEAN_PATH="$tmp" "$lean" -o "$tmp/MixedRoundOrder.olean" "$mixedRoundOrder"
+LEAN_PATH="$tmp" "$lean" "$root/experiments/pagination-proof/MixedRoundOrderBoundary.lean"
+echo "root ADR 0352 I5: legal mixed-job rounds retain globally ordered and unique keys"
+
+# Unique selected keys preserve every associated payload at the store boundary.
+roundPayloadStore=$root/experiments/pagination-proof/RoundPayloadStore.lean
+if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|implemented_by|extern|native_decide)([^A-Za-z_]|$)' "$roundPayloadStore"; then
+  echo "unproved or unchecked Lean declaration in $roundPayloadStore" >&2
+  exit 1
+fi
+sh "$root/experiments/pagination-proof/check-side-store-shape.sh"
+LEAN_PATH="$tmp" "$lean" -o "$tmp/RoundPayloadStore.olean" "$roundPayloadStore"
+LEAN_PATH="$tmp" "$lean" "$root/experiments/pagination-proof/RoundPayloadStoreBoundary.lean"
+echo "root ADR 0352 I5: unique mixed-job keys preserve opaque payloads in the modeled association store"
+
+# Derive the key projection from fresh/cache producers carrying opaque payloads.
+producedPayloadKeys=$root/experiments/pagination-proof/ProducedPayloadKeys.lean
+if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|implemented_by|extern|native_decide)([^A-Za-z_]|$)' "$producedPayloadKeys"; then
+  echo "unproved or unchecked Lean declaration in $producedPayloadKeys" >&2
+  exit 1
+fi
+sh "$root/experiments/pagination-proof/check-side-payload-shape.sh"
+LEAN_PATH="$tmp" "$lean" -o "$tmp/ProducedPayloadKeys.olean" "$producedPayloadKeys"
+LEAN_PATH="$tmp" "$lean" "$root/experiments/pagination-proof/ProducedPayloadKeysBoundary.lean"
+echo "root ADR 0352 I5: payload producers discharge their key projection and preserve the generated pairs through storage"
+
+# Derive the stored-table typing premise through reachable payload cache rounds.
+payloadRounds=$root/experiments/pagination-proof/PayloadRounds.lean
+if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|implemented_by|extern|native_decide)([^A-Za-z_]|$)' "$payloadRounds"; then
+  echo "unproved or unchecked Lean declaration in $payloadRounds" >&2
+  exit 1
+fi
+LEAN_PATH="$tmp" "$lean" -o "$tmp/PayloadRounds.olean" "$payloadRounds"
+LEAN_PATH="$tmp" "$lean" "$root/experiments/pagination-proof/PayloadRoundsBoundary.lean"
+echo "root ADR 0352 I5: reachable payload tables derive their paragraph typing and preserve ordered readback"
+
+# Derive job legality from a source-index scan before connecting cache rounds.
+derivedJobs=$root/experiments/pagination-proof/DerivedJobs.lean
+if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|implemented_by|extern|native_decide)([^A-Za-z_]|$)' "$derivedJobs"; then
+  echo "unproved or unchecked Lean declaration in $derivedJobs" >&2
+  exit 1
+fi
+LEAN_PATH="$tmp" "$lean" -o "$tmp/DerivedJobs.olean" "$derivedJobs"
+LEAN_PATH="$tmp" "$lean" "$root/experiments/pagination-proof/DerivedJobsBoundary.lean"
+echo "root ADR 0352 I5: source-index job generation derives the ordering and figure premises for payload readback"
+
+# Derive the figure typing of the currently constructed table before job selection.
+figureTable=$root/experiments/pagination-proof/FigureTable.lean
+if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|implemented_by|extern|native_decide)([^A-Za-z_]|$)' "$figureTable"; then
+  echo "unproved or unchecked Lean declaration in $figureTable" >&2
+  exit 1
+fi
+LEAN_PATH="$tmp" "$lean" -o "$tmp/FigureTable.olean" "$figureTable"
+LEAN_PATH="$tmp" "$lean" "$root/experiments/pagination-proof/FigureTableBoundary.lean"
+echo "root ADR 0352 I5: constructed figure tables discharge the type check in the ordered job scan"
+
+# Connect sorted window enumeration and row-based job selection to figure storage.
+figureWindow=$root/experiments/pagination-proof/FigureWindow.lean
+if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|implemented_by|extern|native_decide)([^A-Za-z_]|$)' "$figureWindow"; then
+  echo "unproved or unchecked Lean declaration in $figureWindow" >&2
+  exit 1
+fi
+LEAN_PATH="$tmp" "$lean" -o "$tmp/FigureWindow.olean" "$figureWindow"
+LEAN_PATH="$tmp" "$lean" "$root/experiments/pagination-proof/FigureWindowBoundary.lean"
+echo "root ADR 0352 I5: sorted figure-table enumeration preserves values and agrees with row-based job selection"
+
+# Preserve the selected figure value when initializing each job state.
+figureJobValues=$root/experiments/pagination-proof/FigureJobValues.lean
+if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|implemented_by|extern|native_decide)([^A-Za-z_]|$)' "$figureJobValues"; then
+  echo "unproved or unchecked Lean declaration in $figureJobValues" >&2
+  exit 1
+fi
+LEAN_PATH="$tmp" "$lean" -o "$tmp/FigureJobValues.olean" "$figureJobValues"
+LEAN_PATH="$tmp" "$lean" "$root/experiments/pagination-proof/FigureJobValuesBoundary.lean"
+echo "root ADR 0352 I5: job state initialization receives the selected original figure value"
+
+# Derive prior-owner and cache-typing premises for the classified unit prefix.
+classifiedPrefix=$root/experiments/pagination-proof/ClassifiedPrefix.lean
+if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|implemented_by|extern|native_decide)([^A-Za-z_]|$)' "$classifiedPrefix"; then
+  echo "unproved or unchecked Lean declaration in $classifiedPrefix" >&2
+  exit 1
+fi
+LEAN_PATH="$tmp" "$lean" -o "$tmp/ClassifiedPrefix.olean" "$classifiedPrefix"
+LEAN_PATH="$tmp" "$lean" "$root/experiments/pagination-proof/ClassifiedPrefixBoundary.lean"
+echo "root ADR 0352 I5: classified prefixes derive prior owners and reached cache typing before a target update"
+
+# Connect reached payload caches and current figure jobs to owned first IDs.
+ownedFirst=$root/experiments/pagination-proof/OwnedFirst.lean
+if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|implemented_by|extern|native_decide)([^A-Za-z_]|$)' "$ownedFirst"; then
+  echo "unproved or unchecked Lean declaration in $ownedFirst" >&2
+  exit 1
+fi
+LEAN_PATH="$tmp" "$lean" -o "$tmp/OwnedFirst.olean" "$ownedFirst"
+LEAN_PATH="$tmp" "$lean" "$root/experiments/pagination-proof/OwnedFirstBoundary.lean"
+echo "root ADR 0352 I5: owned first IDs are unchanged from reached caches and current figure jobs"
+
+# Preserve the keyed inner numbering scan through its modeled storage.
+ownedFirstScan=$root/experiments/pagination-proof/OwnedFirstScan.lean
+if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|implemented_by|extern|native_decide)([^A-Za-z_]|$)' "$ownedFirstScan"; then
+  echo "unproved or unchecked Lean declaration in $ownedFirstScan" >&2
+  exit 1
+fi
+LEAN_PATH="$tmp" "$lean" -o "$tmp/OwnedFirstScan.olean" "$ownedFirstScan"
+LEAN_PATH="$tmp" "$lean" "$root/experiments/pagination-proof/OwnedFirstScanBoundary.lean"
+echo "root ADR 0352 I5: keyed owned first-ID scans preserve their canonical lookup through storage"
+
+# Retain each local owned pair after concatenating all figure-job scans.
+ownedRows=$root/experiments/pagination-proof/OwnedRows.lean
+if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|implemented_by|extern|native_decide)([^A-Za-z_]|$)' "$ownedRows"; then
+  echo "unproved or unchecked Lean declaration in $ownedRows" >&2
+  exit 1
+fi
+LEAN_PATH="$tmp" "$lean" -o "$tmp/OwnedRows.olean" "$ownedRows"
+LEAN_PATH="$tmp" "$lean" "$root/experiments/pagination-proof/OwnedRowsBoundary.lean"
+echo "root ADR 0352 I5: concatenated owned first-ID scans retain local pairs under derived unique keys"
+
+# Derive every owner start from prior unit contributions before global lookup.
+ownedGlobal=$root/experiments/pagination-proof/OwnedGlobal.lean
+if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|implemented_by|extern|native_decide)([^A-Za-z_]|$)' "$ownedGlobal"; then
+  echo "unproved or unchecked Lean declaration in $ownedGlobal" >&2
+  exit 1
+fi
+LEAN_PATH="$tmp" "$lean" -o "$tmp/OwnedGlobal.olean" "$ownedGlobal"
+LEAN_PATH="$tmp" "$lean" "$root/experiments/pagination-proof/OwnedGlobalBoundary.lean"
+echo "root ADR 0352 I5: derived global owned first IDs are invariant under changes to the queried target body"
+
+# Selected body callers retain an existing ID through the left-biased union.
+ownedUnion=$root/experiments/pagination-proof/OwnedUnion.lean
+if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|implemented_by|extern|native_decide)([^A-Za-z_]|$)' "$ownedUnion"; then
+  echo "unproved or unchecked Lean declaration in $ownedUnion" >&2
+  exit 1
+fi
+LEAN_PATH="$tmp" "$lean" -o "$tmp/OwnedUnion.olean" "$ownedUnion"
+LEAN_PATH="$tmp" "$lean" "$root/experiments/pagination-proof/OwnedUnionBoundary.lean"
+echo "root ADR 0352 I5: selected body callers have the same existing ID after arbitrary base-map changes"
+
+# Repeated value-only body edits preserve caller domains and selections.
+bodyEdits=$root/experiments/pagination-proof/BodyEdits.lean
+if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|implemented_by|extern|native_decide)([^A-Za-z_]|$)' "$bodyEdits"; then
+  echo "unproved or unchecked Lean declaration in $bodyEdits" >&2
+  exit 1
+fi
+LEAN_PATH="$tmp" "$lean" -o "$tmp/BodyEdits.olean" "$bodyEdits"
+LEAN_PATH="$tmp" "$lean" "$root/experiments/pagination-proof/BodyEditsBoundary.lean"
+echo "root ADR 0352 I5: arbitrary value-only edit histories preserve domains, selections, and reached paragraph typing"
+
+# Current callers after edit histories derive an existing stable first ID.
+historyFirst=$root/experiments/pagination-proof/HistoryFirst.lean
+if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|implemented_by|extern|native_decide)([^A-Za-z_]|$)' "$historyFirst"; then
+  echo "unproved or unchecked Lean declaration in $historyFirst" >&2
+  exit 1
+fi
+LEAN_PATH="$tmp" "$lean" -o "$tmp/HistoryFirst.olean" "$historyFirst"
+LEAN_PATH="$tmp" "$lean" "$root/experiments/pagination-proof/HistoryFirstBoundary.lean"
+echo "root ADR 0352 I5: current targets have stable existing IDs after arbitrary value-only edit histories"
+
+# Finite retry prefixes retain the current paragraph's existing first ID.
+selfRetries=$root/experiments/pagination-proof/SelfRetries.lean
+if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|implemented_by|extern|native_decide)([^A-Za-z_]|$)' "$selfRetries"; then
+  echo "unproved or unchecked Lean declaration in $selfRetries" >&2
+  exit 1
+fi
+LEAN_PATH="$tmp" "$lean" -o "$tmp/SelfRetries.olean" "$selfRetries"
+LEAN_PATH="$tmp" "$lean" "$root/experiments/pagination-proof/SelfRetriesBoundary.lean"
+echo "root ADR 0352 I5: all finite same-target retry prefixes retain the current paragraph-begin ID"
+
+# Later body updates cannot change the earlier selected target's first ID.
+suffixCountPrefix=$root/experiments/pagination-proof/SuffixCountPrefix.lean
+if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|implemented_by|extern|native_decide)([^A-Za-z_]|$)' "$suffixCountPrefix"; then
+  echo "unproved or unchecked Lean declaration in $suffixCountPrefix" >&2
+  exit 1
+fi
+LEAN_PATH="$tmp" "$lean" -o "$tmp/SuffixCountPrefix.olean" "$suffixCountPrefix"
+LEAN_PATH="$tmp" "$lean" "$root/experiments/pagination-proof/SuffixCountPrefixBoundary.lean"
+echo "root ADR 0352 I5: later body updates preserve the queried earlier target's existing first ID"
+
+# Finite selected suffix prefixes derive their update order from the scan.
+laterEdits=$root/experiments/pagination-proof/LaterEdits.lean
+if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|implemented_by|extern|native_decide)([^A-Za-z_]|$)' "$laterEdits"; then
+  echo "unproved or unchecked Lean declaration in $laterEdits" >&2
+  exit 1
+fi
+LEAN_PATH="$tmp" "$lean" -o "$tmp/LaterEdits.olean" "$laterEdits"
+LEAN_PATH="$tmp" "$lean" "$root/experiments/pagination-proof/LaterEditsBoundary.lean"
+echo "root ADR 0352 I5: finite selected suffix prefixes preserve the current paragraph-begin ID"
+
+# Rebuilt cache IDs number the tail after the committed composed-row prefix.
+cacheNumberedRows=$root/experiments/pagination-proof/CacheNumberedRows.lean
+if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|implemented_by|extern|native_decide)([^A-Za-z_]|$)' "$cacheNumberedRows"; then
+  echo "unproved or unchecked Lean declaration in $cacheNumberedRows" >&2
+  exit 1
+fi
+LEAN_PATH="$tmp" "$lean" -o "$tmp/CacheNumberedRows.olean" "$cacheNumberedRows"
+LEAN_PATH="$tmp" "$lean" "$root/experiments/pagination-proof/CacheNumberedRowsBoundary.lean"
+echo "root ADR 0352 I5: derived cache IDs preserve composed prefix/tail numbering and row payload order"
+
+# A valid cache-backed numbering family derives the modeled parts hb premise.
+cacheBreaker=$root/experiments/pagination-proof/CacheBreaker.lean
+if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|implemented_by|extern|native_decide)([^A-Za-z_]|$)' "$cacheBreaker"; then
+  echo "unproved or unchecked Lean declaration in $cacheBreaker" >&2
+  exit 1
+fi
+LEAN_PATH="$tmp" "$lean" -o "$tmp/CacheBreaker.olean" "$cacheBreaker"
+LEAN_PATH="$tmp" "$lean" "$root/experiments/pagination-proof/CacheBreakerBoundary.lean"
+echo "root ADR 0352 I5: valid cache-backed row numbering discharges the modeled parts numbering premise"
+
+# The wrapped figure row fold derives its contribution and preserves payload order.
+wrappedRowFold=$root/experiments/pagination-proof/WrappedRowFold.lean
+if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|implemented_by|extern|native_decide)([^A-Za-z_]|$)' "$wrappedRowFold"; then
+  echo "unproved or unchecked Lean declaration in $wrappedRowFold" >&2
+  exit 1
+fi
+LEAN_PATH="$tmp" "$lean" -o "$tmp/WrappedRowFold.olean" "$wrappedRowFold"
+LEAN_PATH="$tmp" "$lean" "$root/experiments/pagination-proof/WrappedRowFoldBoundary.lean"
+echo "root ADR 0352 I5: wrapped row folds derive one figure ID plus row counts and preserve composed payload order"
+
+
+# Relate each besideFirsts entry to the first actual row of its chunk fold.
+besideScanRows=$root/experiments/pagination-proof/BesideScanRows.lean
+if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|implemented_by|extern|native_decide)([^A-Za-z_]|$)' "$besideScanRows"; then
+  echo "unproved or unchecked Lean declaration in $besideScanRows" >&2
+  exit 1
+fi
+LEAN_PATH="$tmp" "$lean" -o "$tmp/BesideScanRows.olean" "$besideScanRows"
+LEAN_PATH="$tmp" "$lean" "$root/experiments/pagination-proof/BesideScanRowsBoundary.lean"
+echo "root ADR 0352 I5: beside first-ID scan entries agree with their actual composed-row folds"
+
+
+# Unique-key storage retains the actual first row and the derived owned ID.
+besideScanStore=$root/experiments/pagination-proof/BesideScanStore.lean
+if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|implemented_by|extern|native_decide)([^A-Za-z_]|$)' "$besideScanStore"; then
+  echo "unproved or unchecked Lean declaration in $besideScanStore" >&2
+  exit 1
+fi
+LEAN_PATH="$tmp" "$lean" -o "$tmp/BesideScanStore.olean" "$besideScanStore"
+LEAN_PATH="$tmp" "$lean" "$root/experiments/pagination-proof/BesideScanStoreBoundary.lean"
+echo "root ADR 0352 I5: stored row scans retain their first rendered ID and derived owned first ID"
+
+# Store every numbered payload and retain earlier keys under the fresh-ID bound.
+numberedStore=$root/experiments/pagination-proof/NumberedStore.lean
+if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|implemented_by|extern|native_decide)([^A-Za-z_]|$)' "$numberedStore"; then
+  echo "unproved or unchecked Lean declaration in $numberedStore" >&2
+  exit 1
+fi
+LEAN_PATH="$tmp" "$lean" -o "$tmp/NumberedStore.olean" "$numberedStore"
+LEAN_PATH="$tmp" "$lean" "$root/experiments/pagination-proof/NumberedStoreBoundary.lean"
+echo "root ADR 0352 I5: numbered row storage agrees with old-table-first union under fresh IDs and preserves earlier rows"
+
+# Derive fresh row IDs from the initial empty store through the modeled fold.
+numberedStoreFresh=$root/experiments/pagination-proof/NumberedStoreFresh.lean
+if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|implemented_by|extern|native_decide)([^A-Za-z_]|$)' "$numberedStoreFresh"; then
+  echo "unproved or unchecked Lean declaration in $numberedStoreFresh" >&2
+  exit 1
+fi
+LEAN_PATH="$tmp" "$lean" -o "$tmp/NumberedStoreFresh.olean" "$numberedStoreFresh"
+LEAN_PATH="$tmp" "$lean" "$root/experiments/pagination-proof/NumberedStoreFreshBoundary.lean"
+echo "root ADR 0352 I5: every stored row ID is below the next counter after an empty-store fold; initial union agreement is derived"
+
+# Include IDs reserved for non-row objects in the modeled numbering events.
+numberedEventStore=$root/experiments/pagination-proof/NumberedEventStore.lean
+if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|implemented_by|extern|native_decide)([^A-Za-z_]|$)' "$numberedEventStore"; then
+  echo "unproved or unchecked Lean declaration in $numberedEventStore" >&2
+  exit 1
+fi
+LEAN_PATH="$tmp" "$lean" -o "$tmp/NumberedEventStore.olean" "$numberedEventStore"
+LEAN_PATH="$tmp" "$lean" "$root/experiments/pagination-proof/NumberedEventStoreBoundary.lean"
+echo "root ADR 0352 I5: reserved-ID events preserve row freshness, payload order, counter sums, and initial union agreement"
+
+# Reconstruct a bounded lookup window without assuming snapshot equality.
+numberedWindowStore=$root/experiments/pagination-proof/NumberedWindowStore.lean
+if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|implemented_by|extern|native_decide)([^A-Za-z_]|$)' "$numberedWindowStore"; then
+  echo "unproved or unchecked Lean declaration in $numberedWindowStore" >&2
+  exit 1
+fi
+LEAN_PATH="$tmp" "$lean" -o "$tmp/NumberedWindowStore.olean" "$numberedWindowStore"
+LEAN_PATH="$tmp" "$lean" "$root/experiments/pagination-proof/NumberedWindowStoreBoundary.lean"
+echo "root ADR 0352 I5: lookup windows retain arbitrary table values, and reached fresh event snapshots are reconstructed"
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 # The boundary inputs of PhysicalBoundary.hs on Physical.lean's paginate,
 # against golem-layout's paginatePhysical (root ADR 0352).
@@ -432,6 +892,37 @@ fi
 sh "$root/experiments/pagination-proof/check-causal-probe-shape.sh"
 LEAN_PATH="$tmp" "$lean" "$causalProbeEntries"
 echo "root ADR 0352 I3: every modeled probe entry preserves wrap readiness"
+
+# Relate the reached parts counter to the actual text length, not all states.
+partsOffsetEntries=$root/experiments/pagination-proof/PartsOffsetEntries.lean
+if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|implemented_by|extern|native_decide)([^A-Za-z_]|$)' "$partsOffsetEntries"; then
+  echo "unproved or unchecked Lean declaration in $partsOffsetEntries" >&2
+  exit 1
+fi
+sh "$root/experiments/pagination-proof/check-parts-offset-shape.sh"
+LEAN_PATH="$tmp" "$lean" -o "$tmp/PartsOffsetEntries.olean" "$partsOffsetEntries"
+echo "root ADR 0352 I5: every modeled parts entry preserves the text offset"
+
+# Connect those reached offsets to the concrete breaker's numbering.
+partsNumberedEntries=$root/experiments/pagination-proof/PartsNumberedEntries.lean
+if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|implemented_by|extern|native_decide)([^A-Za-z_]|$)' "$partsNumberedEntries"; then
+  echo "unproved or unchecked Lean declaration in $partsNumberedEntries" >&2
+  exit 1
+fi
+sh "$root/experiments/pagination-proof/check-parts-numbered-shape.sh"
+LEAN_PATH="$tmp" "$lean" -o "$tmp/PartsNumberedEntries.olean" "$partsNumberedEntries"
+echo "root ADR 0352 I5: every reached concrete parts entry has sequential line IDs"
+
+# Use those local entry guards for the modeled successful paragraph output.
+partsNumberedOutput=$root/experiments/pagination-proof/PartsNumberedOutput.lean
+if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|implemented_by|extern|native_decide)([^A-Za-z_]|$)' "$partsNumberedOutput"; then
+  echo "unproved or unchecked Lean declaration in $partsNumberedOutput" >&2
+  exit 1
+fi
+LEAN_PATH="$tmp" "$lean" "$partsNumberedOutput" > "$tmp/parts-numbered-output"
+printf '%s\n' true > "$tmp/parts-numbered-output-expected"
+diff -u "$tmp/parts-numbered-output-expected" "$tmp/parts-numbered-output"
+echo "root ADR 0352 I5: successful modeled paragraph output preserves its prefix and sequential line IDs; 24 direct boundaries pass"
 
 
 # The values of the evaluation of Golem.Layout.KnuthPlass (badness,

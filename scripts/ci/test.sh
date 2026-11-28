@@ -2231,6 +2231,8 @@ cabal_dir_case() { # cabal_dir_case WORKFLOW JOB NAME
 cabal_dir_case "$CI_YML" build "ci.yml: build"
 cabal_dir_case "$HERE/../../.github/workflows/race.yml" race "race.yml: race"
 cabal_dir_case "$RELEASE_YML" build "release.yml: build"
+cabal_dir_case "$HERE/../../.github/workflows/parser-fmt-proofs.yml" prove "parser-fmt-proofs.yml: prove"
+cabal_dir_case "$HERE/../../.github/workflows/parser-fmt-proofs.yml" nightly-cli "parser-fmt-proofs.yml: nightly-cli"
 for w in "$CI_YML:build" "$HERE/../../.github/workflows/race.yml:race"; do
   index=$(step_line "${w%:*}" "${w##*:}" 'path: ~/.cabal/packages/hackage.haskell.org')
   check=$(step_line "${w%:*}" "${w##*:}" 'cabal path -z --config-file')
