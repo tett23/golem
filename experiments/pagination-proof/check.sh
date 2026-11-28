@@ -419,7 +419,7 @@ if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|implemented_by|exte
   echo "unproved or unchecked Lean declaration in $selectedCountPrefix" >&2
   exit 1
 fi
-LEAN_PATH="$tmp" "$lean" "$selectedCountPrefix"
+LEAN_PATH="$tmp" "$lean" -o "$tmp/SelectedCountPrefix.olean" "$selectedCountPrefix"
 echo "root ADR 0352 I5: unique selected keys discharge the inner row-count prefix premise of two-pass numbering"
 
 # Fresh composition only emits paragraph keys, so figures provide real barriers.
@@ -469,6 +469,16 @@ fi
 LEAN_PATH="$tmp" "$lean" -o "$tmp/BesideReuseOrder.olean" "$besideReuseOrder"
 LEAN_PATH="$tmp" "$lean" "$root/experiments/pagination-proof/BesideReuseOrderBoundary.lean"
 echo "root ADR 0352 I5: mixed cached/fresh jobs preserve order and remain separated by figures"
+
+# Derive the outer contribution prefix from prior figure ownership ranges.
+priorUnitCounts=$root/experiments/pagination-proof/PriorUnitCounts.lean
+if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|implemented_by|extern|native_decide)([^A-Za-z_]|$)' "$priorUnitCounts"; then
+  echo "unproved or unchecked Lean declaration in $priorUnitCounts" >&2
+  exit 1
+fi
+LEAN_PATH="$tmp" "$lean" -o "$tmp/PriorUnitCounts.olean" "$priorUnitCounts"
+LEAN_PATH="$tmp" "$lean" "$root/experiments/pagination-proof/PriorUnitCountsBoundary.lean"
+echo "root ADR 0352 I5: selected target updates preserve modeled prior-unit contributions and two-pass first IDs"
 
 
 
