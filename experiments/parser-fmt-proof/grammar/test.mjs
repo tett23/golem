@@ -57,7 +57,9 @@ try {
     'root ADR 0351 I1, I2: recovery dispatch and nested-body composition require arbitrary-input proofs');
   assert.doesNotMatch(strict.stderr, /^unsupported (TableRow|BlockCommand) choice /m,
     'root ADR 0351 I1, I2: inert captures in rows and command alternatives require arbitrary-input composition proofs');
-  assert.ok(baselineUnsupported <= 3, 'the full grammar model must not regress in unsupported choices');
+  assert.doesNotMatch(strict.stderr, /^unsupported (Table|TableBodyRow) choice /m,
+    'root ADR 0351 I1, I2: table headers, captured widths and row guards require arbitrary-input composition proofs');
+  assert.ok(baselineUnsupported <= 1, 'the full grammar model must not regress in unsupported choices');
   assert.equal(strict.status === 0, baselineUnsupported === 0,
     'strict generation succeeds exactly when every choice is supported');
   for (const line of strict.stderr.split('\n').filter(line => line.startsWith('unsupported '))) {
@@ -1205,6 +1207,58 @@ try {
     const mutation = spawnSync(process.execPath, [join(here, 'generate.mjs'), grammar, generated], { encoding: 'utf8' });
     assert.match(mutation.stderr, /^unsupported BlockCommand choice /m);
   }
+  const tableCompositionEntry = original.replace('%syntax\n', '%syntax\n%entry TableZeroProbe\n%entry BodyOneProbe\n%entry BodyTwoProbe\n') +
+    '\nTableZeroProbe :: ()\nTableZeroProbe <- Table(0) { () }\nBodyOneProbe :: ()\nBodyOneProbe <- TableBodyRow(0,1) { () }\nBodyTwoProbe :: ()\nBodyTwoProbe <- TableBodyRow(0,2) { () }\n';
+  const tableCompositionPath = join(work, 'TableCompositionEntry.hpeg');
+  writeFileSync(tableCompositionPath, tableCompositionEntry);
+  const tableCompositionCases = [
+    ['TableZeroProbe', 'Table', 0, '|a|\n|-|', true, null],
+    ['TableZeroProbe', 'Table', 0, '|a|\n|-|\n|b|', true, null],
+    ['TableZeroProbe', 'Table', 0, '|a|b|\n|-|-|\n|鰍|กำ|', true, null],
+    ['TableZeroProbe', 'Table', 0, '|a|b|\n|-|-|\n|c|', false, 'label: table_cells'],
+    ['TableZeroProbe', 'Table', 0, '|a|\n|b|', false, 'label: table_delimiter'],
+    ['BodyOneProbe', 'TableBodyRow', 1, '\n|a|', true, null],
+    ['BodyOneProbe', 'TableBodyRow', 1, '\n|a|b|', false, 'label: table_cells'],
+    ['BodyTwoProbe', 'TableBodyRow', 2, '\n|a|b|', true, null],
+    ['BodyTwoProbe', 'TableBodyRow', 2, '\n|a|', false, 'label: table_cells'],
+    ['BodyOneProbe', 'TableBodyRow', 1, '|a|', false, null],
+  ];
+  for (const [entry, , , source, accepted] of tableCompositionCases) {
+    const input = join(work, 'table-composition-entry.gm');
+    writeFileSync(input, source);
+    const parsed = spawnSync(process.env.PEG_HS ?? 'peg-hs', ['parse', '--entry', entry, '--format', 'ast', tableCompositionPath, input],
+      { encoding: 'utf8', env: { ...process.env, XDG_CACHE_HOME: join(work, 'cache') } });
+    assert.equal(parsed.status === 0, accepted, source + parsed.stderr);
+    if (accepted) assert.equal(parsed.stdout.trim(), '()');
+    else assert.match(parsed.stderr + parsed.stdout, /^\d+:\d+: expected/m);
+  }
+  const tableHead = 'Table <- h:TableRow(ind) Nl (TableDelimiter(ind))^table_delimiter';
+  const tableTail = '         TableBodyRow(ind, h)* (!(Nl Ind(ind) Pipe))^table_row (Nl / !.) { () }';
+  const tableBody = 'TableBodyRow <- Nl r:TableRow(ind) (&{ r == h })^table_cells { () }';
+  const tableCompositionMutations = [
+    ['HeaderNewline', tableHead, tableHead.replace(' Nl ', ' Sp '), 'TableZeroProbe', '|a|\n|-|', false],
+    ['OneRow', tableTail, tableTail.replace('TableBodyRow(ind, h)*', 'TableBodyRow(ind, h)+'), 'TableZeroProbe', '|a|\n|-|', false],
+    ['Width', tableTail, tableTail.replace('TableBodyRow(ind, h)', 'TableBodyRow(ind, h + 1)'), 'TableZeroProbe', '|a|\n|-|\n|b|', false],
+    ['FinalNewline', tableTail, tableTail.replace('(Nl / !.)', 'Nl'), 'TableZeroProbe', '|a|\n|-|', false],
+    ['CellGuard', tableBody, tableBody.replace('r == h', 'True'), 'BodyOneProbe', '\n|a|b|', true],
+    ['BodyNewline', tableBody, tableBody.replace(' <- Nl ', ' <- Nl? '), 'BodyOneProbe', '|a|', true],
+    ['BodyIndent', tableBody, tableBody.replace('TableRow(ind)', 'TableRow(col ind + 1)'), 'BodyOneProbe', '\n|a|', false],
+  ];
+  for (const [name, before, after, entry, source, accepted] of tableCompositionMutations) {
+    assert.ok(original.includes(before));
+    const grammar = join(work, `ChangedTableComposition${name}.hpeg`);
+    writeFileSync(grammar, original.replace(before, after));
+    const strictMutation = spawnSync(process.execPath, [join(here, 'generate.mjs'), grammar, generated], { encoding: 'utf8' });
+    assert.match(strictMutation.stderr, /^unsupported (Table|TableBodyRow) choice /m);
+    writeFileSync(grammar, tableCompositionEntry.replace(before, after));
+    const input = join(work, 'table-composition-counterexample.gm');
+    writeFileSync(input, source);
+    const native = spawnSync(process.env.PEG_HS ?? 'peg-hs', ['parse', '--entry', entry, '--format', 'ast', grammar, input],
+      { encoding: 'utf8', env: { ...process.env, XDG_CACHE_HOME: join(work, 'cache') } });
+    assert.equal(native.status === 0, accepted, name + native.stderr);
+    if (accepted) assert.equal(native.stdout.trim(), '()');
+    else assert.match(native.stderr + native.stdout, /^\d+:\d+: expected/m);
+  }
   const nativeExpressionMutations = [
     ['CallNamespaceMany', '[= foo.bar.baz(1)]\n', true, { CallExpr: 1, ExprIdent: 3 }],
     ['CallRequiredArgs', '[= foo()]\n', false],
@@ -1966,6 +2020,89 @@ open PegModel
   const captureFixtureCheck = spawnSync(lean, [captureFixtureSource], growthEnv);
   assert.equal(captureFixtureCheck.status, 0, captureFixtureCheck.stdout + captureFixtureCheck.stderr);
   assert.match(captureFixtureCheck.stdout, new RegExp(`model/native capture fixtures: ${captureFixtureCases.length} outcomes matched`));
+  function compileTableCapture(name, output = false) {
+    const args = output ? ['-o', join(work, name + '.olean'), join(work, name + '.lean')] : [join(work, name + '.lean')];
+    const result = spawnSync(lean, args, growthEnv);
+    assert.equal(result.status, 0, result.stdout + result.stderr);
+    assert.doesNotMatch(result.stdout + result.stderr, /sorryAx|declaration uses 'sorry'/);
+  }
+  function refuteTableCapture(name) {
+    const result = spawnSync(lean, [join(work, name + '.lean')], growthEnv);
+    assert.notEqual(result.status, 0);
+    assert.match(result.stdout + result.stderr, /type mismatch|unsolved goals/);
+  }
+  for (const name of ['CapturedSequenceTotal', 'CapturedValueTotal', 'TableCompositionTotal']) {
+    copyFileSync(join(here, name + '.lean'), join(work, name + '.lean'));
+    compileTableCapture(name, true);
+  }
+  const capturedSequenceFile = join(work, 'CapturedSequenceTotal.lean');
+  const capturedSequenceCanonical = readFileSync(capturedSequenceFile, 'utf8');
+  const capturedScopeLeak = capturedSequenceCanonical.replace('follow parse bound ((name,value)::scope) items rest', 'follow parse bound scope items rest');
+  assert.notEqual(capturedScopeLeak, capturedSequenceCanonical);
+  writeFileSync(capturedSequenceFile, capturedScopeLeak);
+  refuteTableCapture('CapturedSequenceTotal');
+  writeFileSync(capturedSequenceFile, capturedSequenceCanonical);
+  const capturedValueFile = join(work, 'CapturedValueTotal.lean');
+  const capturedValueCanonical = readFileSync(capturedValueFile, 'utf8');
+  const capturedCountLeak = capturedValueCanonical.replace('count + 1', 'count');
+  assert.notEqual(capturedCountLeak, capturedValueCanonical);
+  writeFileSync(capturedValueFile, capturedCountLeak);
+  compileTableCapture('CapturedValueTotal', true);
+  refuteTableCapture('TableCompositionTotal');
+  writeFileSync(capturedValueFile, capturedValueCanonical);
+  compileTableCapture('CapturedValueTotal', true);
+  for (const [rule, before, after] of [
+    ['Table', '.ref "TableRow" ["ind"]', '.ref "TableRow" ["col ind + 1"]'],
+    ['Table', '.ref "Nl" []', '.ref "Sp" []'], ['Table', '.star', '.plus'],
+    ['Table', '.ref "TableBodyRow" ["ind", "h"]', '.ref "TableBodyRow" ["ind", "h + 1"]'],
+    ['Table', '.notPred (.choice', '.andPred (.choice'],
+    ['Table', '.label (.choice [[.ref "TableDelimiter" ["ind"]]]) "table_delimiter"', '.notPred (.choice [[.ref "TableDelimiter" ["ind"]]])'],
+    ['TableBodyRow', '.ref "Nl" []', '.opt (.ref "Nl" [])'],
+    ['TableBodyRow', '.ref "TableRow" ["ind"]', '.ref "TableRow" ["col ind + 1"]'],
+    ['TableBodyRow', ' r == h ', ' True '], ['TableBodyRow', '"table_cells"', '"table_row"'],
+  ]) {
+    const changed = model.split('\n').map(line => {
+      if (!line.includes(`name := "${rule}"`)) return line;
+      assert.ok(line.includes(before));
+      return line.replace(before, after);
+    }).join('\n');
+    assert.notEqual(changed, model);
+    writeFileSync(generated, changed);
+    execFileSync(lean, ['-o', join(work, 'Generated.olean'), generated], growthEnv);
+    refuteTableCapture('TableCompositionTotal');
+  }
+  const tableMetadataControls = ['Table', 'TableBodyRow'];
+  for (const rule of tableMetadataControls) {
+    const changed = model.split('\n').map(line => line.includes(`name := "${rule}"`)
+      ? line.replace(/line := (\d+)/g, (_, n) => `line := ${Number(n) + 17}`).replaceAll(' () ', '  ()  ') : line).join('\n');
+    writeFileSync(generated, changed);
+    execFileSync(lean, ['-o', join(work, 'Generated.olean'), generated], growthEnv);
+    compileTableCapture('TableCompositionTotal');
+  }
+  writeFileSync(generated, model);
+  execFileSync(lean, ['-o', join(work, 'Generated.olean'), generated], growthEnv);
+  const tableFixtureSource = join(work, 'TableNativeFixtures.lean');
+  const tableFixtureItems = tableCompositionCases.map(([, rule, h, source, accepted, error]) =>
+    `(${JSON.stringify(rule)}, ${h}, ${JSON.stringify(source)}, ${accepted}, ${error === null ? 'none' : 'some ' + JSON.stringify(error)})`).join(',\n    ');
+  writeFileSync(tableFixtureSource, `import PegModelTest
+open PegModel
+#eval do
+  let fixtures : List (String × Nat × String × Bool × Option String) := [${tableFixtureItems}]
+  for (rule, h, source, accepted, error) in fixtures do
+    let env := if rule == "Table" then [("ind",0)] else [("ind",0),("h",h)]
+    let args := if rule == "Table" then ["ind"] else ["ind","h"]
+    let got := recognizeEnv Generated.pegGrammar env 512 (.ref rule args) source.toList
+    let agrees := match got, accepted, error with
+      | .ok (some []), true, none => true
+      | .error reason, false, some expected => reason == expected
+      | .ok none, false, none => true
+      | _, _, _ => false
+    unless agrees do throw (IO.userError s!"table fixture mismatch {repr source}: {repr got}")
+  IO.println s!"model/native table fixtures: {fixtures.length} outcomes matched"
+`);
+  const tableFixtureCheck = spawnSync(lean, [tableFixtureSource], growthEnv);
+  assert.equal(tableFixtureCheck.status, 0, tableFixtureCheck.stdout + tableFixtureCheck.stderr);
+  assert.match(tableFixtureCheck.stdout, new RegExp(`model/native table fixtures: ${tableCompositionCases.length} outcomes matched`));
   const blockRemainderSource = join(work, 'BlockRemainderTotal.lean');
   copyFileSync(join(here, 'BlockRemainderTotal.lean'), blockRemainderSource);
   const blockRemainderProof = spawnSync(lean, [blockRemainderSource], growthEnv);
@@ -2151,7 +2288,7 @@ open PegModel
   assert.match(refuted.stdout + refuted.stderr, /unsolved goals/, 'the mutation must refute the theorem, not fail to load a file');
   const unsupportedChoices = [...strict.stderr.matchAll(/^unsupported [A-Za-z][A-Za-z0-9]* choice /gm)].length;
   assert.equal(unsupportedChoices, baselineUnsupported, 'strict report count must remain stable through mutation tests');
-  console.log(`grammar: source and AST rules ${emittedRuleCount}/${astRuleCount}/${sourceRuleCount}, unsupported choices ${unsupportedChoices}, positive proof modules 42, negative mutations 254, metadata-only AST controls ${metadataOnlyAstControls.length + recoveryMetadataControls.length + captureMetadataControls.length}, implementation parser cases ${parserCases.length}, syntax-only parser cases 1, native legacy-body syntax cases ${legacyBodyParserCases.length}, native unclosed-fence syntax cases 1, native reserved-body entry cases ${nativeBodySamples.length}, native recovery-entry cases ${recoveryFixtures.length + nestedBodyCases.length}, model/native recovery fixtures ${recoveryModelCases.length}, native table-row entries ${tableRowCases.length}, native command entries ${commandRecognitionCases.length}, model/native capture fixtures ${captureFixtureCases.length}, native block-sequence traces ${blockSequenceParserCases.length}, native parser counterexamples ${3 + tableRowMutations.length + commandRecognitionMutations.length + recoveryMutations.length + bodyCompositionMutations.length + nativeBlockRemainderMutations.length + nativeBodyDispatchMutations.length + nativeFileMutations.length + nativeListMutations.length + nativeDefinitionMutations.length + nativeBlockSequenceMutations.length + nativeLexicalMutations.length + nativeCompositionMutations.length + nativeExpressionMutations.length + nativeArgumentMutations.length + nativeBlockLeafMutations.length}, rejected parser cases ${tableRowCases.filter(([, , count]) => count === null).length + commandRecognitionCases.filter(([, , value]) => value === null).length + recoveryFixtures.filter(([, suffix]) => suffix !== "").length + bodyEntryRejectedCases.length + emptyItemRejectedCases.length + rejectedParserCases.length + badDelimiterCases.length + 1 + lexicalRejectedCases.length + compositionRejectedCases.length + expressionRejectedCases.length + argumentRejectedCases.length + blockLeafRejectedCases.length}`);
+  console.log(`grammar: source and AST rules ${emittedRuleCount}/${astRuleCount}/${sourceRuleCount}, unsupported choices ${unsupportedChoices}, positive proof modules 45, negative mutations 273, metadata-only AST controls ${metadataOnlyAstControls.length + recoveryMetadataControls.length + captureMetadataControls.length + tableMetadataControls.length}, implementation parser cases ${parserCases.length}, syntax-only parser cases 1, native legacy-body syntax cases ${legacyBodyParserCases.length}, native unclosed-fence syntax cases 1, native reserved-body entry cases ${nativeBodySamples.length}, native recovery-entry cases ${recoveryFixtures.length + nestedBodyCases.length}, model/native recovery fixtures ${recoveryModelCases.length}, native table-row entries ${tableRowCases.length}, native command entries ${commandRecognitionCases.length}, model/native capture fixtures ${captureFixtureCases.length}, model/native table fixtures ${tableCompositionCases.length}, native block-sequence traces ${blockSequenceParserCases.length}, native parser counterexamples ${3 + tableCompositionMutations.length + tableRowMutations.length + commandRecognitionMutations.length + recoveryMutations.length + bodyCompositionMutations.length + nativeBlockRemainderMutations.length + nativeBodyDispatchMutations.length + nativeFileMutations.length + nativeListMutations.length + nativeDefinitionMutations.length + nativeBlockSequenceMutations.length + nativeLexicalMutations.length + nativeCompositionMutations.length + nativeExpressionMutations.length + nativeArgumentMutations.length + nativeBlockLeafMutations.length}, rejected parser cases ${tableCompositionCases.filter(([, , , , accepted]) => !accepted).length + tableRowCases.filter(([, , count]) => count === null).length + commandRecognitionCases.filter(([, , value]) => value === null).length + recoveryFixtures.filter(([, suffix]) => suffix !== "").length + bodyEntryRejectedCases.length + emptyItemRejectedCases.length + rejectedParserCases.length + badDelimiterCases.length + 1 + lexicalRejectedCases.length + compositionRejectedCases.length + expressionRejectedCases.length + argumentRejectedCases.length + blockLeafRejectedCases.length}`);
 } finally {
   rmSync(work, { recursive: true, force: true });
 }

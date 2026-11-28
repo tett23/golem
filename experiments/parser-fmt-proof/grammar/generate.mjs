@@ -739,6 +739,16 @@ if (!fragment && ast) {
         rule.alts[0].action?.trim() === 'False' && rule.alts[1].action?.trim() === 'maybe False (const True) b' &&
         describeItems(rule.alts[0].items) === 'Ind(ind) At SetIdent Ws SetName Sp Eq ExprBody (Nl / !.)' &&
         describeItems(rule.alts[1].items) === 'Ind(ind) At Ident Arguments Sp (Nl / !.) b:CommandBody(ind)?') continue;
+    if ((rule.name === 'Table' || rule.name === 'TableBodyRow') && rule.type === '()' &&
+        rule.templateParams.length === 0 && rule.alts.length === 1 && rule.alts[0].constructor === null &&
+        rule.alts[0].action?.trim() === '()') {
+      const params = rule.name === 'Table' ? ['ind'] : ['ind', 'h'];
+      const shape = rule.name === 'Table'
+        ? 'h:TableRow(ind) Nl (TableDelimiter(ind))^table_delimiter TableBodyRow(ind, h)* (!(Nl Ind(ind) Pipe))^table_row (Nl / !.)'
+        : 'Nl r:TableRow(ind) (&{ r == h })^table_cells';
+      if (rule.params.length === params.length && rule.params.every((param, index) => param === params[index]) &&
+          describeItems(rule.alts[0].items) === shape) continue;
+    }
     if (rule.name === 'Ind' && indentFullyProved) continue;
     if (rule.name === 'StringLit' && stringSupported && alternatives[0] === escape &&
         rule.params.length === 0 && rule.templateParams.length === 0 && rule.alts.length === 1 &&
