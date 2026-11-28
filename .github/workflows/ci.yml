@@ -485,7 +485,7 @@ jobs:
       # the suites of the part of this runner, one target per line
       # (docs/adr/0140, docs/adr/0155)
       - name: The test suites of the runner (docs/adr/0140)
-        if: matrix.tests
+        if: matrix.tests && (matrix.suites == 'driver-a' || matrix.suites == 'driver-b')
         timeout-minutes: 20
         env:
           SUITES: ${{ matrix.suites }}
@@ -503,6 +503,26 @@ jobs:
           # each target is one word
           # shellcheck disable=SC2046
           cabal test $(sh scripts/ci/test-suites.sh "$SUITES")
+      - name: The rest test suites of the runner (root ADR 0481)
+        if: matrix.tests && (matrix.suites == 'rest-a' || matrix.suites == 'rest-b')
+        timeout-minutes: 20
+        env:
+          SUITES: ${{ matrix.suites }}
+          GOLEM_REQUIRE_EXTERNAL_TOOLS: "1"
+          # the ten public-domain books are typeset to every target
+          # (docs/adr/0026, docs/adr/0058)
+          GOLEM_PD_BOOKS: "1"
+          # a missing golden file fails instead of being written and
+          # passing (tasty-golden's --no-create). The environment reaches
+          # every suite; --test-options=--no-create would be rejected by
+          # the suites without tasty-golden, and no cabal command here takes
+          # a flag of the configuration (docs/adr/0037)
+          TASTY_NO_CREATE: "true"
+        run: |
+          sh scripts/ci/run-rest-suites.sh "$SUITES"
+      - name: Rest tests keep the build plan (root ADR 0481 A3)
+        if: matrix.tests && (matrix.suites == 'rest-a' || matrix.suites == 'rest-b') && !cancelled()
+        run: sh scripts/ci/same-plan.sh "$RUNNER_TEMP/plan.json" dist-newstyle/cache/plan.json
       # tests-rest-a builds peg-hs and runs golem-parser-test (root ADR 0457)
       - name: Generated parser matches the grammar
         if: matrix.tests && matrix.suites == 'rest-a'

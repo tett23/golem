@@ -408,8 +408,18 @@ if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|implemented_by|exte
   exit 1
 fi
 sh "$root/experiments/pagination-proof/check-causal-call-shape.sh"
-LEAN_PATH="$tmp" "$lean" "$causalCalls"
+LEAN_PATH="$tmp" "$lean" -o "$tmp/CausalCalls.olean" "$causalCalls"
 echo "causal paragraph entries, including failed attempts, preserve wrap readiness"
+
+# Follow every mutual stanza/accept recursion and the concrete model holds.
+causalStanzaEntries=$root/experiments/pagination-proof/CausalStanzaEntries.lean
+if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|implemented_by|extern|native_decide)([^A-Za-z_]|$)' "$causalStanzaEntries"; then
+  echo "unproved or unchecked Lean declaration in $causalStanzaEntries" >&2
+  exit 1
+fi
+sh "$root/experiments/pagination-proof/check-causal-stanza-shape.sh"
+LEAN_PATH="$tmp" "$lean" "$causalStanzaEntries"
+echo "root ADR 0352 I3: every modeled stanza and accept entry preserves wrap readiness"
 
 
 # The values of the evaluation of Golem.Layout.KnuthPlass (badness,

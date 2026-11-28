@@ -41,7 +41,9 @@ try {
     line.startsWith('unsupported ReservedBracketBody choice ') &&
     line.endsWith(String.raw`'%%' (!'%%' ![\n] .)* '%%'`)),
   'root ADR 0351 I1, I2: the reserved bracket comment branch needs an arbitrary-input proof');
-  assert.ok(baselineUnsupported <= 23, 'the full grammar model must not regress in unsupported choices');
+  assert.doesNotMatch(strict.stderr, /^unsupported (BulletList|OrderedList) choice /m,
+    'root ADR 0351 I1, I2: list wrappers need arbitrary-input recognition composition proofs');
+  assert.ok(baselineUnsupported <= 21, 'the full grammar model must not regress in unsupported choices');
   assert.equal(strict.status === 0, baselineUnsupported === 0,
     'strict generation succeeds exactly when every choice is supported');
   for (const line of strict.stderr.split('\n').filter(line => line.startsWith('unsupported '))) {
@@ -199,6 +201,12 @@ try {
     ['```hs key=x\nbody\n```\n', 'CodeBlock', { CodeBlock: 1, CodeLine: 1 }],
     ['- x\n  ```\n  body\n  ```\n', 'BulletList', { CodeBlock: 1, CodeLine: 1 }],
   ];
+  const listParserCases = [
+    ['- a\n', 'BulletList', { BulletList: 1, ListItem: 1 }],
+    ['- 鰍\n\n- 𠮷\n- กำ\n', 'BulletList', { BulletList: 1, ListItem: 3 }],
+    ['+ a\n', 'OrderedList', { OrderedList: 1, ListItem: 1 }],
+    ['+ 鰍\n\n+ 𠮷\n+ กำ\n', 'OrderedList', { OrderedList: 1, ListItem: 3 }],
+  ];
   const parserCases = [
     ['', null, 0],
     ['# Title\n', 'Heading', 0],
@@ -255,6 +263,7 @@ try {
     ...['1...2', '1+2...3*4', '-1...2', '1...-2', '(1+2)...(3+4)', '1...2**3',
       '1 < 2', '(1...2) == (1...2)', '1.5...2e3', '1 ... %%a%% 2'].map(expr =>
       [`[= ${expr}]\n`, 'Paragraph', 0, `RangeExpr@3..${3 + expr.length}\n`]),
+    ...listParserCases.map(([body, node, counts]) => [body, node, 0, undefined, undefined, counts]),
     ...blockLeafParserCases.map(([body, node, counts]) => [body, node, 0, undefined, undefined, counts]),
     ...argumentParserCases.map(([body, counts]) => [body + '\n', body.startsWith('- ') ? 'BulletList' : 'Paragraph', 0,
       `InlineCommand@${body.startsWith('- ') ? 2 : 0}..${body.length}\n`, undefined, counts])
@@ -379,6 +388,46 @@ try {
     assert.notEqual(rejected.status, 0);
     assert.match(rejected.stderr, new RegExp(`^unsupported ${rule} choice `, 'm'),
       `root ADR 0351 I1/I2: ${name} must invalidate the block composition proof`);
+  }
+  const listMutations = [];
+  for (const [rule, ordered] of [['BulletList', '0'], ['OrderedList', '1']]) {
+    const canonical = `${rule} <- ListItem(ind, ${ordered}) (BlankLines? ListItem(ind, ${ordered}))*`;
+    listMutations.push(
+      [`${rule}NeedsMore`, canonical, canonical.replace(')*', ')+'), rule],
+      [`${rule}BlankRequired`, canonical, canonical.replace('BlankLines?', 'BlankLines'), rule],
+      [`${rule}FirstKind`, canonical, canonical.replace(`ListItem(ind, ${ordered})`, `ListItem(ind, ${ordered === '0' ? '1' : '0'})`), rule],
+      [`${rule}RepeatedKind`, canonical, canonical.replace(`(BlankLines? ListItem(ind, ${ordered}))`, `(BlankLines? ListItem(ind, ${ordered === '0' ? '1' : '0'}))`), rule],
+    );
+  }
+  for (const [name, before, after, rule] of listMutations) {
+    assert.ok(original.includes(before));
+    assert.notEqual(before, after);
+    const changedPath = join(work, name + '.hpeg');
+    writeFileSync(changedPath, original.replace(before, after));
+    const rejected = spawnSync(process.execPath, [join(here, 'generate.mjs'), changedPath, generated], { encoding: 'utf8' });
+    assert.notEqual(rejected.status, 0);
+    assert.match(rejected.stderr, new RegExp(`^unsupported ${rule} choice `, 'm'),
+      `root ADR 0351 I1, I2: ${name} must return the actual list wrapper to deferred choices`);
+  }
+  const nativeListMutations = [
+    ['BulletListNeedsMore', '- a\n', false],
+    ['OrderedListNeedsMore', '+ a\n', false],
+    ['BulletListBlankRequired', '- a\n- b\n', true, { BulletList: 2 }],
+    ['OrderedListBlankRequired', '+ a\n+ b\n', true, { OrderedList: 2 }],
+  ];
+  for (const [name, sample, accepted, counts] of nativeListMutations) {
+    const [, before, after] = listMutations.find(([mutationName]) => mutationName === name);
+    const changedPath = join(work, 'Native' + name + '.hpeg');
+    const samplePath = join(work, 'native-list.gm');
+    writeFileSync(changedPath, original.replace(before, after));
+    writeFileSync(samplePath, sample);
+    const parsed = spawnSync(process.env.PEG_HS ?? 'peg-hs', ['parse', '--format', 'cst', changedPath, samplePath],
+      { encoding: 'utf8', env: { ...process.env, XDG_CACHE_HOME: join(work, 'cache') } });
+    assert.equal(parsed.status === 0, accepted, `root ADR 0351 I1, I2: ${name}: ${parsed.stderr}`);
+    if (!accepted) assert.match(parsed.stderr, /^\d+:\d+: expected /m);
+    for (const [kind, count] of Object.entries(counts ?? {})) {
+      assert.equal([...parsed.stdout.matchAll(new RegExp(`^ +${kind}@`, 'gm'))].length, count);
+    }
   }
   const nativeBlockLeafMutations = [
     ['ParaBlockGuard', '#bad\n', true, { Paragraph: 1, Heading: 0 }],
@@ -1168,6 +1217,21 @@ try {
   copyFileSync(join(here, 'PlusComposition.lean'), plusCompositionSource);
   const plusCompositionProof = spawnSync(lean, ['-o', join(work, 'PlusComposition.olean'), plusCompositionSource], growthEnv);
   assert.equal(plusCompositionProof.status, 0, plusCompositionProof.stdout + plusCompositionProof.stderr);
+  const listCompositionSource = join(work, 'ListCompositionTotal.lean');
+  copyFileSync(join(here, 'ListCompositionTotal.lean'), listCompositionSource);
+  const listCompositionProof = spawnSync(lean, [listCompositionSource], growthEnv);
+  assert.equal(listCompositionProof.status, 0, listCompositionProof.stdout + listCompositionProof.stderr);
+  assert.doesNotMatch(listCompositionProof.stdout + listCompositionProof.stderr, /sorryAx|declaration uses 'sorry'/);
+  const listModelMutation = model.replace(/(name := "BulletList"[^\n]*?\.ref "ListItem" \["ind", )"0"/, '$1"1"');
+  assert.notEqual(listModelMutation, model);
+  writeFileSync(generated, listModelMutation);
+  execFileSync(lean, ['-o', join(work, 'Generated.olean'), generated], growthEnv);
+  const listRefuted = spawnSync(lean, [listCompositionSource], growthEnv);
+  assert.notEqual(listRefuted.status, 0);
+  assert.match(listRefuted.stdout + listRefuted.stderr, /type mismatch|unsolved goals/,
+    'root ADR 0351 I1, I2: actual generated list-kind mutation must refute the theorem, not imports');
+  writeFileSync(generated, model);
+  execFileSync(lean, ['-o', join(work, 'Generated.olean'), generated], growthEnv);
   const blockCompositionProof = spawnSync(lean, [join(here, 'BlockComposition.lean')], growthEnv);
   assert.equal(blockCompositionProof.status, 0, blockCompositionProof.stdout + blockCompositionProof.stderr);
   const indentedLabel = spawnSync(lean, [join(here, 'IndentedLabelTotal.lean')], growthEnv);
@@ -1189,7 +1253,7 @@ try {
   assert.match(refuted.stdout + refuted.stderr, /unsolved goals/, 'the mutation must refute the theorem, not fail to load a file');
   const unsupportedChoices = [...strict.stderr.matchAll(/^unsupported [A-Za-z][A-Za-z0-9]* choice /gm)].length;
   assert.equal(unsupportedChoices, baselineUnsupported, 'strict report count must remain stable through mutation tests');
-  console.log(`grammar: source and AST rules ${emittedRuleCount}/${astRuleCount}/${sourceRuleCount}, unsupported choices ${unsupportedChoices}, positive proof modules 30, negative mutations 120, implementation parser cases ${parserCases.length}, syntax-only parser cases 1, native reserved-body entry cases ${nativeBodySamples.length}, native parser counterexamples ${3 + nativeLexicalMutations.length + nativeCompositionMutations.length + nativeExpressionMutations.length + nativeArgumentMutations.length + nativeBlockLeafMutations.length}, rejected parser cases ${rejectedParserCases.length + badDelimiterCases.length + 1 + lexicalRejectedCases.length + compositionRejectedCases.length + expressionRejectedCases.length + argumentRejectedCases.length + blockLeafRejectedCases.length}`);
+  console.log(`grammar: source and AST rules ${emittedRuleCount}/${astRuleCount}/${sourceRuleCount}, unsupported choices ${unsupportedChoices}, positive proof modules 31, negative mutations 129, implementation parser cases ${parserCases.length}, syntax-only parser cases 1, native reserved-body entry cases ${nativeBodySamples.length}, native parser counterexamples ${3 + nativeListMutations.length + nativeLexicalMutations.length + nativeCompositionMutations.length + nativeExpressionMutations.length + nativeArgumentMutations.length + nativeBlockLeafMutations.length}, rejected parser cases ${rejectedParserCases.length + badDelimiterCases.length + 1 + lexicalRejectedCases.length + compositionRejectedCases.length + expressionRejectedCases.length + argumentRejectedCases.length + blockLeafRejectedCases.length}`);
 } finally {
   rmSync(work, { recursive: true, force: true });
 }
