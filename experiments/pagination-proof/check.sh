@@ -562,6 +562,17 @@ LEAN_PATH="$tmp" "$lean" -o "$tmp/FigureJobValues.olean" "$figureJobValues"
 LEAN_PATH="$tmp" "$lean" "$root/experiments/pagination-proof/FigureJobValuesBoundary.lean"
 echo "root ADR 0352 I5: job state initialization receives the selected original figure value"
 
+# Derive prior-owner and cache-typing premises for the classified unit prefix.
+classifiedPrefix=$root/experiments/pagination-proof/ClassifiedPrefix.lean
+if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|implemented_by|extern|native_decide)([^A-Za-z_]|$)' "$classifiedPrefix"; then
+  echo "unproved or unchecked Lean declaration in $classifiedPrefix" >&2
+  exit 1
+fi
+LEAN_PATH="$tmp" "$lean" -o "$tmp/ClassifiedPrefix.olean" "$classifiedPrefix"
+LEAN_PATH="$tmp" "$lean" "$root/experiments/pagination-proof/ClassifiedPrefixBoundary.lean"
+echo "root ADR 0352 I5: classified prefixes derive prior owners and reached cache typing before a target update"
+
+
 
 
 

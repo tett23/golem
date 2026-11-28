@@ -1941,3 +1941,10 @@ sh experiments/pagination-proof/check-alloy-diff.sh 97
 `FigureJobValues.hs` は異なる値を持つ有限な表を、`FigureJobValuesFonts.hs` は実フォントの図版の実際のソース位置を job の状態へ渡して比較する。
 配置の全フィールドと IO、Map の実装との一般的な対応は残る。
 根拠と残件は [図版値と job 状態の依存関係](../../docs/research/0352-job-values-dependencies.md) にまとめた。
+
+`ClassifiedPrefix.lean` は、表を先に扱い、残りの単位は既存の skip と脇の本文の存在から分類する。
+固定の採番増分か回り込み図版の増分を選び、対象より前の添字の列から、先行する所有者の範囲を導く。
+到達した payload cache の型も使い、対象の本文の変更で先行する採番増分が変わらないことを示す。
+`ClassifiedPrefix.hs` は、表、コード、改段の制御、回り込みの制御を含む実フォントの入力で比較する。
+固定件数の計算と本体の全分岐との一般的な対応は残る。
+根拠と残件は [単位の分類と採番 prefix の依存関係](../../docs/research/0352-classified-prefix-dependencies.md) にまとめた。
