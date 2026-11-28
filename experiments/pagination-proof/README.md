@@ -1787,6 +1787,8 @@ golem-layout は区切りを 1 行以上にする（`Paginate.hs:155`）。
    実装の十三ジョブの比較と、Map との一般の接続が残ることを [再利用を含むジョブの順序の依存調査](../../docs/research/0352-beside-reuse-order-dependencies.md) に記録する。
    `PriorUnitCounts.lean` は、先行する図版の区切りと値の更新から、寄与の射影の外側の採番量を導き、二段階の先頭 ID の保存へ接続する。
    実装の十二件の再採番の比較と、単位の全分岐との一般の接続が残ることを [先行する単位の採番量の依存調査](../../docs/research/0352-prior-unit-counts-dependencies.md) に記録する。
+   `MixedRoundOrder.lean` は、前後の所有者の条件から全ジョブの連結の狭義順序と重複のなさを導き、任意のモデルのラウンド列へ渡す。
+   実装の六回の系列との比較と、本体の Map との一般の接続が残ることを [全ジョブのキーの順序の依存調査](../../docs/research/0352-mixed-round-order-dependencies.md) に記録する。
 
 これらを終えるまで Alloy の定期実行と既存の参照を維持する。
 終えたときは、Alloy の定期実行を終え、規則やモデルを変えたときにローカルの Lean で検証し直す手順を CONTRIBUTING に書く。
@@ -1850,6 +1852,8 @@ sh experiments/pagination-proof/check.sh
 `BesideReuseOrderBoundary.lean` は `BesideReuseOrder.olean` を読み込み、再利用の組み合わせの具体例を検査する。
 `PriorUnitCounts.lean` は `BesideReuseOrder.olean` と `SelectedCountPrefix.olean` を読み込み、先行する単位の寄与と二段階の先頭 ID の保存を検査する。
 `PriorUnitCountsBoundary.lean` は `PriorUnitCounts.olean` を読み込み、寄与の更新と先頭 ID の具体例を検査する。
+`MixedRoundOrder.lean` は `BesideReuseOrder.olean` と `BesideReuseRounds.olean` を読み込み、全ジョブのキーとラウンド列の順序を検査する。
+`MixedRoundOrderBoundary.lean` は `MixedRoundOrder.olean` を読み込み、所有者の重複と逆順の対照を含む具体例を検査する。
 `check-parts-retry-shape.sh` はその入口の述語と `parts` の分岐と引数を比べる。
 `RetryPrefixChecks.hs` はネイティブの試し置きの採用数と、同じ再試行の上限を検査する。
 `check-built-first-ids.sh` は、依存する package 環境を渡したローカルの `RUNGHC` で、export list だけを開いた一時ソースから本体の採番表を観測する。

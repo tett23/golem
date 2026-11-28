@@ -480,6 +480,16 @@ LEAN_PATH="$tmp" "$lean" -o "$tmp/PriorUnitCounts.olean" "$priorUnitCounts"
 LEAN_PATH="$tmp" "$lean" "$root/experiments/pagination-proof/PriorUnitCountsBoundary.lean"
 echo "root ADR 0352 I5: selected target updates preserve modeled prior-unit contributions and two-pass first IDs"
 
+# Carry per-job source order into complete rounds and their retained caches.
+mixedRoundOrder=$root/experiments/pagination-proof/MixedRoundOrder.lean
+if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|implemented_by|extern|native_decide)([^A-Za-z_]|$)' "$mixedRoundOrder"; then
+  echo "unproved or unchecked Lean declaration in $mixedRoundOrder" >&2
+  exit 1
+fi
+LEAN_PATH="$tmp" "$lean" -o "$tmp/MixedRoundOrder.olean" "$mixedRoundOrder"
+LEAN_PATH="$tmp" "$lean" "$root/experiments/pagination-proof/MixedRoundOrderBoundary.lean"
+echo "root ADR 0352 I5: legal mixed-job rounds retain globally ordered and unique keys"
+
 
 
 
