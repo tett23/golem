@@ -431,6 +431,15 @@ fi
 LEAN_PATH="$tmp" "$lean" -o "$tmp/BesideProducer.olean" "$besideProducer"
 echo "root ADR 0352 I5: fresh modeled producers exclude figure keys and discharge the figure-barrier guards"
 
+# Each fresh job stays after its owner and before a later figure.
+besideProducerRange=$root/experiments/pagination-proof/BesideProducerRange.lean
+if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|implemented_by|extern|native_decide)([^A-Za-z_]|$)' "$besideProducerRange"; then
+  echo "unproved or unchecked Lean declaration in $besideProducerRange" >&2
+  exit 1
+fi
+LEAN_PATH="$tmp" "$lean" "$besideProducerRange"
+echo "root ADR 0352 I5: fresh jobs preserve source-key order and stay separated by later figures"
+
 
 
 

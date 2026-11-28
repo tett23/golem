@@ -74,6 +74,9 @@ main = withSystemTempDirectory "golem-built-firsts" $ \tmp -> do
             unless
               (all (\key -> lookup key positions == Just P) keys)
               (error "fresh producer emitted a key that is not an eligible paragraph")
+            unless
+              (all (> owner) keys && and (zipWith (<) keys (drop 1 keys)) && all (\other -> other <= owner || all (< other) keys) owners)
+              (error ("fresh producer crossed its source-key interval: " <> show (owner, owners, keys)))
             producerExample tags owner keys
             pure paragraphs
           let allKeys = map fst (concat results)
@@ -82,8 +85,8 @@ main = withSystemTempDirectory "golem-built-firsts" $ \tmp -> do
             (allKeys == storedKeys && all (`notElem` storedKeys) owners)
             (error "fresh jobs overlap or own a figure key")
           gatherExample tags owners storedKeys
-          pure (length owners)
-        putStrLn ("-- root ADR 0352 I5: " <> show (length patterns) <> " typed unit maps; " <> show (sum totals) <> " native fresh jobs")
+          pure (length owners, length allKeys)
+        putStrLn ("-- root ADR 0352 I5: " <> show (length patterns) <> " typed unit maps; " <> show (sum (map fst totals)) <> " native fresh jobs; " <> show (sum (map snd totals)) <> " owned paragraph keys")
       _ -> error "fixture evaluation or geometry failed"
 
 data Tag = P | C | X | M | R | B deriving (Eq)
