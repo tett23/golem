@@ -2060,3 +2060,15 @@ sh experiments/pagination-proof/check-alloy-diff.sh 97
 空の表から先行する行列を fold した状態では、この条件を前提にせず導き、後続の旧表優先の union との一致に接続する。
 図版の予約 ID を含む本体の全 unit の採番をこのモデルへ写した一般証明は残る。
 公理、境界と未完範囲は [行を追加した後の番号](../../docs/research/0352-numbered-store-fresh-dependencies.md) にまとめた。
+
+[NumberedEventStore.lean](NumberedEventStore.lean) は、行を作らず ID だけを予約する操作と行の追加を組み合わせても、番号の条件、次の番号の和、順序付きの行の列の内容を保つことを示す。
+空の表からの操作列では、後続の行の追加と旧表優先の union の検索も接続する。
+`NUMBERED_EVENT_STORE_LEAN=1` の実フォント 64 例は旧表のスナップショットから操作列を再構成し、旧 955 例に 256 例を加えて 1,211 例をカーネルで確認する。
+任意の unit の実行順を操作列へ形式的に写したものではなく、全 `Built` や本文の全量と順序の実装への一般的な接続は残る。
+公理、生成された宣言と未完範囲は [予約 ID を含む採番](../../docs/research/0352-numbered-event-store-dependencies.md) に記す。
+
+[NumberedWindowStore.lean](NumberedWindowStore.lean) は、任意の検索関数の有限区間から採番操作を作り、区間内の検索が元の表と一致することを示す。
+番号の条件を満たす表や、空の表から予約と行追加の操作を重ねた表では、全検索キーで結果を保つ再構成にも接続する。
+`NUMBERED_WINDOW_STORE_LEAN=1` は旧 1,211 例に、64 スナップショットの区間と検索の 256 例を加え、全 1,467 例をカーネルで確認する。
+生成ファイルの未定義の識別子を暗黙の変数にせず、任意の unit の実行を操作列へ写す証明は未完のままにする。
+公理、境界と未完範囲は [表の区間からの再構成](../../docs/research/0352-numbered-window-store-dependencies.md) に記す。

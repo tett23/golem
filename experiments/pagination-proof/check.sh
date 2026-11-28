@@ -757,6 +757,28 @@ LEAN_PATH="$tmp" "$lean" -o "$tmp/NumberedStoreFresh.olean" "$numberedStoreFresh
 LEAN_PATH="$tmp" "$lean" "$root/experiments/pagination-proof/NumberedStoreFreshBoundary.lean"
 echo "root ADR 0352 I5: every stored row ID is below the next counter after an empty-store fold; initial union agreement is derived"
 
+# Include IDs reserved for non-row objects in the modeled numbering events.
+numberedEventStore=$root/experiments/pagination-proof/NumberedEventStore.lean
+if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|implemented_by|extern|native_decide)([^A-Za-z_]|$)' "$numberedEventStore"; then
+  echo "unproved or unchecked Lean declaration in $numberedEventStore" >&2
+  exit 1
+fi
+LEAN_PATH="$tmp" "$lean" -o "$tmp/NumberedEventStore.olean" "$numberedEventStore"
+LEAN_PATH="$tmp" "$lean" "$root/experiments/pagination-proof/NumberedEventStoreBoundary.lean"
+echo "root ADR 0352 I5: reserved-ID events preserve row freshness, payload order, counter sums, and initial union agreement"
+
+# Reconstruct a bounded lookup window without assuming snapshot equality.
+numberedWindowStore=$root/experiments/pagination-proof/NumberedWindowStore.lean
+if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|implemented_by|extern|native_decide)([^A-Za-z_]|$)' "$numberedWindowStore"; then
+  echo "unproved or unchecked Lean declaration in $numberedWindowStore" >&2
+  exit 1
+fi
+LEAN_PATH="$tmp" "$lean" -o "$tmp/NumberedWindowStore.olean" "$numberedWindowStore"
+LEAN_PATH="$tmp" "$lean" "$root/experiments/pagination-proof/NumberedWindowStoreBoundary.lean"
+echo "root ADR 0352 I5: lookup windows retain arbitrary table values, and reached fresh event snapshots are reconstructed"
+
+
+
 
 
 
