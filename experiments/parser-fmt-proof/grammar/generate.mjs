@@ -671,6 +671,17 @@ if (!fragment && ast) {
       if (describeItems(rule.alts[0].items) ===
           `ListItem(ind, ${ordered}) (BlankLines? ListItem(ind, ${ordered}))*`) continue;
     }
+    // DefinitionCompositionTotal checks these complete wrappers against the
+    // generated AST for arbitrary input/indent/fuel, including child failures.
+    const definitionShapes = new Map([
+      ['DefList', "DefGroup(ind) (BlankLines? &(Ind(ind) '=' [ \\t]) DefGroup(ind))*"],
+      ['DefGroup', 'DefTerm(ind)+ DefBody(ind) (BlankLines? DefNew(ind) DefBody(ind))*'],
+      ['DefBody', '&(Ind(col ind + 2) ![ \\t] !BlankLine .) Block(col ind + 2) (BlankLines? &(Ind(col ind + 2) ![ \\t] !BlankLine .) Block(col ind + 2))*'],
+    ]);
+    if (definitionShapes.has(rule.name) && rule.params.length === 1 && rule.params[0] === 'ind' &&
+        rule.templateParams.length === 0 && rule.alts.length === 1 &&
+        rule.alts[0].action?.trim() === '()' && rule.alts[0].constructor === null &&
+        describeItems(rule.alts[0].items) === definitionShapes.get(rule.name)) continue;
     if (rule.name === 'Ind' && indentFullyProved) continue;
     if (rule.name === 'StringLit' && stringSupported && alternatives[0] === escape &&
         rule.params.length === 0 && rule.templateParams.length === 0 && rule.alts.length === 1 &&
