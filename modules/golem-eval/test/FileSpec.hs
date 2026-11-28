@@ -247,6 +247,8 @@ stripSpans = concatMap go
       LineBreak _ -> ["<br>"]
       Note _ n _ bs -> ("<note " <> tshow n <> ">") : stripSpans (concat (noteParagraphs bs))
       Ruby _ _ segs -> ["<ruby " <> tshow (length segs) <> ">"]
+      Tcy _ (TcyLiteral t) -> ["<tcy literal " <> t <> ">"]
+      Tcy _ (TcyNumber q) -> ["<tcy number " <> renderIRNumber q <> ">"]
       Number _ n st -> ["<number " <> renderIRNumber n <> " " <> tshow st <> ">"]
       Ref _ k l -> ["<ref " <> tshow k <> " " <> l <> ">"]
       Deferred _ _ -> ["<deferred>"]
@@ -453,7 +455,7 @@ tests =
         errs "[ruby: 東/京|とう]\n" @?= ["G02015"]
         errs "[ruby: [ruby: a|b]|c]\n" @?= ["G02016"],
       testCase "number-text" $ do
-        paraOf "[number-text 10 style=tcy]\n" @?= ["<number 10 Just StyleTcy>"]
+        paraOf "[number-text 10 style=tcy]\n" @?= ["<tcy number 10>"]
         errs "[number-text 1.5]\n" @?= []
         errs "[number-text 1 style=roman]\n" @?= ["G02019"],
       testCase "references and citations" $ do
@@ -963,7 +965,7 @@ spreadTests =
     "spreading *[式] and **[式] into a built-in command (docs/adr ADR 0112)"
     [ testCase "inline commands take spread positional and keyword arguments" $ do
         paraOf "[number-text *[[12]]]\n" @?= ["<number 12 Nothing>"]
-        paraOf "[number-text 12 **[{style: \"tcy\"}]]\n" @?= ["<number 12 Just StyleTcy>"]
+        paraOf "[number-text 12 **[{style: \"tcy\"}]]\n" @?= ["<tcy number 12>"]
         paraOf "[number-text *[[12]] **[{style: \"kanji\"}]]\n" @?= ["<number 12 Just StyleKanji>"]
         errs "[kenten **[{shape: \"dot\"}]: x]\n" @?= []
         errs "[kenten **[{shape: \"nope\"}]: x]\n" @?= ["G02039"],

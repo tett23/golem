@@ -67,7 +67,7 @@ inline-no-ruby =
   / [5, span, shape: tstr / null, inlines]         ; kenten
   / [6, span, swatch: tstr, inlines]               ; color
   / [7, span, style: tstr, inlines]                ; character style
-  / [8, span, tstr]                                ; tate-chu-yoko
+  / [8, span, tcy-content]                                ; tate-chu-yoko
   / [27, span, tstr]                               ; warichu (root ADR 0380)
   / [28, span, tstr]                               ; upright (root ADR 0380)
   / [9, span, rational, number-style / null]          ; number
@@ -100,7 +100,7 @@ locator-value = [0, uint64] / [1, from: uint64, to: uint64] / [2, tstr .size (1.
 ; another entry: automatic, see or see also (docs/adr/0265)
 index-kind = [0] / [1] / [2] / [3, see: 0..2, target: [1*2 tstr]]
 
-number-style = 0..2                                ; kanji, kanji-digits, tcy
+number-style = 0..1                                ; kanji, kanji-digits
 ref-kind = 0..2                                    ; number, title, page
 
 ; a rational in lowest terms, the denominator 1 or more (RFC 8949, the
@@ -176,3 +176,6 @@ description = {
 ; a name the host does not have is G06105 (docs/adr/0121)
 context-name = "vertical-numbers" / "writing-mode"
 channel-decl = [name: tstr, order: 0 / 1, locators: bool] ; order: document, reading
+
+; root ADR 0479: literal spelling or a normalized exact number
+tcy-content = [0, tstr] / [1, rational]

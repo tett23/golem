@@ -26,11 +26,16 @@ normalDocument d = d {docBlocks = map block (docBlocks d)}
     block b = b {blockSpan = zero, blockBody = case blockBody b of Paragraph st xs -> Paragraph st (map inline xs); other -> other}
     inline = \case
       Number _ n st -> Number zero n st
+      Tcy _ content -> Tcy zero content
       Text _ t -> Text zero t
       other -> other
 
-observed :: EvalContext -> Text -> (Document, [(DiagnosticCode, Severity)])
-observed ctx source = let (ds, result) = evalSource ctx source in (normalDocument (erDocument result), [(diagCode d, diagSeverity d) | d <- ds])
+observed :: EvalContext -> Text -> (Document, [Diagnostic])
+observed ctx source = let (ds, result) = evalSource ctx source in (normalDocument (erDocument result), map normalizeDiagnostic ds)
+  where
+    zero = mkSpan (FileId 0) 0 0
+    locations = map (\(_, text) -> (zero, text))
+    normalizeDiagnostic d = d {diagSpan = zero, diagRelated = locations (diagRelated d), diagFixes = [f {fixEdits = locations (fixEdits f)} | f <- diagFixes d]}
 
 pair :: EvalContext -> Text -> Text -> Assertion
 pair ctx n style = observed ctx ("##" <> n <> ":" <> style <> "##\n") @?= observed ctx ("[number-text " <> n <> " style=" <> style <> "]\n")
@@ -39,7 +44,8 @@ tests :: TestTree
 tests =
   testGroup
     "golem-parser ADR 0014"
-    [ rationalNumberTests,
+    [ unifiedTcyTests,
+      rationalNumberTests,
       testGroup
         "explicit number shorthand styles"
         [ testCase ("golem-parser ADR 0014 I2: complete Number IR in " <> T.unpack direction <> " for " <> T.unpack style) $ do
@@ -48,7 +54,8 @@ tests =
             mapM_ (\n -> pair ctx n style) ["0", "1", "17", "2027", "9223372036854775807"]
             let (_, ds) = evalSource ctx ("##17:" <> style <> "##\n")
             case resultBodies ds of
-              [Paragraph Nothing [Number _ 17 (Just _)]] -> pure ()
+              [Paragraph Nothing [Number _ 17 (Just _)]] | style /= "tcy" -> pure ()
+              [Paragraph Nothing [Tcy _ (TcyNumber 17)]] | style == "tcy" -> pure ()
               other -> assertFailure (show other)
         | direction <- ["horizontal", "vertical"],
           style <- ["tcy", "kanji", "kanji-digits"]
@@ -116,6 +123,7 @@ rationalNumberTests =
             map diagCodeText ds @?= []
             case resultBodies r of
               [Paragraph Nothing [Number _ n _]] -> toRational n @?= expected
+              [Paragraph Nothing [Tcy _ (TcyNumber n)]] -> n @?= expected
               other -> assertFailure (show other)
         | (source, expected) <- [("##0.1##", 1 % 10), ("##0.10:tcy##", 1 % 10), ("##1.0##", 1), ("##0.00##", 0), ("[number-text -0.25]", (-1) % 4), ("[number-text [= 1/3]]", 1 % 3), ("[number-text 1e-1]", 1 % 10), ("[number-text [= 1/1]]", 1), ("[number-text [= 1/9223372036854775807]]", 1 % 9223372036854775807), ("[number-text [= 2/(2 ** 64 - 2)]]", 1 % 9223372036854775807), ("[number-text -9223372036854775808]", -9223372036854775808), ("[number-text 9223372036854775807]", 9223372036854775807)]
         ],
@@ -135,5 +143,22 @@ rationalNumberTests =
         let ctx = baseCtx {ctxCharStyles = Set.singleton "code"}
         case resultBodies (evalResult ctx "[code: ##0.10:tcy##]\n") of
           [Paragraph Nothing [CharStyle _ "code" [Text _ t]]] -> t @?= "##0.10:tcy##"
+          other -> assertFailure (show other)
+    ]
+
+unifiedTcyTests :: TestTree
+unifiedTcyTests =
+  testGroup
+    "root ADR 0479"
+    [ testCase "root ADR 0479 I3: explicit numeric TCY uses the common Tcy node" $
+        mapM_
+          ( \source -> case resultBodies (evalResult baseCtx (source <> "\n")) of
+              [Paragraph Nothing [Tcy {}]] -> pure ()
+              other -> assertFailure (show other)
+          )
+          ["[number-text 1 style=tcy]", "##1:tcy##", "##0.10:tcy##"],
+      testCase "root ADR 0479 I3: an implicit number remains Number until output" $
+        case resultBodies (evalResult baseCtx "##1##\n") of
+          [Paragraph Nothing [Number _ 1 Nothing]] -> pure ()
           other -> assertFailure (show other)
     ]

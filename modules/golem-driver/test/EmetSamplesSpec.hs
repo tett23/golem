@@ -44,7 +44,7 @@ emetSamplesTests =
               blocks = blocksOf e "blocks.gm"
               filters = blocksOf e "filters.gm"
           -- 7. auto-tcy: two digits as tate-chu-yoko
-          [t | Tcy _ t <- numbers] @?= ["12"]
+          [t | Tcy _ t <- numbers] @?= [TcyLiteral "12"]
           -- 9. unit: a quarter-em aki between the value and the unit
           [a | Aki _ a <- numbers] @?= [AkiZw 0.25]
           -- 6. mono: a segment of ruby a character

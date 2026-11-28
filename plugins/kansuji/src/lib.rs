@@ -278,7 +278,7 @@ pub fn number_text(c: &CommandRequest) -> Response {
     } else {
         match rendered {
             Rendered::Text(t) => Inline::Text { span: c.span, text: t },
-            Rendered::Tcy(n) => Inline::Number { span: c.span, value: n.into(), style: Some(NumberStyle::Tcy) },
+            Rendered::Tcy(n) => Inline::Tcy { span: c.span, content: golem_plugin_sdk::TcyContent::Number(n.into()) },
         }
     };
     Response::inlines(vec![out])
@@ -405,7 +405,7 @@ mod tests {
                 .iter()
                 .map(|x| match x {
                     Inline::Text { text, .. } => text.clone(),
-                    Inline::Number { value, style: Some(NumberStyle::Tcy), .. } => format!("#{value}"),
+                    Inline::Tcy { content: golem_plugin_sdk::TcyContent::Number(value), .. } => format!("#{value}"),
                     Inline::Number { value, .. } => format!("number {value}"),
                     _ => "?".into(),
                 })

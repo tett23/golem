@@ -11,6 +11,7 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Golem.Doc.IR
 import Golem.Eval.File
+import Golem.Eval.Number (renderIRNumber)
 import Golem.Parser.SourceSettings (ParagraphSeparator (..), SourceSettings (..))
 import Golem.Project.Style (OpeningIndent (..), ParaStyleDef (..), Style (..), paraLineBreaks, paraStyle, parseStyle)
 import Golem.Syntax
@@ -42,7 +43,7 @@ shape = \case
   Text _ x -> x
   CharStyle _ n xs -> "<" <> n <> ":" <> T.concat (map shape xs) <> ">"
   Ruby _ _ segs -> "<ruby:" <> T.concat [T.concat (map shapeNoRuby (rsBase s')) | s' <- segs] <> ">"
-  Tcy _ x -> "<tcy " <> x <> ">"
+  Tcy _ x -> "<tcy " <> (case x of TcyLiteral t -> t; TcyNumber q -> renderIRNumber q) <> ">"
   LineBreak _ -> "<br>"
   IndexMark {} -> "<index>"
   _ -> "<other>"

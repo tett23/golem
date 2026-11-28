@@ -1479,6 +1479,11 @@ CMYK の値を直接書くことはできない。
 ```
 
 縦書きの中で、短い文字列を横向きのまま一字分の幅に組む。
+外側は和文の通常の一字として扱い、中身が数字でも、既定では前後の和文との間に和欧混植の四分アキを入れない（[root ADR 0479](adr/0479-treat-tate-chu-yoko-as-a-japanese-character.md)）。
+縦中横どうし、外側の括弧や句読点との間も、和文一字に隣接するときの空きと禁則を使う。
+箱の中の数字や約物を、外側の禁則や数値と単位の改行制御へ持ち出さない。
+明示したトラッキングと `[aki ...]` は保つ。
+PDF のトラッキングは箱の外側に一度だけ適用し、HTML と EPUB は既存の `letter-spacing` の扱いを保つ。
 数を縦中横にする場合は、`[number-text ...]` の `style=tcy` を使う。
 本の既定（`style.toml` の `[numbers]` の `vertical`）が `tcy` か `auto` なら、`##10##` と書いてもよい（[golem-parser ADR 0011](golem-parser/adr/0011-number-shorthand.md)）。
 

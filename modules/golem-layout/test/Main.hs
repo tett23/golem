@@ -82,6 +82,7 @@ import ScriptSpec (scriptTests)
 import SoftHyphenSpec (softHyphenTests)
 import StructureSpec (structureTests)
 import TableCaptionSpec (tableCaptionTests)
+import TcyBoundarySpec (tcyBoundaryTests)
 import Test.Tasty
 import Test.Tasty.HUnit hiding (assert)
 import Test.Tasty.Hedgehog (testProperty)
@@ -426,6 +427,7 @@ tests =
       adjustOrderTests,
       unbreakablePairsTests,
       unbreakableSpacingTests,
+      tcyBoundaryTests,
       numberUnitTests,
       linkTests,
       featuresTests,
@@ -767,8 +769,8 @@ tests =
           testCase "tate-chu-yoko and tcy numbers are one em boxes; Latin is rotated in vertical text" $ do
             let env = (defaultComposeEnv fs) {ceVertical = True}
                 boxes is = [(w, boxKind c) | Box w c <- fst (composeInlines env is)]
-            boxes [Tcy sp "12"] @?= [(fs, KindTcy)]
-            boxes [Number sp 10 (Just StyleTcy)] @?= [(fs, KindTcy)]
+            boxes [Tcy sp (TcyLiteral "12")] @?= [(fs, KindTcy)]
+            boxes [Tcy sp (TcyNumber 10)] @?= [(fs, KindTcy)]
             map snd (boxes [sp0 "ab"]) @?= [KindRotated]
             [bcText c | Box _ c <- fst (composeInlines env [Number sp 120 Nothing])] @?= ["百", "二", "十"],
           -- golem-parser ADR 0011
@@ -1472,7 +1474,7 @@ characterFeatureTests =
     testCase "tate-chu-yoko has outer tracking; a note mark gets it after each character but the last (docs/adr/0177)" $ do
       let env = (defaultComposeEnv fs) {ceLook = look0 {lkTracking = 100}}
           half = Sp (unSp fs `div` 2)
-      [(w, bcEdgeEnd c) | Box w c <- fst (composeInlines env [Tcy sp "12"])] @?= [(fs + tenth, negate tenth)]
+      [(w, bcEdgeEnd c) | Box w c <- fst (composeInlines env [Tcy sp (TcyLiteral "12")])] @?= [(fs + tenth, negate tenth)]
       [(w, bcEdgeEnd c) | Box w c <- fst (composeInlines env [Note sp 1 Nothing (noteBody sp [])])] @?= [(half + Sp (unSp half `div` 10), 0)],
     testCase "with tracking, the last box of every line ends at the measure" $ do
       let env = (defaultComposeEnv fs) {ceLook = look0 {lkTracking = 100}}
@@ -1532,7 +1534,7 @@ rubyBaseTests =
           grouped = [(boxKind c, bcText c, bcBaseLooks c) | Box _ c <- items, boxKind c `elem` [KindRuby, KindGroupRuby]]
       grouped @?= [(KindGroupRuby, "東京|ひきょうと", [heading, outer])],
     testCase "boxes other than ruby have no base looks" $ do
-      let items = fst (composeInlines env [t "前", rubyIn [([t "字"], Just "じ")], CharStyle sp "h" [t "後"], Tcy sp "12"])
+      let items = fst (composeInlines env [t "前", rubyIn [([t "字"], Just "じ")], CharStyle sp "h" [t "後"], Tcy sp (TcyLiteral "12")])
       [bcBaseLooks c | Box _ c <- items, boxKind c `notElem` [KindRuby, KindGroupRuby]] @?= [[], [], []]
   ]
   where
