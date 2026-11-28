@@ -1929,3 +1929,9 @@ sh experiments/pagination-proof/check-alloy-diff.sh 97
 `FigureTable.hs` は containers の有限な表を、`FigureTableFonts.hs` は実フォントの六つの変更を比較する。
 配置の計算や Map の列挙の全入力での対応は残る。
 根拠と残件は [現在の図版の表の依存関係](../../docs/research/0352-figure-table-dependencies.md) にまとめた。
+
+`FigureWindow.lean` は、格納した現在の図版を添字の範囲で読み戻すと、元の値と昇順を保つことを証明する。
+その列からの job の選択が添字の走査と一致することも示す。
+`FigureWindow.hs` と `FigureWindowFonts.hs` は、containers の有限な表と実フォントの六つの変更で、列挙と job と cache の出力を比較する。
+本体の Map の実装、Int の添字、配置の計算との一般的一致は残る。
+根拠と残件は [図版の表の昇順読み取りの依存関係](../../docs/research/0352-figure-window-dependencies.md) にまとめた。

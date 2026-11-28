@@ -542,6 +542,17 @@ LEAN_PATH="$tmp" "$lean" -o "$tmp/FigureTable.olean" "$figureTable"
 LEAN_PATH="$tmp" "$lean" "$root/experiments/pagination-proof/FigureTableBoundary.lean"
 echo "root ADR 0352 I5: constructed figure tables discharge the type check in the ordered job scan"
 
+# Connect sorted window enumeration and row-based job selection to figure storage.
+figureWindow=$root/experiments/pagination-proof/FigureWindow.lean
+if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|implemented_by|extern|native_decide)([^A-Za-z_]|$)' "$figureWindow"; then
+  echo "unproved or unchecked Lean declaration in $figureWindow" >&2
+  exit 1
+fi
+LEAN_PATH="$tmp" "$lean" -o "$tmp/FigureWindow.olean" "$figureWindow"
+LEAN_PATH="$tmp" "$lean" "$root/experiments/pagination-proof/FigureWindowBoundary.lean"
+echo "root ADR 0352 I5: sorted figure-table enumeration preserves values and agrees with row-based job selection"
+
+
 
 
 
