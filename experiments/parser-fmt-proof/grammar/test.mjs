@@ -59,7 +59,9 @@ try {
     'root ADR 0351 I1, I2: inert captures in rows and command alternatives require arbitrary-input composition proofs');
   assert.doesNotMatch(strict.stderr, /^unsupported (Table|TableBodyRow) choice /m,
     'root ADR 0351 I1, I2: table headers, captured widths and row guards require arbitrary-input composition proofs');
-  assert.ok(baselineUnsupported <= 1, 'the full grammar model must not regress in unsupported choices');
+  assert.doesNotMatch(strict.stderr, /^unsupported BlockGroup choice /m,
+    'root ADR 0351 I1, I2: command groups require captured Boolean values and the last-command guard');
+  assert.ok(baselineUnsupported === 0, 'the full grammar model must not regress in unsupported choices');
   assert.equal(strict.status === 0, baselineUnsupported === 0,
     'strict generation succeeds exactly when every choice is supported');
   for (const line of strict.stderr.split('\n').filter(line => line.startsWith('unsupported '))) {
@@ -1207,6 +1209,46 @@ try {
     const mutation = spawnSync(process.execPath, [join(here, 'generate.mjs'), grammar, generated], { encoding: 'utf8' });
     assert.match(mutation.stderr, /^unsupported BlockCommand choice /m);
   }
+  const groupEntryGrammar = original.replace('%syntax\n', '%syntax\n%entry GroupZeroProbe\n%entry GroupTwoProbe\n') +
+    '\nGroupZeroProbe :: ()\nGroupZeroProbe <- BlockGroup(0) { () }\nGroupTwoProbe :: ()\nGroupTwoProbe <- BlockGroup(2) { () }\n';
+  const groupEntryPath = join(work, 'GroupEntry.hpeg');
+  writeFileSync(groupEntryPath, groupEntryGrammar);
+  const groupCases = [
+    ['@set scale = 12\none\n', 0, true, ''],
+    ['@style body align=center\n  one\n', 0, true, ''],
+    ['@style body align=center\n  one\ntwo\n', 0, false, 'two\n'],
+    ['@style body align=center\n@style body align=center\n:::  \none\n:::\n', 0, true, ''],
+    ['@set scale = 12\n@style body align=center\none\n', 0, true, ''],
+    ['  @style body align=center\n    鰍𠮷\n', 2, true, ''],
+    ['', 0, false, null], ['one\n', 0, false, null],
+  ];
+  for (const [sample, ind, accepted] of groupCases) {
+    const input = join(work, 'group-entry.gm');
+    writeFileSync(input, sample);
+    const parsed = spawnSync(process.env.PEG_HS ?? 'peg-hs', ['parse', '--entry', ind === 2 ? 'GroupTwoProbe' : 'GroupZeroProbe',
+      '--format', 'ast', groupEntryPath, input], { encoding: 'utf8', env: { ...process.env, XDG_CACHE_HOME: join(work, 'cache') } });
+    assert.equal(parsed.status === 0, accepted, sample + parsed.stderr);
+    if (accepted) assert.equal(parsed.stdout.trim(), '()');
+    else assert.match(parsed.stderr + parsed.stdout, /^\d+:\d+: expected/m);
+  }
+  const groupProduction = 'cs:BlockCommand(ind)+ (&{ not (or (take 1 (reverse cs))) } GroupBody(ind))?';
+  const groupGrammarMutations = [
+    ['cs:BlockCommand(ind)+', 'cs:BlockCommand(ind)*'],
+    ['cs:BlockCommand(ind)+', 'cs:BlockCommand(0)+'],
+    ['not (or (take 1 (reverse cs)))', 'True'],
+    ['not (or (take 1 (reverse cs)))', 'or (take 1 (reverse cs))'],
+    ['GroupBody(ind)', 'GroupBody(col ind + 1)'],
+    ['))?', '))+'],
+  ];
+  for (const [before, after] of groupGrammarMutations) {
+    const changed = original.replace(groupProduction, groupProduction.replace(before, after));
+    assert.notEqual(changed, original);
+    const input = join(work, 'ChangedGroup.hpeg');
+    writeFileSync(input, changed);
+    const rejected = spawnSync(process.execPath, [join(here, 'generate.mjs'), input, generated], { encoding: 'utf8' });
+    assert.match(rejected.stderr, /^unsupported BlockGroup choice /m);
+  }
+
   const tableCompositionEntry = original.replace('%syntax\n', '%syntax\n%entry TableZeroProbe\n%entry BodyOneProbe\n%entry BodyTwoProbe\n') +
     '\nTableZeroProbe :: ()\nTableZeroProbe <- Table(0) { () }\nBodyOneProbe :: ()\nBodyOneProbe <- TableBodyRow(0,1) { () }\nBodyTwoProbe :: ()\nBodyTwoProbe <- TableBodyRow(0,2) { () }\n';
   const tableCompositionPath = join(work, 'TableCompositionEntry.hpeg');
@@ -2103,6 +2145,68 @@ open PegModel
   const tableFixtureCheck = spawnSync(lean, [tableFixtureSource], growthEnv);
   assert.equal(tableFixtureCheck.status, 0, tableFixtureCheck.stdout + tableFixtureCheck.stderr);
   assert.match(tableFixtureCheck.stdout, new RegExp(`model/native table fixtures: ${tableCompositionCases.length} outcomes matched`));
+  // The old standalone check did not write the imported module artifact.
+  compileTableCapture('CommandRecognitionTotal', true);
+  const booleanProofModules = ["StructuralCoherence","OptionalBoolTotal","ChoicePayloadTotal","PayloadSequenceTotal","CommandBoolProjectionTotal","BoolRepetitionTotal","CommandCollectionTotal","GenericBoolPayloadTotal","LastBoolGuardTotal","CoreWalkerCoherence","CorePayloadCoherence","CachedPayloadCoherence","GroupOptionalTotal","BlockGroupCompositionTotal"];
+  for (const name of booleanProofModules) {
+    copyFileSync(join(here, name + '.lean'), join(work, name + '.lean'));
+    compileTableCapture(name, true);
+  }
+  for (const [before, after] of [
+    ['.bind (some "cs") (.plus', '.bind (some "cs") (.star'],
+    ['.ref "BlockCommand" ["ind"]', '.ref "BlockCommand" ["0"]'],
+    [' not (or (take 1 (reverse cs))) ', ' True '],
+    ['.semanticPred true', '.semanticPred false'],
+    ['.ref "GroupBody" ["ind"]', '.ref "GroupBody" ["col ind + 1"]'],
+    ['.opt (.choice', '.plus (.choice'],
+  ]) {
+    const changed = model.split('\n').map(line => {
+      if (!line.includes('name := "BlockGroup"')) return line;
+      assert.ok(line.includes(before));
+      return line.replace(before, after);
+    }).join('\n');
+    writeFileSync(generated, changed);
+    execFileSync(lean, ['-o', join(work, 'Generated.olean'), generated], growthEnv);
+    refuteTableCapture('BlockGroupCompositionTotal');
+  }
+  writeFileSync(generated, model);
+  execFileSync(lean, ['-o', join(work, 'Generated.olean'), generated], growthEnv);
+  const groupMetadataControls = ['BlockGroup'];
+  for (const rule of groupMetadataControls) {
+    const changed = model.split('\n').map(line => line.includes('name := "' + rule + '"')
+      ? line.replace(/line := (\d+)/g, (_, n) => 'line := ' + (Number(n) + 17)).replaceAll(' () ', '  ()  ') : line).join('\n');
+    writeFileSync(generated, changed);
+    execFileSync(lean, ['-o', join(work, 'Generated.olean'), generated], growthEnv);
+    compileTableCapture('BlockGroupCompositionTotal');
+  }
+  writeFileSync(generated, model);
+  execFileSync(lean, ['-o', join(work, 'Generated.olean'), generated], growthEnv);
+  const wholeFixtureSource = join(work, 'WholeParserCorpus.lean');
+  const wholeFixtureItems = parserCases.map(([source]) => JSON.stringify(source)).join(',\n');
+  writeFileSync(wholeFixtureSource, 'import Generated\nopen PegModel\n#eval do\n' +
+    '  let sources : List String := [' + wholeFixtureItems + ']\n' +
+    '  for source in sources do\n' +
+    '    let got := recognizeStart Generated.pegGrammar 512 source.toList\n' +
+    '    let agrees := match got with | .ok (some []) => true | _ => false\n' +
+    '    unless agrees do throw (IO.userError s!"whole parser mismatch {repr source}: {repr got}")\n' +
+    '  IO.println s!"whole model/native parser corpus: {sources.length} accepted inputs matched"\n');
+  const wholeFixtureCheck = spawnSync(lean, [wholeFixtureSource], growthEnv);
+  assert.equal(wholeFixtureCheck.status, 0, wholeFixtureCheck.stdout + wholeFixtureCheck.stderr);
+  assert.match(wholeFixtureCheck.stdout, new RegExp('whole model/native parser corpus: ' + parserCases.length + ' accepted inputs matched'));
+  const groupFixtureSource = join(work, 'GroupNativeFixtures.lean');
+  const groupFixtureItems = groupCases.map(([source, ind, , suffix]) =>
+    '(' + JSON.stringify(source) + ', ' + ind + ', ' + (suffix === null ? 'none' : 'some ' + JSON.stringify(suffix)) + ')').join(',\n');
+  writeFileSync(groupFixtureSource, 'import BlockGroupCompositionTotal\nopen PegModel\n#eval do\n' +
+    '  let fixtures : List (String × Nat × Option String) := [' + groupFixtureItems + ']\n' +
+    '  for (source, ind, suffix) in fixtures do\n' +
+    '    let got := recognizeEnv Generated.pegGrammar [("ind",ind)] 512 (.ref "BlockGroup" ["ind"]) source.toList\n' +
+    '    let agrees := match got, suffix with\n' +
+    '      | .ok none, none => true\n      | .ok (some rest), some expected => rest == expected.toList\n      | _, _ => false\n' +
+    '    unless agrees do throw (IO.userError s!"group mismatch {repr source}: {repr got}")\n' +
+    '  IO.println s!"model/native group fixtures: {fixtures.length} outcomes matched"\n');
+  const groupFixtureCheck = spawnSync(lean, [groupFixtureSource], growthEnv);
+  assert.equal(groupFixtureCheck.status, 0, groupFixtureCheck.stdout + groupFixtureCheck.stderr);
+  assert.match(groupFixtureCheck.stdout, /model\/native group fixtures: 8 outcomes matched/);
   const blockRemainderSource = join(work, 'BlockRemainderTotal.lean');
   copyFileSync(join(here, 'BlockRemainderTotal.lean'), blockRemainderSource);
   const blockRemainderProof = spawnSync(lean, [blockRemainderSource], growthEnv);
@@ -2288,7 +2392,7 @@ open PegModel
   assert.match(refuted.stdout + refuted.stderr, /unsolved goals/, 'the mutation must refute the theorem, not fail to load a file');
   const unsupportedChoices = [...strict.stderr.matchAll(/^unsupported [A-Za-z][A-Za-z0-9]* choice /gm)].length;
   assert.equal(unsupportedChoices, baselineUnsupported, 'strict report count must remain stable through mutation tests');
-  console.log(`grammar: source and AST rules ${emittedRuleCount}/${astRuleCount}/${sourceRuleCount}, unsupported choices ${unsupportedChoices}, positive proof modules 45, negative mutations 273, metadata-only AST controls ${metadataOnlyAstControls.length + recoveryMetadataControls.length + captureMetadataControls.length + tableMetadataControls.length}, implementation parser cases ${parserCases.length}, syntax-only parser cases 1, native legacy-body syntax cases ${legacyBodyParserCases.length}, native unclosed-fence syntax cases 1, native reserved-body entry cases ${nativeBodySamples.length}, native recovery-entry cases ${recoveryFixtures.length + nestedBodyCases.length}, model/native recovery fixtures ${recoveryModelCases.length}, native table-row entries ${tableRowCases.length}, native command entries ${commandRecognitionCases.length}, model/native capture fixtures ${captureFixtureCases.length}, model/native table fixtures ${tableCompositionCases.length}, native block-sequence traces ${blockSequenceParserCases.length}, native parser counterexamples ${3 + tableCompositionMutations.length + tableRowMutations.length + commandRecognitionMutations.length + recoveryMutations.length + bodyCompositionMutations.length + nativeBlockRemainderMutations.length + nativeBodyDispatchMutations.length + nativeFileMutations.length + nativeListMutations.length + nativeDefinitionMutations.length + nativeBlockSequenceMutations.length + nativeLexicalMutations.length + nativeCompositionMutations.length + nativeExpressionMutations.length + nativeArgumentMutations.length + nativeBlockLeafMutations.length}, rejected parser cases ${tableCompositionCases.filter(([, , , , accepted]) => !accepted).length + tableRowCases.filter(([, , count]) => count === null).length + commandRecognitionCases.filter(([, , value]) => value === null).length + recoveryFixtures.filter(([, suffix]) => suffix !== "").length + bodyEntryRejectedCases.length + emptyItemRejectedCases.length + rejectedParserCases.length + badDelimiterCases.length + 1 + lexicalRejectedCases.length + compositionRejectedCases.length + expressionRejectedCases.length + argumentRejectedCases.length + blockLeafRejectedCases.length}`);
+  console.log(`grammar: source and AST rules ${emittedRuleCount}/${astRuleCount}/${sourceRuleCount}, unsupported choices ${unsupportedChoices}, positive proof modules ${45 + booleanProofModules.length}, negative mutations 285, metadata-only AST controls ${metadataOnlyAstControls.length + recoveryMetadataControls.length + captureMetadataControls.length + tableMetadataControls.length + groupMetadataControls.length}, implementation parser cases ${parserCases.length}, model/native whole-file fixtures ${parserCases.length}, syntax-only parser cases 1, native legacy-body syntax cases ${legacyBodyParserCases.length}, native unclosed-fence syntax cases 1, native reserved-body entry cases ${nativeBodySamples.length}, native recovery-entry cases ${recoveryFixtures.length + nestedBodyCases.length}, model/native recovery fixtures ${recoveryModelCases.length}, native table-row entries ${tableRowCases.length}, native command entries ${commandRecognitionCases.length}, model/native capture fixtures ${captureFixtureCases.length}, model/native table fixtures ${tableCompositionCases.length}, model/native group fixtures ${groupCases.length}, native block-sequence traces ${blockSequenceParserCases.length}, native parser counterexamples ${3 + tableCompositionMutations.length + tableRowMutations.length + commandRecognitionMutations.length + recoveryMutations.length + bodyCompositionMutations.length + nativeBlockRemainderMutations.length + nativeBodyDispatchMutations.length + nativeFileMutations.length + nativeListMutations.length + nativeDefinitionMutations.length + nativeBlockSequenceMutations.length + nativeLexicalMutations.length + nativeCompositionMutations.length + nativeExpressionMutations.length + nativeArgumentMutations.length + nativeBlockLeafMutations.length}, rejected parser cases ${groupCases.filter(([, , accepted]) => !accepted).length + tableCompositionCases.filter(([, , , , accepted]) => !accepted).length + tableRowCases.filter(([, , count]) => count === null).length + commandRecognitionCases.filter(([, , value]) => value === null).length + recoveryFixtures.filter(([, suffix]) => suffix !== "").length + bodyEntryRejectedCases.length + emptyItemRejectedCases.length + rejectedParserCases.length + badDelimiterCases.length + 1 + lexicalRejectedCases.length + compositionRejectedCases.length + expressionRejectedCases.length + argumentRejectedCases.length + blockLeafRejectedCases.length}`);
 } finally {
   rmSync(work, { recursive: true, force: true });
 }

@@ -270,6 +270,26 @@ Haskell の `length cs` との一般的な対応を別に仮定するもので�
 同じ十例をモデルでも実行し、全入力の受理、不一致とラベルのエラーを照合する。
 この照合を、一般の戻り値や診断位置の対応を示す証明とは区別する。
 
-認識の合成が未証明の選択肢は `BlockGroup` の一つになる。
+この表の増分の時点では、認識の合成が未証明の選択肢は `BlockGroup` の一つだった。
 戻り値の一般的な対応、子の再帰全体、AST、復旧、コメントの保存、整形と評価の往復は未完了である。
 [root ADR 0351](../../../docs/adr/0351-prove-parser-formatter-round-trips.md) の未実装の状態を保つ。
+
+## Bool の束縛とコマンド群の合成
+
+`BlockGroupCompositionTotal.lean` は、連続するコマンドから本体の有無の Bool を集め、最後の値が false のときだけ後続の本体を試す認識を示す。
+入力、自然数の字下げ量と fuel は任意で、入口へ `fuel + 5` を渡す。
+直接のコマンド群には `fuel + 3`、後続の本体には `fuel + 1` を渡す。
+残りの fuel が 0 から 4 の場合も、五つの補題が入力によらず fuel のエラーになることを示す。
+子の成功や、後で示す結果の一致を前提に置かない。
+
+値を持つ補助モデルは、設定を false、通常の呼び出しを本体の有無に応じた Bool にし、反復の順で集める。
+このモデルから値を除くと、現在の公開の認識器を同じ fuel で呼んだ結果と一致する。
+コアの実装との一致も、`CorePayloadCoherence.lean` と `CachedPayloadCoherence.lean` が示す。
+値を再計算するときは、より小さい fuel の認識器を保持した表から読む。
+`StructuralCoherence.lean` は、この表の各認識器が公開の認識器と一致することを、fuel についての帰納法で示す。
+
+モデルが扱う意味は、実際の `BlockCommand` の二つの action と、最後の Bool を検査する固定の述語に限る。
+ほかの Haskell の式を解釈するものではない。
+認識の合成に未証明の選択肢はなくなるが、戻り値の一般的な対応、子の再帰全体、AST、復旧、コメントの保存、整形と評価の往復は未完了である。
+[root ADR 0351](../../../docs/adr/0351-prove-parser-formatter-round-trips.md) の未実装の状態を保つ。
+公理と前提、依存関係と検査の範囲は [証明の記録](../../../docs/research/0351-boolean-command-group-proof-dependencies.md) にある。

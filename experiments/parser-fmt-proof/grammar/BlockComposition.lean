@@ -1,4 +1,5 @@
 import PlusComposition
+import UnboundSequenceTotal
 
 namespace BlockComposition
 open PegModel PegModelTest
@@ -7,6 +8,23 @@ private def next (result : ParseResult) (read : List Char → ParseResult) : Par
   match result with
   | .ok (some rest) => read rest
   | other => other
+
+private theorem follow_next (read : Expr → List Char → ParseResult) (item : Expr)
+    (items : List Expr) (input : List Char) :
+    UnboundSequenceTotal.follow read (item::items) input =
+      next (read item input) (fun rest => UnboundSequenceTotal.follow read items rest) := by
+  cases result : read item input with
+  | error reason => simp [UnboundSequenceTotal.follow,next,result]
+  | ok value => cases value <;> simp [UnboundSequenceTotal.follow,next,result]
+
+private theorem follow_end (read : Expr → List Char → ParseResult) (input : List Char) :
+    UnboundSequenceTotal.follow read [] input = .ok (some input) := by rfl
+
+private theorem next_end (result : ParseResult) :
+    next result (fun rest => .ok (some rest)) = result := by
+  cases result with
+  | error reason => rfl
+  | ok value => cases value <;> rfl
 
 /-- Exact canonical recognition composition for arbitrary suffix, indentation
     and fuel. Repetition preserves progress/errors; AST/actions and recovery
@@ -102,45 +120,8 @@ theorem I1_I2_generated_code (ind fuel : Nat) (input : List Char) :
   change recognizeEnv _ [("ind", ind)] (fuel + 2) (.choice [[.ref "Ind" ["ind"], .ref "Fence" [], .opt (.ref "Lang" []), .ref "Arguments" [], .ref "Sp" [], .ref "Nl" [], .star (.choice [[.notPred (.ref "CodeClose" ["ind"]), .ref "CodeLine" []]]), .label (.choice [[.ref "CodeClose" ["ind"]]]) "code_close"]]) input = _
   change runChoices (fun xs => runSequence (fun sc item rest => recognizeEnv Generated.pegGrammar sc (fuel + 1) item rest) _ [("ind", ind)] xs input) [[.ref "Ind" ["ind"], .ref "Fence" [], .opt (.ref "Lang" []), .ref "Arguments" [], .ref "Sp" [], .ref "Nl" [], .star (.choice [[.notPred (.ref "CodeClose" ["ind"]), .ref "CodeLine" []]]), .label (.choice [[.ref "CodeClose" ["ind"]]]) "code_close"]] = _
   have rep6 := RuleRepetition.star Generated.pegGrammar [("ind", ind)] ((.choice [[.notPred (.ref "CodeClose" ["ind"]), .ref "CodeLine" []]])) (fuel + 1)
-  cases read0 : recognizeEnv Generated.pegGrammar [("ind", ind)] (fuel + 1) (.ref "Ind" ["ind"]) input with
-  | error reason => simp [runChoices, foldChoice, runSequence, next, rep6, read0]; rfl
-  | ok value => cases value with
-    | none => simp [runChoices, foldChoice, runSequence, next, rep6, read0]; rfl
-    | some rest0 =>
-      cases read1 : recognizeEnv Generated.pegGrammar [("ind", ind)] (fuel + 1) (.ref "Fence" []) rest0 with
-      | error reason => simp [runChoices, foldChoice, runSequence, next, rep6, read0, read1]; rfl
-      | ok value => cases value with
-        | none => simp [runChoices, foldChoice, runSequence, next, rep6, read0, read1]; rfl
-        | some rest1 =>
-          cases read2 : recognizeEnv Generated.pegGrammar [("ind", ind)] (fuel + 1) (.opt (.ref "Lang" [])) rest1 with
-          | error reason => simp [runChoices, foldChoice, runSequence, next, rep6, read0, read1, read2]; rfl
-          | ok value => cases value with
-            | none => simp [runChoices, foldChoice, runSequence, next, rep6, read0, read1, read2]; rfl
-            | some rest2 =>
-              cases read3 : recognizeEnv Generated.pegGrammar [("ind", ind)] (fuel + 1) (.ref "Arguments" []) rest2 with
-              | error reason => simp [runChoices, foldChoice, runSequence, next, rep6, read0, read1, read2, read3]; rfl
-              | ok value => cases value with
-                | none => simp [runChoices, foldChoice, runSequence, next, rep6, read0, read1, read2, read3]; rfl
-                | some rest3 =>
-                  cases read4 : recognizeEnv Generated.pegGrammar [("ind", ind)] (fuel + 1) (.ref "Sp" []) rest3 with
-                  | error reason => simp [runChoices, foldChoice, runSequence, next, rep6, read0, read1, read2, read3, read4]; rfl
-                  | ok value => cases value with
-                    | none => simp [runChoices, foldChoice, runSequence, next, rep6, read0, read1, read2, read3, read4]; rfl
-                    | some rest4 =>
-                      cases read5 : recognizeEnv Generated.pegGrammar [("ind", ind)] (fuel + 1) (.ref "Nl" []) rest4 with
-                      | error reason => simp [runChoices, foldChoice, runSequence, next, rep6, read0, read1, read2, read3, read4, read5]; rfl
-                      | ok value => cases value with
-                        | none => simp [runChoices, foldChoice, runSequence, next, rep6, read0, read1, read2, read3, read4, read5]; rfl
-                        | some rest5 =>
-                          cases read6 : RuleRepetition.scan (fun n => recognizeEnv Generated.pegGrammar [("ind", ind)] n ((.choice [[.notPred (.ref "CodeClose" ["ind"]), .ref "CodeLine" []]]))) (fuel + 1) rest5 with
-                          | error reason => simp [runChoices, foldChoice, runSequence, next, rep6, read0, read1, read2, read3, read4, read5, read6]; rfl
-                          | ok value => cases value with
-                            | none => simp [runChoices, foldChoice, runSequence, next, rep6, read0, read1, read2, read3, read4, read5, read6]; rfl
-                            | some rest6 =>
-                              cases read7 : recognizeEnv Generated.pegGrammar [("ind", ind)] (fuel + 1) (.label (.choice [[.ref "CodeClose" ["ind"]]]) "code_close") rest6 with
-                              | error reason => simp [runChoices, foldChoice, runSequence, next, rep6, read0, read1, read2, read3, read4, read5, read6, read7]; rfl
-                              | ok value => cases value with
-                                | none => simp [runChoices, foldChoice, runSequence, next, rep6, read0, read1, read2, read3, read4, read5, read6, read7]; rfl
-                                | some rest7 => simp [runChoices, foldChoice, runSequence, next, rep6, read0, read1, read2, read3, read4, read5, read6, read7]; rfl
+  simp only [runChoices,foldChoice,List.foldlM,bind_pure]
+  rw [UnboundSequenceTotal.sequence _ _ _ _ _ (by simp)]
+  simp only [follow_next,follow_end,next_end,rep6]
 
 end BlockComposition

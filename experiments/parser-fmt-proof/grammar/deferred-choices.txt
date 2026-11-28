@@ -1,4 +1,3 @@
 # The choices of the grammar that the Lean model of root ADR 0351 does not
 # prove yet (docs/roadmap.md). check-deferred.mjs fails when this list and
 # the unsupported choices differ: remove a line when its choice is proved.
-BlockGroup choice 1: cs:BlockCommand(ind)+ (&{ not (or (take 1 (reverse cs))) } GroupBody(ind))?

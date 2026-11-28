@@ -749,6 +749,12 @@ if (!fragment && ast) {
       if (rule.params.length === params.length && rule.params.every((param, index) => param === params[index]) &&
           describeItems(rule.alts[0].items) === shape) continue;
     }
+    // BlockGroupCompositionTotal connects the captured Bool collector and
+    // the last-command guard; recursive children remain symbolic.
+    if (rule.name === 'BlockGroup' && rule.type === '()' &&
+        rule.params.length === 1 && rule.params[0] === 'ind' && rule.templateParams.length === 0 &&
+        rule.alts.length === 1 && rule.alts[0].constructor === null && rule.alts[0].action?.trim() === '()' &&
+        describeItems(rule.alts[0].items) === 'cs:BlockCommand(ind)+ (&{ not (or (take 1 (reverse cs))) } GroupBody(ind))?') continue;
     if (rule.name === 'Ind' && indentFullyProved) continue;
     if (rule.name === 'StringLit' && stringSupported && alternatives[0] === escape &&
         rule.params.length === 0 && rule.templateParams.length === 0 && rule.alts.length === 1 &&
