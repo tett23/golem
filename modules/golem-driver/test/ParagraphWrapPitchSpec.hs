@@ -11,6 +11,7 @@ import Golem.Length (Sp (..))
 import Golem.Syntax (Diagnostic (..), DiagnosticCode (..))
 import Golem.Typeset (PdfLayout (..), SetLine (..))
 import Support hiding (pt)
+import System.Timeout (timeout)
 import Test.Tasty
 import Test.Tasty.HUnit
 
@@ -22,6 +23,26 @@ paragraphWrapPitchTests =
   testGroup
     "root ADR 0397 multi-paragraph wrapping"
     [ testGroup
+        "root ADR 0483 forced prefixes"
+        [ testCase ("root ADR 0483 I1, I3: " <> name <> ", keep-last=" <> show lastKeep) $ do
+            imageFiles <- tinyImage
+            let style =
+                  replaceIn "lines = 30" "lines = 4" (TE.encodeUtf8 (T.replace "[page.grid]" "[page.grid]\nalignment = \"free\"" (TE.decodeUtf8 horizontalStyle)))
+                    <> TE.encodeUtf8 ("\n[paragraph-styles.stuck]\nkeep-first-lines = 2\nkeep-last-lines = " <> T.pack (show lastKeep) <> "\n")
+                source = "@nonumber\n@figure images/tiny.jpg alt=\"t\" wrap=start width=3zw\n\n@style stuck\n" <> body <> "\n"
+            result <- timeout 5000000 $ do
+              (_, layout) <- layoutOk style source imageFiles
+              let text = T.concat (lineTexts layout)
+              T.filter (not . isSpace) text @?= T.filter (not . isSpace) body
+              let placed = [ident | page <- plPages layout, (_, SLine ident) <- poSlots page]
+              placed @?= nub placed
+              length placed @?= Map.size (plLines layout)
+              assertBool "placed rows exist" (not (null (plPages layout)))
+            assertBool "forced placement finishes without repeating the same retry" (case result of Just () -> True; Nothing -> False)
+        | lastKeep <- [2 :: Int, 4],
+          (name, body) <- [("49 kana", T.replicate 49 "あ"), ("ordered kana", T.take 49 (T.replicate 10 "あいうえお")), ("discardable glue", T.intercalate " " (replicate 25 "あい"))]
+        ],
+      testGroup
         "actual columns after wrapping"
         [ testCase ("root ADR 0397 I8 I10: " <> mode <> " keeps a moved paragraph whole and restores its full width") $ do
             imageFiles <- tinyImage

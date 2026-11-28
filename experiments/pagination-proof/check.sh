@@ -376,6 +376,8 @@ echo "every run of a figure places the lines of runLines in the $causalInputs ma
 
 # Instantiate stanza's hold and display-row fallback before using its cursor.
 LEAN_PATH="$tmp" "$lean" -o "$tmp/CausalBoundary.olean" "$cboundary"
+# Root ADR 0483 retains the forced public result and consumes it in parts.
+LEAN_PATH="$tmp" "$lean" "$root/experiments/pagination-proof/ForcedPrefix.lean"
 causalStanza=$root/experiments/pagination-proof/CausalStanza.lean
 if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|implemented_by|extern|native_decide)([^A-Za-z_]|$)' "$causalStanza"; then
   echo "unproved or unchecked Lean declaration in $causalStanza" >&2

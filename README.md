@@ -298,6 +298,7 @@ PDF の柱とノンブルに当てる文字スタイルは、マスターペー�
 自由な配置では、整数行のほか寸法で指定できる（[root ADR 0397](./docs/adr/0397-paragraph-line-pitch-and-dimensional-spacing.md)）。
 これらの値やインデント、文字色はプロジェクトのスタイルにまとめ、Emet のブロック関数からそのスタイルを付けられる。
 台本専用の固定値は設けない。
+回り込み段落で保持条件を満たせず空の段へ強制配置した場合は、その配置を採用して残りの原稿へ進む（[root ADR 0483](docs/adr/0483-finish-forced-paragraph-placement-without-repeating-the-retry.md)）。
 
 `next-style` は次の段落の段落スタイルを、`initial-style` は段落の先頭の一字の文字スタイルを決め、`opening-indent = "half"` は始め括弧類で始まる段落の字下げを PDF、HTML、EPUB で半角減らす（[ADR 0374](./docs/adr/0374-paragraph-style-controls.md)、[root ADR 0469](./docs/adr/0469-opening-indent-in-html-and-epub.md)）。
 見出しでは、`[headings.<階層>]` の `paragraph-style` に結び付けた段落スタイルの `next-style` が、直後の段落に当たる（[root ADR 0468](docs/adr/0468-paragraph-styles-for-headings-and-lists.md)）。
