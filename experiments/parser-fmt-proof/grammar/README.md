@@ -373,3 +373,22 @@ node --test experiments/parser-fmt-proof/arguments/lowered-cst.test.mjs
 AST に trivia を移さない性質は、fmt が CST のコメントを消してよいという意味ではない。
 公理、前提と残る範囲は [依存関係の記録](../../../docs/research/0351-cst-keyword-lowering-proof-dependencies.md) にある。
 [root ADR 0351](../../../docs/adr/0351-prove-parser-formatter-round-trips.md) の未実装の状態を保つ。
+
+## 認識区間から CST トークンへ移す段階
+
+`CstWrapperMetadata.lean` は、実際の生成文法の token と inline の属性を検査する。
+`CstWrapper.lean` は、CST を出力する場合の inline、token、通常の node の順をモデルにする。
+Word、StringLit と Eq が任意の接尾辞の前で読む区間から、原綴りのトークンと残りを得ることを示す。
+引用符とエスケープはここで除かない。
+
+共通の八つの原稿の二十四のトークンを、モデルと実際の Haskell の CST の構成子から取り出して照合する。
+文法の属性を四通り変えると、生成し直した metadata の証明が失敗し、実パーサーが返す CST の形も変わることを確かめる。
+上の CLI のビルドの後、同じ Cabal plan で次を実行する。
+
+```sh
+node --test experiments/parser-fmt-proof/arguments/raw-cst.test.mjs
+```
+
+文字単位のモデルと UTF-8 の byte offset の一般的な対応、通常の node の隙間に補う Text token、原稿全体の CST の生成は未証明である。
+公理、前提と残る範囲は [依存関係の記録](../../../docs/research/0351-cst-wrapper-proof-dependencies.md) にある。
+[root ADR 0351](../../../docs/adr/0351-prove-parser-formatter-round-trips.md) の未実装の状態を保つ。
