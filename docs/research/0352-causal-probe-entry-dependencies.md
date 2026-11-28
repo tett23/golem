@@ -155,4 +155,4 @@ flowchart TD
 
 モデルの詩の配置から呼ぶプローブについて、各入口のカーソルの条件を接続した。
 本体の全制御、組み直す状態全体、`parts` の行 ID の前提 `hb`、内容の過不足と順序、一般的なキャプションの改行の一致は残る。
-[root ADR 0352](../adr/0352-prove-pagination-in-lean.md) は `accepted-pending` のままにする。
+[root ADR 0352](../adr/0352-prove-pagination-in-lean.md) は未実装のままにし、この増分だけでは実装完了を記録しない。
