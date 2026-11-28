@@ -8,6 +8,7 @@ import {fileURLToPath} from 'node:url';
 import {saveProjectFailure} from '../save-project-failure.mjs';
 import {compileArgumentProbe,run} from './ast-probe.mjs';
 import {diagnosticTraceCases,diagnosticManuscript,expectedDiagnostic} from '../grammar/trace-cases.mjs';
+import {posargWordDiagnosticCases,posargWordManuscript,expectedPosargWordDiagnostic} from '../grammar/posarg-word-cases.mjs';
 
 const here=fileURLToPath(new URL('.',import.meta.url));
 
@@ -15,15 +16,17 @@ test('root ADR 0351 I2, I3: bare percent values retain G01102 bytes and fixes; f
   const buildWork=mkdtempSync(join(tmpdir(),'golem-keyword-diagnostic-probe-'));
   try {
     const binary=compileArgumentProbe(buildWork,join(here,'NativeKeywordDiagnostics.hs'));
-    for(const [index,entry] of diagnosticTraceCases.entries()){
+    const cases=[...diagnosticTraceCases.map(entry=>({source:diagnosticManuscript(entry),expected:expectedDiagnostic(entry)})),
+      ...posargWordDiagnosticCases.map(raw=>({source:posargWordManuscript(raw),expected:expectedPosargWordDiagnostic(raw)}))];
+    for(const [index,entry] of cases.entries()){
       await t.test('root ADR 0351 I2, I3: G01102 scope '+index,()=>{
         const work=mkdtempSync(join(tmpdir(),'golem-keyword-diagnostic-fields-'));
         const file=join(work,'a.gm');
-        const source=diagnosticManuscript(entry);
+        const source=entry.source;
         try {
           writeFileSync(file,source);
           const before=readFileSync(file);
-          assert.deepEqual(JSON.parse(run(binary,[file])),expectedDiagnostic(entry));
+          assert.deepEqual(JSON.parse(run(binary,[file])),entry.expected);
           const fmt=spawnSync(process.env.GOLEM??'golem',['fmt',file],{encoding:'utf8',cwd:work});
           assert.equal(fmt.error,undefined);
           assert.equal(fmt.signal,null);
