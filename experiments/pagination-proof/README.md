@@ -2072,3 +2072,9 @@ sh experiments/pagination-proof/check-alloy-diff.sh 97
 `NUMBERED_WINDOW_STORE_LEAN=1` は旧 1,211 例に、64 スナップショットの区間と検索の 256 例を加え、全 1,467 例をカーネルで確認する。
 生成ファイルの未定義の識別子を暗黙の変数にせず、任意の unit の実行を操作列へ写す証明は未完のままにする。
 公理、境界と未完範囲は [表の区間からの再構成](../../docs/research/0352-numbered-window-store-dependencies.md) に記す。
+
+[NumberTextOrder.lean](NumberTextOrder.lean) は、`numberText` の通常の七形式、既存 stanza、箱内の既存 stanza、新しい stanza の構成が、旧行の後へ新行を順序どおり加えることを示す。
+開始と keep-with-next の制御は行の列を変えない。
+`NumberTextOrderFonts.hs` は同じ本体の `numberText` を直接呼び、横組みと縦組み、grid と free で計 4,032 条件の行 ID、保存した行の内容、次の番号を比較する。
+モデルの各分岐と任意の本体の unit の一般的な対応、配置後の全 `Built` との接続は未完のままである。
+公理、生成された宣言と有限比較の範囲は [numberText の行の順序](../../docs/research/0352-number-text-order-dependencies.md) に記す。
