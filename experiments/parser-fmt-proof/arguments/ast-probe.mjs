@@ -49,4 +49,3 @@ export function compileArgumentProbe(work, source = join(here, 'ArgumentNative.h
   assert.equal(built.status, 0, built.stdout + built.stderr);
   return executable;
 }
-
