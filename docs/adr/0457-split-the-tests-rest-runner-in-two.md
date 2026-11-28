@@ -1,6 +1,6 @@
 # ADR 0457: プルリクエストの CI の tests-rest の脚を二つに分ける
 
-Status: accepted-pending
+Status: superseded-pending [{"part":"rest のスイートの実行方法","by":["docs/adr/0481-run-rest-test-suites-one-at-a-time.md"],"kind":"supplement"}]
 
 ## 文脈
 

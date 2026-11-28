@@ -51,7 +51,12 @@ paginateTests :: TestTree
 paginateTests =
   testGroup
     "pagination boundaries (golem-layout ADR 0003)"
-    [ testCase "L2 (Golem ADR 0312): heading pitches round within half a sp and ties to even" $
+    [ testCase "root ADR 0482 I3: a code caption footnote is retained by fixed grid pagination" $ do
+        let geometry = CodeGeometry 10 16 10 10 0
+            ident = NoteId (mkSpan (FileId 0) 0 0) 0
+            pages = paginate 1 4 [FCode geometry 1 1 False [LineBox 0 [NoteBody ident 1] [] [] 0]]
+        concatMap poFootnotes pages @?= [(ident, 0, 1)],
+      testCase "L2 (Golem ADR 0312): heading pitches round within half a sp and ties to even" $
         forM_ headingRoundingCases $ \(fontSize, bodyPitch, headingSize, linesCount, minimumLines) -> do
           let HeadingBlock (Sp pitch) _ _ = headingBlock (Sp fontSize) (Sp bodyPitch) (Sp headingSize) linesCount minimumLines
               distance = abs (pitch * fontSize - bodyPitch * headingSize)

@@ -655,12 +655,14 @@ placeCodeFrom env st ident c@(g, cap0, first, cont) isFirst ls =
       -- the areas of the frames that end the room of the column before its end
       cutsRoom s = [a | (a, b) <- areas, b > sUsed s, a < sUsed s + free env s]
       room = minimum (free env st : [max 0 (a - sUsed st) | a <- cutsRoom st])
-      k0 = length (takeWhile (\j -> spanOf j <= room) [1 .. len])
+      k0 = length (takeWhile (\j -> headingNeed env st (spanOf j) (take j ls) <= room) [1 .. len])
       put k =
         let (part, rest) = splitAt k ls
             n = spanOf k
             l0 = maybe 0 lbId (listToMaybe part)
-            st1 = putSlot st n (SCode l0 k n) (concatMap lbLabels part) (concatMap lbMarks part)
+            st1
+              | all (null . lbNotes) part = putSlot st n (SCode l0 k n) (concatMap lbLabels part) (concatMap lbMarks part)
+              | otherwise = (putBlock env st n part) {sSlots = sSlots st <> [(sUsed st, SCode l0 k n)], sHeadingOnly = False}
          in -- the next part past the frame in the column, or in the next column
             if null rest then st1 else placeCodeFrom env (if null (cutsRoom st1) then nextColumn env st1 else st1) ident c False rest
    in if k0 >= least

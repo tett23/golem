@@ -11,8 +11,6 @@ DivBlocks choice 1: (BlankLines? !(Ind(ind) DivLine) &(Ind(ind) ![ \t] !BlankLin
 BlockCommand choice 1: Ind(ind) At SetIdent Ws SetName Sp Eq ExprBody (Nl / !.)
 BlockCommand choice 2: Ind(ind) At Ident Arguments Sp (Nl / !.) b:CommandBody(ind)?
 CommandBody choice 1: &(Ind(col ind + 2) ![ \t] !BlankLine .) Blocks(col ind + 2)
-BulletList choice 1: ListItem(ind, 0) (BlankLines? ListItem(ind, 0))*
-OrderedList choice 1: ListItem(ind, 1) (BlankLines? ListItem(ind, 1))*
 ListItem choice 1: Ind(ind) ListMark(ordered) Ws Inline(col ind + 2)+ (Nl / !.) ItemTail(col ind + 2)
 ItemTail choice 1: (BlankLines? &(Ind(ind) ![ \t] !BlankLine .) Block(ind))*
 DefList choice 1: DefGroup(ind) (BlankLines? &(Ind(ind) '=' [ \t]) DefGroup(ind))*

@@ -4,13 +4,17 @@ module CaptionSidenoteParagraphsSpec (captionSidenoteParagraphsTests) where
 import Control.Monad (forM_)
 import Data.ByteString qualified as BS
 import Data.ByteString.Char8 qualified as BC
+import Data.Char (isDigit)
 import Data.Map.Strict qualified as Map
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
-import Golem.Layout.KnuthPlass (Line (..))
+import Golem.Layout.Japanese (BoxKind (..), boxKind)
+import Golem.Layout.KnuthPlass (BoxContent (..), Item (..), Line (..))
+import Golem.Layout.Paginate (PageOutAt (..), Slotted (..))
 import Golem.LayoutSpec (PageGeometry (..), Rect (..))
 import Golem.Length (Sp (..))
-import Golem.Typeset (CodeInfo (..), PartLine (..), PdfLayout (..), PlacedFigure (..), PlacedSidenote (..))
+import Golem.Syntax (Diagnostic (..), DiagnosticCode (..))
+import Golem.Typeset (CodeCaption (..), CodeInfo (..), PartLine (..), PdfLayout (..), PlacedFigure (..), PlacedSidenote (..))
 import Support
 import Test.Tasty
 import Test.Tasty.HUnit
@@ -89,7 +93,48 @@ captionOf keys body = do
 
 captionSidenoteParagraphsTests :: [TestTree]
 captionSidenoteParagraphsTests =
-  [ testCase "ADR 0367 I1: inv1_caption_sidenote_paragraphs_property: the usable width of each line is the inner width less its indents" $
+  [ testCase "root ADR 0482 I3: table and code captions retain sidenote bodies" $
+      forM_ ["@caption 表[sidenote: 傍注本文]\n| A |\n|---|\n| B |\n", "@caption コード[sidenote: 傍注本文]\n```text\ncode\n```\n"] $ \source -> do
+        (_, pl) <- layoutOk (partsStyle "" "") ("# 章\n\n" <> source) []
+        assertEqual "one caption sidenote is placed" 1 (sum (map length (Map.elems (plSidenotes pl)))),
+    testCase "root ADR 0482 I3: wrapped caption sidenotes follow their own callmark rows" $
+      forM_ ["| A |\n|---|\n| B |\n", "```text\ncode\n```\n"] $ \block -> do
+        let source = "# 章\n\n@caption 表[sidenote: 一]" <> T.replicate 45 "字" <> "[sidenote: 二]\n" <> block
+        (geom, pl) <- layoutOk (partsStyle "" "") source []
+        case concat (Map.elems (plSidenotes pl)) of
+          [first, second] -> assertBool "the second callmark is at least three caption lines later" (psTop second - psTop first >= 3 * pgLinePitch geom)
+          notes -> assertFailure ("expected two sidenotes, got " <> show (length notes)),
+    testCase "root ADR 0482 I1, I3: a split code block retains its caption sidenote once" $ do
+      let source = "# 章\n\n@caption コード[sidenote: 注]\n```text\n" <> T.replicate 70 "x\n" <> "```\n"
+      (_, pl) <- layoutOk (partsStyle "" "") source []
+      assertBool "the block spans pages" (length (plPages pl) > 1)
+      assertEqual "one caption sidenote across all parts" 1 (sum (map length (Map.elems (plSidenotes pl)))),
+    testCase "root ADR 0482 I1, I3: caption sidenote calls and bodies keep page-local numbers" $
+      forM_ ["| A |\n|---|\n| B |\n", "```text\ncode\n```\n"] $ \block ->
+        forM_ [("page", ["1", "1"], ["1"]), ("book", ["1", "2"], ["2"])] $ \(mode, bodies, calls) -> do
+          let source = "# 章\n\n本文[sidenote: 一]。\n\n@page-break\n\n@caption 表[sidenote: 二]\n" <> block
+              style = partsStyle "" "" <> "\n[notes]\nnumbering = \"" <> mode <> "\"\n"
+              marks line = [bcText c | Box _ c <- lineItems line, boxKind c == KindNoteMark]
+          (_, pl) <- layoutOk style source []
+          let captions = concatMap ccLines (Map.elems (plTableCaptions pl)) <> concatMap ciCaption (Map.elems (plCodes pl))
+          assertEqual "caption calls neither disappear nor multiply" calls (concatMap (marks . ptLine) captions)
+          assertEqual "body numbers match calls on each page" bodies ([T.takeWhile isDigit (T.concat [bcText c | Box _ c <- lineItems (ptLine first)]) | notes <- Map.elems (plSidenotes pl), note <- notes, first <- take 1 (psLines note)]),
+    testCase "root ADR 0482 I3: free placement follows the caption face top" $
+      forM_ ["| A |\n|---|\n| B |\n", "```text\ncode\n```\n"] $ \block -> do
+        let source = "# 章\n\n@caption 表[sidenote: 注]\n" <> block
+            style = replaceIn "[page.grid]" "[page.grid]\nalignment = \"free\"" (partsStyle "" "")
+        (_, pl) <- layoutOk style source []
+        let starts = [slot | page <- plPages pl, (slot, SLine lid) <- poSlots page, Map.member lid (plTableCaptions pl)] <> [slot | page <- plPages pl, (slot, SCode lid _ _) <- poSlots page, Just ci <- [Map.lookup lid (plCodes pl)], lid == ciFirst ci]
+        assertEqual "one caption slot" 1 (length starts)
+        assertEqual "10pt face within 15pt pitch" (map (+ Sp (5 * 65536 `div` 2)) starts) (map psTop (concat (Map.elems (plSidenotes pl)))),
+    testCase "root ADR 0482 I4: oversized caption sidenotes retain G07033" $
+      forM_ ["| A |\n|---|\n| B |\n", "```text\ncode\n```\n"] $ \block -> do
+        let source = "# 章\n\n@caption 表[sidenote: " <> T.replicate 600 "字" <> "]\n" <> block
+        result <- layoutMini (partsStyle "" "") source []
+        case result of
+          Left diagnostics -> assertBool (show diagnostics) (any ((== DiagnosticCode "G07033") . diagCode) diagnostics)
+          Right _ -> assertFailure "an oversized caption sidenote must not disappear",
+    testCase "ADR 0367 I1: inv1_caption_sidenote_paragraphs_property: the usable width of each line is the inner width less its indents" $
       forM_ allIndents $ \i -> do
         (geom, pl) <- layoutOk (partsStyle (indentKeys i) (indentKeys i)) partsSource wideSvg
         let (figure, code, sidenote) = partsOf pl

@@ -660,6 +660,17 @@ if (!fragment && ast) {
         rule.templateParams.length === 0 && rule.alts.length === 1 && rule.alts[0].action?.trim() === '()' &&
         rule.alts[0].constructor === null && describeItems(rule.alts[0].items) === indentedLabels.get(rule.name) &&
         indentFullyProved) continue;
+    // ListCompositionTotal.generated_list proves both canonical wrappers for
+    // arbitrary input/fuel, preserving recursive child results without assuming
+    // success. Recursive ListItem semantics and AST actions stay separate.
+    if ((rule.name === 'BulletList' || rule.name === 'OrderedList') &&
+        rule.params.length === 1 && rule.params[0] === 'ind' &&
+        rule.templateParams.length === 0 && rule.alts.length === 1 &&
+        rule.alts[0].action?.trim() === '()' && rule.alts[0].constructor === null) {
+      const ordered = rule.name === 'OrderedList' ? '1' : '0';
+      if (describeItems(rule.alts[0].items) ===
+          `ListItem(ind, ${ordered}) (BlankLines? ListItem(ind, ${ordered}))*`) continue;
+    }
     if (rule.name === 'Ind' && indentFullyProved) continue;
     if (rule.name === 'StringLit' && stringSupported && alternatives[0] === escape &&
         rule.params.length === 0 && rule.templateParams.length === 0 && rule.alts.length === 1 &&
