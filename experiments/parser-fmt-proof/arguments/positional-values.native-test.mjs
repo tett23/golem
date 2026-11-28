@@ -7,18 +7,21 @@ import test from 'node:test';
 import {compileArgumentProbe,run} from './ast-probe.mjs';
 import {saveProjectFailure} from '../save-project-failure.mjs';
 import {argumentCases,argumentManuscript,expectedArgument} from '../grammar/argument-cases.mjs';
+import {posargWordSuccessCases,posargWordManuscript,expectedPosargWord} from '../grammar/posarg-word-cases.mjs';
 
 const here=fileURLToPath(new URL('.',import.meta.url));
 test('root ADR 0351 I1, I2, I3: positional word and string captures match parsing and ordinary fmt',async t=>{
   const compiled=mkdtempSync(join(tmpdir(),'golem-positional-native-'));
   try {
     const probe=compileArgumentProbe(compiled,join(here,'NativePositional.hs'));
-    for(const [index,entry] of argumentCases.entries()) {
+    const cases=[...argumentCases.map(entry=>({source:argumentManuscript(entry),expected:expectedArgument(entry)})),
+      ...posargWordSuccessCases.map(raw=>({source:posargWordManuscript(raw),expected:expectedPosargWord(raw)}))];
+    for(const [index,entry] of cases.entries()) {
       await t.test('root ADR 0351 I1, I2, I3: positional value '+index,()=>{
         const work=mkdtempSync(join(tmpdir(),'golem-positional-value-'));
-        const source=argumentManuscript(entry);const file=join(work,'a.gm');
+        const source=entry.source;const file=join(work,'a.gm');
         try {
-          writeFileSync(file,source);const expected=expectedArgument(entry);
+          writeFileSync(file,source);const expected=entry.expected;
           assert.deepEqual(JSON.parse(run(probe,[file])),expected);
           run(process.env.GOLEM??'golem',['fmt',file],{cwd:work});
           assert.deepEqual(JSON.parse(run(probe,[file])).ast,expected.ast);
