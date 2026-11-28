@@ -2043,3 +2043,20 @@ sh experiments/pagination-proof/check-alloy-diff.sh 97
 `BesideScanRowsFonts.hs` の `BESIDE_SCAN_STORE_LEAN=1` は、前の 384 式に保存後の検索の 96 式を加える。
 全 `Built` と実際の原稿の一般的一致は残る。
 根拠と残件は [本文の先頭 ID の保存](../../docs/research/0352-beside-scan-store-dependencies.md) にまとめた。
+
+[PartialRetryRank.lean](PartialRetryRank.lean) は、部分採用の再試行が選ばれると、採用数から一行引いた上限が旧 rank 未満であることを証明する。
+正の上限を超える強制配置を除く分岐条件と、試し置きの採用数の既存の上界を使い、二本目の定理では正の上限を入口の述語から取り出す。
+上限 2 で三行を採る旧反例は同じ入力のまま保持し、この分岐が選ばれない対照とする。
+実装との照合は公開試し置き 1,792 入力と残りの行数 0〜6、Lean の境界は九つの閉じた式であり、任意の再組版の行数や実装全体の停止の証明とは区別する。
+公理、生成された展開等式、依存図と残件は [調査](../../docs/research/0352-partial-retry-rank-dependencies.md) に記す。
+
+[NumberedStore.lean](NumberedStore.lean) は、採番した行の検索、本文の行列を追加した後の検索と、それまでの番号の保存を示す。
+旧表の全キーが次の番号より小さい場合には、列からの検索が本体の旧表優先の union と一致することも証明する。
+この前提を任意の `Built` から導くことは残る。
+`BesideScanRowsFonts.hs` の `NUMBERED_ROW_STORE_LEAN=1` は実フォントの 64 例で旧 480 式に検索 475 式を加え、全 955 式をカーネルで確認する。
+根拠と未完範囲は [採番済み行の保存](../../docs/research/0352-numbered-row-store-dependencies.md) に記す。
+
+[NumberedStoreFresh.lean](NumberedStoreFresh.lean) は、保存済みのキーが次の番号より小さいという条件を、本文の行列の fold が保つことを証明する。
+空の表から先行する行列を fold した状態では、この条件を前提にせず導き、後続の旧表優先の union との一致に接続する。
+図版の予約 ID を含む本体の全 unit の採番をこのモデルへ写した一般証明は残る。
+公理、境界と未完範囲は [行を追加した後の番号](../../docs/research/0352-numbered-store-fresh-dependencies.md) にまとめた。

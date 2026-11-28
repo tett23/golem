@@ -29,10 +29,11 @@ import System.IO.Temp (withSystemTempDirectory)
 
 main :: IO ()
 main = withSystemTempDirectory "golem-built-firsts" $ \tmp -> do
-  storeMode <- (== Just "1") <$> lookupEnv "BESIDE_SCAN_STORE_LEAN"
+  rowStoreMode <- (== Just "1") <$> lookupEnv "NUMBERED_ROW_STORE_LEAN"
+  storeMode <- (|| rowStoreMode) . (== Just "1") <$> lookupEnv "BESIDE_SCAN_STORE_LEAN"
   leanMode <- (|| storeMode) . (== Just "1") <$> lookupEnv "BESIDE_SCAN_ROWS_LEAN"
   let report = if leanMode then hPutStrLn stderr else putStrLn
-  when leanMode $ putStrLn ((if storeMode then "import BesideScanStore" else "import BesideScanRows") <> "\nopen BesideScanRows BesideWrappedRowFold NumberedPayload BesideOwnership CausalFirstIds\nprivate def bodyAt (xs : List (Option (List Nat))) (key : Nat) : Option (List Nat) := match xs[key]? with | none => none | some value => value")
+  when leanMode $ putStrLn ((if rowStoreMode then "import NumberedStore\nimport BesideScanStore" else if storeMode then "import BesideScanStore" else "import BesideScanRows") <> "\nopen BesideScanRows BesideWrappedRowFold NumberedPayload BesideOwnership CausalFirstIds\nprivate def bodyAt (xs : List (Option (List Nat))) (key : Nat) : Option (List Nat) := match xs[key]? with | none => none | some value => value")
   TIO.writeFile (tmp </> "manifest.toml") "chapters = [\"a.gm\"]\n[metadata]\nid = \"urn:uuid:03520000-0000-4000-8000-000000000001\"\ntitle = \"0352 numbering fixture\"\nlanguage = \"ja\"\ndate = 2026-11-28\n[[metadata.creators]]\nname = \"Fixture\"\nrole = \"author\"\n[source]\nparagraph-separator = \"blank-line\"\n[targets.pdf]\n"
   TIO.writeFile (tmp </> "style.toml") "[page]\nsize = \"A5\"\nbinding = \"left\"\nwriting-mode = \"horizontal\"\n[page.grid]\nfont-size = \"10pt\"\ncharacters = 20\nlines = 30\nline-pitch = \"15pt\"\ncolumns = 1\nalignment = \"free\"\nposition = { top = \"18mm\", gutter = \"20mm\" }\n[fonts.body]\nja = \"NotoSerifJP-Regular.otf\"\n"
   TIO.appendFile (tmp </> "style.toml") "[fonts.caption]\nja = \"NotoSerifJP-Regular.otf\"\n[paragraph-styles.caption]\nfont = \"caption\"\n"
@@ -128,6 +129,12 @@ main = withSystemTempDirectory "golem-built-firsts" $ \tmp -> do
                 putStrLn ("example : (" <> wrapped <> ").rows = " <> show newPairs <> " := by decide")
                 putStrLn ("example : (runChunks (⟨" <> show (first + 1) <> ", " <> show oldPairs <> "⟩ : RowState Nat) " <> chunksExpr <> ").rows = " <> show allPairs <> " := by decide")
                 putStrLn ("example : " <> wrapped <> " = ⟨" <> show first <> " + (1 + ownedRows (countsFor " <> show keys <> " (rowCount List.length " <> body <> "))), numberRows (" <> show first <> " + 1) (flatten " <> chunksExpr <> ")⟩ := root_adr0352_i5_wrapped_derived_contribution " <> show keys <> " " <> body <> " " <> show first)
+                when rowStoreMode $ do
+                  let stored = "BesideStore.fromPairs (runChunks (⟨" <> show (first + 1) <> ", " <> show oldPairs <> "⟩ : RowState Nat) " <> chunksExpr <> ").rows "
+                  forM_ allPairs $ \(ident, token) ->
+                    putStrLn ("example : " <> stored <> show ident <> " = some " <> show token <> " := by decide")
+                  putStrLn ("example : " <> stored <> show first <> " = none := by decide")
+                  putStrLn ("example : " <> stored <> show (F.nuNext after) <> " = none := by decide")
         report "root ADR 0352 I5: 64 captioned wrapped folds agree with their Built beside first-ID tables; 16 use the actual source prefix; ordered payload and prior rows are retained"
       _ -> error "fixture evaluation or geometry failed"
   where

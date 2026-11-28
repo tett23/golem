@@ -366,11 +366,24 @@ if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|implemented_by|exte
   exit 1
 fi
 sh "$root/experiments/pagination-proof/check-parts-retry-shape.sh"
-LEAN_PATH="$tmp" "$lean" "$retryPrefix"
+LEAN_PATH="$tmp" "$lean" -o "$tmp/RetryPrefix.olean" "$retryPrefix"
 (cd "$root" && cabal exec -v0 -- "$runghc" -f "$ghc" -hide-all-packages -package=base -package=containers \
   -package-id=golem-layout-0.1.0-inplace -package-id=golem-length-0.1.0-inplace \
   experiments/pagination-proof/RetryPrefixChecks.hs)
 echo "root ADR 0352 I4: all modeled retry entries have positive cutoffs and a decreasing complete-front retry rank"
+
+# Derive the proper-prefix retry rank from the actual branch guard.
+partialRetryRank=$root/experiments/pagination-proof/PartialRetryRank.lean
+if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|implemented_by|extern|native_decide)([^A-Za-z_]|$)' "$partialRetryRank"; then
+  echo "unproved or unchecked Lean declaration in $partialRetryRank" >&2
+  exit 1
+fi
+LEAN_PATH="$tmp" "$lean" -o "$tmp/PartialRetryRank.olean" "$partialRetryRank"
+LEAN_PATH="$tmp" "$lean" "$root/experiments/pagination-proof/PartialRetryRankBoundary.lean"
+(cd "$root" && cabal exec -v0 -- "$runghc" -f "$ghc" -hide-all-packages -package=base -package=containers \
+  -package-id=golem-layout-0.1.0-inplace -package-id=golem-length-0.1.0-inplace \
+  experiments/pagination-proof/PartialRetryRankChecks.hs)
+echo "root ADR 0352 I4: the selected proper-prefix retry has a smaller rank; forced and zero-cutoff counterexamples remain"
 
 # Retain the public-counter/rank counterexample and check the adopted caller fix.
 lastRetryCounter=$root/experiments/pagination-proof/RetryLastCounter.lean
@@ -723,6 +736,28 @@ fi
 LEAN_PATH="$tmp" "$lean" -o "$tmp/BesideScanStore.olean" "$besideScanStore"
 LEAN_PATH="$tmp" "$lean" "$root/experiments/pagination-proof/BesideScanStoreBoundary.lean"
 echo "root ADR 0352 I5: stored row scans retain their first rendered ID and derived owned first ID"
+
+# Store every numbered payload and retain earlier keys under the fresh-ID bound.
+numberedStore=$root/experiments/pagination-proof/NumberedStore.lean
+if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|implemented_by|extern|native_decide)([^A-Za-z_]|$)' "$numberedStore"; then
+  echo "unproved or unchecked Lean declaration in $numberedStore" >&2
+  exit 1
+fi
+LEAN_PATH="$tmp" "$lean" -o "$tmp/NumberedStore.olean" "$numberedStore"
+LEAN_PATH="$tmp" "$lean" "$root/experiments/pagination-proof/NumberedStoreBoundary.lean"
+echo "root ADR 0352 I5: numbered row storage agrees with old-table-first union under fresh IDs and preserves earlier rows"
+
+# Derive fresh row IDs from the initial empty store through the modeled fold.
+numberedStoreFresh=$root/experiments/pagination-proof/NumberedStoreFresh.lean
+if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|implemented_by|extern|native_decide)([^A-Za-z_]|$)' "$numberedStoreFresh"; then
+  echo "unproved or unchecked Lean declaration in $numberedStoreFresh" >&2
+  exit 1
+fi
+LEAN_PATH="$tmp" "$lean" -o "$tmp/NumberedStoreFresh.olean" "$numberedStoreFresh"
+LEAN_PATH="$tmp" "$lean" "$root/experiments/pagination-proof/NumberedStoreFreshBoundary.lean"
+echo "root ADR 0352 I5: every stored row ID is below the next counter after an empty-store fold; initial union agreement is derived"
+
+
 
 
 
