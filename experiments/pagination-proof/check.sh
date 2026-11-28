@@ -512,6 +512,16 @@ LEAN_PATH="$tmp" "$lean" -o "$tmp/ProducedPayloadKeys.olean" "$producedPayloadKe
 LEAN_PATH="$tmp" "$lean" "$root/experiments/pagination-proof/ProducedPayloadKeysBoundary.lean"
 echo "root ADR 0352 I5: payload producers discharge their key projection and preserve the generated pairs through storage"
 
+# Derive the stored-table typing premise through reachable payload cache rounds.
+payloadRounds=$root/experiments/pagination-proof/PayloadRounds.lean
+if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|implemented_by|extern|native_decide)([^A-Za-z_]|$)' "$payloadRounds"; then
+  echo "unproved or unchecked Lean declaration in $payloadRounds" >&2
+  exit 1
+fi
+LEAN_PATH="$tmp" "$lean" -o "$tmp/PayloadRounds.olean" "$payloadRounds"
+LEAN_PATH="$tmp" "$lean" "$root/experiments/pagination-proof/PayloadRoundsBoundary.lean"
+echo "root ADR 0352 I5: reachable payload tables derive their paragraph typing and preserve ordered readback"
+
 
 
 

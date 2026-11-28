@@ -1911,3 +1911,9 @@ sh experiments/pagination-proof/check-alloy-diff.sh 97
 `ForcedPrefix.lean` は [root ADR 0483](../../docs/adr/0483-finish-forced-paragraph-placement-without-repeating-the-retry.md)  の強制配置を採用する呼出し元の具体例を検査する。
 公開の試し置きの採用数を保ち、以前の h6 の入力で行IDを一度ずつ配置することを確かめる。
 任意本文の終了証明とは区別し、[検証範囲と公理依存](../../docs/research/0483-forced-prefix-placement.md)に記録する。
+
+`PayloadRounds.lean` は、前の round の `(key, value)` の列から得た表を、次の round の再利用判定と読み出しへ渡す。
+空の cache から始めた任意の列について、格納したキーの段落型を帰納で導き、順に並んだ図版 job の条件の下で同順の payload 読み出しを証明する。
+`PayloadRounds.hs` は、実フォントの六つの変更で観測した行数と offset を渡し、cache の再利用と新規生成を通した列を照合する。
+前の payload が新たな整形結果と一致する条件や、実装の IO とモデルとの一般的な対応は証明していない。
+根拠と残件は [payload cache の帰納の依存関係](../../docs/research/0352-payload-rounds-dependencies.md) にまとめた。
