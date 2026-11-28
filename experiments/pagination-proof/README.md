@@ -1975,3 +1975,9 @@ sh experiments/pagination-proof/check-alloy-diff.sh 97
 `OwnedGlobalFonts.hs` は、同じ計算式から得た全列と更新前後の本体の採番列を比較する。
 通常の単位の表との合成と本体の全分岐の寄与との一般的一致は残る。
 根拠と残件は [全図版の所有段落の先頭 ID](../../docs/research/0352-owned-global-dependencies.md) にまとめた。
+
+`OwnedUnion.lean` は、選ばれた所有段落の先頭 ID が左優先の表の合成後も存在し、本文の更新前後で同じ値であることを示す。
+右側の表の同一性や格納値の存在を前提として渡さない。
+`OwnedUnionFonts.hs` は、本体の最初の採番の表と所有段落の表の合成、人工的な衝突を比較する。
+本体の全呼び出し元からの選択条件と Map の一般的な意味論への接続は残る。
+根拠と残件は [ID の存在と左優先の合成](../../docs/research/0352-owned-union-dependencies.md) にまとめた。

@@ -612,6 +612,16 @@ LEAN_PATH="$tmp" "$lean" -o "$tmp/OwnedGlobal.olean" "$ownedGlobal"
 LEAN_PATH="$tmp" "$lean" "$root/experiments/pagination-proof/OwnedGlobalBoundary.lean"
 echo "root ADR 0352 I5: derived global owned first IDs are invariant under changes to the queried target body"
 
+# Selected body callers retain an existing ID through the left-biased union.
+ownedUnion=$root/experiments/pagination-proof/OwnedUnion.lean
+if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|implemented_by|extern|native_decide)([^A-Za-z_]|$)' "$ownedUnion"; then
+  echo "unproved or unchecked Lean declaration in $ownedUnion" >&2
+  exit 1
+fi
+LEAN_PATH="$tmp" "$lean" -o "$tmp/OwnedUnion.olean" "$ownedUnion"
+LEAN_PATH="$tmp" "$lean" "$root/experiments/pagination-proof/OwnedUnionBoundary.lean"
+echo "root ADR 0352 I5: selected body callers have the same existing ID after arbitrary base-map changes"
+
 
 
 
