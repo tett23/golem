@@ -230,3 +230,23 @@ node experiments/parser-fmt-proof/grammar/check-deferred.mjs \
 この増分で未証明の選択肢は九個から六個になる。
 再帰全体、コマンドの値、AST、復旧後の文書、コメントの保存、整形と評価の一般的な往復は未完了である。
 [root ADR 0351](../../../docs/adr/0351-prove-parser-formatter-round-trips.md) の未実装の状態を保つ。
+
+## 表の行とコマンドの認識の合成
+
+`TableRowCompositionTotal.lean` と `CommandRecognitionTotal.lean` は、`TableRow` と `BlockCommand` の三つの選択肢を合成する。
+任意の入力、自然数の字下げ量と fuel に対して、子の成功を仮定せず、不一致とエラーを保つ。
+入口へ `fuel + 2`、子へ `fuel` を渡す。
+`BlockCommand` の設定と通常の呼び出しの順も保つ。
+
+両方のルールに名前付きの束縛があるが、その場の認識には値を使わない。
+`InertCaptureSequenceTotal.lean` は、モデルの値取得関数が列のすべての要素で値を返さないとき、環境が変わらないことを示す。
+この条件は、実際の二つのルールについて構文とモデルの実装を照合して満たす。
+本体の有無やセル数という Haskell の戻り値を一般に復元する証明ではない。
+公理と前提、依存関係とこの区別は [証明の記録](../../../docs/research/0351-inert-capture-proof-dependencies.md) にある。
+
+実パーサーでは、セル数の七例とコマンドの Bool の七例を読み切り、入口が七例を拒否する。
+名前付きの束縛の環境を壊す一つの変異、十五の文法変異、十一の生成済み AST の変異を検出する。
+行番号だけを変えた二つの AST は、証明を保つ。
+二十一例で、モデルの接尾辞やエラーと、実パーサーの入口の受理と拒否を照合する。
+戻り値の一般的な対応、子の再帰全体、復旧、AST、コメントの保存、整形と評価の往復は未完了である。
+[root ADR 0351](../../../docs/adr/0351-prove-parser-formatter-round-trips.md) の未実装の状態を保つ。

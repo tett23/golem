@@ -730,6 +730,15 @@ if (!fragment && ast) {
     if (rule.name === 'ReservedBracketBody' && rule.params.length === 0 && rule.templateParams.length === 0 &&
         rule.alts.length === 1 && rule.alts[0].action?.trim() === '()' && rule.alts[0].constructor === null &&
         describeItems(rule.alts[0].items) === "('\\\\' ![\\n] . / '%%' (!'%%' ![\\n] .)* '%%' / '[' ReservedBracketBody ']' / ![\\[\\]\\\\\\n] .)*") continue;
+    if (rule.name === 'TableRow' && rule.type === 'Int' && rule.params.length === 1 && rule.params[0] === 'ind' &&
+        rule.templateParams.length === 0 && rule.alts.length === 1 && rule.alts[0].constructor === null &&
+        rule.alts[0].action?.trim() === 'length cs' &&
+        describeItems(rule.alts[0].items) === 'Ind(ind) cs:TableCellAndPipe+ Pipe Sp RowBreak?') continue;
+    if (rule.name === 'BlockCommand' && rule.type === 'Bool' && rule.params.length === 1 && rule.params[0] === 'ind' &&
+        rule.templateParams.length === 0 && rule.alts.length === 2 && rule.alts.every(alt => alt.constructor === null) &&
+        rule.alts[0].action?.trim() === 'False' && rule.alts[1].action?.trim() === 'maybe False (const True) b' &&
+        describeItems(rule.alts[0].items) === 'Ind(ind) At SetIdent Ws SetName Sp Eq ExprBody (Nl / !.)' &&
+        describeItems(rule.alts[1].items) === 'Ind(ind) At Ident Arguments Sp (Nl / !.) b:CommandBody(ind)?') continue;
     if (rule.name === 'Ind' && indentFullyProved) continue;
     if (rule.name === 'StringLit' && stringSupported && alternatives[0] === escape &&
         rule.params.length === 0 && rule.templateParams.length === 0 && rule.alts.length === 1 &&
