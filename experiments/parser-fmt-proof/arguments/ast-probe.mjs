@@ -15,7 +15,7 @@ export function run(command, args, options) {
   return result.stdout;
 }
 
-export function compileArgumentProbe(work) {
+export function compileArgumentProbe(work, source = join(here, 'ArgumentNative.hs')) {
   const planPath = resolve(root, process.env.CABAL_PLAN ?? 'dist-newstyle/cache/plan.json');
   const plan = JSON.parse(readFileSync(planPath, 'utf8'));
   const compiler = plan['compiler-id'];
@@ -41,7 +41,7 @@ export function compileArgumentProbe(work) {
   const built = spawnSync(ghc, ['-Wall', '-Werror', '-hide-all-packages',
     '-package-db', packageDb, '-package-db', localDb,
     ...packages.flatMap(id => ['-package-id', id]),
-    '-outputdir', work, join(here, 'ArgumentNative.hs'), '-o', executable], { encoding: 'utf8' });
+    '-outputdir', work, source, '-o', executable], { encoding: 'utf8' });
   if (built.error) throw built.error;
   // Preserve toolchain diagnostics rather than hiding successful-link warnings.
   if (built.stdout) process.stdout.write(built.stdout);

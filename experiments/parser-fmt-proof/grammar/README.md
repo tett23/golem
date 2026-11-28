@@ -351,3 +351,25 @@ node --test experiments/parser-fmt-proof/arguments/mixed-values.test.mjs
 このモデルは引数の宣言や評価時の検査、Golem の入力全体の検査を扱わず、式、展開、位置引数やコメントを自由に混ぜた引数全体の一般証明でもない。
 公理、前提と残る範囲は [依存関係の記録](../../../docs/research/0351-mixed-keyword-proof-dependencies.md) にある。
 [root ADR 0351](../../../docs/adr/0351-prove-parser-formatter-round-trips.md) の未実装の状態を保つ。
+
+## キーワードの CST から AST へ移す段階
+
+`KeywordLowering.lean` は、構築したキーワードの CST から、名前、Word または StringLit の種類と復号値を得る性質を示す。
+既存の Word と引用値の前後へ、KWhitespace、KComment と KNewline のトークンを任意個置ける。
+そのようなキーワードを任意個並べ、引数に当たらない外側の要素を差しても、値のある出現だけが元の順で残る。
+KProofComment は通常のコメントと同じ trivia にしない。
+
+モデルは `Golem.Parser.Lower` の有意な子の選択、キーワードと値の写像、引用値の復号へ対応付ける。
+共通の五つの構築した CST の十二の保持される引数を、モデルと実際の公開関数 `Lower.lower` で照合する。
+Word と StringLit の種類、空の引用値、エスケープ、Unicode、同名の繰り返しと、除かれる要素も含む。
+上の CLI のビルドの後、同じ Cabal plan で次を実行する。
+
+```sh
+node --test experiments/parser-fmt-proof/arguments/lowered-cst.test.mjs
+```
+
+内部へ自由に trivia を差したこの CST のすべてが、実 PEG の像だとは証明しない。
+同じ文字列を正しい Golem 原稿として扱う検査とは区別する。
+AST に trivia を移さない性質は、fmt が CST のコメントを消してよいという意味ではない。
+公理、前提と残る範囲は [依存関係の記録](../../../docs/research/0351-cst-keyword-lowering-proof-dependencies.md) にある。
+[root ADR 0351](../../../docs/adr/0351-prove-parser-formatter-round-trips.md) の未実装の状態を保つ。
