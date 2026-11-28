@@ -1,6 +1,6 @@
 # ADR 0470: 参考文献のスタイルを、決まった名前と宣言の二つで選ぶ
 
-Status: superseded-pending [{"part":"宣言の形と引用の細部","by":["docs/adr/0475-complete-bibliography-declarations-and-citation-delimiters.md"],"kind":"supplement"},{"part":"位置ラベルの前後と区切り","by":["docs/adr/0480-complete-bibliography-sorting-and-conditional-formats.md"],"kind":"replace"},{"part":"著者ソート、種類別引用、引用順、不在条件、英語序数","by":["docs/adr/0480-complete-bibliography-sorting-and-conditional-formats.md"],"kind":"supplement"}]
+Status: superseded-pending [{"part":"宣言の形と引用の細部","by":["docs/adr/0475-complete-bibliography-declarations-and-citation-delimiters.md"],"kind":"supplement"},{"part":"位置ラベルの前後と区切り","by":["docs/adr/0480-complete-bibliography-sorting-and-conditional-formats.md"],"kind":"replace"},{"part":"著者ソート、種類別引用、引用順、不在条件、英語序数","by":["docs/adr/0480-complete-bibliography-sorting-and-conditional-formats.md"],"kind":"supplement"},{"part":"I1（既定出力の互換性）の注欠落修正の例外","by":["docs/adr/0482-fix-note-loss-as-a-default-output-compatibility-exception.md"],"kind":"supplement"}]
 
 ## 文脈
 
