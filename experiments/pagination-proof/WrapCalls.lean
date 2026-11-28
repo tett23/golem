@@ -140,7 +140,7 @@ def partsEntrySafe (env : Env) (region : Region) (breaker : St → Nat → Nat �
     partsEntrySafe env region breaker items lastWanted follows hold none relaxed isStart start before moved
   | .ok (.placed count placed relaxed) =>
     if (breaker at' before start).length ≤ count then
-      if follows (checkWaits placed) || (breaker at' before start).isEmpty then True
+      if follows (checkWaits placed) || (breaker at' before start).isEmpty || forcedPrefix limit count then True
       else if h1 : minimumFront isStart lastWanted k ≤ count - max lastWanted (max 1 relaxed.last) ∧ relaxed.all = false then
         if h2 : count - max lastWanted (max 1 relaxed.last) < limitRank limit (breaker at' before start).length then
           partsEntrySafe env region breaker items lastWanted follows hold (some (count - max lastWanted (max 1 relaxed.last)))
@@ -150,7 +150,7 @@ def partsEntrySafe (env : Env) (region : Region) (breaker : St → Nat → Nat �
         partsEntrySafe env region breaker items lastWanted follows hold none k isStart start before (moveCursor env region at')
       else True
     else if h4 : start < nextItem (breaker at' before start) count start ∧ start < items then
-      if (breaker (moveCursor env region placed) (before + count) (nextItem (breaker at' before start) count start)).length
+      if !forcedPrefix limit count && (breaker (moveCursor env region placed) (before + count) (nextItem (breaker at' before start) count start)).length
           < relaxed.last then
         if h5 : minimumFront isStart lastWanted k < count then
           if h6 : count - 1 < limitRank limit (breaker at' before start).length then

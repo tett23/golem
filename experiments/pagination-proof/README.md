@@ -1818,3 +1818,7 @@ sh experiments/pagination-proof/check-alloy-witnesses.sh
 ```sh
 sh experiments/pagination-proof/check-alloy-diff.sh 97
 ```
+
+`ForcedPrefix.lean` は [root ADR 0483](../../docs/adr/0483-finish-forced-paragraph-placement-without-repeating-the-retry.md)  の強制配置を採用する呼出し元の具体例を検査する。
+公開の試し置きの採用数を保ち、以前の h6 の入力で行IDを一度ずつ配置することを確かめる。
+任意本文の終了証明とは区別し、[検証範囲と公理依存](../../docs/research/0483-forced-prefix-placement.md)に記録する。

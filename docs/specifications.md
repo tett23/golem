@@ -3668,6 +3668,10 @@ Emet の `Block` は、キーのある段落を `KeyedParagraph String (List Sty
 HTML と EPUB の `style.css` には、既定でない値を `break-after: avoid`、`break-inside: avoid`、`orphans`、`widows`、`break-before` として書く。
 プレーンテキストは何も出力しない。
 
+回り込み段落の再試行で、正の採用行数の上限を超える強制配置が返った場合は、その配置と保持の未達情報を採用し、残りの原稿を既存の段送りと再改行へ渡す。
+同じ状態で行数を減らす再試行は繰り返さない。
+上限以下の結果の再試行と、空の段や見出しだけの段で入るだけ置く公開 API の規則は変えない（[root ADR 0483](adr/0483-finish-forced-paragraph-placement-without-repeating-the-retry.md)）。
+
 行の調整の四つのキーは、行を詰めるか空けるかの選び方と順を決める（[ADR 0274](adr/0274-prefer-pulling-in-and-limit-the-stretch-of-lines.md)、[ADR 0278](adr/0278-use-the-places-of-line-adjustment-in-the-order-of-jlreq.md)）。
 これらも `based-on` で引き継ぎ、書いた値が勝つ。
 
