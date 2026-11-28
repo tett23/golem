@@ -943,10 +943,10 @@ example : PegModel.recognize Generated.pegGrammar 200 (.ref "AddExpr" [])
 example : PegModel.recognize Generated.pegGrammar 300 (.ref "BlockCommand" ["0"]) "@set x = 1\n".toList =
     .ok (some []) := by rfl
 
--- BlockGroup reads the Bool values of its commands (root ADR 0459), which
--- the recognizer does not compute: a block group is an error, never accepted.
+-- BlockGroup uses the last captured command Bool (root ADR 0459).
+-- A standalone declaration has no body and consumes the complete file.
 example : PegModel.recognizeStart Generated.pegGrammar 300 "@set x = 1\n".toList =
-    .error "opaque semantic predicate" := by rfl
+    .ok (some []) := by rfl
 
 -- TableRow returns length cs, which the table passes as h to body rows.
 example : PegModel.recognizeStart Generated.pegGrammar 300

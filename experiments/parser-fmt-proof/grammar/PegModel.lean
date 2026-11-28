@@ -86,6 +86,9 @@ def predicate (env : Params) (source : String) : Option Bool :=
   match source.trim with
   | "True" => some true
   | "False" => some false
+  | "not (or (take 1 (reverse cs)))" => do
+      let value ← plainAtom env "cs"
+      if value == 0 then some true else if value == 1 then some false else none
   | condition =>
       match condition.splitOn " " with
       | ["inFence", name] => (plainAtom env name).map (fun n => decide (fenceBit ≤ n))
@@ -149,14 +152,252 @@ def growLeft (suffix : List Char → ParseResult) (fuel : Nat) (seed : ParseResu
   let grown := (List.range fuel).foldl (growLeftStep suffix) (seed, false)
   if grown.2 then grown.1 else .error "fuel exhausted"
 
+namespace FuelTable
+universe u
+
+def get {α : Type u} : (n : Nat) → Nat.below (motive := fun _ => α) n →
+    (m : Nat) → m < n → α
+  | 0, _, m, bound => False.elim (Nat.not_lt_zero m bound)
+  | n+1, lower, m, _ =>
+      if small : m < n then get n lower.fst.snd m small else lower.fst.fst
+
+@[reducible] def pack {α : Type u} (step : (n : Nat) → Nat.below (motive := fun _ => α) n → α) :
+    (n : Nat) → PProd α (Nat.below (motive := fun _ => α) n)
+  | 0 => ⟨step 0 PUnit.unit, PUnit.unit⟩
+  | n+1 =>
+      let previous := pack step n
+      let lower := PProd.mk previous PUnit.unit
+      PProd.mk (step (n+1) lower) lower
+
+end FuelTable
+
+namespace BoolPayload
+abbrev Read := Params → Nat → Expr → List Char → ParseResult
+abbrev FlagResult := Except String (Option (List Char × Bool))
+abbrev ValuesResult := Except String (Option (List Char × List Bool))
+
+def walk (read : Expr → List Char → ParseResult) : List Expr → List Char → ParseResult
+  | [], input => .ok (some input)
+  | item :: items, input =>
+      match read item input with
+      | .error reason => .error reason
+      | .ok none => .ok none
+      | .ok (some rest) => walk read items rest
+
+def flag (read : List Char → ParseResult) (input : List Char) : FlagResult :=
+  match read input with
+  | .error reason => .error reason
+  | .ok none => .ok (some (input,false))
+  | .ok (some rest) => .ok (some (rest,true))
+
+def optional (read : Read) (env : Params) : Nat → Expr → List Char → FlagResult
+  | 0, _, _ => .error "fuel exhausted"
+  | 1, _, _ => .error "fuel exhausted"
+  | fuel+2, child, input => flag (fun rest => read env fuel child rest) input
+
+def setItems : List Expr := [.ref "Ind" ["ind"], .ref "At" [], .ref "SetIdent" [], .ref "Ws" [], .ref "SetName" [], .ref "Sp" [], .ref "Eq" [], .ref "ExprBody" [], .choice [[.ref "Nl" []], [.notPred .any]]]
+def callPrefix : List Expr := [.ref "Ind" ["ind"], .ref "At" [], .ref "Ident" [], .ref "Arguments" [], .ref "Sp" [], .choice [[.ref "Nl" []], [.notPred .any]]]
+
+def command (read : Read) (ind fuel : Nat) (input : List Char) : FlagResult :=
+  let env := [("ind",ind)]
+  let child := fun item rest => read env fuel item rest
+  foldChoice (fun isCall =>
+    if isCall then
+      match walk child callPrefix input with
+      | .error reason => .error reason
+      | .ok none => .ok none
+      | .ok (some rest) => optional read env fuel (.ref "CommandBody" ["ind"]) rest
+    else (walk child setItems input).map (Option.map (fun rest => (rest,false)))) [false,true]
+
+def reference (read : Read) (ind : Nat) : Nat → List Char → FlagResult
+  | 0, _ => .error "fuel exhausted"
+  | 1, _ => .error "fuel exhausted"
+  | fuel+2, input => command read ind fuel input
+
+def prepend (value : Bool) (result : ValuesResult) : ValuesResult :=
+  result.map (Option.map (fun pair => (pair.1,value::pair.2)))
+
+def scan (read : Read) (ind : Nat) : Nat → List Char → ValuesResult
+  | 0, _ => .error "fuel exhausted"
+  | fuel+1, input =>
+      match reference read ind fuel input with
+      | .error reason => .error reason
+      | .ok none => .ok (some (input,[]))
+      | .ok (some (rest,value)) => if rest.length < input.length then prepend value (scan read ind fuel rest)
+                                 else .error "zero-width repetition"
+
+def plus (read : Read) (ind fuel : Nat) (input : List Char) : ValuesResult :=
+  match reference read ind fuel input with
+  | .error reason => .error reason
+  | .ok none => .ok none
+  | .ok (some (rest,value)) => if rest.length < input.length then prepend value (scan read ind fuel rest)
+                             else .error "zero-width repetition"
+
+def captured (read : Read) (ind : Nat) : Nat → List Char → ValuesResult
+  | 0, _ => .error "fuel exhausted"
+  | 1, _ => .error "fuel exhausted"
+  | fuel+2, input => plus read ind fuel input
+
+def value (read : Read) (ind fuel : Nat) (input : List Char) : Except String (Option Nat) :=
+  match captured read ind fuel input with
+  | .error reason => .error reason
+  | .ok none => .ok none
+  | .ok (some (_,values)) => .ok (some (if values.reverse.head?.getD false then 1 else 0))
+
+def supported (grammar : Grammar) : Bool :=
+  match grammar.rules.find? (fun rule => rule.name == "BlockCommand") with
+  | none => false
+  | some rule =>
+    if rule.params != ["ind"] || !rule.templateParams.isEmpty || rule.resultType != "Bool" then false
+    else match rule.alts with
+    | [first,second] =>
+      match first.items, second.items with
+      | [.ref "Ind" ["ind"], .ref "At" [], .ref "SetIdent" [], .ref "Ws" [], .ref "SetName" [], .ref "Sp" [], .ref "Eq" [], .ref "ExprBody" [], .choice [[.ref "Nl" []], [.notPred .any]]],
+        [.ref "Ind" ["ind"], .ref "At" [], .ref "Ident" [], .ref "Arguments" [], .ref "Sp" [], .choice [[.ref "Nl" []], [.notPred .any]], .bind (some "b") (.opt (.ref "CommandBody" ["ind"]))] =>
+        first.constructor.isNone && second.constructor.isNone &&
+          first.action.map String.trim == some "False" &&
+          second.action.map String.trim == some "maybe False (const True) b"
+      | _, _ => false
+    | _ => false
+end BoolPayload
+
 -- A bounded recognizer for the PEG operators. Unsupported Haskell expressions
 -- and template calls are errors, never accepted input. Fuel exhaustion is
 -- distinct from an ordinary PEG failure.
+abbrev Interpreter := Params → Expr → List Char → ParseResult
+@[reducible] def interpreterStep (grammar : Grammar) :
+    (fuel : Nat) → Nat.below (motive := fun _ => Interpreter) fuel → Interpreter
+  | 0, _ => fun _ _ _ => .error "fuel exhausted"
+  | fuel + 1, lower => fun env expr input => Id.run do
+      let previous : Interpreter := lower.fst.fst
+      let boundLength (scope : Params) (item : Expr) (before : List Char) : Except String (Option Nat) := Id.run do
+        match item with
+        | .bind (some _) (.plus (.ref "BlockCommand" args)) =>
+            if !BoolPayload.supported grammar then return .error "opaque Boolean rule"
+            match args.mapM (integer scope) with
+            | some [ind] =>
+                return BoolPayload.value
+                  (fun bindings n item rest => FuelTable.get (fuel+1) lower (min n fuel) (Nat.lt_succ_of_le (Nat.min_le_right _ _)) bindings item rest)
+                  ind fuel before
+            | _ => return .error "opaque Boolean argument"
+        | .bind (some _) (.ref target args) =>
+            match grammar.rules.find? (fun rule => rule.name == target) with
+            | none => return .ok none
+            | some rule =>
+                match args.mapM (integer scope), rule.alts with
+                | some values, [alt] =>
+                    match alt.items with
+                    | leading :: .bind (some captured) (.plus child) :: _ =>
+                        if alt.action.map String.trim != some ("length " ++ captured) then return .ok none
+                        let params := List.zip rule.params values
+                        match previous params leading before with
+                        | .error reason => return .error reason
+                        | .ok none => return .error "bound length prefix failed"
+                        | .ok (some start) =>
+                            let counted := (List.range fuel).foldl (fun (state : Except String (List Char × Nat × Bool)) _ =>
+                              match state with
+                              | .error reason => .error reason
+                              | .ok (rest, count, true) => .ok (rest, count, true)
+                              | .ok (rest, count, false) =>
+                                  match previous params child rest with
+                                  | .error reason => .error reason
+                                  | .ok none => .ok (rest, count, true)
+                                  | .ok (some next) =>
+                                      if next.length < rest.length then .ok (next, count + 1, false)
+                                      else .error "zero-width repetition") (.ok (start, 0, false))
+                            match counted with
+                            | .error reason => return .error reason
+                            | .ok (_, count, true) => return .ok (some count)
+                            | .ok _ => return .error "fuel exhausted"
+                    | _ => return .ok none
+                | _, _ => return .ok none
+        | _ => return .ok none
+      let parseItem : Params → Expr → List Char → ParseResult :=
+        fun scope item rest => previous scope item rest
+      let sequence : List Expr → ParseResult :=
+        fun items => runSequence parseItem boundLength env items input
+      let alternatives : List (List Expr) → ParseResult := runChoices sequence
+      match expr with
+      | .lit value _ =>
+          let chars := value.toList
+          return pure (if chars.isPrefixOf input then some (input.drop chars.length) else none)
+      | .charClass ranges _ =>
+          return pure (match input with
+            | [] => none
+            | c :: rest => if ranges.any (fun (lo, hi) => lo ≤ c.toNat && c.toNat ≤ hi) then some rest else none)
+      | .any => return pure (match input with | [] => none | _ :: rest => some rest)
+      | .ref name args =>
+          match grammar.rules.find? (fun rule => rule.name == name) with
+          | none => return .error s!"unknown rule {name}"
+          | some rule =>
+              if !rule.templateParams.isEmpty then return .error s!"template rule {name}"
+              if args.length != rule.params.length then return .error s!"argument count for {name}"
+              match args.mapM (integer env) with
+              | none => return .error s!"opaque argument for {name}"
+              | some values =>
+                  let bindings := List.zip rule.params values
+                  let recursive := rule.alts.filterMap (directSuffix name)
+                  if recursive.isEmpty then
+                    return previous bindings (.choice (rule.alts.map Alt.items)) input
+                  let bases := rule.alts.filter (fun alt => (directSuffix name alt).isNone)
+                  let seed := previous bindings (.choice (bases.map Alt.items)) input
+                  return growLeft (fun rest => previous bindings (.choice recursive) rest) fuel seed
+      | .choice alts => return alternatives alts
+      | .star child =>
+          match previous env child input with
+          | .error reason => return .error reason
+          | .ok none => return .ok (some input)
+          | .ok (some rest) =>
+              if rest.length < input.length then return previous env (.star child) rest
+              return .error "zero-width repetition"
+      | .plus child =>
+          match previous env child input with
+          | .error reason => return .error reason
+          | .ok none => return .ok none
+          | .ok (some rest) =>
+              if rest.length < input.length then return previous env (.star child) rest
+              return .error "zero-width repetition"
+      | .opt child =>
+          match previous env child input with
+          | .error reason => return .error reason
+          | .ok none => return .ok (some input)
+          | .ok hit => return .ok hit
+      | .andPred child =>
+          match previous env child input with
+          | .error reason => return if isLabelFailure reason then .ok none else .error reason
+          | .ok none => return .ok none
+          | .ok (some _) => return .ok (some input)
+      | .notPred child =>
+          match previous env child input with
+          | .error reason => return if isLabelFailure reason then .ok (some input) else .error reason
+          | .ok none => return .ok (some input)
+          | .ok (some _) => return .ok none
+      | .capture child => return previous env child input
+      | .label child name =>
+          match previous env child input with
+          | .ok none => return .error ("label: " ++ name)
+          | result => return result
+      | .discard child => return previous env child input
+      | .bind _ child => return previous env child input
+      | .semanticPred positive source =>
+          match predicate env source with
+          | none => return .error "opaque semantic predicate"
+          | some hit => return .ok (if hit == positive then some input else none)
+      | .template name _ _ => return .error s!"opaque template {name}"
+
 def recognizeEnv (grammar : Grammar) (env : Params) : Nat → Expr → List Char → ParseResult
   | 0, _, _ => .error "fuel exhausted"
   | fuel + 1, expr, input => Id.run do
       let boundLength (scope : Params) (item : Expr) (before : List Char) : Except String (Option Nat) := Id.run do
         match item with
+        | .bind (some _) (.plus (.ref "BlockCommand" args)) =>
+            if !BoolPayload.supported grammar then return .error "opaque Boolean rule"
+            match args.mapM (integer scope) with
+            | some [ind] =>
+                return BoolPayload.value
+                  (fun bindings n item rest => FuelTable.get (fuel+1) (PProd.mk (FuelTable.pack (interpreterStep grammar) fuel) PUnit.unit) (min n fuel) (Nat.lt_succ_of_le (Nat.min_le_right _ _)) bindings item rest)
+                  ind fuel before
+            | _ => return .error "opaque Boolean argument"
         | .bind (some _) (.ref target args) =>
             match grammar.rules.find? (fun rule => rule.name == target) with
             | none => return .ok none
@@ -261,6 +502,7 @@ def recognizeEnv (grammar : Grammar) (env : Params) : Nat → Expr → List Char
           | none => return .error "opaque semantic predicate"
           | some hit => return .ok (if hit == positive then some input else none)
       | .template name _ _ => return .error s!"opaque template {name}"
+
 
 def recognize (grammar : Grammar) (fuel : Nat) (expr : Expr) (input : List Char) : ParseResult :=
   recognizeEnv grammar [] fuel expr input

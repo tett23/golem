@@ -682,6 +682,79 @@ if (!fragment && ast) {
         rule.templateParams.length === 0 && rule.alts.length === 1 &&
         rule.alts[0].action?.trim() === '()' && rule.alts[0].constructor === null &&
         describeItems(rule.alts[0].items) === definitionShapes.get(rule.name)) continue;
+    // BlockSequenceTotal proves the complete guarded repetition wrappers.
+    const blockSequenceShapes = new Map([
+      ['Blocks', 'Block(ind) (BlankLines? &(Ind(ind) !BlankLine .) Block(ind))*'],
+      ['ItemTail', '(BlankLines? &(Ind(ind) ![ \\t] !BlankLine .) Block(ind))*'],
+      ['DivBlocks', '(BlankLines? !(Ind(ind) DivLine) &(Ind(ind) ![ \\t] !BlankLine .) Block(ind))*'],
+    ]);
+    if (blockSequenceShapes.has(rule.name) && rule.params.length === 1 && rule.params[0] === 'ind' &&
+        rule.templateParams.length === 0 && rule.alts.length === 1 &&
+        rule.alts[0].action?.trim() === '()' && rule.alts[0].constructor === null &&
+        describeItems(rule.alts[0].items) === blockSequenceShapes.get(rule.name)) continue;
+    // FileCompositionTotal preserves optional trivia, the nonempty guard,
+    // and arbitrary child results of the exact generated File wrapper.
+    if (rule.name === 'File' && rule.params.length === 0 && rule.templateParams.length === 0 &&
+        rule.alts.length === 1 && rule.alts[0].action?.trim() === '()' &&
+        rule.alts[0].constructor === null &&
+        describeItems(rule.alts[0].items) === 'BlankLines? (&. Blocks(0) BlankLines?)?') continue;
+    // BodyDispatchTotal keeps the old indented-body recognizer and ordered
+    // fenced/implicit body dispatch, without assuming successful children.
+    if ((rule.name === 'CommandBody' || rule.name === 'GroupBody') &&
+        rule.params.length === 1 && rule.params[0] === 'ind' && rule.templateParams.length === 0 &&
+        rule.alts.every(alt => alt.action?.trim() === '()' && alt.constructor === null)) {
+      const expected = rule.name === 'CommandBody'
+        ? ['&(Ind(col ind + 2) ![ \\t] !BlankLine .) Blocks(col ind + 2)']
+        : ['Div(ind)', '&(Ind(ind) !BlockCommandStart ![ \\t] !BlankLine) AttributedBlock(ind)'];
+      if (rule.alts.length === expected.length &&
+          rule.alts.every((alt, index) => describeItems(alt.items) === expected[index])) continue;
+    }
+    // BlockRemainderTotal checks the complete item/fence sequence, including
+    // the parameterized inline run and optional closing chunk.
+    if ((rule.name === 'ListItem' || rule.name === 'Div') && rule.templateParams.length === 0 &&
+        rule.alts.length === 1 && rule.alts[0].action?.trim() === '()' && rule.alts[0].constructor === null) {
+      const params = rule.name === 'ListItem' ? ['ind', 'ordered'] : ['ind'];
+      const shape = rule.name === 'ListItem'
+        ? 'Ind(ind) ListMark(ordered) Ws Inline(col ind + 2)+ (Nl / !.) ItemTail(col ind + 2)'
+        : 'Ind(ind) DivMark Sp (Nl / !.) DivBlocks(fenced ind) (BlankLines? Ind(ind) DivMark Sp (Nl / !.))?';
+      if (rule.params.length === params.length && rule.params.every((param, index) => param === params[index]) &&
+          describeItems(rule.alts[0].items) === shape) continue;
+    }
+    // The recovery modules prove ordered dispatch, the outer body scan and
+    // the actual nested bracket alternative without assuming child results.
+    if (rule.name === 'SkippedReserved' && rule.params.length === 0 && rule.templateParams.length === 0 &&
+        rule.alts.length === 4 && rule.alts.every(alt => alt.action?.trim() === '()' && alt.constructor === null)) {
+      const shapes = ["'[!' ReservedBracketBody ']'", "'[!'", "'@!' (![\\n] .)*", "'..'"];
+      if (rule.alts.every((alt, index) => describeItems(alt.items) === shapes[index])) continue;
+    }
+    if (rule.name === 'ReservedBracketBody' && rule.params.length === 0 && rule.templateParams.length === 0 &&
+        rule.alts.length === 1 && rule.alts[0].action?.trim() === '()' && rule.alts[0].constructor === null &&
+        describeItems(rule.alts[0].items) === "('\\\\' ![\\n] . / '%%' (!'%%' ![\\n] .)* '%%' / '[' ReservedBracketBody ']' / ![\\[\\]\\\\\\n] .)*") continue;
+    if (rule.name === 'TableRow' && rule.type === 'Int' && rule.params.length === 1 && rule.params[0] === 'ind' &&
+        rule.templateParams.length === 0 && rule.alts.length === 1 && rule.alts[0].constructor === null &&
+        rule.alts[0].action?.trim() === 'length cs' &&
+        describeItems(rule.alts[0].items) === 'Ind(ind) cs:TableCellAndPipe+ Pipe Sp RowBreak?') continue;
+    if (rule.name === 'BlockCommand' && rule.type === 'Bool' && rule.params.length === 1 && rule.params[0] === 'ind' &&
+        rule.templateParams.length === 0 && rule.alts.length === 2 && rule.alts.every(alt => alt.constructor === null) &&
+        rule.alts[0].action?.trim() === 'False' && rule.alts[1].action?.trim() === 'maybe False (const True) b' &&
+        describeItems(rule.alts[0].items) === 'Ind(ind) At SetIdent Ws SetName Sp Eq ExprBody (Nl / !.)' &&
+        describeItems(rule.alts[1].items) === 'Ind(ind) At Ident Arguments Sp (Nl / !.) b:CommandBody(ind)?') continue;
+    if ((rule.name === 'Table' || rule.name === 'TableBodyRow') && rule.type === '()' &&
+        rule.templateParams.length === 0 && rule.alts.length === 1 && rule.alts[0].constructor === null &&
+        rule.alts[0].action?.trim() === '()') {
+      const params = rule.name === 'Table' ? ['ind'] : ['ind', 'h'];
+      const shape = rule.name === 'Table'
+        ? 'h:TableRow(ind) Nl (TableDelimiter(ind))^table_delimiter TableBodyRow(ind, h)* (!(Nl Ind(ind) Pipe))^table_row (Nl / !.)'
+        : 'Nl r:TableRow(ind) (&{ r == h })^table_cells';
+      if (rule.params.length === params.length && rule.params.every((param, index) => param === params[index]) &&
+          describeItems(rule.alts[0].items) === shape) continue;
+    }
+    // BlockGroupCompositionTotal connects the captured Bool collector and
+    // the last-command guard; recursive children remain symbolic.
+    if (rule.name === 'BlockGroup' && rule.type === '()' &&
+        rule.params.length === 1 && rule.params[0] === 'ind' && rule.templateParams.length === 0 &&
+        rule.alts.length === 1 && rule.alts[0].constructor === null && rule.alts[0].action?.trim() === '()' &&
+        describeItems(rule.alts[0].items) === 'cs:BlockCommand(ind)+ (&{ not (or (take 1 (reverse cs))) } GroupBody(ind))?') continue;
     if (rule.name === 'Ind' && indentFullyProved) continue;
     if (rule.name === 'StringLit' && stringSupported && alternatives[0] === escape &&
         rule.params.length === 0 && rule.templateParams.length === 0 && rule.alts.length === 1 &&
