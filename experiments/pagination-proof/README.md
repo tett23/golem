@@ -2055,3 +2055,8 @@ sh experiments/pagination-proof/check-alloy-diff.sh 97
 この前提を任意の `Built` から導くことは残る。
 `BesideScanRowsFonts.hs` の `NUMBERED_ROW_STORE_LEAN=1` は実フォントの 64 例で旧 480 式に検索 475 式を加え、全 955 式をカーネルで確認する。
 根拠と未完範囲は [採番済み行の保存](../../docs/research/0352-numbered-row-store-dependencies.md) に記す。
+
+[NumberedStoreFresh.lean](NumberedStoreFresh.lean) は、保存済みのキーが次の番号より小さいという条件を、本文の行列の fold が保つことを証明する。
+空の表から先行する行列を fold した状態では、この条件を前提にせず導き、後続の旧表優先の union との一致に接続する。
+図版の予約 ID を含む本体の全 unit の採番をこのモデルへ写した一般証明は残る。
+公理、境界と未完範囲は [行を追加した後の番号](../../docs/research/0352-numbered-store-fresh-dependencies.md) にまとめた。

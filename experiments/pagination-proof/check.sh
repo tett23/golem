@@ -747,6 +747,17 @@ LEAN_PATH="$tmp" "$lean" -o "$tmp/NumberedStore.olean" "$numberedStore"
 LEAN_PATH="$tmp" "$lean" "$root/experiments/pagination-proof/NumberedStoreBoundary.lean"
 echo "root ADR 0352 I5: numbered row storage agrees with old-table-first union under fresh IDs and preserves earlier rows"
 
+# Derive fresh row IDs from the initial empty store through the modeled fold.
+numberedStoreFresh=$root/experiments/pagination-proof/NumberedStoreFresh.lean
+if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|implemented_by|extern|native_decide)([^A-Za-z_]|$)' "$numberedStoreFresh"; then
+  echo "unproved or unchecked Lean declaration in $numberedStoreFresh" >&2
+  exit 1
+fi
+LEAN_PATH="$tmp" "$lean" -o "$tmp/NumberedStoreFresh.olean" "$numberedStoreFresh"
+LEAN_PATH="$tmp" "$lean" "$root/experiments/pagination-proof/NumberedStoreFreshBoundary.lean"
+echo "root ADR 0352 I5: every stored row ID is below the next counter after an empty-store fold; initial union agreement is derived"
+
+
 
 
 
