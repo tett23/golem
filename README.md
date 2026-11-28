@@ -901,7 +901,10 @@ x86-64 では、さらに次のことを行う。
 x86-64 では同じコミットを七つのランナーでビルドする。
 `tests-driver-a` と `tests-driver-b` が golem-driver のテストのスイートを二つに分けて、`tests-rest-a` と `tests-rest-b` がそのほかのスイートを二つに分けて（振り分けは `scripts/ci/test-suites.sh` が `.cabal` から決める）受け持つ（[docs/adr/0416](./docs/adr/0416-shorten-the-build-of-the-pull-request-ci.md)、[docs/adr/0457](./docs/adr/0457-split-the-tests-rest-runner-in-two.md)）。
 `tests-driver-a` は golem-driver-pdf-test、golem-driver-cli-test、golem-driver-global-test を、`tests-driver-b` は golem-driver-page-test、golem-driver-output-test、golem-driver-parallel-test を走らせる。
-`tests-rest-a` は golem-emet-test と golem-parser-test を、`tests-rest-b` はそのほかのスイートを走らせる。
+`tests-rest-a` は golem-emet-test、golem-parser-test、golem-typeset-test を、`tests-rest-b` はそのほかのスイートを走らせる。
+rest の両脚は、`scripts/ci/run-rest-suites.sh` が一覧の順に一つずつ `cabal test --jobs=1 TARGET` を呼ぶ。
+途中で失敗しても残りを実行し、一つでも失敗したら脚を失敗にする（[root ADR 0481](./docs/adr/0481-run-rest-test-suites-one-at-a-time.md)）。
+driver の両脚は、従来どおり一覧を一度の `cabal test` に渡す。
 `outputs` は、ほかのジョブが待つ成果物（`editors-lsp` の golem、見た目の回帰テストの PDF（`visual` を待たせないよう最初に組む）、`wasm` と比べるネイティブの一覧、`verapdf` の PDF）を作る。
 `outputs-checks` は、そのほかの出力の手順（epubcheck、決定性の検査の出力、マニュアル）を、`env` は環境を変える検査を受け持つ（[docs/adr/0395](./docs/adr/0395-bring-the-pull-request-ci-under-five-minutes.md)）。
 aarch64 では五つのランナーでビルドし、x86-64 と同じく `tests-driver-a`、`tests-driver-b`、`tests-rest-a`、`tests-rest-b` がテストのスイートを、`outputs` が決定性の検査の出力を受け持つ。
