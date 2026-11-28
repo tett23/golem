@@ -185,3 +185,34 @@ RUNGHC=/private/tmp/golem-0352-numbered-tools-nov28/runghc-driver
 
 モデルと本体の任意の計測と行列の対応、一部の行を採った後の再試行、全制御、内容の全量と順序、一般のキャプションの接続は残る。
 [root ADR 0352](../adr/0352-prove-pagination-in-lean.md) 全体は採択済みで未実装のままである。
+
+
+## [root ADR 0483](../adr/0483-finish-forced-paragraph-placement-without-repeating-the-retry.md) 後の呼び出し元との照合
+
+元の観測と停止しない疑いの記録は、上に記した旧版のものとして残す。
+その後、main `365b43c4ab5e01c863916504f417b0e596a0b3c6` の本体と、[root ADR 0352](../adr/0352-prove-pagination-in-lean.md) の入口の増分 `1b96d661fb25e1a6f6d4805a46993b2f4d2473a1` へ未公開の証明増分を移した。
+製品の `modules/` は、この main と同一である。
+公開の試し置きの上限の契約は変わっていない。
+
+採択済みの補足に合わせ、完全採用では正の上限を超えた強制配置を返し、部分採用では同じ強制配置を再試行しない条件を、対応する入口の述語にも反映した。
+元の行数と引数の分岐照合ではこの二条件がない旧述語が失敗し、更新した述語で成功した。
+入力に新たな前提を加えていない。
+一般の本文の終了や全 `Built` の一致を、この更新だけで証明したとはしない。
+
+`RetryPrefix` とその依存を Lean 4.7.0 で検査し、全 39 定理の公理と直接参照を環境から再取得した。
+定義は 26 件で、新たな公理宣言はなかった。
+宣言名の集合は元の調査と一致し、全定理の公理依存も一致した。
+20 件は標準三公理、19 件は公理に依存しなかった。
+対象と公理依存に `sorryAx` はなく、取得できなかった証明項もなかった。
+
+次の表の定理名の共通接頭辞は `PhysicalPagination.`、`coordinate_eval` の共通接頭辞は `Lean.Omega.LinearCombo.` である。
+
+| 定理 | 加わった直接参照 | なくなった直接参照 |
+| --- | --- | --- |
+| `partsRetryEntriesSafe._unary.proof_7` | `coordinate_eval_6`、`coordinate_eval_7` | `coordinate_eval_8`、`coordinate_eval_9` |
+| `partsRetryEntriesSafe._unary.proof_8` | `coordinate_eval_5`、`coordinate_eval_6` | `coordinate_eval_7`、`coordinate_eval_8` |
+| `root_adr0352_i4_parts_retry_entries` | `coordinate_eval_5`、`coordinate_eval_6` | `coordinate_eval_8`、`coordinate_eval_9` |
+
+これらの `coordinate_eval` は、Lean 4.7.0 の `Init/Omega/LinearCombo.lean:59` 以降で定義される、列の指定した座標の評価を取り出す補題である。
+直接参照の変更はこの標準算術の補題に限られ、上の図のプロジェクトの定理間の参照と、公理の図は変わらなかった。
+新しい CI ワークフローと予算の変更は加えていない。

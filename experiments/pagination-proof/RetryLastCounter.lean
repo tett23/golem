@@ -37,8 +37,8 @@ theorem root_adr0352_i4_last_retry_trial_counts :
 
 set_option maxRecDepth 10000 in
 set_option maxHeartbeats 1000000 in
-theorem root_adr0352_i4_last_retry_no_progress :
-    lastRetryResult = .error (.noProgress 0) := by rfl
+theorem root_adr0352_i4_last_retry_consumes :
+    lastRetryResult.toOption.map text = some [0, 1, 2, 3, 4] := by decide
 
 theorem root_adr0352_i4_last_retry_rank_fails : ¬(3 - 1 < limitRank (some 2) 5) := by decide
 
