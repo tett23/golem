@@ -5,7 +5,7 @@
 この調査は、回り込み図版の横で後続の段落を調べる `probeNext` と `probeChain` の各入口を扱う。
 基準の main は `fd1936c2a43a2a392541d156c544ac70edb7e88b` で、先行する詩の入口の証明 `2a09a7beb43f8ddf2a6183c008b709dbb29477b0` を含む枝に追加した。
 [CausalProbeEntries.lean](../../experiments/pagination-proof/CausalProbeEntries.lean) を Lean 4.7.0（`aarch64-apple-darwin`）で検査した。
-本体と既存の配置モデルは変えていない。
+この増分自体は、本体と既存の配置モデルを変えていない。
 
 二つの述語 `probeEntriesSafe` と `probeChainEntriesSafe` は、元の関数の再帰をたどり、カーソルの条件 `WrapReady` を検査する。
 `WrapReady` は、除外領域が現在位置より後になく、現在段でのその長さが正なら局所のテキストがある条件である。
@@ -114,7 +114,7 @@ flowchart TD
 
 ## 分岐と実装の照合
 
-[check-causal-probe-shape.sh](../../experiments/pagination-proof/check-causal-probe-shape.sh) は、`Physical.lean:3455` の `probeNext` と同 3503 の `probeChain` の分岐、再帰先、引数を、入口の述語と比較する。
+[check-causal-probe-shape.sh](../../experiments/pagination-proof/check-causal-probe-shape.sh) は、`Physical.lean:3461` の `probeNext` と同 3509 の `probeChain` の分岐、再帰先、引数を、入口の述語と比較する。
 入口の条件の連言を除き、最後の結果を返すだけの分岐を正規化して比較する。
 正規化する分岐は、元のエラー返却、三つ組の返却、真偽値の射影と正確に一致する場合だけ省く。
 そこで新たに関数を呼ぶ変更は、検査を通らない。
@@ -123,14 +123,28 @@ flowchart TD
 前処理後の条件の削除、詩の試しの条件の削除、通常の段落の試しの入力の変更、詩の後の再帰の削除、次の番号の変更、`endWrap` の省略、試しの後の条件の削除、末尾の返却を新しい呼び出しに変える変更は、それぞれ検査に失敗した。
 追加する定理がない段階の名前の検査でも失敗を確認し、元の述語では 6 定理が成功した。
 
-本体は `Flow.hs:5177` の `probeNext` と同 5220 の `probeChain` に対応する。
+本体は `Flow.hs:5233` の `probeNext` と同 5276 の `probeChain` に対応する。
 前処理を進め、詩か通常の段落を試し、同じ段に必要な行が入り、残りの保持も調べる場合だけ次のプローブに進む。
 この呼び出し順を読み合わせたが、本体のすべての書式や組み直す状態との一般的な対応は残す。
 
-本体と `CausalBoundary.hs` および `CausalBoundary.lean` は、直前の [詩の入口の照合](0352-causal-stanza-entry-dependencies.md) から変わっていない。
+元の照合時の本体と `CausalBoundary.hs` および `CausalBoundary.lean` は、直前の [詩の入口の照合](0352-causal-stanza-entry-dependencies.md) から変わっていない。
 同じ基準コードの 216 ケース 539 行と 4864 ケース 18921 行について、Haskell と Lean の差分 0、前提の失敗 0 の結果を使う。
 この有限の照合を、任意の実装入力の一般証明とは数えない。
 新しい CI ワークフローは追加していない。
+
+マージ前に main `a1e5ed5af7d99553b1b4de68d3d4add7dc641ea9` を取り込み、Lean 4.7.0 で `check.sh` 全体を再実行して終了コード 0 を得た。
+本体のコードはこの main と同一である。
+照合には GHC 9.10.3、正規の peg-hs 固定版 `4b4adc7046`、plugins 有効の [root ADR 0483](../adr/0483-finish-forced-paragraph-placement-without-repeating-the-retry.md) 検証用 package DB を読み取り専用で使った。
+`CABAL_PLAN` にその plan、`RUNGHC` に package ID を明示する wrapper を渡し、Cabal の再計画やビルドは行っていない。
+これは標準の Cabal 環境だけで実行した結果ではない。
+
+この再実行では、自由な配置の 156520 入力、回り込みの試し 10368 件、因果的な配置 4864 ケース、`noBreak` を繰り返す 216 ケースが Haskell と Lean で一致した。
+改行の評価と選択の 34586 入力、二つの実フォントを使うキャプション 40 件も一致した。
+42 件の Alloy コマンドに対応する Lean の検査が成功したが、ここで Alloy ソルバーを再実行したわけではない。
+[root ADR 0483](../adr/0483-finish-forced-paragraph-placement-without-repeating-the-retry.md) の強制配置の消費も、同じ実行の `ForcedPrefix.lean` で検査した。
+本稿で示す本体とモデルの行位置は、この main で読み直した位置である。
+対象とそのインポートをこの版から再ビルドし、24 定理の公理と直接参照を再取得したところ、元の調査出力と一致した。
+分岐の検査も元の述語で成功し、保存した八つの変異をすべて拒否した。
 
 ## 証明の穴と残り
 

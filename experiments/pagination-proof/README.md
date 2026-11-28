@@ -1630,8 +1630,9 @@ golem-layout は区切りを 1 行以上にする（`Paginate.hs:155`）。
 
 自由な配置では、`PhysicalNotes.lean` の `I5_paginate_each_note` が同じことを、`Physical.lean` の `paginate` が成功し、注の id が互いに異なる（`Distinct`）入力について示す。
 自由な配置では、入らない脚注は `footnoteTooTall` の失敗になり（`Physical.lean:386` と `:3053`）、`drainCarry` の後に繰り越す脚注が残れば `noProgress` の失敗になる（`Physical.lean:3068`）ので、除く注はない。
-コードの行は脚注を持たない。
-golem-typeset はコードの行を脚注なしで作り（`Flow.hs:3870`）、golem-layout の `placeCode` は行の脚注を読まないからである。
+この注のモデルでは、コード行の脚注を配置対象として数えていない（`PhysicalNotes.lean:1085`）。
+[root ADR 0482](../../docs/adr/0482-fix-note-loss-as-a-default-output-compatibility-exception.md) 後の本体は、コードのキャプションの脚注を先頭行へ付け、配置と分割の後も保持する。
+この実装経路と注モデルの一般的な一致は未完了である。
 
 ### 区切り
 
