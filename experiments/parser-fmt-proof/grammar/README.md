@@ -58,12 +58,14 @@ node experiments/parser-fmt-proof/grammar/check-deferred.mjs \
 
 認識モデルの結果は、残りの入力を返す成功、通常の不一致、ラベルエラーなどのエラーである。
 文法に書かれた Haskell の式（アクション）が作る AST の値や、ラベルエラー後の復旧結果は、この結果に含まれない。
-`ReservedRange` の三つ、予約括弧内のコメントの一つ、二種類のリストと定義リスト、反復するブロック列、ファイル入口、コマンドの本体の選択、リスト項目と囲みの合成を証明し、未証明の選択肢は 27 個から 9 個に減った。
+認識の合成は全選択肢について証明し、`deferred-choices.txt` は空になった。
+以下の各増分の選択肢の個数は、その増分を終えた時点の記録である。
 復旧後の AST や `golem fmt` の往復を証明したことにはならない。
 
 未証明の選択肢は `deferred-choices.txt` に列挙する。
 `check-deferred.mjs` は実際の未証明の一覧との差分で失敗し、一覧に無い追加と、証明できたのに残った行の両方を検出する。
-ブロックの入れ子やコマンドの返す値、予約された括弧の本体を含む選択肢と、AST、整形、評価の一般的な往復の照合は残っている。
+子の再帰全体、Haskell の戻り値、AST、整形、評価の一般的な往復の照合は残っている。
+語と引用値のキーワード引数のモデルは、限った構文領域で値の往復も示すが、Golem の AST 全体との一般的な対応ではない。
 全範囲が終わるまで [root ADR 0351](../../../docs/adr/0351-prove-parser-formatter-round-trips.md) の未実装のステータスを保つ。
 
 ## 予約括弧内のコメントの証明
@@ -293,3 +295,34 @@ Haskell の `length cs` との一般的な対応を別に仮定するもので�
 認識の合成に未証明の選択肢はなくなるが、戻り値の一般的な対応、子の再帰全体、AST、復旧、コメントの保存、整形と評価の往復は未完了である。
 [root ADR 0351](../../../docs/adr/0351-prove-parser-formatter-round-trips.md) の未実装の状態を保つ。
 公理と前提、依存関係と検査の範囲は [証明の記録](../../../docs/research/0351-boolean-command-group-proof-dependencies.md) にある。
+
+## 引用値を持つキーワード引数の列
+
+`QuotedKeywords.lean` は、語の名前と引用値の組を任意個書き出して読み戻すと、名前、StringLit の種類と復号値がすべて入力順に戻ることを示す。
+名前には既存の Word の条件と、`%%` で始まらないという条件を使う。
+値は任意長の Part の列で、空の値、引用符、バックスラッシュ、空白、Unicode の文字と `%%` も表せる。
+語の値との混在や式、コメントを含む引数全体の一般証明ではない。
+
+`QuotedCanonical.lean` は、この列を実際の `Generated.pegGrammar` の `Arguments` が読み、改行と任意の接尾辞を残すことを示す。
+キーワードを位置引数として取らないこと、省略可能なコメント、繰り返しと引数順の検査も導く。
+入口に子の成功や結果の一致を仮定しない。
+`QuotedArgumentRules.lean` が実際の規則の形を照合し、行番号と unit action の空白だけの変更では証明が変わらない。
+
+八つの共通の原稿の十二のキーワード出現で、モデルの名前、種類と復号値を確かめる。
+同じ原稿を Golem.Parser.parseAst と通常の `golem fmt` に渡し、前後の値の一致と二度目のバイト列の不変も確かめる。
+この有限の照合は、AST の全体と fmt の一般証明とは区別する。
+Golem の入力全体の検査や、引数の宣言の検査までモデルにしたものではない。
+
+Haskell の AST の照合は、既存の arguments の検査で動く。
+単独で動かす場合は、プロジェクトが固定する GHC と、選んだ Cabal plan で CLI をビルドしてから、次を実行する。
+ビルド先を分けるときは、その `cache/plan.json` を `CABAL_PLAN` に指定する。
+検査は plan のコンパイラーとパッケージ ID を使い、`GHC` を指定した場合も版の一致を確かめる。
+
+```sh
+cabal build exe:golem
+export GOLEM="$(cabal list-bin exe:golem)"
+node --test experiments/parser-fmt-proof/arguments/quoted-values.test.mjs
+```
+
+公理、前提と残る範囲は [依存関係の記録](../../../docs/research/0351-quoted-keyword-proof-dependencies.md) にある。
+[root ADR 0351](../../../docs/adr/0351-prove-parser-formatter-round-trips.md) の未実装の状態を保つ。
