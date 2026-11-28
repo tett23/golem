@@ -437,7 +437,7 @@ if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|implemented_by|exte
   echo "unproved or unchecked Lean declaration in $besideProducerRange" >&2
   exit 1
 fi
-LEAN_PATH="$tmp" "$lean" "$besideProducerRange"
+LEAN_PATH="$tmp" "$lean" -o "$tmp/BesideProducerRange.olean" "$besideProducerRange"
 echo "root ADR 0352 I5: fresh jobs preserve source-key order and stay separated by later figures"
 
 # Reused composition checks the previous domain and the current surrounding units.
@@ -459,6 +459,16 @@ fi
 LEAN_PATH="$tmp" "$lean" -o "$tmp/BesideReuseRounds.olean" "$besideReuseRounds"
 LEAN_PATH="$tmp" "$lean" "$root/experiments/pagination-proof/BesideReuseRoundsBoundary.lean"
 echo "root ADR 0352 I5: modeled cache rounds preserve paragraph kinds and finite input bounds"
+
+# Derive separation and source order for cached/fresh mixed jobs.
+besideReuseOrder=$root/experiments/pagination-proof/BesideReuseOrder.lean
+if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|implemented_by|extern|native_decide)([^A-Za-z_]|$)' "$besideReuseOrder"; then
+  echo "unproved or unchecked Lean declaration in $besideReuseOrder" >&2
+  exit 1
+fi
+LEAN_PATH="$tmp" "$lean" -o "$tmp/BesideReuseOrder.olean" "$besideReuseOrder"
+LEAN_PATH="$tmp" "$lean" "$root/experiments/pagination-proof/BesideReuseOrderBoundary.lean"
+echo "root ADR 0352 I5: mixed cached/fresh jobs preserve order and remain separated by figures"
 
 
 
