@@ -1,0 +1,76 @@
+# Fonts are the same pinned assets used for the manuals in CI.
+[page]
+size = "A4"
+binding = "right"
+writing-mode = "vertical"
+
+[page.grid]
+font-size = "10pt"
+characters = 24
+lines = 30
+line-pitch = "15pt"
+columns = 2
+column-gap = "2zw"
+position = { top = "20mm", gutter = "20mm" }
+
+[fonts.body]
+ja = "fonts/NotoSerifJP-Regular.otf"
+ja-license = "fonts/LICENSE-NotoSerifJP.txt"
+latin = "fonts/SourceSerif4-Regular.otf"
+latin-license = "fonts/LICENSE-SourceSerif4.md"
+
+[fonts.heading]
+ja = "fonts/NotoSansJP-Bold.otf"
+ja-license = "fonts/LICENSE-NotoSansJP.txt"
+latin = "fonts/SourceSans3-Bold.otf"
+latin-license = "fonts/LICENSE-SourceSans3.md"
+
+[headings.1]
+font = "heading"
+size = "16pt"
+[headings.2]
+font = "heading"
+size = "12pt"
+
+[paragraph-styles.body]
+first-line-indent = "1zw"
+
+[masters.body]
+folio = { position = "bottom-outside", format = "{n}" }
+
+# This is a draft based on the convention named by root ADR 0470,
+# not an assertion that a journal mandates this exact punctuation.
+[endnotes]
+numbering = "book"
+mark-format = "（{n:kanji}）"
+
+[bibliography]
+style = "court-notes"
+[bibliography.styles.court-notes]
+citation-mode = "note"
+note-channel = "endnote"
+citation = ["{author}『{title}』", "（{year:kanji}年）", "。"]
+citation-delimiter = "　"
+citation-sort = "written"
+subsequent = ["{author}、前掲注（{first-note:kanji}）。"]
+sort = ["citation"]
+hanging-indent = "0pt"
+year-suffix = false
+page-range = "full"
+range-delimiter = "–"
+
+[bibliography.styles.court-notes.names.author]
+order = "family-given"
+part-delimiter = ""
+initials = false
+delimiter = "・"
+last-delimiter = "・"
+
+[bibliography.styles.court-notes.types.book]
+pieces = []
+citation = ["{author}『{title}』", "（{publisher}", "、{year:kanji}年", "）。"]
+[bibliography.styles.court-notes.types.article-journal]
+pieces = []
+citation = ["{author}「{title}」", "（『{container-title}』", "{volume:kanji}巻", "{issue:kanji}号", "、{year:kanji}年", "）。"]
+[bibliography.styles.court-notes.types.default]
+pieces = []

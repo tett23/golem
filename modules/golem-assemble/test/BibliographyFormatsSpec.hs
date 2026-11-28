@@ -1,5 +1,6 @@
 module BibliographyFormatsSpec (tests) where
 
+import Data.Bifunctor (second)
 import Data.Either (isLeft)
 import Data.Map.Strict qualified as Map
 import Data.Text (Text)
@@ -13,7 +14,17 @@ import Test.Tasty.HUnit
 tests :: TestTree
 tests =
   testGroup "bibliography declaration pieces" $
-    [ testCase "root ADR 0480 I5: DOI and URL absence conditions cover all presence combinations" $
+    [ testCase "root ADR 0470 I5: deferred fragment metadata keeps each slot notation while other values are formatted" $ do
+        parsed <- either (assertFailure . T.unpack) pure (parseBibliographyPiece ["first-note", "edition"] "({first-note:kanji})/{first-note:circled}/{first-note}/{edition:ordinal-en}")
+        let values key _ = lookup key [("first-note", "60"), ("edition", "2")]
+        fmap (map (second (fmap notationName))) (renderBibliographyFragmentsDeferring (== "first-note") values [parsed])
+          @?= Right [(BibliographyLiteral "(", Nothing), (BibliographyField "first-note" "60", Just "kanji"), (BibliographyLiteral ")/", Nothing), (BibliographyField "first-note" "60", Just "circled"), (BibliographyLiteral "/", Nothing), (BibliographyField "first-note" "60", Nothing), (BibliographyLiteral "/", Nothing), (BibliographyField "edition" "2nd", Just "ordinal-en")],
+      testCase "root ADR 0470 I5: deferred fragment omission still uses required, optional and absence contexts" $ do
+        parsed <- either (assertFailure . T.unpack) pure (traverse (parseBibliographyPiece ["first-note", "title"]) ["{title}{first-note:circled}", "({first-note?:kanji})", "{!first-note}missing"])
+        let output given = renderBibliographyFragmentsDeferring (== "first-note") (\key _ -> if key == "first-note" then given else Nothing) parsed
+        fmap (map fst) (output (Just "60")) @?= Right [BibliographyLiteral "(", BibliographyField "first-note" "60", BibliographyLiteral ")"]
+        fmap (map fst) (output Nothing) @?= Right [BibliographyLiteral "(", BibliographyLiteral ")", BibliographyLiteral "missing"],
+      testCase "root ADR 0480 I5: DOI and URL absence conditions cover all presence combinations" $
         mapM_
           ( \(doi, url) -> do
               let values = [("DOI", "10/example") | doi] <> [("URL", "https://example.org") | url]

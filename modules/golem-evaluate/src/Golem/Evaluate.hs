@@ -31,15 +31,15 @@ where
 
 import Control.Applicative ((<|>))
 import Control.Exception (SomeException, try)
-import Control.Monad (forM)
+import Control.Monad (forM, void)
 import Data.Bifunctor (first)
 import Data.ByteString qualified as BS
 import Data.ByteString.Lazy qualified as BL
 import Data.Either (fromRight, lefts, rights)
-import Data.List (nub, sort, sortOn)
+import Data.List (nub, nubBy, sort)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
-import Data.Maybe (fromMaybe, isNothing, listToMaybe)
+import Data.Maybe (catMaybes, fromMaybe, isNothing, listToMaybe)
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
@@ -47,14 +47,13 @@ import Data.Text.Encoding qualified as TE
 import Data.Text.Unsafe (lengthWord8)
 import Data.Time.Calendar (showGregorian, toGregorian)
 import Golem.Assemble
+import Golem.Assemble.BibliographyCitations (BibliographyCitationRecord (..), BibliographyCitationUse (..), formatBibliographyCitationMark)
 import Golem.Assemble.BibliographyNames qualified as BibNames
-import Golem.Assemble.BibliographyRecords (formatBibliographyCitationWithSuffix, formatBibliographyRecordWithSuffix, formatBibliographyYearCitationWithSuffix)
-import Golem.Assemble.BibliographySort (authorSortKey, bibliographyYearSuffixes)
+import Golem.Assemble.BibliographyRecords (formatBibliographyLabelWithSuffix, formatBibliographyRecordWithSuffix)
+import Golem.Assemble.BibliographySort (SortFields (..), authorNeedsSortKeyWarning, authorSortKey, bibliographyYearSuffixes, sortBibliographyEntries)
 import Golem.Assemble.BibliographyStyle qualified as Bib
-import Golem.Assemble.CitationFormats (joinBibliographyCitations)
 import Golem.Bibliography (CslDate (..), CslEntry (..), CslName (..), EntryPart, formatEntry)
-import Golem.Bibliography.Csl (CslJsonError (..), CslPerson (..), CslRecord, decodeCslRecords, recordDate, recordEntry, recordNames)
-import Golem.Doc.Citation (CitePiece (..))
+import Golem.Bibliography.Csl (CslJsonError (..), CslPerson (..), CslRecord, decodeCslRecords, recordDate, recordEntry, recordNames, recordText)
 import Golem.Doc.IR
 import Golem.Emet (Export (..), Handlers (..), Kind (..), Program, programExports)
 import Golem.Emet.Gm (filterOf, functionNamespaces, separatorFunction)
@@ -279,44 +278,63 @@ resolveBibliographyRecords style fid manifest records book = case selected of
           effective <- effectiveFor record
           parts <- formatBibliographyRecordWithSuffix (suffixFor at key effective) effective number record
           pure ((at, key), parts)
+        label at (key, number) = do
+          record <- maybe (Left "文献キーがありません") Right (Map.lookup key records)
+          effective <- effectiveFor record
+          text <- formatBibliographyLabelWithSuffix (suffixFor at key effective) effective number record
+          pure ((at, key), text)
+        listControls = either (Left . T.intercalate ", ") Right (Bib.bibliographyForLanguage language declaration)
+        firstAuthor record = case recordNames "author" record of
+          CslPerson person reading : _ -> (Just (case person of PersonalName family given -> BibNames.PersonalName family given; LiteralName literal -> BibNames.LiteralName literal), reading)
+          [] -> (Nothing, Nothing)
+        fields (key, number) = do
+          record <- maybe (Left "文献キーがありません") Right (Map.lookup key records)
+          effective <- effectiveFor record
+          let (person, reading) = firstAuthor record
+              separator = fromMaybe "" (Map.lookup "author" (Bib.bsNames effective) >>= Bib.bnPartDelimiter)
+              year = case recordDate "issued" record of Just (DateParts value _ _) -> Just value; _ -> Nothing
+          pure (SortFields (authorSortKey separator reading person) year (fromMaybe "" (recordText "title" record)) (fromMaybe language (ceLanguage (recordEntry record))) number)
+        sortList pair@(Nothing, _) = Right pair
+        sortList (at, entries) = do
+          controls <- listControls
+          resolved <- traverse fields entries
+          pure (at, map snd (sortBibliographyEntries (fromMaybe [] (Bib.bsSort controls)) (Bib.bsLanguageOrder controls) fst (zip resolved entries)))
+        sortedLists = traverse sortList (bookBibliographies book)
+        labels = [label at pair | (at@(Just _), entries) <- bookBibliographies book, pair <- entries]
+        indent = do
+          controls <- listControls
+          pure ((\case Abs amount -> BibliographyIndentSp (unSp amount); Zw ratio -> BibliographyIndentZw ratio) <$> Bib.bsHangingIndent controls)
+        warnings =
+          [ diagnostic "G03306" Warning (mkSpan fid 0 0) ("著者名 " <> name <> " に並べ替えのキー（golem-sort-key）がありません。符号位置の順で並べます")
+          | (_, name) <-
+              nubBy
+                (\(left, _) (right, _) -> left == right)
+                [ (person, case person of Just (BibNames.PersonalName family given) -> T.intercalate separator (catMaybes [family, given]); Just (BibNames.LiteralName text) -> text; Nothing -> "")
+                | (Just _, entries) <- bookBibliographies book,
+                  (key, _) <- entries,
+                  Just record <- [Map.lookup key records],
+                  let (person, reading) = firstAuthor record,
+                  Right effective <- [effectiveFor record],
+                  let separator = fromMaybe "" (Map.lookup "author" (Bib.bsNames effective) >>= Bib.bnPartDelimiter),
+                  authorNeedsSortKeyWarning True (fromMaybe [] (Bib.bsSort effective)) reading person
+                ]
+          ]
         mark (sp, items) = do
           global <- either (Left . T.intercalate ", ") Right (Bib.bibliographyForLanguage language declaration)
-          ordered <- case Bib.bsCitationSort global of
-            Just "year" -> pure (sortOn citationYear items)
-            Just "author-year" -> do
-              keys <- traverse citationAuthorYear items
-              pure (map snd (sortOn fst (zip keys items)))
-            _ -> pure items
-          values <- traverse (citation sp) ordered
-          pure (sp, [(items, joinBibliographyCitations (fromMaybe "" (Bib.bsCitationPrefix global)) (fromMaybe "" (Bib.bsCitationSuffix global)) (fromMaybe "" (Bib.bsCitationDelimiter global)) values)])
-        citationAuthorYear item = do
-          record <- maybe (Left "文献キーがありません") Right (Map.lookup (citKey item) records)
-          effective <- effectiveFor record
-          surnameSeparator <- maybe (Left "names.author.part-delimiter がありません") Right (Map.lookup "author" (Bib.bsNames effective) >>= Bib.bnPartDelimiter)
-          let (sortName, sortReading) = case recordNames "author" record of
-                CslPerson person reading : _ ->
-                  ( Just (case person of PersonalName family given -> BibNames.PersonalName family given; LiteralName literal -> BibNames.LiteralName literal),
-                    reading
-                  )
-                [] -> (Nothing, Nothing)
-          pure (authorSortKey surnameSeparator sortReading sortName, citationYear item)
-        citationYear item = case Map.lookup (citKey item) records >>= recordDate "issued" of
-          Just (DateParts year _ _) -> Just year
-          _ -> Nothing
+          values <- traverse (citation sp) items
+          pieces <- formatBibliographyCitationMark global values
+          pure (sp, [(items, pieces)])
         citation sp item = do
           record <- maybe (Left "文献キーがありません") Right (Map.lookup (citKey item) records)
           number <- maybe (Left "引用番号がありません") Right (citeNumber book sp (citKey item))
           effective <- effectiveFor record
           let at = fst =<< Map.lookup (spanFile sp, sp) (bookCiteMarks book)
-          let formatter = if citationYearOnly item then formatBibliographyYearCitationWithSuffix else formatBibliographyCitationWithSuffix
-          pieces <- formatter (suffixFor at (citKey item) effective) effective number (citLocator item) record
-          let literal inlines = [CiteText text | let text = foldMap inlineText inlines, not (T.null text)]
-          pure (literal (citPrefix item) <> pieces <> literal (citSuffix item))
+          pure (item, BibliographyCitationRecord record effective number (suffixFor at (citKey item) effective) BibliographyInitialCitation)
         marks = map mark (bookCitationItems book)
         results = [entry at pair | (at@(Just _), entries) <- bookBibliographies book, pair <- entries]
         problems messages = [diagnostic "G03006" Error (mkSpan fid 0 0) message | message <- messages]
      in if null requiredProblems
-          then (book {bookBibliographyEntries = Map.fromList (rights results), bookCitationPieces = Map.fromListWith (<>) (rights marks)}, problems (lefts results <> lefts marks))
+          then (book {bookBibliographies = fromRight (bookBibliographies book) sortedLists, bookBibliographyEntries = Map.fromList (rights results), bookBibliographyLabels = Map.fromList (rights labels), bookBibliographyHangingIndent = fromRight Nothing indent, bookCitationPieces = Map.fromListWith (<>) (rights marks)}, problems (lefts results <> lefts labels <> lefts marks <> lefts [void sortedLists, void indent]) <> warnings)
           else (book, problems requiredProblems)
   where
     declarations = stBibliography style

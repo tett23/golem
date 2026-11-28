@@ -1,7 +1,7 @@
 module ReferencesSpec (refPageNumeralTests, indexTests, bibliographyFormatTests, tableTests, columnWidthTests, tocTests, indexColumnTests, urlBreakTests) where
 
 import Codec.Archive.Zip (findEntryByPath, fromEntry, toArchive)
-import Control.Monad (forM_, zipWithM_)
+import Control.Monad (forM_, unless, when, zipWithM_)
 import Data.ByteString qualified as BS
 import Data.ByteString.Char8 qualified as BC
 import Data.ByteString.Lazy qualified as BL
@@ -11,15 +11,18 @@ import Data.Maybe (mapMaybe)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Text.IO qualified as TIO
-import Golem.Assemble (IndexGroup (..), IndexLocator (..), IndexSection (..), citationPiecesFor)
+import Golem.Assemble (AssembleConfig (..), Book (..), IndexGroup (..), IndexLocator (..), IndexSection (..), NoteChannelKind (..), NoteCitationContext (..), NoteNumbering (..), assemble, citationPiecesFor)
+import Golem.Assemble.BibliographyNoteContext (NoteCitationOccurrence (..), bibliographyNoteCitations)
+import Golem.Assemble.BibliographyNotes
+import Golem.Assemble.BibliographyStyle
 import Golem.Bibliography (EntryPart (..), entryText, formatEntry)
 import Golem.Bibliography.Csl (recordEntry, recordText)
-import Golem.Doc.Citation (citationText)
-import Golem.Doc.IR (Block (..), BlockBody (..), CiteItem (..), Document (..), Inline, InlineF (..), citeItem)
+import Golem.Doc.Citation (CitePiece (..), citationText)
+import Golem.Doc.IR (Alignment (..), Block (..), BlockBody (..), CiteItem (..), Code (..), Document (..), Inline, InlineF (..), citeItem, noteBody, plainTable, tableCaption)
 import Golem.Driver
 import Golem.Eval.File (EvalResult (..))
 import Golem.Evaluate (loadBibliographyRecords)
-import Golem.Layout.KnuthPlass (AdjustOrder (..), BoxContent (..), Item (..), Line (..), glueRatio, noLeaf, placeLine)
+import Golem.Layout.KnuthPlass (AdjustOrder (..), BoxContent (..), Item (..), Line (..), MarkBox (..), MarkNumber (..), glueRatio, noLeaf, placeLine)
 import Golem.Layout.Look (Look (..), noBoxSource, plainLook)
 import Golem.Layout.PageLabel (PageLabel (..), plainLabel)
 import Golem.Layout.Paginate (ColumnSetAt (..), PageOut, PageOutAt (..), Slotted (..), labelPages, markPages)
@@ -30,7 +33,7 @@ import Golem.Project (Project (..), ProjectFailure (..))
 import Golem.Project.Files (diskFiles)
 import Golem.Project.Style (parseStyle)
 import Golem.Syntax
-import Golem.Typeset (IndexLine (..), PdfLayout (..), SetLine (..), TocGeometry (..), TocPage (..), bibliographyLines, indexLineInlines, indexLines, tocPage)
+import Golem.Typeset (IndexLine (..), PartLine (..), PdfInput (..), PdfLayout (..), PlacedSidenote (..), SetLine (..), TocGeometry (..), TocPage (..), bibliographyLines, indexLineInlines, indexLines, layoutPdf, layoutPdfUnnumbered, tocPage)
 import Support
 import System.Directory (createDirectoryIfMissing, doesDirectoryExist)
 import System.FilePath ((</>))
@@ -241,7 +244,241 @@ jaRefsJson = TE.encodeUtf8 "[{\"id\": \"jisx4061\", \"title\": \"JIS X 4061:1996
 
 bibliographyFormatTests :: [TestTree]
 bibliographyFormatTests =
-  [ testCase "root ADR 0470: project loading retains the last complete CSL record without changing legacy entries"
+  [ testCase "root ADR 0470 I4, I9: declared list order and labels reach text HTML and EPUB" $
+      forM_ [(labelled, sortKey) | labelled <- [False, True], sortKey <- ["title", "author"]] $ \(labelled, sortKey) ->
+        withBibProject "bibliography = [\"refs.json\"]" "[cite c] [cite a] [cite b]\n\n@bibliography\n" [("refs.json", TE.encodeUtf8 "[{\"id\":\"a\",\"title\":\"A\",\"author\":[{\"family\":\"Kádár\"}]},{\"id\":\"b\",\"title\":\"B\",\"author\":[{\"family\":\"Kz\"}]},{\"id\":\"c\",\"title\":\"C\",\"author\":[{\"family\":\"Z\"}]}]")] $ \tmp -> do
+          let declaration = T.replace ".types.book]" ".types.default]" (T.replace "pieces=['DOI {DOI}.']" "pieces=['{title}']" (T.replace "sort=['citation']" ("sort=['" <> sortKey <> "']\n" <> if labelled then "label='({number:kanji})'" else "") customBibliographyDeclaration))
+          TIO.appendFile (tmp </> "style.toml") (declaration <> "\n[bibliography.styles.custom.names.author]\npart-delimiter=''\n")
+          TIO.appendFile (tmp </> "manifest.toml") "[targets.text]\n[targets.epub]\n"
+          result <- build (defaultOptions tmp) {optTargets = Just [TargetText, TargetHtml, TargetEpub]}
+          assertEqual "no errors" [] (filter isError (brDiagnostics result))
+          output <- TIO.readFile (tmp </> "build/text/horizontal/a.txt")
+          let expected = if labelled then "(二) A\n(三) B\n(一) C" else "A\nB\nC"
+          assertBool (T.unpack output) (expected `T.isInfixOf` output)
+          html <- TIO.readFile (tmp </> "build/html/a.html")
+          assertBool "native list numbering disabled" ("list-style: none" `T.isInfixOf` html)
+          assertBool "first label" ((if labelled then "(二) A</li>" else ">A</li>") `T.isInfixOf` html)
+          archive <- toArchive <$> BL.readFile (tmp </> "build/epub/book.epub")
+          let xhtml = maybe "" (TE.decodeUtf8 . BL.toStrict . fromEntry) (findEntryByPath "OEBPS/a.xhtml" archive)
+          assertBool "EPUB label" ((if labelled then "(二) A</li>" else ">A</li>") `T.isInfixOf` xhtml),
+    testCase "root ADR 0470 I7: author-sorted lists warn once per missing Japanese author key" $
+      forM_ [False, True] $ \listed ->
+        withBibProject "bibliography = [\"refs.json\"]" ("[cite a] [cite b]\n" <> if listed then "\n@bibliography\n" else "") [("refs.json", TE.encodeUtf8 "[{\"id\":\"a\",\"title\":\"A\",\"author\":[{\"family\":\"山田\"}]},{\"id\":\"b\",\"title\":\"B\",\"author\":[{\"family\":\"山田\"}]}]")] $ \tmp -> do
+          let declaration = T.replace ".types.book]" ".types.default]" (T.replace "pieces=['DOI {DOI}.']" "pieces=['{title}']" (T.replace "sort=['citation']" "sort=['author']" customBibliographyDeclaration)) <> "\n[bibliography.styles.custom.names.author]\npart-delimiter=''\n"
+          TIO.appendFile (tmp </> "style.toml") declaration
+          TIO.appendFile (tmp </> "manifest.toml") "[targets.text]\n"
+          result <- build (defaultOptions tmp) {optTargets = Just [TargetText]}
+          assertEqual "no errors" [] (filter isError (brDiagnostics result))
+          length [() | d <- brDiagnostics result, diagCode d == DiagnosticCode "G03306"] @?= if listed then 1 else 0,
+    testCase "root ADR 0470 I7: missing author keys are deduplicated by name across language delimiters" $
+      forM_ [False, True] $ \differentGiven ->
+        let source = "[{\"id\":\"a\",\"title\":\"A\",\"language\":\"ja\",\"author\":[{\"family\":\"山田\",\"given\":\"太郎\"}]},{\"id\":\"b\",\"title\":\"B\",\"language\":\"en\",\"author\":[{\"family\":\"山田\",\"given\":\"" <> (if differentGiven then "次郎" else "太郎") <> "\"}]}]"
+         in withBibProject "bibliography = [\"refs.json\"]" "[cite a] [cite b]\n\n@bibliography\n" [("refs.json", TE.encodeUtf8 source)] $ \tmp -> do
+              let declaration = T.replace ".types.book]" ".types.default]" (T.replace "pieces=['DOI {DOI}.']" "pieces=['{title}']" (T.replace "sort=['citation']" "sort=['author']" customBibliographyDeclaration)) <> "\n[bibliography.styles.custom.names.author]\npart-delimiter=''\n[bibliography.styles.custom.languages.en.names.author]\npart-delimiter=', '\n"
+              TIO.appendFile (tmp </> "style.toml") declaration
+              TIO.appendFile (tmp </> "manifest.toml") "[targets.text]\n"
+              result <- build (defaultOptions tmp) {optTargets = Just [TargetText]}
+              assertEqual "no errors" [] (filter isError (brDiagnostics result))
+              length [() | d <- brDiagnostics result, diagCode d == DiagnosticCode "G03306"] @?= if differentGiven then 2 else 1,
+    testCase "root ADR 0470 I5: prepared identical-source marks reach S1 and PDF by distinct note contexts" $
+      forM_ ["footnote", "endnote"] $ \channel -> do
+        result <- withMiniInput fakeProvider miniManifest horizontalStyle "seed" [] $ \input geom fonts -> do
+          let original = piBook input
+              fid = case bookDocs original of Document file _ : _ -> file; _ -> FileId 0
+              source = mkSpan fid 0 1
+              items = [citeItem "a", citeItem "b"]
+              mark = Cite source items
+              raw = [Document fid [Block source Nothing Nothing (Paragraph Nothing [mark, Text source " / ", mark, Text source " / ", mark])]]
+              style = emptyBibliographyStyle {bsCitationMode = Just "note", bsNoteChannel = Just channel} :: BibliographyStyle Int
+              config = AssembleConfig Map.empty "{n}" Map.empty NumberPerBook [] "{n}" "{n}" Map.empty 16 NumberPerBook
+              (assembled, diagnostics) = assemble config (\_ _ _ -> Right "") (prepareBibliographyNotes style raw)
+              noteOccurrences = bibliographyNoteCitations (bookDocs assembled)
+              prepared = Map.fromList [(ncoContext occurrence, (ncoSpan occurrence, ncoItems occurrence, [CiteText ("C" <> T.pack (show (nccNumber (ncoContext occurrence))))])) | occurrence <- noteOccurrences]
+              book = original {bookDocs = bookDocs assembled, bookNoteCitationPieces = prepared}
+              allLines layout = concat [slLine sl : concatMap snd (slNotes sl) | sl <- Map.elems (plLines layout)]
+              allText layout = T.concat [bcText box | line <- allLines layout, Box _ box <- lineItems line]
+          diagnostics @?= []
+          map (nccNumber . ncoContext) noteOccurrences @?= [1, 2, 3]
+          map (nccOccurrence . ncoContext) noteOccurrences @?= [0, 0, 0]
+          map ncoSpan noteOccurrences @?= replicate 3 source
+          map ncoItems noteOccurrences @?= replicate 3 items
+          resolved <- layoutPdf input {piBook = book} geom fonts >>= either (assertFailure . show) pure
+          forM_ ["C1", "C2", "C3"] $ \token -> T.count token (allText resolved) @?= 1
+        either (assertFailure . show) pure result,
+    testCase "root ADR 0470 I5: PDF keeps repeated document note contexts separate" $
+      forM_ [(channel, chapterEnd, site, prefixCount, sameChapter) | (channel, chapterEnd) <- [(FootnoteChannel, False), (FootnoteChannel, True), (EndnoteChannel, False), (SidenoteChannel, False)], site <- [0 :: Int .. 3], prefixCount <- [0, 1], sameChapter <- [False, True]] $ \(channel, chapterEnd, site, prefixCount, sameChapter) -> do
+        let style = horizontalStyle <> "\n[notes]\nnumbering='file'\nplacement='" <> (if chapterEnd then "chapter-end" else "page-foot") <> "'\n[endnotes]\nnumbering='file'\n" <> if channel == SidenoteChannel then "\n[sidenotes]\nwidth='6zw'\ngap='1zw'\n" else ""
+        result <- withMiniInput fakeProvider miniManifest style "seed" [] $ \input geom fonts -> do
+          let original = piBook input
+              fid = case bookDocs original of Document file _ : _ -> file; _ -> FileId 0
+              target = mkSpan fid 0 1
+              citation = mkSpan fid 2 3
+              items = [citeItem "a"]
+              mark = Cite citation items
+              para xs = Block target Nothing Nothing (Paragraph Nothing xs)
+              note = case channel of FootnoteChannel -> Note; SidenoteChannel -> Sidenote; EndnoteChannel -> Endnote
+              content = [Text target "X", note target 1 Nothing [para [mark]]]
+              document =
+                Document
+                  fid
+                  [ case site of
+                      1 -> Block target Nothing Nothing (TableBlock (plainTable [AlignLeft] [] [[content]]))
+                      2 -> Block target Nothing Nothing (TableBlock ((plainTable [AlignLeft] [] [[[Text target "cell"]]]) {tableCaption = Just content}))
+                      3 -> Block target Nothing Nothing (CodeBlock (Code Nothing Nothing Nothing (Just content) True [] False))
+                      _ -> para content
+                  ]
+              table = Map.fromList [(NoteCitationContextInDocument target channel 1 0 k, (citation, items, [CiteText text])) | (k, text) <- [(prefixCount, "DOCZERO"), (prefixCount + 1, "DOCONE")]]
+              chapterOf = if sameChapter then replicate (prefixCount + 2) 0 else [0 .. prefixCount + 1]
+              book = original {bookDocs = replicate prefixCount (Document fid []) <> [document, document], bookChapterOf = chapterOf, bookNoteCitationPieces = table}
+              allLines layout = concat [slLine sl : concatMap snd (slNotes sl) | sl <- Map.elems (plLines layout)] <> [ptLine part | placed <- concat (Map.elems (plSidenotes layout)), part <- psLines placed]
+              allText layout = T.concat [bcText box | line <- allLines layout, Box _ box <- lineItems line]
+          resolved <- layoutPdf input {piBook = book} geom fonts >>= either (assertFailure . show) pure
+          forM_ ["DOCZERO", "DOCONE"] $ \token -> assertEqual (show (channel, chapterEnd, site, prefixCount, sameChapter, token)) 1 (T.count token (allText resolved))
+        either (assertFailure . show) pure result,
+    testGroup
+      "PDF note occurrence consumers"
+      [ testCase ("root ADR 0470 I5: PDF structural note ordinals in " <> name <> if vertical then " vertically" else " horizontally") $ do
+          let style =
+                replaceIn "writing-mode = \"horizontal\"" (if vertical then "writing-mode = \"vertical\"" else "writing-mode = \"horizontal\"") (replaceIn "lines = 30" "lines = 12" horizontalStyle)
+                  <> (if channel == SidenoteChannel then "\n[sidenotes]\nwidth='6zw'\ngap='1zw'\n" else "")
+                  <> "\n[notes]\nplacement='"
+                  <> (if atChapterEnd then "chapter-end" else "page-foot")
+                  <> "'\n"
+                  <> if keeps then "\n[paragraph-styles.sidenote]\nline-breaks='keep'\n" else ""
+          result <- withMiniInput fakeProvider miniManifest style "seed" [] $ \input geom fonts -> do
+            pgVertical geom @?= vertical
+            let original = piBook input
+                fid = case bookDocs original of Document file _ : _ -> file; _ -> FileId 0
+                target = mkSpan fid 0 1
+                citation = mkSpan fid 2 3
+                items = [citeItem "a"]
+                mark = Cite citation items
+                para xs = Block target Nothing Nothing (Paragraph Nothing xs)
+                note = case channel of FootnoteChannel -> Note; SidenoteChannel -> Sidenote; EndnoteChannel -> Endnote
+                body n = if n == (1 :: Int) then if channel == SidenoteChannel then [para (if keeps then [mark, LineBreak target, mark, LineBreak target, mark] else [mark, mark, mark])] else [para [Lang target "en" [mark, mark]], para [mark]] else [para [mark]]
+                content = [mark, note target 1 Nothing (body 1)] <> [note target 2 Nothing (body 2) | channel /= SidenoteChannel]
+                base = original {bookDocs = [Document fid [para content]], bookCitationPieces = Map.singleton citation [(items, [CiteText "G"])]}
+                table = Map.fromList [(NoteCitationContext target channel n occurrence, (citation, items, [CiteText text])) | (n, occurrence, text) <- [(1, 0, "C0"), (1, 1, "C1"), (1, 2, "C2"), (2, 0, "D0")]]
+                allLines layout = concat [slLine sl : concatMap snd (slNotes sl) | sl <- Map.elems (plLines layout)] <> [ptLine part | placed <- concat (Map.elems (plSidenotes layout)), part <- psLines placed]
+                allText layout = T.concat [bcText box | line <- allLines layout, Box _ box <- lineItems line]
+                equivalent = Map.map (\(source, values, _) -> (source, values, [CiteText "G"])) table
+                mismatched = Map.map (\(source, _, pieces) -> (source, [citeItem "different"], pieces)) table
+            legacy <- layoutPdf input {piBook = base} geom fonts >>= either (assertFailure . show) pure
+            resolved <- layoutPdf input {piBook = base {bookNoteCitationPieces = table}} geom fonts >>= either (assertFailure . show) pure
+            let text = allText resolved
+            forM_ ["C0", "C1", "C2"] $ \token -> T.count token text @?= 1
+            T.count "D0" text @?= if channel == SidenoteChannel then 0 else 1
+            T.count "G" text @?= 1
+            T.count "G" (allText legacy) @?= if channel == SidenoteChannel then 4 else 5
+            assertBool "all note bodies fit" (all (null . poUnmet) (plPages resolved))
+            forM_ [equivalent, mismatched] $ \prepared -> do
+              control <- layoutPdf input {piBook = base {bookNoteCitationPieces = prepared}} geom fonts >>= either (assertFailure . show) pure
+              map lineItems (allLines control) @?= map lineItems (allLines legacy)
+          either (assertFailure . show) pure result
+      | (name, channel, atChapterEnd, vertical, keeps) <- [(name, channel, atChapterEnd, vertical, False) | (name, channel, atChapterEnd) <- [("footnotes", FootnoteChannel, False), ("chapter notes", FootnoteChannel, True), ("endnotes", EndnoteChannel, False)], vertical <- [False, True]] <> [("sidenotes", SidenoteChannel, False, False, False), ("kept sidenotes", SidenoteChannel, False, False, True)]
+      ],
+    testCase "root ADR 0470 I5: final page-local first-note notation ranges stop PDF generation" $
+      forM_ [(50, False, True), (51, False, True), (51, True, True), (51, False, False)] $ \(targetNumber, resetPage, usePieces) -> do
+        let style = replaceIn "size = \"A5\"" "size = { width = \"841mm\", height = \"1189mm\" }" (replaceIn "lines = 30" "lines = 150" horizontalStyle) <> "\n[notes]\nnumbering='page'\n"
+        result <- withMiniInput fakeProvider miniManifest style "seed" [] $ \input geom fonts -> do
+          let original = piBook input
+              fid = case bookDocs original of Document file _ : _ -> file; _ -> FileId 0
+              target = mkSpan fid 0 1
+              citation = mkSpan fid 2 3
+              items = [citeItem "a"]
+              nodes = concat [[LineBreak target | resetPage && n == targetNumber, _ <- [1 .. 150 :: Int]] <> [Note target n Nothing (noteBody target (if n == targetNumber + 1 then [Cite citation items] else [Text target "x"]))] | n <- [1 .. targetNumber + 1]]
+              piece = CiteNoteNumber target targetNumber (Just "circled") Nothing
+              prepared = Map.singleton (NoteCitationContext target FootnoteChannel (if usePieces then targetNumber + 1 else 999) 0) (citation, items, [piece])
+              book = original {bookDocs = [Document fid [Block target Nothing Nothing (Paragraph Nothing nodes)]], bookNoteCitationPieces = prepared}
+          initial <- layoutPdfUnnumbered input {piBook = book} geom fonts >>= either (assertFailure . show) pure
+          unless resetPage (length (plPages initial) @?= 1)
+          final <- layoutPdf input {piBook = book} geom fonts
+          if targetNumber == 50 || resetPage || not usePieces
+            then do
+              layout <- either (assertFailure . show) pure final
+              let finalReferenceText = [bcText box | sl <- Map.elems (plLines layout), line <- slLine sl : concatMap snd (slNotes sl), Box _ box <- lineItems line, Just markBox <- [bcMark box], Just CiteNoteMarkNumber {} <- [mbNumber markBox]]
+              finalReferenceText @?= [if resetPage then "①" else "㊿" | usePieces]
+            else case final of
+              Left ds -> do
+                codesOf ds @?= ["G03006"]
+                map diagSpan ds @?= [mkSpan (piStyleFile input) 0 0]
+              Right _ -> assertFailure "an actual first-note number outside circled must stop the PDF"
+        either (assertFailure . show) pure result,
+    testCase "root ADR 0470 I5: note-local ordinals retain deferred first-note targets during page renumbering" $ do
+      result <- withMiniInput fakeProvider miniManifest (replaceIn "lines = 30" "lines = 5" horizontalStyle <> "\n[notes]\nnumbering='page'\n") "seed" [] $ \input geom fonts -> do
+        let original = piBook input
+            fid = case bookDocs original of Document file _ : _ -> file; _ -> FileId 0
+            target = mkSpan fid 0 1
+            citation = mkSpan fid 2 3
+            items = [citeItem "a"]
+            mark = Cite citation items
+            note n body = Note target n Nothing (noteBody target body)
+            filler = concat (replicate 7 [Text target "あ", LineBreak target])
+            source = [Text target "始", note 1 [Text target "unrelated"], LineBreak target] <> filler <> [Text target "次", note 2 [mark, Text target " / ", mark], LineBreak target] <> filler <> [Text target "後", note 3 [mark]]
+            reference = [CiteNoteNumber target 2 Nothing (Just "2")]
+            table = Map.fromList [(NoteCitationContext target FootnoteChannel n occurrence, (citation, items, pieces)) | (n, occurrence, pieces) <- [(2, 0, [CiteText "FIRST"]), (2, 1, reference), (3, 0, reference)]]
+            book = original {bookDocs = [Document fid [Block target Nothing Nothing (Paragraph Nothing source)]], bookNoteCitationPieces = table}
+            allLines layout = concat [slLine sl : concatMap snd (slNotes sl) | sl <- Map.elems (plLines layout)]
+            references layout = [(mnNumber number, bcText box) | line <- allLines layout, Box _ box <- lineItems line, Just markBox <- [bcMark box], Just number@CiteNoteMarkNumber {} <- [mbNumber markBox]]
+            calls layout = length [() | line <- allLines layout, Box _ box <- lineItems line, Just markBox <- [bcMark box], Just number <- [mbNumber markBox], mnCall number]
+        initial <- layoutPdfUnnumbered input {piBook = book} geom fonts >>= either (assertFailure . show) pure
+        numbered <- layoutPdf input {piBook = book} geom fonts >>= either (assertFailure . show) pure
+        references initial @?= [(2, "2"), (2, "2")]
+        references numbered @?= [(1, "1"), (1, "1")]
+        calls initial @?= 3
+        calls numbered @?= 3
+      either (assertFailure . show) pure result,
+    testCase "root ADR 0470 I5: shared-span first notes retain S1 identity, page renumbering and non-page-local fallbacks" $
+      forM_ [("page", False), ("book", False), ("page", True)] $ \(numbering, endnotes) -> do
+        result <- withMiniInput fakeProvider miniManifest (replaceIn "lines = 30" "lines = 5" horizontalStyle <> "\n[notes]\nnumbering='" <> numbering <> "'\n") "seed" [] $ \input geom fonts -> do
+          let original = piBook input
+              fid = case bookDocs original of Document file _ : _ -> file; _ -> FileId 0
+              target = mkSpan fid 0 1
+              citation = mkSpan fid 2 3
+              note = if endnotes then Endnote else Note
+              filler = concat (replicate 7 [Text target "あ", LineBreak target])
+              content = [Text target "始", note target 1 Nothing (noteBody target [Text target "first"]), LineBreak target] <> filler <> [Text target "次", note target 2 Nothing (noteBody target [Text target "second"]), LineBreak target, Text citation "参[", Cite citation [citeItem "a"], Text citation "/", Cite citation [citeItem "b"], Text citation "]"]
+              pieces = Map.singleton citation [([citeItem "a"], [CiteNoteNumber target 1 (Just "kanji") (Just "一")]), ([citeItem "b"], [CiteNoteNumber target 2 (Just "kanji") (Just "二")])]
+              book = original {bookDocs = [Document fid [Block target Nothing Nothing (Paragraph Nothing content)]], bookCitationPieces = pieces}
+              deferred layout = [(mnNumber number, bcText box) | sl <- Map.elems (plLines layout), Box _ box <- lineItems (slLine sl), Just mark <- [bcMark box], Just number@CiteNoteMarkNumber {} <- [mbNumber mark]]
+              calls layout = length [() | sl <- Map.elems (plLines layout), Box _ box <- lineItems (slLine sl), Just mark <- [bcMark box], Just number <- [mbNumber mark], mnCall number]
+              text layout = T.concat [bcText box | sl <- Map.elems (plLines layout), Box _ box <- lineItems (slLine sl)]
+              pageLocal = numbering == "page" && not endnotes
+          unnumbered <- layoutPdfUnnumbered input {piBook = book} geom fonts >>= either (assertFailure . show) pure
+          deferred unnumbered @?= if pageLocal then [(1, "一"), (2, "二")] else []
+          numberedLayout <- layoutPdf input {piBook = book} geom fonts >>= either (assertFailure . show) pure
+          assertBool "notes reach separate physical pages" (length (gridPages numberedLayout) >= 2)
+          deferred numberedLayout @?= if pageLocal then [(1, "一"), (1, "一")] else []
+          assertBool "the reference text keeps its resolved or ordinary form" ((if pageLocal then "参[一/一]" else "参[一/二]") `T.isInfixOf` text numberedLayout)
+          calls numberedLayout @?= calls unnumbered
+          when pageLocal $ calls numberedLayout @?= 2
+        either (assertFailure . show) pure result,
+    testCase "root ADR 0470 I2: relative hanging indent retains font units without a PDF grid" $
+      withBibProject "bibliography = [\"refs.json\"]" "[cite a]\n\n@bibliography\n" [("refs.json", abcJson)] $ \tmp -> do
+        let declaration = T.replace ".types.book]" ".types.default]" (T.replace "pieces=['DOI {DOI}.']" "pieces=['{title}']" (T.replace "hanging-indent='0pt'" "hanging-indent='1.5zw'" customBibliographyDeclaration))
+        TIO.writeFile (tmp </> "style.toml") declaration
+        TIO.appendFile (tmp </> "manifest.toml") "[targets.text]\n[targets.epub]\n"
+        result <- build (defaultOptions tmp) {optTargets = Just [TargetHtml, TargetText, TargetEpub]}
+        assertEqual "HTML-only dimensions need no PDF grid" [] (filter isError (brDiagnostics result))
+        html <- TIO.readFile (tmp </> "build/html/a.html")
+        archive <- toArchive <$> BL.readFile (tmp </> "build/epub/book.epub")
+        let xhtml = maybe "" (TE.decodeUtf8 . BL.toStrict . fromEntry) (findEntryByPath "OEBPS/a.xhtml" archive)
+        forM_ [html, xhtml] $ \output ->
+          assertBool (T.unpack output) ("padding-inline-start: 1.5em; text-indent: -1.5em" `T.isInfixOf` output),
+    testCase "root ADR 0470 I2: hanging indent offsets only continuation lines in both writing directions" $
+      forM_ [False, True] $ \vertical -> do
+        let declaration = T.replace ".types.book]" ".types.default]" (T.replace "pieces=['DOI {DOI}.']" "pieces=['{title}']" (T.replace "hanging-indent='0pt'" "hanging-indent='20pt'" customBibliographyDeclaration))
+            style = replaceIn "writing-mode = \"horizontal\"" (if vertical then "writing-mode = \"vertical\"" else "writing-mode = \"horizontal\"") (replaceIn "lines = 30" "lines = 12" horizontalStyle) <> TE.encodeUtf8 declaration
+            manifest = "bibliography = [\"refs.json\"]\n" <> miniManifest
+            records = TE.encodeUtf8 ("[{\"id\":\"a\",\"title\":\"" <> T.replicate 30 "あ" <> "\"}]")
+        result <- withMiniInput fakeProvider manifest style "[cite a]\n\n@bibliography\n" [("refs.json", records)] $ \input geom fonts -> do
+          layout <- layoutPdf input geom fonts >>= either (assertFailure . show) pure
+          let entries = [sl | sl <- Map.elems (plLines layout), "あ" `T.isInfixOf` setLineText sl]
+          assertBool "entry wraps" (length entries >= 2)
+          map slIndent entries @?= 0 : replicate (length entries - 1) (20 * pt)
+          assertBool "no fixed numeric label" (not (any (T.isInfixOf "[1]" . setLineText) entries))
+        either (assertFailure . show) pure result,
+    testCase "root ADR 0470: project loading retains the last complete CSL record without changing legacy entries"
       $ withBibProject
         "bibliography = [\"first.json\", \"second.json\"]"
         "本文。\n"
@@ -616,6 +853,19 @@ bibliographyFormatTests =
           assertEqual "text mark and body" 2 (T.count ("※" <> number) text)
           forM_ [html, xhtml] $ \output ->
             assertEqual "one HTML/XHTML callmark per sidenote" 1 (T.count ("<sup class=\"sidenote-ref\">" <> number <> "</sup>") output),
+    testCase "root ADR 0470 I5 and root ADR 0482 I2: declared citation formats reach ruby note bodies in all non-PDF media" $
+      forM_ ["note", "endnote", "sidenote"] $ \channel ->
+        withBibProject "bibliography = [\"refs.json\"]" ("[ruby: 字[" <> channel <> ": 注[cite a]]|じ]。\n\n@bibliography\n") [("refs.json", "[{\"id\":\"a\",\"type\":\"book\",\"title\":\"A\",\"DOI\":\"10.1/a\"}]")] $ \tmp -> do
+          TIO.appendFile (tmp </> "style.toml") customBibliographyDeclaration
+          TIO.appendFile (tmp </> "manifest.toml") "[targets.text]\n[targets.epub]\n"
+          result <- build (defaultOptions tmp) {optTargets = Just [TargetHtml, TargetText, TargetEpub]}
+          assertEqual "no errors" [] (filter isError (brDiagnostics result))
+          text <- TIO.readFile (tmp </> "build/text/horizontal/a.txt")
+          html <- TIO.readFile (tmp </> "build/html/a.html")
+          archive <- toArchive <$> BL.readFile (tmp </> "build/epub/book.epub")
+          let xhtml = maybe "" (TE.decodeUtf8 . BL.toStrict . fromEntry) (findEntryByPath "OEBPS/a.xhtml" archive)
+          assertEqual (T.unpack text) 1 (T.count "(ref-1)" text)
+          forM_ [html, xhtml] $ \output -> assertEqual (T.unpack output) 1 (T.count "(ref-<a href=\"#cite-a\">1</a>)" output),
     testCase "root ADR 0482 I1, I2, I3: writer notes in captions and ruby retain bodies and PDF destinations" $
       withBibProject "" "# 章\n\n本文[note: 注一]。\n\n[ruby: 字[note: 注二]|じ]。\n\n@caption 表[note: 注三]\n| A[note: 注四] |\n| --- |\n| B[note: 注五] |\n\n@caption コード[note: 注六]\n```text\ncode\n```\n" [] $ \tmp -> do
         createDirectoryIfMissing True (tmp </> "fonts")

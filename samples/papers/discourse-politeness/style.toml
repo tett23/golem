@@ -1,0 +1,114 @@
+# Fonts are the same pinned assets used for the manuals in CI.
+[page]
+size = "A4"
+binding = "left"
+writing-mode = "horizontal"
+
+[page.grid]
+font-size = "10pt"
+characters = 24
+lines = 44
+line-pitch = "15pt"
+columns = 2
+column-gap = "2zw"
+position = { top = "20mm", gutter = "20mm" }
+
+[fonts.body]
+ja = "fonts/NotoSerifJP-Regular.otf"
+ja-license = "fonts/LICENSE-NotoSerifJP.txt"
+latin = "fonts/SourceSerif4-Regular.otf"
+latin-license = "fonts/LICENSE-SourceSerif4.md"
+
+[fonts.heading]
+ja = "fonts/NotoSansJP-Bold.otf"
+ja-license = "fonts/LICENSE-NotoSansJP.txt"
+latin = "fonts/SourceSans3-Bold.otf"
+latin-license = "fonts/LICENSE-SourceSans3.md"
+
+[headings.1]
+font = "heading"
+size = "16pt"
+[headings.2]
+font = "heading"
+size = "12pt"
+
+[paragraph-styles.body]
+first-line-indent = "1zw"
+
+[masters.body]
+folio = { position = "bottom-outside", format = "{n}" }
+
+# Draft declaration for the author-year/mixed-list requirements of
+# root ADR 0470. Japanese titles receive no added corner brackets.
+[bibliography]
+style = "discourse"
+[bibliography.styles.discourse]
+citation-mode = "author-year"
+citation = ["{author}, {year}"]
+citation-year = ["{year}"]
+citation-prefix = "("
+citation-suffix = ")"
+citation-delimiter = "; "
+citation-sort = "year"
+sort = ["author", "year", "title"]
+hanging-indent = "1.5zw"
+year-suffix = true
+page-range = "full"
+range-delimiter = "–"
+
+[bibliography.styles.discourse.names.author]
+order = "family-given"
+part-delimiter = ", "
+initials = false
+delimiter = ", "
+last-delimiter = " & "
+[bibliography.styles.discourse.names.editor]
+order = "given-family"
+initials = false
+delimiter = ", "
+last-delimiter = " & "
+label = ["ed.", "eds."]
+[bibliography.styles.discourse.names.short]
+delimiter = ", "
+last-delimiter = " & "
+
+[bibliography.styles.discourse.types.book]
+pieces = ["{author} ({year}). ", "{title}. ", "{publisher}."]
+char-styles = { title = "italic" }
+[bibliography.styles.discourse.types.article-journal]
+pieces = ["{author} ({year}). ", "{title}. ", "{container-title}", ", {volume}", "({issue})", ", {page}", ".", " https://doi.org/{DOI}"]
+char-styles = { container-title = "italic" }
+[bibliography.styles.discourse.types.chapter]
+pieces = ["{author} ({year}). ", "{title}. ", "In {editor} ({editor-label}), ", "{container-title}", " (pp. {page})", ". {publisher}."]
+char-styles = { container-title = "italic" }
+[bibliography.styles.discourse.types.default]
+pieces = ["{author} ({year}). ", "{title}."]
+
+[bibliography.styles.discourse.languages.ja.names.author]
+order = "family-given"
+part-delimiter = ""
+initials = false
+delimiter = "・"
+last-delimiter = "・"
+[bibliography.styles.discourse.languages.ja.names.editor]
+order = "family-given"
+part-delimiter = ""
+initials = false
+delimiter = "・"
+last-delimiter = "・"
+label = ["編", "編"]
+[bibliography.styles.discourse.languages.ja.names.short]
+delimiter = "・"
+last-delimiter = "・"
+[bibliography.styles.discourse.languages.ja.types.book]
+pieces = ["{author} ({year}). ", "{title}　", "{publisher}."]
+char-styles = { title = "body" }
+[bibliography.styles.discourse.languages.ja.types.article-journal]
+pieces = ["{author} ({year}). ", "{title}　", "{container-title}", ", {volume}", "({issue})", ", {page}", ".", " https://doi.org/{DOI}"]
+char-styles = { container-title = "body" }
+[bibliography.styles.discourse.languages.ja.types.chapter]
+pieces = ["{author} ({year}). ", "{title}　", "{editor} ({editor-label}) ", "{container-title}", " (pp. {page})", "　{publisher}."]
+char-styles = { container-title = "body" }
+
+[character-styles.body]
+font = "body"

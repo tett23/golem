@@ -320,7 +320,7 @@ S0 の時点では、一覧の中身は決まらない。
 | 目次 | 見出し（[code: @notoc] のないもの） | 見出しのブロック（タグ 1） | [code: bookToc]：文書の順 | [code: @toc] |
 | 脚注 | [code: \[note: ...\]] | 脚注（タグ 12） | 番号を振り直す | 出力が決める |
 | 索引 | [code: \[index reading=...: ...\]] | 索引の印（タグ 14） | [code: bookIndexes]：一覧ごとに読みの順 | [code: @index] |
-| 参考文献 | [code: \[cite キー\]] | 引用（タグ 15） | [code: bookBibliographies]：一覧ごとに最初に引用した順 | [code: @bibliography] |
+| 参考文献 | [code: \[cite キー\]] | 引用（タグ 15） | [code: bookBibliographies]：宣言の並び順（既定は引用順） | [code: @bibliography] |
 
 脚注だけは、出す位置をブロックコマンドで指定しない。
 PDF は [code: style.toml] の [code: \[notes\]] の [code: placement] に従い、ページの下（[code: "page-foot"]、既定）か、マニフェストの章の終わり（[code: "chapter-end"]）に置く。
@@ -353,9 +353,35 @@ data ChannelBlock = TocOutput !Int | IndexOutput | BibliographyOutput
 
 集めた結果は、S1 の結果の [code: Doc.Book] のフィールドに入る。
 [code: bookToc] は目次の項目（階層、番号の文字列、題、リンクの先、見出しの位置）の列、[code: bookIndexes] は [code: @index] ごとの、語ごとにまとめた索引の項目（語、読み、出現位置の列）の列、[code: bookBibliographies] は [code: @bibliography] ごとの、文献のキーと番号の組の列である。
+スタイルの宣言を選んだ本では、golem-evaluate がこの後に一覧を [code: sort] で並べ替え、[code: bookBibliographyLabels] に項目の頭の文字列を、[code: bookBibliographyHangingIndent] にぶら下げ字下げの寸法を保持する。
+各出力はこの共通の一覧と頭の文字列を使い、PDF、HTML、EPUB は二行目以降に字下げを当てる。
+
 [code: @bibliography] がなければ、[code: bookBibliographies] は位置のない一つの一覧を持ち、文書の全体で番号を振る。
 [code: bookCiteMarks] は、引用の印ごとに、載る一覧と番号を持つ。[note: [style url: https://github.com/tett23/golem/blob/main/docs/golem-doc/adr/0008-multiple-index-and-bibliography.md]（golem-doc ADR 0008「複数の [code: @index] と [code: @bibliography]」）]
-脚注は別のフィールドを持たず、[code: bookDocs] の中の脚注のインラインの番号を、その場で振り直す。
+脚注の本文は [code: bookDocs] の中の脚注のインラインに保持し、S1 がそのインラインの番号を振り直す。
+
+ライブラリの [code: bookNoteCitationPieces] は、注の原稿位置、チャネル、S1 の番号と、ゼロから数える注内の引用の出現順をキーにして、引用の片を保持する。
+同じ原稿を複数回使い、文書間で注の位置とチャネルと番号が重なる場合は、本の先頭からゼロで数える文書の出現順もキーに含める。
+各出力は引用の原稿位置と文献項目も照合し、一致する片がなければ従来の引用の表を使う。
+PDF は、脚注、傍注と章末の注の段落へ出現順の開始値を渡す。
+字幅の判定と描画が同じ引用を何度参照しても、可変のカウンターでこの順を進めることはない。
+この表は Haskell の内部の [code: Book] にだけあり、意味論 IR、CBOR と SDK の形式には足していない。
+
+[code: formatBibliographyCitationMark] は、解決済みの文献ごとの宣言、番号、年の接尾辞を受け取り、印の並べ替え、位置と前置きと後置き、個別の書式と全体の囲みを共通に組む。
+最初の注やチャネルは選ばず、注に使う通常か二度目かの書式と最初の注番号は、呼出側が文献ごとに指定する。
+
+[code: formatBibliographyNoteCitations] は、この指定を注と文献項目の出現順で解決する処理を受け取り、[code: bookNoteCitationPieces] に渡す表を作る。
+
+[code: Golem.Assemble.BibliographyNotes] の [code: prepareBibliographyNotes] は、選択済みの注モードの宣言を受け取り、S1 の前に引用印を一つの未採番の脚注か後注へ包む。
+元からある注は、その本文の引用とともに保持する。
+準備を繰り返しても注を重ねない。
+通常の CLI は、この API と注ごとの引用の表をまだ使わない。
+ライブラリでは、本文、表のセルと見出し行、表とコードのキャプション、ルビ内で準備した注を S1 で採番する。
+PDF のルビの中の注の配置は未完成である。
+
+ライブラリのページ別脚注の [code: first-note] の片は、最初の注の原稿位置と S1 の番号を保持して、PDF のページ付けの後に実際の番号へ差し替える。
+S1 の仮の番号だけで数の表記の範囲を検査せず、確定した番号が範囲外なら、ほかの書誌の書式の誤りと同じ G03006 を [code: style.toml] の先頭で報告して PDF の生成を中止する。
+通常の CLI の自動注からこの遅延経路を使う接続と、PDF のルビの親文字の中の引用の描画は、実装途中である。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0470-bibliography-styles-by-name-and-by-declaration.md]（root ADR 0470「参考文献のスタイルを、決まった名前と宣言の二つで選ぶ」）]
 
 出力の経路は、タグ 8 のブロックに出会うと、そのブロックの位置で [code: Doc.Book] の該当するフィールドから一覧を引いて書く。
 一覧の中身を作り直すことはしないので、四つの出力の一覧は、同じ集約の結果から作られる。
@@ -421,6 +447,8 @@ data ChannelBlock = TocOutput !Int | IndexOutput | BibliographyOutput
 - 脚注は、[code: \[notes\]] の [code: numbering] の既定がマニフェストの章ごとなので、二つの章でそれぞれ 1 になる。
 
 右は、プレーンテキストの出力（[code: back.txt]）である。
+
+@need-lines 6
 
 ```text
 参考文献

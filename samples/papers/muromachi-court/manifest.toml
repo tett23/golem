@@ -1,0 +1,16 @@
+chapters = ["paper.gm"]
+bibliography = ["references.json"]
+
+[metadata]
+id = "urn:uuid:04700000-0000-4000-8000-000000000001"
+title = "室町期の朝廷を関係の交点として読む"
+language = "ja"
+date = 2026-11-28
+
+[source]
+paragraph-separator = "blank-line"
+
+[targets.pdf]
+[targets.html]
+[targets.epub]
+[targets.text]

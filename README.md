@@ -599,6 +599,7 @@ cabal test all
 通常の CLI も同じように検査し、引数名と値の位置で誤りを報告する。
 
 参考文献の宣言の差し込み片を扱うライブラリ API は、golem-assemble の `Golem.Assemble.BibliographyFormats` にある（[root ADR 0470](docs/adr/0470-bibliography-styles-by-name-and-by-declaration.md)）。
+通常の CLI の一覧にも `sort` と `label` を適用し、PDF、HTML、EPUB の二行目以降は `hanging-indent` で字下げする。
 差し込み片のテストは `cabal test golem-assemble-test --test-options='-p /0470/'` で実行する。
 宣言向けの書誌データは `Golem.Bibliography.Csl.decodeCslRecords` で読み、編者、DOI、名前の並べ替えのキーなどを保持する。
 書誌データの読み取りのテストは `cabal test golem-bibliography-test` で実行する。
@@ -617,9 +618,24 @@ cabal test all
 片には、欄が無い場合だけ組む `{!DOI}{URL}` などの条件と、数の文字列を英語の序数にする `{edition:ordinal-en}` を書ける。
 `ordinal-en` を書いた欄は、読み取り後の指数が 0 の JSON 数値なら、固定幅整数に切り詰めずに使う。
 同じ片の配列にある、その欄の通常の差し込みと不在条件も同じ値を読み、表記を書かない差し込みには序数の接尾辞を付けない。
-注の引用、一覧の並べ替えとぶら下げ字下げ、同梱のスタイルは実装途中である。
-IEEE、Vancouver、SIST 02、Unified Style Sheet for Linguistics の同梱宣言は `modules/golem-project/data/bibliography/` にあり、同じ読み手を使って選び、別名に写した宣言と同じ文字列を組む。
+注の引用、二つの Chicago の同梱宣言、見本の論文三冊は実装途中である。
+ライブラリには、最初の注の識別情報を保ち、PDF のページ別脚注の番号へ差し替える経路があるが、注を自動で作る処理からは呼ばない。
+この経路では、実際の注番号が指定した数の表記の範囲外なら PDF の生成を中止する。
+S1 の注に含まれる引用を、注のチャネルと位置と番号、注内の出現順とともに読み出す API もあり、同じ原稿位置と内容の引用を区別する。
+同じ原稿を複数回使って注番号を振り直す場合も、文書の出現順で区別する。
+この読み出しは、最初の注を決めたり、原稿や出力を変えたりしない。
+解決済みの文献と最初の注の指定を呼出側から渡し、この出現順で注ごとの引用の表を作る API もある。
+
+`formatBibliographyCitationMark` は、解決済みの文献を受け取り、一つの印の並べ替えと個別の書式、前置きと後置き、全体の囲みを共通に組む。
+最初の注やチャネルは、この API では選ばない。
+
+ライブラリの `prepareBibliographyNotes` は、注モードの引用印を S1 の前に未採番の注へ包む。
+元からある注は保持し、通常の CLI への接続は実装途中である。
+ライブラリで注ごとの引用の片を用意した場合は、PDF、HTML、EPUB、テキストが注内の出現順を使って片を選ぶ。
+通常の CLI からはまだこの表を作らず、PDF のルビの親文字の中の引用の字面も未接続である。
+IEEE、Vancouver、SIST 02、Unified Style Sheet for Linguistics、APA の同梱宣言は `modules/golem-project/data/bibliography/` にあり、同じ読み手を使って選び、別名に写した宣言と同じ文字列を組む。
 IEEE の三つの一次資料例とほかの三つのスタイルの一例ずつ、IEEE の著者名の六人と七人の境界を照合している。
+APA の三例は研究文書に記録した二次資料の文字列と照合し、名前の二十人と二十一人の境界、斜体の範囲、0.5 インチの字下げは APA の公式資料で確かめている。
 差し込み片の `renderBibliographyFragments` は、欄の値と句読点を分け、値の欄名を保持する。
 `renderBibliographyFragmentsWith` は値を引く関数に数の表記も渡し、月名と数の月を選べるようにする。
 `bibliographyEntryParts` が欄ごとの文字スタイルを付け、HTML、EPUB、PDF はスタイルを、テキストはその中の文字を出す。

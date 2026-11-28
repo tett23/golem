@@ -1,0 +1,16 @@
+chapters = ["paper.gm"]
+bibliography = ["references.json"]
+
+[metadata]
+id = "urn:uuid:04700000-0000-4000-8000-000000000003"
+title = "Honorifics in interaction"
+language = "en"
+date = 2026-11-28
+
+[source]
+paragraph-separator = "blank-line"
+
+[targets.pdf]
+[targets.html]
+[targets.epub]
+[targets.text]

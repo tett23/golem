@@ -34,7 +34,8 @@ library
     Golem.Project.Style
     Golem.Project.TomlMessage
     Golem.Project.TomlSchema
-  other-modules: Golem.Project.Bibliography.Builtin.IEEE
+  other-modules: Golem.Project.Bibliography.Builtin.APA
+                 Golem.Project.Bibliography.Builtin.IEEE
                  Golem.Project.Bibliography.Builtin.Vancouver
                  Golem.Project.Bibliography.Builtin.Sist02
                  Golem.Project.Bibliography.Builtin.UnifiedLinguistics

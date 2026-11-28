@@ -27,7 +27,9 @@ import Golem.Doc.Citation (CitePiece (..), citationPieces, citationText)
 import Golem.Doc.IR qualified as IR
 import Golem.Layout.Japanese
 import Golem.Layout.KnuthPlass
-import Golem.Layout.Look (lkNoBreak)
+import Golem.Layout.Look (Look (..))
+import Golem.Project.Position (Position (..))
+import Golem.Syntax.Span (FileId (..), mkSpan)
 import Golem.TestSupport.Enum
 import LineBreakEnum (Setting (..), advance, composeEnv, normalSettings, paramsOf, parts, placings)
 import LineBreakInvariants (Breach (..), Paragraph (..), breaches, bruteLimit)
@@ -342,11 +344,127 @@ m2Places =
     marks = citeOf Nothing : locatedMarks <> [IR.Cite sp [IR.citeItem "a", IR.citeItem "c"]]
     indexMark = IR.IndexMark sp (IR.IndexEntry ["x"] [] IR.IndexPoint)
 
+-- A formatter oracle using the existing public mark formats; ordinal-en is
+-- specific to bibliography templates and is checked independently here.
+firstNoteText :: Maybe Text -> Int -> Text
+firstNoteText selected n = case selected of
+  Nothing -> decimal
+  Just "ordinal-en" | n > 0 -> decimal <> if n `mod` 100 `elem` [11, 12, 13] then "th" else case n `mod` 10 of 1 -> "st"; 2 -> "nd"; 3 -> "rd"; _ -> "th"
+  Just name -> case parseMarkFormat ("{n:" <> name <> "}") of
+    Right (MarkFormat pre notation suf) -> markPartsText (markParts False pre notation (toInteger n) suf)
+    Left _ -> decimal
+  where
+    decimal = T.pack (show n)
+
+firstNoteEnv :: Bool -> Position -> Maybe Text -> Int -> Int -> NoteChannel -> ComposeEnv
+firstNoteEnv vertical scriptPosition notation n count channel =
+  let base = envOf vertical plain
+      width c = if c <= '\x7f' then 1 / 2 else 1
+   in base {ceLook = (ceLook base) {lkPosition = scriptPosition}, ceAdvance = const width, ceWordAdvance = \_ -> sum . map width . T.unpack, ceCitePieces = \_ _ -> Just [CiteText "前掲注(", CiteNoteNumber sp n notation (Just (firstNoteText notation n)), CiteText ")"], ceCiteNoteRefOf = \_ _ -> Just (channel, n), ceMarkReserve = Just (if channel == ChannelNote then (count, 0) else (0, count))}
+
+firstNoteBox :: ComposeEnv -> IO (Sp, BoxContent, MarkNumber)
+firstNoteBox env = case [(w, c, mn) | Box w c <- fst (composeInlines env [citeOf Nothing]), Just mb <- [bcMark c], Just mn <- [mbNumber mb]] of
+  [found] -> pure found
+  found -> assertFailure (show (length found) <> " reference boxes")
+
+ordinaryNumber :: ComposeEnv -> Text -> [Item]
+ordinaryNumber env text = fst (composeInlines env {ceCitePieces = \_ _ -> Just [CiteText text], ceCiteNoteRefOf = \_ _ -> Nothing} [citeOf Nothing])
+
+firstNoteTests :: [TestTree]
+firstNoteTests =
+  [ testCase "root ADR 0470 I5: notation and maximum reserve survive late renumbering in both directions and script positions" $
+      forM_ [(vertical, scriptPosition, glyphsAvailable, notation, n, channel) | vertical <- [False, True], scriptPosition <- [PositionNormal, PositionSuperscript, PositionSubscript], glyphsAvailable <- [False, True], (notation, n) <- [(Nothing, 12), (Just "kanji", 12), (Just "circled", 12), (Just "ordinal-en", 12), (Just "unknown", 12), (Just "circled", 60), (Just "ordinal-en", 0)], channel <- [ChannelNote, ChannelSidenote]] $ \(vertical, scriptPosition, glyphsAvailable, notation, n, channel) -> do
+        let env = (firstNoteEnv vertical scriptPosition notation n 60 channel) {ceScriptGlyphs = \_ _ -> glyphsAvailable}
+        (w, c, mn) <- firstNoteBox env
+        mnChannel mn @?= channel
+        mnNumber mn @?= n
+        mnCall mn @?= False
+        mnBare mn @?= True
+        mnCiteNotation mn @?= notation
+        bcText c @?= firstNoteText notation n
+        let widths = [sum [width | Box width _ <- ordinaryNumber env (firstNoteText notation k)] | k <- [1 .. 60]]
+        w @?= maximum widths
+        case [x | Box _ x <- ordinaryNumber env (firstNoteText notation n)] of
+          control : _ -> bcLook c @?= bcLook control
+          [] -> assertFailure "no ordinary glyphs"
+        let updated = renumberMark env (\_ _ -> 2) c
+        bcText updated @?= firstNoteText notation 2
+        case bcMark updated >>= mbNumber of
+          Just next -> do
+            mnNumber next @?= 2
+            mnCiteNotation next @?= notation
+          Nothing -> assertFailure "renumbering lost citation metadata"
+        assertBool "no automatic tate-chu-yoko" (all (\(kind, _, _) -> kind /= fromEnum KindTcy) (maybe [] mbParts (bcMark updated)))
+        bcEdgeStart updated @?= bcEdgeStart c
+        bcEdgeEnd updated @?= bcEdgeEnd c,
+    testCase "root ADR 0470 I5: occurrence lookup is structural across repeated shaping and inline containers" $
+      forM_ [False, True] $ \vertical -> do
+        let mark = IR.Cite sp [IR.citeItem "a"]
+            sources = [mark, IR.Text sp " ", IR.Lang sp "en" [IR.CharStyle sp "body" [mark, IR.Text sp " ", mark]]]
+            env = (envOf vertical plain) {ceCitePieces = \_ _ -> Just [CiteText "G"], ceCitePiecesAt = Just (\n _ _ -> Just [CiteText (T.pack (show n))]), ceCiteOrdinal = 4}
+            ordinary = [IR.Text sp "4 5 6"]
+        displayedInlines env sources @?= "4 5 6"
+        map keyOf (fst (composeInlines env sources)) @?= map keyOf (fst (composeInlines env ordinary))
+        displayedInlines env sources @?= "4 5 6",
+    testCase "root ADR 0470 I5: occurrence lookup follows ruby segments and falls back when absent" $ do
+      let mark = IR.Cite sp [IR.citeItem "a"]
+          sources = [IR.Ruby sp () [IR.RubySegment [mark] (Just "a"), IR.RubySegment [mark] (Just "b")], mark]
+          env = (envOf False plain) {ceCitePieces = \_ _ -> Just [CiteText "G"], ceCitePiecesAt = Just (\n _ _ -> if n == 1 then Nothing else Just [CiteText (T.pack (show n))])}
+      displayedInlines env sources @?= "2"
+      displayedInlines env {ceCitePiecesAt = Nothing} sources @?= "G",
+    testCase "root ADR 0470 I5: occurrence text edges agree with the actual glyphs on both shaping passes" $
+      forM_ [False, True] $ \vertical -> do
+        let mark = IR.Cite sp [IR.citeItem "a"]
+            sources = [mark, IR.Text sp "—", mark, IR.Text sp "—", mark]
+            env = (envOf vertical plain) {ceCitePieces = \_ _ -> Just [CiteText "G"], ceCitePiecesAt = Just (\n _ _ -> Just [CiteText (if n == 1 then "あ" else "A")])}
+        displayedInlines env sources @?= "A—あ—A"
+        map keyOf (fst (composeInlines env sources)) @?= map keyOf (fst (composeInlines env (map (IR.Text sp) ["A", "—", "あ", "—", "A"]))),
+    testCase "root ADR 0470 I5: the first-note target identity selects its current number instead of the citation source or stale text" $ do
+      let target = mkSpan (FileId 9) 70 80
+          env = (firstNoteEnv False PositionNormal (Just "kanji") 12 60 ChannelNote) {ceCitePieces = \_ _ -> Just [CiteNoteNumber target 12 (Just "kanji") (Just "十二")], ceCiteNoteRefOf = \source _ -> if source == target then Just (ChannelSidenote, 17) else Nothing, ceMarkReserve = Just (0, 60)}
+      (_, c, mn) <- firstNoteBox env
+      mnChannel mn @?= ChannelSidenote
+      mnNumber mn @?= 17
+      bcText c @?= "十七",
+    testCase "root ADR 0470 I5: an out-of-range late number retains its notation and temporary Arabic orientation" $ do
+      let env = firstNoteEnv True PositionNormal (Just "circled") 12 60 ChannelNote
+      (w, c, _) <- firstNoteBox env
+      let updated = renumberMark env (\_ _ -> 60) c
+      bcText updated @?= "60"
+      boxKind updated @?= KindRotated
+      case bcMark updated >>= mbNumber of
+        Just next -> mnCiteNotation next @?= Just "circled"
+        Nothing -> assertFailure "range fallback lost its metadata"
+      assertBool "the Arabic fallback fits the reserve" (sum [width | Box width _ <- ordinaryNumber env "60"] <= w),
+    testCase "root ADR 0470 I5: a non-page-local value keeps the existing text items including its surrounding text" $
+      forM_ [(vertical, notation) | vertical <- [False, True], notation <- [Nothing, Just "kanji", Just "circled", Just "ordinal-en"]] $ \(vertical, notation) -> do
+        let env = (firstNoteEnv vertical PositionNormal notation 12 25 ChannelNote) {ceCiteNoteRefOf = \_ _ -> Nothing}
+            text = "前掲注(" <> firstNoteText notation 12 <> ")"
+        map keyOf (fst (composeInlines env [citeOf Nothing])) @?= map keyOf (ordinaryNumber env text),
+    testCase "root ADR 0470 I5: a one-number reserve preserves ordinary outside spacing and explicit tracking" $
+      forM_ [(vertical, trackingAmount, notation) | vertical <- [False, True], trackingAmount <- [0, 100], notation <- [Nothing, Just "kanji", Just "circled", Just "ordinal-en"]] $ \(vertical, trackingAmount, notation) -> do
+        let base = firstNoteEnv vertical PositionNormal notation 1 1 ChannelNote
+            env = base {ceLook = (ceLook base) {lkTracking = trackingAmount}, ceCitePieces = \_ _ -> Just [CiteText "漢", CiteNoteNumber sp 1 notation (Just (firstNoteText notation 1)), CiteText "字"]}
+        map keyOf (fst (composeInlines env [citeOf Nothing])) @?= map keyOf (ordinaryNumber env ("漢" <> firstNoteText notation 1 <> "字")),
+    testCase "root ADR 0470 I5: deferred references add no note call and retain the old four-field reference constructor" $ do
+      let env = (firstNoteEnv True PositionNormal Nothing 12 25 ChannelNote) {ceNoteRefOf = \_ -> Just (ChannelNote, 12)}
+          inlines = [IR.Note sp 1 Nothing (IR.noteBody sp [txt "body"]), citeOf Nothing, IR.Resolved sp IR.RefNumber "target" []]
+          marks = [mn | Box _ c <- fst (composeInlines env inlines), Just mb <- [bcMark c], Just mn <- [mbNumber mb]]
+      length (filter mnCall marks) @?= 1
+      length marks @?= 3
+      assertBool "legacy constructor survives" (MarkNumber ChannelNote 12 False True `elem` marks)
+  ]
+
 citeBreakTests :: TestTree
 citeBreakTests =
   testGroup
     "the label of a page kept with its value (docs/adr/0277)"
-    [ testCase "root ADR 0480 I2: formatted locators preserve the value look and internal candidates" $
+    [ testGroup "first-note reserve" firstNoteTests,
+      testCase "root ADR 0470 I5: a deferred first-note number reserves a renumberable reference box" $ do
+        let env = (envOf True plain) {ceCitePieces = \_ _ -> Just [CiteNoteNumber sp 12 Nothing (Just "12")], ceCiteNoteRefOf = \_ _ -> Just (ChannelNote, 12), ceMarkReserve = Just (25, 0)}
+            references = [mn | Box _ c <- fst (composeInlines env [citeOf Nothing]), Just mb <- [bcMark c], Just mn <- [mbNumber mb]]
+        length references @?= 1,
+      testCase "root ADR 0480 I2: formatted locators preserve the value look and internal candidates" $
         forM_ [False, True] $ \vertical -> do
           let env = (envOf vertical plain) {ceCitePieces = \_ _ -> Just [CiteLocatorFormatted "p." " " "alpha beta-gamma" False]}
               its = fst (composeInlines env [citeOf Nothing])

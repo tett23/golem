@@ -12,6 +12,7 @@ module Golem.Assemble.BibliographyFormats
     BibliographyFragment (..),
     renderBibliographyFragments,
     renderBibliographyFragmentsWith,
+    renderBibliographyFragmentsDeferring,
     bibliographyEntryParts,
   )
 where
@@ -86,7 +87,14 @@ bibliographyEntryParts styles = map $ \case
 notation, for example a month label from its numeric month (root ADR 0470).
 -}
 renderBibliographyFragmentsWith :: (Text -> Maybe Notation -> Maybe Text) -> [BibliographyPiece] -> Either Text [BibliographyFragment]
-renderBibliographyFragmentsWith value = fmap concat . traverse render
+renderBibliographyFragmentsWith value = fmap (map fst) . renderBibliographyFragmentsDeferring (const False) value
+
+{- | Keep a selected field's literal value and explicit notation for a later
+numbering pass. Other fields use the existing formatting and range checks.
+Missing fields and conditional pieces are resolved before deferral.
+-}
+renderBibliographyFragmentsDeferring :: (Text -> Bool) -> (Text -> Maybe Notation -> Maybe Text) -> [BibliographyPiece] -> Either Text [(BibliographyFragment, Maybe Notation)]
+renderBibliographyFragmentsDeferring defer value = fmap concat . traverse render
   where
     present name notation = value name notation >>= \t -> if T.null t then Nothing else Just t
     render (BibliographyPiece pieces)
@@ -99,23 +107,24 @@ renderBibliographyFragmentsWith value = fmap concat . traverse render
     missingSlot (FieldSlot name optional) notation = not optional && isNothing (present name notation)
     missingSlot (AbsenceSlot name) _ = isJust (present name Nothing)
     substitute = \case
-      PLit t -> Right (literal t)
+      PLit t -> Right [(fragment, Nothing) | fragment <- literal t]
       PText (AbsenceSlot _) -> Right []
       PNumber (AbsenceSlot _) _ -> Right []
-      PText (FieldSlot name _) -> Right (field name (fromMaybe "" (present name Nothing)))
+      PText (FieldSlot name _) -> Right (field name (fromMaybe "" (present name Nothing)) Nothing)
       PNumber (FieldSlot name _) notation -> case present name notation of
         Nothing -> Right []
+        Just t | defer name -> Right (field name t notation)
         Just t -> case (notation, integer t) of
           (Just n, Just k) -> case writeNumber n k of
-            Just result -> Right (field name result)
+            Just result -> Right (field name result notation)
             Nothing -> Left ("差し込み {" <> name <> "} の数を " <> notationName n <> " で表せません: " <> t)
-          _ -> Right (field name t)
+          _ -> Right (field name t notation)
     integer t = case TR.signed TR.decimal t of
       Right (n, rest) | T.null rest -> Just (n :: Integer)
       _ -> Nothing
 
     literal t = [BibliographyLiteral t | not (T.null t)]
-    field name t = [BibliographyField name t | not (T.null t)]
+    field name t notation = [(BibliographyField name t, notation) | not (T.null t)]
 
 -- | Referenced fields before conditional pieces are omitted.
 bibliographyPieceFields :: BibliographyPiece -> [Text]

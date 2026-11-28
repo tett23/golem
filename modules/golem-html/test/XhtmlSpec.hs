@@ -4,13 +4,14 @@ the index and citations.
 -}
 module XhtmlSpec (xhtmlTests) where
 
+import Control.Monad (forM_)
 import Data.List.NonEmpty (NonEmpty (..))
 import Data.Map.Strict qualified as Map
 import Data.Maybe (fromMaybe)
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
-import Golem.Assemble (AssembleConfig (..), Book (..), HeadingInfo (..), IndexGroup (..), IndexLocator (..), IndexSection (..), LabelTarget (..), NoteNumbering (..), SeparatorAppearance (..), SeparatorStroke (..), TocEntry (..), assemble)
+import Golem.Assemble (AssembleConfig (..), Book (..), HeadingInfo (..), IndexGroup (..), IndexLocator (..), IndexSection (..), LabelTarget (..), NoteChannelKind (..), NoteCitationContext (..), NoteNumbering (..), SeparatorAppearance (..), SeparatorStroke (..), TocEntry (..), assemble)
 import Golem.Assemble.Formats (arabic, kanjiNotation)
 import Golem.Assemble.ListMarkers (defaultNumberFormat)
 import Golem.Bibliography (EntryPart (..))
@@ -95,7 +96,10 @@ bookOf bs =
       bookIndexes = [],
       bookBibliographies = [],
       bookBibliographyEntries = Map.empty,
+      bookBibliographyLabels = Map.empty,
+      bookBibliographyHangingIndent = Nothing,
       bookCitationPieces = Map.empty,
+      bookNoteCitationPieces = Map.empty,
       bookCiteMarks = Map.empty,
       bookLabels = Map.empty,
       bookReferenced = Set.empty,
@@ -226,6 +230,33 @@ citeLinkTests =
         let mark = Block (mkSpan fidA 0 1) Nothing Nothing (Paragraph Nothing [Cite (mkSpan fidA 0 1) [CiteItem "k" (Just (Locator LocatorPage (LocRange 5 7))) [] []]])
         bodyA cfg0 (assembled [[mark], [bib fidB 0]])
           @?= "<p><span class=\"cite\">[<a href=\"b.xhtml#cite-k\">1</a>, pp.\xA0\&5\x2013\&7]</span></p>\n",
+      testCase "root ADR 0470 I5: HTML and XHTML keep document occurrence for repeated reset note sources" $
+        forM_ [(channel, site, prefixCount, sameChapter) | channel <- [FootnoteChannel, SidenoteChannel, EndnoteChannel], site <- [0 :: Int .. 4], prefixCount <- [0, 1], sameChapter <- [False, True]] $ \(channel, site, prefixCount, sameChapter) -> do
+          let items = [citeItem "a"]
+              call :: InlineF r
+              call = (case channel of FootnoteChannel -> Note; SidenoteChannel -> Sidenote; EndnoteChannel -> Endnote) (at 1) 1 Nothing (noteBody (at 1) [Cite (at 3) items])
+              body = case site of
+                1 -> TableBlock (plainTable [AlignLeft] [] [[[call]]])
+                2 -> TableBlock ((plainTable [AlignLeft] [] [[[Text (at 0) "cell"]]]) {tableCaption = Just [call], tableNoNumber = True})
+                3 -> CodeBlock (Code Nothing Nothing Nothing (Just [call]) True [] False)
+                4 -> Paragraph Nothing [Ruby (at 0) () [RubySegment [call] (Just "じ")]]
+                _ -> Paragraph Nothing [call]
+              one = assembled [[Block (at 0) Nothing Nothing body]]
+              chapterOf = if sameChapter then replicate (prefixCount + 2) 0 else [0 .. prefixCount + 1]
+              base = one {bookDocs = replicate prefixCount (Document fidA []) <> bookDocs one <> bookDocs one, bookChapterOf = chapterOf}
+              scoped = Map.fromList [(NoteCitationContextInDocument (at 1) channel 1 0 docIndex, (at 3, items, [CiteText text])) | (docIndex, text) <- [(prefixCount, "DOC0"), (prefixCount + 1, "DOC1")]]
+          forM_ [renderHtml, renderXhtml] $ \renderer -> do
+            let output = [bodyOf page | (name, page) <- sitePages (renderer cfg0 ft base {bookNoteCitationPieces = scoped}), name == "a.html" || name == "a.xhtml"]
+                counts = map (\text -> (T.count "DOC0" text, T.count "DOC1" text)) output
+            if sameChapter && channel /= SidenoteChannel
+              then drop (prefixCount + 1) counts @?= [(1, 1)]
+              else counts @?= replicate prefixCount (0, 0) <> [(1, 0), (0, 1)],
+      testCase "root ADR 0470 I5: first-note pieces keep preformatted text and ordinary escaping" $ do
+        let mark = para 0 [Cite (at 1) [citeItem "k"]]
+            body given = bodyA cfg0 (assembled [[mark], [bib fidB 0]]) {bookCitationPieces = Map.singleton (at 1) [([citeItem "k"], [CiteNoteNumber (at 5) 12 (Just "kanji") given])]}
+        body (Just "十二") @?= "<p><span class=\"cite\">十二</span></p>\n"
+        body (Just "<n>&") @?= "<p><span class=\"cite\">&lt;n&gt;&amp;</span></p>\n"
+        body Nothing @?= "<p><span class=\"cite\">12</span></p>\n",
       testCase "root ADR 0480 I2: literal gaps hold only their joining graphemes" $ do
         let mark = para 0 [Cite (at 1) [citeItem "k"]]
             body label gap val labelAfter = bodyA cfg0 (assembled [[mark], [bib fidB 0]]) {bookCitationPieces = Map.singleton (at 1) [([citeItem "k"], [CiteLocatorFormatted label gap val labelAfter])]}
@@ -501,7 +532,35 @@ ruleTests =
 
 tests :: [TestTree]
 tests =
-  [ testCase "root ADR 0468 I2: heading style has its own selector without paragraph spacing" $ do
+  [ testCase "root ADR 0470 I5: HTML consumes note-local ordinals without changing shared-span legacy marks" $
+      forM_ [(channel, variant) | channel <- [FootnoteChannel, SidenoteChannel, EndnoteChannel], variant <- [0 :: Int .. 3]] $ \(channel, variant) -> do
+        let note = case channel of FootnoteChannel -> Note; SidenoteChannel -> Sidenote; EndnoteChannel -> Endnote
+            items = [citeItem "a"]
+            mark = Cite (at 3) items
+            noteBodyOf :: Int -> [Block]
+            noteBodyOf n = if n == 1 then [para 4 first, para 5 [mark]] else [para 4 [mark]]
+            raw = Cite (at 3) [citeItem "a"]
+            first = case variant of
+              1 -> [Ruby (at 3) () [RubySegment [raw] (Just "a"), RubySegment [raw] (Just "b")]]
+              2 -> [CharStyle (at 3) "strong" [Lang (at 3) "ja" [mark, mark]]]
+              3 -> [Kenten (at 3) Nothing [Ruby (at 3) () [RubySegment [raw] (Just "a")], mark]]
+              _ -> [mark, mark]
+            base =
+              (bookOf [para 0 [mark, note (at 1) 1 Nothing (noteBodyOf 1), note (at 1) 2 Nothing (noteBodyOf 2)]])
+                { bookBibliographies = [(Nothing, [("a", 1)])],
+                  bookCiteMarks = Map.singleton (fidA, at 3) (Nothing, 1),
+                  bookCitationPieces = Map.singleton (at 3) [(items, [CiteText "GLOBAL"])]
+                }
+            table = Map.fromList [(NoteCitationContext (at 1) channel n occurrence, (at 3, items, [CiteText text])) | (n, occurrence, text) <- [(1, 0, "N1-0"), (1, 1, "N1-1"), (1, 2, "N1-2"), (2, 0, "N2-0")]]
+            output = bodyA cfg0 base {bookNoteCitationPieces = table}
+        forM_ ["N1-0", "N1-1", "N1-2", "N2-0"] $ \text -> T.count text output @?= 1
+        T.count "GLOBAL" output @?= 1
+        T.count "GLOBAL" (bodyA cfg0 base) @?= 5
+        let equivalent = Map.map (\(source, values, _) -> (source, values, [CiteText "GLOBAL"])) table
+            mismatched = Map.map (\(source, _, pieces) -> (source, [citeItem "different"], pieces)) table
+        bodyA cfg0 base {bookNoteCitationPieces = equivalent} @?= bodyA cfg0 base
+        bodyA cfg0 base {bookNoteCitationPieces = mismatched} @?= bodyA cfg0 base,
+    testCase "root ADR 0468 I2: heading style has its own selector without paragraph spacing" $ do
       let h = HtmlHeadingStyle "title" (Just "20pt") ["text-align: center"] noFeatures Nothing
           cfg = cfg0 {hcHeadingStyles = Map.singleton 1 h}
           book = bookOf [Block (at 1) Nothing Nothing (Heading 1 noHeadingAttrs [Text (at 1) "題名"])]

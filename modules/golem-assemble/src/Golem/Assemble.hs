@@ -6,12 +6,14 @@ module Golem.Assemble
     NoteNumbering (..),
     DocValues (..),
     Book (..),
+    BibliographyHangingIndent (..),
     SeparatorAppearance (..),
     SeparatorStroke (..),
     HeadingInfo (..),
     LabelTarget (..),
     NoteChannelKind (..),
     NoteTarget (..),
+    NoteCitationContext (..),
     TocEntry (..),
     IndexGroup (..),
     IndexLocator (..),
@@ -23,8 +25,11 @@ module Golem.Assemble
     tocWithinDepth,
     bibliographyAt,
     bibliographyEntriesFor,
+    bibliographyLabelFor,
     citationPiecesFor,
     resolvedCitationPieces,
+    citationPiecesInNoteFor,
+    resolvedNoteCitationPieces,
     bookCitationItems,
     indexAt,
     channelAt,
@@ -146,6 +151,23 @@ data NoteTarget = NoteTarget
   }
   deriving stock (Eq, Show)
 
+-- | A citation occurrence in an already numbered S1 note (root ADR 0470).
+data NoteCitationContext
+  = NoteCitationContext
+      { nccNoteSpan :: !SrcSpan,
+        nccChannel :: !NoteChannelKind,
+        nccNumber :: !Int,
+        nccOccurrence :: !Int
+      }
+  | NoteCitationContextInDocument
+      { nccNoteSpan :: !SrcSpan,
+        nccChannel :: !NoteChannelKind,
+        nccNumber :: !Int,
+        nccOccurrence :: !Int,
+        nccDocumentIndex :: !Int
+      }
+  deriving stock (Eq, Ord, Show)
+
 data TocEntry = TocEntry
   { teLevel :: !Int,
     teNumber :: !(Maybe Text),
@@ -202,6 +224,10 @@ data SeparatorStroke
   | StrokeWavy
   deriving stock (Eq, Show)
 
+-- | A declared hanging indent: keep font-relative values until output.
+data BibliographyHangingIndent = BibliographyIndentSp !Integer | BibliographyIndentZw !Rational
+  deriving stock (Eq, Show)
+
 data Book = Book
   { bookDocs :: ![Document],
     -- | The visible separators after style resolution, keyed also by name because Emet may assign one span to multiple results.
@@ -223,8 +249,14 @@ data Book = Book
     -} bookBibliographies :: ![(Maybe ListAt, [(Text, Int)])],
     -- | Declared entry parts for each list and citation key.
     bookBibliographyEntries :: !(Map (Maybe ListAt, Text) [EntryPart]),
+    -- | Resolved labels, including empty labels, for declared list styles.
+    bookBibliographyLabels :: !(Map (Maybe ListAt, Text) Text),
+    -- | Declared hanging indent; Nothing retains legacy output.
+    bookBibliographyHangingIndent :: !(Maybe BibliographyHangingIndent),
     -- | Prepared marks, retaining distinct items that share a plugin source span.
     bookCitationPieces :: !(Map SrcSpan [([CiteItem ()], [CitePiece])]),
+    -- | Prepared note marks, with their full occurrence identity and source payload.
+    bookNoteCitationPieces :: !(Map NoteCitationContext (SrcSpan, [CiteItem ()], [CitePiece])),
     -- | the list and the number of each citation mark, by its file and span
     bookCiteMarks :: !(Map (FileId, SrcSpan) (Maybe ListAt, Int)),
     bookLabels :: !(Map Text LabelTarget),
@@ -254,9 +286,11 @@ data Book = Book
 -}
 type ListAt = (FileId, SrcSpan)
 
--- | All citation marks, in document order, including those in notes.
+{- | Citation marks in collection order, including notes inside ruby.
+Raw ruby marks outside notes retain their legacy collection scope.
+-}
 bookCitationItems :: Book -> [(SrcSpan, [CiteItem ()])]
-bookCitationItems book = [(sp, items) | Document _ blocks <- bookDocs book, Block _ _ _ body <- allBlocks blocks, Cite sp items <- bodyInlines body]
+bookCitationItems book = concat [bodyCitationItems body | Document _ blocks <- bookDocs book, Block _ _ _ body <- allBlocks blocks]
 
 -- | A prepared mark, or the legacy numeric representation.
 citationPiecesFor :: Book -> SrcSpan -> [(CiteItem r, Maybe Int)] -> [CitePiece]
@@ -265,6 +299,29 @@ citationPiecesFor book sp items = fromMaybe (citationPieces items) (resolvedCita
 -- | A span is not a unique identity for plugin-generated marks.
 resolvedCitationPieces :: Book -> SrcSpan -> [CiteItem r] -> Maybe [CitePiece]
 resolvedCitationPieces book sp items = Map.lookup sp (bookCitationPieces book) >>= lookup (map void items)
+
+-- | A note-local mark when prepared, otherwise exactly the legacy lookup.
+citationPiecesInNoteFor :: Book -> Maybe NoteCitationContext -> SrcSpan -> [(CiteItem r, Maybe Int)] -> [CitePiece]
+citationPiecesInNoteFor book context sp items =
+  fromMaybe (citationPiecesFor book sp items) (context >>= \at -> resolvedNoteCitationPieces book at sp (map fst items))
+
+-- | A document-scoped key precedes an old key; either must match source and items.
+resolvedNoteCitationPieces :: Book -> NoteCitationContext -> SrcSpan -> [CiteItem r] -> Maybe [CitePiece]
+resolvedNoteCitationPieces book context sp items =
+  case Map.lookup context table <|> legacy of
+    Just (at, expected, pieces) | at == sp && expected == map void items -> Just pieces
+    _ -> Nothing
+  where
+    table = bookNoteCitationPieces book
+    legacy = case context of
+      NoteCitationContextInDocument {} -> Map.lookup (NoteCitationContext (nccNoteSpan context) (nccChannel context) (nccNumber context) (nccOccurrence context)) table
+      NoteCitationContext {} -> Nothing
+
+-- | A label and its separating space, with the legacy number as fallback.
+bibliographyLabelFor :: Book -> Maybe ListAt -> Text -> Int -> Text
+bibliographyLabelFor book at key number =
+  let label = Map.findWithDefault ("[" <> T.pack (show number) <> "]") (at, key) (bookBibliographyLabels book)
+   in if T.null label then "" else label <> " "
 
 -- | The entries resolved for this list, with legacy entries as fallback.
 bibliographyEntriesFor :: Book -> Maybe ListAt -> Map Text [EntryPart] -> Map Text [EntryPart]
@@ -550,7 +607,10 @@ assemble cfg evalDeferred docs0 =
             bookIndexes = indexes,
             bookBibliographies = bibliographies,
             bookBibliographyEntries = Map.empty,
+            bookBibliographyLabels = Map.empty,
+            bookBibliographyHangingIndent = Nothing,
             bookCitationPieces = Map.empty,
+            bookNoteCitationPieces = Map.empty,
             bookCiteMarks = citeMarks,
             bookLabels = labels,
             bookReferenced = refd,
@@ -1140,14 +1200,18 @@ bodyInlineRoots body = case body of
   _ -> []
 
 bodyCitationMarks :: BlockBody -> [(SrcSpan, Text)]
-bodyCitationMarks body =
+bodyCitationMarks body = [(sp, citKey item) | (sp, items) <- bodyCitationItems body, item <- items]
+
+-- Share the accepted note-only ruby scope with the declaration payload inventory.
+bodyCitationItems :: BlockBody -> [(SrcSpan, [CiteItem ()])]
+bodyCitationItems body =
   let flat = bodyInlines body
-   in if any isRuby flat then concatMap (collect False False) (bodyInlineRoots body) else [(sp, citKey item) | Cite sp items <- flat, item <- items]
+   in if any isRuby flat then concatMap (collect False False) (bodyInlineRoots body) else [(sp, items) | Cite sp items <- flat]
   where
     isRuby = \case Ruby {} -> True; _ -> False
-    collect :: Bool -> Bool -> InlineF r -> [(SrcSpan, Text)]
+    collect :: Bool -> Bool -> InlineF r -> [(SrcSpan, [CiteItem ()])]
     collect inRuby inNote = \case
-      Cite sp items | not inRuby || inNote -> [(sp, citKey item) | item <- items]
+      Cite sp items | not inRuby || inNote -> [(sp, map void items)]
       Ruby _ _ segments -> concatMap (concatMap (collect True inNote) . rsBase) segments
       Note _ _ _ blocks -> concatMap (concatMap (collect inRuby True)) (noteParagraphs blocks)
       Sidenote _ _ _ blocks -> concatMap (concatMap (collect inRuby True)) (noteParagraphs blocks)

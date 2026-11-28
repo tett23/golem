@@ -6,14 +6,17 @@ module Golem.Doc.Citation
   ( CitePiece (..),
     citationPieces,
     citationText,
+    citationOffsets,
+    citationCount,
   )
 where
 
-import Data.List (sortOn)
-import Data.Maybe (isJust)
+import Data.List (mapAccumL, sortOn)
+import Data.Maybe (fromMaybe, isJust)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Golem.Doc.IR
+import Golem.Syntax.Span (SrcSpan)
 
 {- | A piece of a mark: a number and the key it stands for, text, or the
 label of a locator and its value (docs/adr/0277), which the PDF does not
@@ -22,6 +25,7 @@ break between and the HTML joins with U+00A0.
 data CitePiece
   = CiteNumber !Text !Int -- a number and the key it stands for
   | CiteReference !Text !Text -- a key and its explicitly formatted number
+  | CiteNoteNumber !SrcSpan !Int !(Maybe Text) !(Maybe Text) -- first-note identity, S1 number, notation and preformatted value (root ADR 0470)
   | CiteText !Text -- text: brackets, separators, an unnumbered key
   | CiteLocator !Text !Text -- the label of a locator and its value: "pp." "5–7"
   | CiteLocatorFormatted !Text !Text !Text !Bool -- label, literal delimiter, value, and whether the label follows (root ADR 0480)
@@ -100,6 +104,28 @@ citationText = T.concat . map piece
     piece = \case
       CiteNumber _ n -> T.pack (show n)
       CiteReference _ t -> t
+      CiteNoteNumber _ n _ value -> fromMaybe (T.pack (show n)) value
       CiteText t -> t
       CiteLocator l v -> l <> " " <> v
       CiteLocatorFormatted label delimiter value after -> if after then value <> delimiter <> label else label <> delimiter <> value
+
+{- | Offsets of direct children within one note; descendants inherit the
+same starting offset. Nested note bodies belong to another context.
+-}
+citationOffsets :: [InlineF r] -> [(Int, InlineF r)]
+citationOffsets = snd . mapAccumL (\n value -> (n + countInline value, (n, value))) 0
+
+citationCount :: [InlineF r] -> Int
+citationCount = sum . map countInline
+
+countInline :: InlineF r -> Int
+countInline = \case
+  Cite {} -> 1
+  Ruby _ _ segments -> sum (map (citationCount . rsBase) segments)
+  Kenten _ _ xs -> citationCount xs
+  Color _ _ xs -> citationCount xs
+  CharStyle _ _ xs -> citationCount xs
+  Link _ _ xs -> citationCount xs
+  Lang _ _ xs -> citationCount xs
+  Resolved _ _ _ xs -> citationCount xs
+  _ -> 0
