@@ -170,6 +170,22 @@ physicalPaginateTests =
             count @?= 0
             keep @?= defaultKeep
             physicalCursorPosition cursor @?= physicalCursorPosition original,
+      testCase "root ADR 0483 I2, I5: forced trials preserve public counts and unmet keeps in empty and heading-only columns" $
+        forM_ [False, True] $ \headingOnly -> do
+          let cfg = settings {physicalPagePitch = 10, physicalCapacity = if headingOnly then 40 else 30, physicalMaxCapacity = if headingOnly then 40 else 30}
+              original = startPhysicalCursor cfg
+          at <- if headingOnly then either (assertFailure . show) pure (stepPhysicalCursor cfg original [FHeading 1 False 10 [line 99]]) else pure original
+          forM_ [Nothing, Just 2, Just 1] $ \limit -> do
+            result <- either (assertFailure . show) pure (trialParagraphPartLimit cfg Nothing limit (Keep 2 4 False) True at (map line [0 .. 4]))
+            case result of
+              PhysicalMoved {} -> assertFailure "the forced trial must retain its current column"
+              PhysicalPlaced count placed keep -> do
+                count @?= 3
+                keep @?= Keep 2 4 False
+                let pages = finishPhysicalCursor cfg placed
+                [ident | page <- pages, (_, SLine ident) <- poSlots page] @?= [0, 1, 2]
+                [ident | page <- pages, (_, SHeading ident _) <- poSlots page] @?= [99 | headingOnly]
+                concatMap poUnmet pages @?= [ShortPart LastPart 0 4 2],
       testCase "root ADR 0397 I8 I10: an oversized keep-all trial relaxes once in an empty column" $ do
         trial <- either (assertFailure . show) pure (trialParagraphPart settings Nothing (Keep 1 1 True) True (startPhysicalCursor settings) [line 0, line 1, line 2])
         case trial of

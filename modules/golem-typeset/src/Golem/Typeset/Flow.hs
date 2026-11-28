@@ -5368,7 +5368,7 @@ causalFreeFlow inp geom fe units widths jobs initialBuilt = jobsFrom Nothing Not
                   (required, linesOnly, followingFits) <- if wanted > 0 || lastWanted > 0 then probeNext job pf origin region index later updated settled wanted else Right (0, True, True)
                   let held = if snd (paraStartAndKeep unit) > 0 then keepPhysicalNext (uSpan unit) required linesOnly settled else settled
                       front = count - max lastWanted (max 1 (kLast relaxed))
-                  if followingFits || null rows
+                  if followingFits || null rows || forcedPrefix
                     then Right (updated, held)
                     else
                       if front >= minimumFront && not (kAll relaxed)
@@ -5382,7 +5382,7 @@ causalFreeFlow inp geom fe units widths jobs initialBuilt = jobsFrom Nothing Not
                       nextStart = itemAfterBreak source (last consumedBreaks)
                       next = movePhysicalCursor cfg (Just region) placed
                       (remainder, _) = composeAt pf origin region unit next (countBefore + count) nextStart source
-                   in if length (cLines remainder) < kLast relaxed
+                   in if not forcedPrefix && length (cLines remainder) < kLast relaxed
                         then
                           if count > minimumFront
                             then retry (Just (count - 1))
@@ -5392,6 +5392,9 @@ causalFreeFlow inp geom fe units widths jobs initialBuilt = jobsFrom Nothing Not
                                 else continue consumedBreaks nextStart next
                         else continue consumedBreaks nextStart next
               where
+                -- An empty-column forced placement may exceed the requested
+                -- prefix. Accept it instead of repeating the same retry.
+                forcedPrefix = maybe False (\limit -> limit > 0 && count > limit) prefixLimit
                 continue consumedBreaks nextStart = parts Nothing relaxed False nextStart (committed <> take count (cLines tailComposed)) (breaks <> consumedBreaks) (indents <> take count tailIndents) updated
 
 -- | The list items a unit is in, from the outermost (root ADR 0401).
