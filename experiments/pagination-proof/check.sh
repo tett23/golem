@@ -642,6 +642,16 @@ LEAN_PATH="$tmp" "$lean" -o "$tmp/HistoryFirst.olean" "$historyFirst"
 LEAN_PATH="$tmp" "$lean" "$root/experiments/pagination-proof/HistoryFirstBoundary.lean"
 echo "root ADR 0352 I5: current targets have stable existing IDs after arbitrary value-only edit histories"
 
+# Finite retry prefixes retain the current paragraph's existing first ID.
+selfRetries=$root/experiments/pagination-proof/SelfRetries.lean
+if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|implemented_by|extern|native_decide)([^A-Za-z_]|$)' "$selfRetries"; then
+  echo "unproved or unchecked Lean declaration in $selfRetries" >&2
+  exit 1
+fi
+LEAN_PATH="$tmp" "$lean" -o "$tmp/SelfRetries.olean" "$selfRetries"
+LEAN_PATH="$tmp" "$lean" "$root/experiments/pagination-proof/SelfRetriesBoundary.lean"
+echo "root ADR 0352 I5: all finite same-target retry prefixes retain the current paragraph-begin ID"
+
 
 
 

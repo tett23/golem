@@ -1994,3 +1994,10 @@ sh experiments/pagination-proof/check-alloy-diff.sh 97
 別の本文の更新で初期から ID が変わる場合も許し、その現在の対象自身の再改行では同じ値が存在することを示す。
 全 `Built` と全呼び出し元への一般的な接続は残る。
 根拠と残件は [更新履歴の後の再改行 ID](../../docs/research/0352-history-first-dependencies.md) にまとめた。
+
+`SelfRetries.lean` は、履歴後の現在の対象について、同じキーへの任意の有限更新列の前後で先頭 ID が一致し、左優先の合成後も存在することを導く。
+列の各段階の型と選択は既存の保存の定理から引き継ぎ、新しい到達を仮定しない。
+`SelfRetriesFonts.hs` は、八つの履歴の状態の後の 120 列で、手で置き換えた行数と本体の採番を比較する。
+任意の有限列の一致を、実際の再試行が終了する証明とは扱わない。
+全 `Built` と全呼び出し元からの一般的な接続は残る。
+根拠と残件は [同じ段落の再試行列](../../docs/research/0352-self-retries-dependencies.md) にまとめた。
