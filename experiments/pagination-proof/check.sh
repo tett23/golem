@@ -724,6 +724,17 @@ LEAN_PATH="$tmp" "$lean" -o "$tmp/BesideScanStore.olean" "$besideScanStore"
 LEAN_PATH="$tmp" "$lean" "$root/experiments/pagination-proof/BesideScanStoreBoundary.lean"
 echo "root ADR 0352 I5: stored row scans retain their first rendered ID and derived owned first ID"
 
+# Store every numbered payload and retain earlier keys under the fresh-ID bound.
+numberedStore=$root/experiments/pagination-proof/NumberedStore.lean
+if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|implemented_by|extern|native_decide)([^A-Za-z_]|$)' "$numberedStore"; then
+  echo "unproved or unchecked Lean declaration in $numberedStore" >&2
+  exit 1
+fi
+LEAN_PATH="$tmp" "$lean" -o "$tmp/NumberedStore.olean" "$numberedStore"
+LEAN_PATH="$tmp" "$lean" "$root/experiments/pagination-proof/NumberedStoreBoundary.lean"
+echo "root ADR 0352 I5: numbered row storage agrees with old-table-first union under fresh IDs and preserves earlier rows"
+
+
 
 
 

@@ -2043,3 +2043,9 @@ sh experiments/pagination-proof/check-alloy-diff.sh 97
 `BesideScanRowsFonts.hs` の `BESIDE_SCAN_STORE_LEAN=1` は、前の 384 式に保存後の検索の 96 式を加える。
 全 `Built` と実際の原稿の一般的一致は残る。
 根拠と残件は [本文の先頭 ID の保存](../../docs/research/0352-beside-scan-store-dependencies.md) にまとめた。
+
+[NumberedStore.lean](NumberedStore.lean) は、採番した行の検索、本文の行列を追加した後の検索と、それまでの番号の保存を示す。
+旧表の全キーが次の番号より小さい場合には、列からの検索が本体の旧表優先の union と一致することも証明する。
+この前提を任意の `Built` から導くことは残る。
+`BesideScanRowsFonts.hs` の `NUMBERED_ROW_STORE_LEAN=1` は実フォントの 64 例で旧 480 式に検索 475 式を加え、全 955 式をカーネルで確認する。
+根拠と未完範囲は [採番済み行の保存](../../docs/research/0352-numbered-row-store-dependencies.md) に記す。
