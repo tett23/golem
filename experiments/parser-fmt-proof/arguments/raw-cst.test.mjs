@@ -15,7 +15,7 @@ test('root ADR 0351 I1: canonical keyword CST retains raw token spelling', async
   try {
     const probe = compileArgumentProbe(buildWork, join(here, 'NativeRawCst.hs'));
     for (const [index, row] of wrapperCases.entries()) {
-      await t.test('raw CST fixture ' + index, () => {
+      await t.test('root ADR 0351 I1: raw CST fixture ' + index, () => {
         const work = mkdtempSync(join(tmpdir(), 'golem-raw-cst-fields-'));
         const source = wrapperManuscript(row);
         const file = join(work, 'a.gm');

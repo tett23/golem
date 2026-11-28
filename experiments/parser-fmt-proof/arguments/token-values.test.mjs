@@ -7,12 +7,12 @@ import { saveProjectFailure } from '../save-project-failure.mjs';
 import { compileArgumentProbe, run } from './ast-probe.mjs';
 import { expectedToken, tokenCases, tokenManuscript } from '../grammar/token-cases.mjs';
 
-test('root ADR 0351 I1-I3: token raw spelling, kinds and decoded values agree before and after fmt', async t => {
+test('root ADR 0351 I1, I2, I3: token raw spelling, kinds and decoded values agree before and after fmt', async t => {
   const buildWork = mkdtempSync(join(tmpdir(), 'golem-token-probe-'));
   try {
     const probe = compileArgumentProbe(buildWork);
     for (const [index, args] of tokenCases.entries()) {
-      await t.test('token fields ' + index, () => {
+      await t.test('root ADR 0351 I1, I2, I3: token fields ' + index, () => {
         const work = mkdtempSync(join(tmpdir(), 'golem-token-fields-'));
         const source = tokenManuscript(args);
         const file = join(work, 'a.gm');

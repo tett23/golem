@@ -416,3 +416,31 @@ node --test experiments/parser-fmt-proof/arguments/token-values.test.mjs
 
 公理、前提と残る範囲は [依存関係の記録](../../../docs/research/0351-token-ast-proof-dependencies.md) にある。
 [root ADR 0351](../../../docs/adr/0351-prove-parser-formatter-round-trips.md) の未実装の状態を保つ。
+
+## 生成規則から子の CST を作る段階
+
+KeywordTrace.lean は、実際の生成文法の KeywordArgument と ArgValue の選択肢を読み、参照を順に実行して子の CST を作る。
+子の列を引数で与えず、Word、Eq と StringLit の token と KeywordArgument の node を構築する。
+任意の語と引用値について、残りの入力、モデルの名前、値と種類が一致することを示す。
+Word は先頭が %% でないことと区切りの条件を使い、引用値は任意長の Part の列を使う。
+
+モデルの展開はこの二段階に限る。
+認識に成功した未対応の非 token を空の子として扱わず、未対応のエラーを返す。
+実際の parser が受理する式の対照も置き、モデルの未対応と parser の拒否を区別する。
+文字の位置、GreenNode の間隙と UTF-8 の対応、文法全体の再帰や Haskell の AST への一般的な対応は未証明である。
+
+引用符なしの値に %% があるかを調べる G01102 の射影もモデルに含める。
+名前の内部と引用値の %% は、この射影の対象にしない。
+コードだけの射影であり、commentDiagnostics 全体や位置の一般証明とは数えない。
+十二例を実際の CST、parseAst と通常の整形の前後で照合する。
+別の三例で、G01102 のコード、重大度、UTF-8 の byte span と fix、および失敗した整形が元の原稿を書き換えないことを照合する。
+
+上の CLI と Cabal plan を選択した後、次を実行する。
+
+```sh
+node --test experiments/parser-fmt-proof/arguments/trace-values.test.mjs \
+  experiments/parser-fmt-proof/arguments/trace-diagnostics.test.mjs
+```
+
+公理、前提と残る範囲は [依存関係の記録](../../../docs/research/0351-keyword-capture-proof-dependencies.md) にある。
+[root ADR 0351](../../../docs/adr/0351-prove-parser-formatter-round-trips.md) の未実装の状態を保つ。

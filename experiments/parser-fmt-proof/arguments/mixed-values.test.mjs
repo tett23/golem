@@ -7,12 +7,12 @@ import { saveProjectFailure } from '../save-project-failure.mjs';
 import { compileArgumentProbe, run } from './ast-probe.mjs';
 import { expectedMixed, mixedCases, mixedManuscript } from '../grammar/mixed-cases.mjs';
 
-test('root ADR 0351 I1-I3: mixed names, kinds and values agree before and after fmt', async t => {
+test('root ADR 0351 I1, I2, I3: mixed names, kinds and values agree before and after fmt', async t => {
   const buildWork = mkdtempSync(join(tmpdir(), 'golem-mixed-probe-'));
   try {
     const probe = compileArgumentProbe(buildWork);
     for (const [index, args] of mixedCases.entries()) {
-      await t.test('mixed fields ' + index, () => {
+      await t.test('root ADR 0351 I1, I2, I3: mixed fields ' + index, () => {
         const work = mkdtempSync(join(tmpdir(), 'golem-mixed-fields-'));
         const source = mixedManuscript(args);
         const file = join(work, 'a.gm');

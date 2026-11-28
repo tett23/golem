@@ -14,7 +14,7 @@ test('root ADR 0351 I1: constructed CST keyword fields match actual Lower', asyn
   try {
     const probe = compileArgumentProbe(work, join(here, 'NativeLower.hs'));
     for (const [index, rows] of lowerCases.entries()) {
-      await t.test('lowered CST fixture ' + index, () => {
+      await t.test('root ADR 0351 I1: lowered CST fixture ' + index, () => {
         const input = nativeLowerRows(rows);
         const expected = expectedLower(rows);
         const file = join(work, 'input.json');

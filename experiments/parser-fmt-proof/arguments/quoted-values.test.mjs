@@ -7,12 +7,12 @@ import { saveProjectFailure } from '../save-project-failure.mjs';
 import { compileArgumentProbe, run } from './ast-probe.mjs';
 import { expectedQuoted, quotedCases, quotedManuscript } from '../grammar/quoted-cases.mjs';
 
-test('root ADR 0351 I1-I3: quoted names, kinds and values agree before and after fmt', async t => {
+test('root ADR 0351 I1, I2, I3: quoted names, kinds and values agree before and after fmt', async t => {
   const buildWork = mkdtempSync(join(tmpdir(), 'golem-quoted-probe-'));
   try {
     const probe = compileArgumentProbe(buildWork);
     for (const [index, args] of quotedCases.entries()) {
-      await t.test('quoted fields ' + index, () => {
+      await t.test('root ADR 0351 I1, I2, I3: quoted fields ' + index, () => {
         const work = mkdtempSync(join(tmpdir(), 'golem-quoted-fields-'));
         const source = quotedManuscript(args);
         const file = join(work, 'a.gm');
