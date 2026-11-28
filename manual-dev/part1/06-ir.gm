@@ -358,7 +358,23 @@ data ChannelBlock = TocOutput !Int | IndexOutput | BibliographyOutput
 
 [code: @bibliography] がなければ、[code: bookBibliographies] は位置のない一つの一覧を持ち、文書の全体で番号を振る。
 [code: bookCiteMarks] は、引用の印ごとに、載る一覧と番号を持つ。[note: [style url: https://github.com/tett23/golem/blob/main/docs/golem-doc/adr/0008-multiple-index-and-bibliography.md]（golem-doc ADR 0008「複数の [code: @index] と [code: @bibliography]」）]
-脚注は別のフィールドを持たず、[code: bookDocs] の中の脚注のインラインの番号を、その場で振り直す。
+脚注の本文は [code: bookDocs] の中の脚注のインラインに保持し、S1 がそのインラインの番号を振り直す。
+
+ライブラリの [code: bookNoteCitationPieces] は、注の原稿位置、チャネル、S1 の番号と、ゼロから数える注内の引用の出現順をキーにして、引用の片を保持する。
+各出力は引用の原稿位置と文献項目も照合し、一致する片がなければ従来の引用の表を使う。
+PDF は、脚注、傍注と章末の注の段落へ出現順の開始値を渡す。
+字幅の判定と描画が同じ引用を何度参照しても、可変のカウンターでこの順を進めることはない。
+この表は Haskell の内部の [code: Book] にだけあり、意味論 IR、CBOR と SDK の形式には足していない。
+
+[code: Golem.Assemble.BibliographyNotes] の [code: prepareBibliographyNotes] は、選択済みの注モードの宣言を受け取り、S1 の前に引用印を一つの未採番の脚注か後注へ包む。
+元からある注は、その本文の引用とともに保持する。
+準備を繰り返しても注を重ねない。
+通常の CLI は、この API と注ごとの引用の表をまだ使わない。
+キャプションやルビで注を準備した場合の採番や全媒体の配置も、未完成である。
+
+ライブラリのページ別脚注の [code: first-note] の片は、最初の注の原稿位置と S1 の番号を保持して、PDF のページ付けの後に実際の番号へ差し替える。
+S1 の仮の番号だけで数の表記の範囲を検査せず、確定した番号が範囲外なら、ほかの書誌の書式の誤りと同じ G03006 を [code: style.toml] の先頭で報告して PDF の生成を中止する。
+注の自動生成からこの遅延経路を使う接続と、PDF のルビの親文字の中の引用の描画は、実装途中である。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0470-bibliography-styles-by-name-and-by-declaration.md]（root ADR 0470「参考文献のスタイルを、決まった名前と宣言の二つで選ぶ」）]
 
 出力の経路は、タグ 8 のブロックに出会うと、そのブロックの位置で [code: Doc.Book] の該当するフィールドから一覧を引いて書く。
 一覧の中身を作り直すことはしないので、四つの出力の一覧は、同じ集約の結果から作られる。
