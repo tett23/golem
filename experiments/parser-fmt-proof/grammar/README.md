@@ -505,3 +505,16 @@ sh experiments/parser-fmt-proof/check-local.sh
 この検査自体にも、各ファイルの欠落と一覧への追加を試す回帰がある。
 既存の CI は構成と `*.test.mjs` の検査を保ち、新しい native observer はこのローカルの経路で検証する。
 CI の所要時間と成否を、新しい native observer の通過の証拠にはしない。
+
+## 位置引数の先読みと引用値の捕捉
+
+`PosArgTrace` は参照と否定先読みを扱い、入力を消費しない先読みから捕捉を作らない。
+`PosArgQuoted` は任意の引用値と接尾辞について、実際の先読みの結果を導いて既存の ArgumentTrace へ渡す。
+捕捉した Argument node、モデルの復号した Positional と、同じ fuel の生成規則の認識とを接続する。
+子の成功や結果の一致を、未証明の前提として置かない。
+
+共有する十二例と前段の native observer を照合し、三つのモデル変異と三つの文法変異を検査する。
+先読みを消す変異は引用値の定理を通るが、対象外の接頭辞の回帰が拒否する。
+PosArg の語と展開の一般的な捕捉、引数列全体と、Haskell の AST、整形と評価の一般的な対応は残る。
+実行には上のローカルの全実行を使い、CI の計測とローカルの成否を分ける。
+公理、生成された実行用の宣言、依存図と残件は [位置引数の先読みの記録](../../../docs/research/0351-posarg-quoted-proof-dependencies.md) にある。
