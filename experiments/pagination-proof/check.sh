@@ -336,7 +336,7 @@ if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|implemented_by|exte
   echo "unproved or unchecked Lean declaration in $builtFirstIds" >&2
   exit 1
 fi
-LEAN_PATH="$tmp" "$lean" "$builtFirstIds" > "$tmp/built-first-ids"
+LEAN_PATH="$tmp" "$lean" -o "$tmp/BuiltFirstIds.olean" "$builtFirstIds" > "$tmp/built-first-ids"
 printf '%s\n' true > "$tmp/built-first-ids-expected"
 diff -u "$tmp/built-first-ids-expected" "$tmp/built-first-ids"
 echo "root ADR 0352 I5: two-pass owner and beside numbering preserves the rebroken paragraph's first ID; 648 boundaries and 2 counterchecks pass"
@@ -410,8 +410,17 @@ if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|implemented_by|exte
   echo "unproved or unchecked Lean declaration in $besideAdjustment" >&2
   exit 1
 fi
-LEAN_PATH="$tmp" "$lean" "$besideAdjustment"
+LEAN_PATH="$tmp" "$lean" -o "$tmp/BesideAdjustment.olean" "$besideAdjustment"
 echo "root ADR 0352 I5: modeled rebreaking preserves the side-job domain, guards, and selected keys"
+
+# Derive unchanged earlier row counts from unique selected keys and one-key updates.
+selectedCountPrefix=$root/experiments/pagination-proof/SelectedCountPrefix.lean
+if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|implemented_by|extern|native_decide)([^A-Za-z_]|$)' "$selectedCountPrefix"; then
+  echo "unproved or unchecked Lean declaration in $selectedCountPrefix" >&2
+  exit 1
+fi
+LEAN_PATH="$tmp" "$lean" "$selectedCountPrefix"
+echo "root ADR 0352 I5: unique selected keys discharge the inner row-count prefix premise of two-pass numbering"
 
 
 
