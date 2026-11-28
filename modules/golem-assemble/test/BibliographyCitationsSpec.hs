@@ -57,7 +57,7 @@ tests =
                 value record n = (resolved record n BibliographyInitialCitation) {bcrStyle = style {bsNames = names, bsCitation = Just ["{title} {year}"]}}
             textOf (formatBibliographyCitationMark style {bsCitationSort = Just "author-year"} [(citeItem "b", value b 2), (citeItem "a", value a 1), (citeItem "c", value c 3)]) @?= Right "(C 寛永某年; A 2020; B 1990)"
           _ -> assertFailure "three source records expected",
-      testCase "root ADR 0470: year-only forms and linked number identities survive common composition" $ do
+      testCase "root ADR 0470 I2: year-only forms and linked number identities survive common composition" $ do
         rs <- records
         case rs of
           a : _ -> do
