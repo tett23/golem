@@ -487,6 +487,25 @@ bibliographyFormatTests =
           TIO.appendFile (tmp </> "style.toml") (T.replace ".types.book]" ".types.default]" (T.replace "pieces=['DOI {DOI}.']" "pieces=['{edition:ordinal-en}']" customBibliographyDeclaration))
           result <- build (defaultOptions tmp) {optTargets = Just [TargetHtml]}
           map diagCode (filter isError (brDiagnostics result)) @?= [DiagnosticCode "G03006"],
+    testCase "root ADR 0480 I6: unscaled JSON integer coefficients reach explicit ordinal formatting without narrowing" $
+      withBibProject "bibliography = [\"refs.json\"]" "[cite a]\n\n@bibliography\n" [("refs.json", "[{\"id\":\"a\",\"edition\":123456789012345678901,\"volume\":123456789012345678903,\"issued\":{\"date-parts\":[[1e1000000000]]}}]")] $ \tmp -> do
+        TIO.appendFile (tmp </> "style.toml") (T.replace ".types.book]" ".types.default]" (T.replace "citation=['ref-{number}']" "citation=['citation={edition}', 'ref-{number}']" (T.replace "pieces=['DOI {DOI}.']" "pieces=['edition={edition:ordinal-en}', ' plain={edition}', '{!edition} ABSENT', ' other={volume}', ' year={year:kanji}']" customBibliographyDeclaration)))
+        TIO.appendFile (tmp </> "manifest.toml") "[targets.text]\n[targets.epub]\n"
+        result <- build (defaultOptions tmp) {optTargets = Just [TargetHtml, TargetText, TargetEpub]}
+        assertEqual "no errors" [] (filter isError (brDiagnostics result))
+        output <- TIO.readFile (tmp </> "build/text/horizontal/a.txt")
+        assertBool (T.unpack output) ("edition=123456789012345678901st plain=123456789012345678901" `T.isInfixOf` output)
+        assertBool "the ordinal and its absence guard use the same field availability" (not ("ABSENT" `T.isInfixOf` output))
+        assertBool "other fields, separate citation arrays and guarded years keep the existing projection" (not (any (`T.isInfixOf` output) ["other=", "citation=", "year="]))
+        html <- TIO.readFile (tmp </> "build/html/a.html")
+        archive <- toArchive <$> BL.readFile (tmp </> "build/epub/book.epub")
+        let xhtml = maybe "" (TE.decodeUtf8 . BL.toStrict . fromEntry) (findEntryByPath "OEBPS/a.xhtml" archive)
+        forM_ [html, xhtml] $ \page -> assertBool (T.unpack page) ("edition=123456789012345678901st" `T.isInfixOf` page),
+    testCase "root ADR 0480 I6: negative unscaled JSON integer coefficients retain G03006" $
+      withBibProject "bibliography = [\"refs.json\"]" "[cite a]\n\n@bibliography\n" [("refs.json", "[{\"id\":\"a\",\"edition\":-123456789012345678901}]")] $ \tmp -> do
+        TIO.appendFile (tmp </> "style.toml") (T.replace ".types.book]" ".types.default]" (T.replace "pieces=['DOI {DOI}.']" "pieces=['{edition:ordinal-en}']" customBibliographyDeclaration))
+        result <- build (defaultOptions tmp) {optTargets = Just [TargetHtml]}
+        map diagCode (filter isError (brDiagnostics result)) @?= [DiagnosticCode "G03006"],
     testCase "root ADR 0480 I5: malformed absence guards retain G03304 and required name tables retain G03006" $
       forM_ [("{!DOI?}", "G03304"), ("{!DOI:kanji}", "G03304"), ("{!unknown}", "G03304"), ("{!author}fallback", "G03006")] $ \(piece, code) ->
         withBibProject "bibliography = [\"refs.json\"]" "[cite a]\n\n@bibliography\n" [("refs.json", abcJson)] $ \tmp -> do
