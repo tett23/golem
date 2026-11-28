@@ -652,6 +652,16 @@ LEAN_PATH="$tmp" "$lean" -o "$tmp/SelfRetries.olean" "$selfRetries"
 LEAN_PATH="$tmp" "$lean" "$root/experiments/pagination-proof/SelfRetriesBoundary.lean"
 echo "root ADR 0352 I5: all finite same-target retry prefixes retain the current paragraph-begin ID"
 
+# Later body updates cannot change the earlier selected target's first ID.
+suffixCountPrefix=$root/experiments/pagination-proof/SuffixCountPrefix.lean
+if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|implemented_by|extern|native_decide)([^A-Za-z_]|$)' "$suffixCountPrefix"; then
+  echo "unproved or unchecked Lean declaration in $suffixCountPrefix" >&2
+  exit 1
+fi
+LEAN_PATH="$tmp" "$lean" -o "$tmp/SuffixCountPrefix.olean" "$suffixCountPrefix"
+LEAN_PATH="$tmp" "$lean" "$root/experiments/pagination-proof/SuffixCountPrefixBoundary.lean"
+echo "root ADR 0352 I5: later body updates preserve the queried earlier target's existing first ID"
+
 
 
 

@@ -2001,3 +2001,9 @@ sh experiments/pagination-proof/check-alloy-diff.sh 97
 任意の有限列の一致を、実際の再試行が終了する証明とは扱わない。
 全 `Built` と全呼び出し元からの一般的な接続は残る。
 根拠と残件は [同じ段落の再試行列](../../docs/research/0352-self-retries-dependencies.md) にまとめた。
+
+`SuffixCountPrefix.lean` は、照会対象以上のキーへの一回の更新でも、先行する選択対象の同じ先頭 ID が存在することを導く。
+選択キーの昇順と現在の図版の走査の境界から、内外の先行寄与が変わらないことを導く。
+`SuffixCountPrefixFonts.hs` は、八つの履歴の状態の後の 96 例で、後続キーの行数を手で変え、本体の採番と比較する。
+全 `Built` と全呼び出し元からの選択や更新順序への接続と、制御の終了は残る。
+根拠と残件は [後続段落の更新と先行 ID](../../docs/research/0352-suffix-count-dependencies.md) にまとめた。
