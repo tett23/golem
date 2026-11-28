@@ -1968,3 +1968,10 @@ sh experiments/pagination-proof/check-alloy-diff.sh 97
 `OwnedRowsFonts.hs` は、本体の図版ごとの採番列の連結とその時点の格納後の照会を比較する。
 全図版の開始 ID の計算と `baseFirsts` との合成の一般的な接続は残る。
 根拠と残件は [図版ごとの採番列の連結](../../docs/research/0352-owned-rows-dependencies.md) にまとめた。
+
+`OwnedGlobal.lean` は、全図版の開始 ID を分類済みの先行寄与から計算し、全採番列の格納後の照会を局所的な先頭 ID へ接続する。
+最後の定理では、格納された値からその所有者を導き、全ての対象について、その対象自身の本文の値を変えても照会した先頭 ID が変わらないことを示す。
+所有者と対象の選択を自由な前提として渡さない。
+`OwnedGlobalFonts.hs` は、同じ計算式から得た全列と更新前後の本体の採番列を比較する。
+通常の単位の表との合成と本体の全分岐の寄与との一般的一致は残る。
+根拠と残件は [全図版の所有段落の先頭 ID](../../docs/research/0352-owned-global-dependencies.md) にまとめた。

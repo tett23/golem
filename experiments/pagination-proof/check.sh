@@ -602,6 +602,16 @@ LEAN_PATH="$tmp" "$lean" -o "$tmp/OwnedRows.olean" "$ownedRows"
 LEAN_PATH="$tmp" "$lean" "$root/experiments/pagination-proof/OwnedRowsBoundary.lean"
 echo "root ADR 0352 I5: concatenated owned first-ID scans retain local pairs under derived unique keys"
 
+# Derive every owner start from prior unit contributions before global lookup.
+ownedGlobal=$root/experiments/pagination-proof/OwnedGlobal.lean
+if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|implemented_by|extern|native_decide)([^A-Za-z_]|$)' "$ownedGlobal"; then
+  echo "unproved or unchecked Lean declaration in $ownedGlobal" >&2
+  exit 1
+fi
+LEAN_PATH="$tmp" "$lean" -o "$tmp/OwnedGlobal.olean" "$ownedGlobal"
+LEAN_PATH="$tmp" "$lean" "$root/experiments/pagination-proof/OwnedGlobalBoundary.lean"
+echo "root ADR 0352 I5: derived global owned first IDs are invariant under changes to the queried target body"
+
 
 
 
