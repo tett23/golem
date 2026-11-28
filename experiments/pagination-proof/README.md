@@ -1981,3 +1981,9 @@ sh experiments/pagination-proof/check-alloy-diff.sh 97
 `OwnedUnionFonts.hs` は、本体の最初の採番の表と所有段落の表の合成、人工的な衝突を比較する。
 本体の全呼び出し元からの選択条件と Map の一般的な意味論への接続は残る。
 根拠と残件は [ID の存在と左優先の合成](../../docs/research/0352-owned-union-dependencies.md) にまとめた。
+
+`BodyEdits.lean` は、任意の本文の値の更新履歴について、領域、制御と本文の分類、所有段落の選択が変わらないことを示す。
+空から到達した初期 cache の本文の型も、履歴の後へ引き継ぐ。
+`BodyEditsFonts.hs` は、七つの更新による八つの状態で、本体の値の列、分類と選択を比較する。
+この結果を、本文の値や ID 全体の不変性や原稿全量の保存の証明とは扱わない。
+根拠と残件は [本文の値の更新履歴](../../docs/research/0352-body-edits-dependencies.md) にまとめた。

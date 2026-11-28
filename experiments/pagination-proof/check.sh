@@ -622,6 +622,16 @@ LEAN_PATH="$tmp" "$lean" -o "$tmp/OwnedUnion.olean" "$ownedUnion"
 LEAN_PATH="$tmp" "$lean" "$root/experiments/pagination-proof/OwnedUnionBoundary.lean"
 echo "root ADR 0352 I5: selected body callers have the same existing ID after arbitrary base-map changes"
 
+# Repeated value-only body edits preserve caller domains and selections.
+bodyEdits=$root/experiments/pagination-proof/BodyEdits.lean
+if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|implemented_by|extern|native_decide)([^A-Za-z_]|$)' "$bodyEdits"; then
+  echo "unproved or unchecked Lean declaration in $bodyEdits" >&2
+  exit 1
+fi
+LEAN_PATH="$tmp" "$lean" -o "$tmp/BodyEdits.olean" "$bodyEdits"
+LEAN_PATH="$tmp" "$lean" "$root/experiments/pagination-proof/BodyEditsBoundary.lean"
+echo "root ADR 0352 I5: arbitrary value-only edit histories preserve domains, selections, and reached paragraph typing"
+
 
 
 
