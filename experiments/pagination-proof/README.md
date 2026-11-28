@@ -2036,3 +2036,10 @@ sh experiments/pagination-proof/check-alloy-diff.sh 97
 `BesideScanRowsFonts.hs` は、64 例で本体の先頭 ID の表と行の fold を比較する。
 全 `Built`、Map の検索、全制御と改行器の一致は残る。
 根拠と残件は [本文の先頭 ID と行の fold](../../docs/research/0352-beside-scan-row-dependencies.md) にまとめた。
+
+
+`BesideScanStore.lean` は、キーが重複しない行の scan の保存と、その本文の最初の行の ID を接続する。
+本文の表からキーを選ぶモデルでは一意性を導き、保存した値と既存の `ownedFirstId` の一致を示す。
+`BesideScanRowsFonts.hs` の `BESIDE_SCAN_STORE_LEAN=1` は、前の 384 式に保存後の検索の 96 式を加える。
+全 `Built` と実際の原稿の一般的一致は残る。
+根拠と残件は [本文の先頭 ID の保存](../../docs/research/0352-beside-scan-store-dependencies.md) にまとめた。

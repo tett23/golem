@@ -714,6 +714,17 @@ LEAN_PATH="$tmp" "$lean" "$root/experiments/pagination-proof/BesideScanRowsBound
 echo "root ADR 0352 I5: beside first-ID scan entries agree with their actual composed-row folds"
 
 
+# Unique-key storage retains the actual first row and the derived owned ID.
+besideScanStore=$root/experiments/pagination-proof/BesideScanStore.lean
+if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|implemented_by|extern|native_decide)([^A-Za-z_]|$)' "$besideScanStore"; then
+  echo "unproved or unchecked Lean declaration in $besideScanStore" >&2
+  exit 1
+fi
+LEAN_PATH="$tmp" "$lean" -o "$tmp/BesideScanStore.olean" "$besideScanStore"
+LEAN_PATH="$tmp" "$lean" "$root/experiments/pagination-proof/BesideScanStoreBoundary.lean"
+echo "root ADR 0352 I5: stored row scans retain their first rendered ID and derived owned first ID"
+
+
 
 
 
