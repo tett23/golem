@@ -413,7 +413,8 @@ data Ctx = Ctx
     alone (docs/adr/0267)
     -} cInLink :: Bool,
     cNoteCitationContext :: !(Maybe NoteCitationContext),
-    cPageBreaks :: Map SrcSpan [(Int, Text, Text)]
+    cPageBreaks :: Map SrcSpan [(Int, Text, Text)],
+    cDocumentIndex :: Int
   }
 
 {- | Where the notes of a page go (golem-driver ADR 0026): the file whose
@@ -424,24 +425,24 @@ the chapter.
 data ChapterNotes = ChapterNotes
   { cnHome :: FileId,
     cnKey :: Int -> Text,
-    cnList :: [(FileId, Int -> Text, Document)]
+    cnList :: [(Int, FileId, Int -> Text, Document)]
   }
 
 {- | The notes (or the endnotes, root ADR 0412) of each document of a chapter (golem-driver ADR 0026): the
 id of a note is its number, or the place of its file in the chapter and
 its number when the numbers of the chapter meet.
 -}
-chapterNotes :: (Document -> [(SrcSpan, Int, [[Inline]])]) -> [Document] -> [(Document, ChapterNotes)]
+chapterNotes :: (Document -> [(SrcSpan, Int, [[Inline]])]) -> [(Int, Document)] -> [((Int, Document), ChapterNotes)]
 chapterNotes notesOf docs =
   let home = case reverse docs of
-        (Document f _ : _) -> f
+        ((_, Document f _) : _) -> f
         [] -> FileId 0
       numbers d = [n | (_, n, _) <- notesOf d]
-      allNumbers = concatMap numbers docs
+      allNumbers = concatMap (numbers . snd) docs
       meet = length allNumbers /= Set.size (Set.fromList allNumbers)
       keyOf k n = if meet then tshow k <> "-" <> tshow n else tshow n
-      keyed = [(f, keyOf k, d) | (k, d@(Document f _)) <- zip [1 :: Int ..] docs]
-   in [(d, ChapterNotes home key (if f == home then keyed else [])) | (f, key, d) <- keyed]
+      keyed = [(docIndex, f, keyOf k, d) | (k, (docIndex, d@(Document f _))) <- zip [1 :: Int ..] docs]
+   in [((docIndex, d), ChapterNotes home key (if f == home then keyed else [])) | (docIndex, f, key, d) <- keyed]
 
 -- | The site of EPUB: the pages in the XHTML syntax (root ADR 0432).
 renderXhtml :: HtmlConfig -> FileTable -> Book -> XhtmlSite
@@ -478,10 +479,12 @@ for HTML and EPUB, which write it in their syntaxes (root ADR 0432).
 -}
 pageTrees :: HtmlConfig -> FileTable -> Book -> Map SrcSpan [(Int, Text, Text)] -> [(FileId, [Node])]
 pageTrees cfg ft book pageBreaks =
-  [ (fid, page cfg ft book pageBreaks notes endnotes d)
-  | chapter <- bookChapters book,
-    ((d@(Document fid _), notes), (_, endnotes)) <- zip (chapterNotes documentNotes chapter) (chapterNotes documentEndnotes chapter)
+  [ (fid, page cfg ft book pageBreaks notes endnotes docIndex d)
+  | chapter <- indexedChapters,
+    (((docIndex, d@(Document fid _)), notes), (_, endnotes)) <- zip (chapterNotes documentNotes chapter) (chapterNotes documentEndnotes chapter)
   ]
+  where
+    indexedChapters = snd (mapAccumL (\k ds -> (k + length ds, zip [k ..] ds)) 0 (bookChapters book))
 
 -- | The file that HTML and EPUB copy for a figure: its @web@ image, or the figure itself.
 webSource :: Figure -> Text
@@ -539,13 +542,13 @@ mapFirstAttr name f = \case
 writesNothing :: [Node] -> Bool
 writesNothing = T.null . M.writeNodes XhtmlSyntax
 
-page :: HtmlConfig -> FileTable -> Book -> Map SrcSpan [(Int, Text, Text)] -> ChapterNotes -> ChapterNotes -> Document -> [Node]
-page cfg ft book pageBreaks notes endnotes (Document fid bs) =
+page :: HtmlConfig -> FileTable -> Book -> Map SrcSpan [(Int, Text, Text)] -> ChapterNotes -> ChapterNotes -> Int -> Document -> [Node]
+page cfg ft book pageBreaks notes endnotes docIndex (Document fid bs) =
   let here = pageBase ft fid
       local = Map.lookup fid (hcLocalStyles cfg)
       anonymous = Map.union (Map.findWithDefault Map.empty fid (hcLocalAnonymousStyles cfg)) (hcAnonymousStyles cfg)
       numbered = Map.fromList [(r, (n, Map.lookup r anonymous)) | (r, n) <- Map.toList (anonymousStyleNumbers book)]
-      c = Ctx cfg ft book here (maybe id (Map.union . hlParaStyles) local (hcParaStyles cfg)) numbered 0 notes endnotes (citeIds book) (maybe id (Map.union . hlCharStyles) local (hcCharStyles cfg)) False Nothing pageBreaks
+      c = Ctx cfg ft book here (maybe id (Map.union . hlParaStyles) local (hcParaStyles cfg)) numbered 0 notes endnotes (citeIds book) (maybe id (Map.union . hlCharStyles) local (hcCharStyles cfg)) False Nothing pageBreaks docIndex
       -- a page with styles of its own has the class of its position (docs/adr ADR 0014)
       classes = ["vertical" | hcVertical cfg] <> ["file-" <> tshow n | Just _ <- [local], (n, Document fid' _) <- zip [1 :: Int ..] (bookDocs book), fid' == fid]
       body = topBlocks c bs <> notesSection c <> endnotesSection c
@@ -1351,19 +1354,19 @@ endnoteText c n = fromMaybe (tshow n) (writeNumber (hcEndnoteNotation (cCfg c)) 
 notes, as they are written (root ADR 0412).
 -}
 endnotesSection :: Ctx -> [Node]
-endnotesSection c = noteList c EndnoteChannel "endnotes" (endnotesTitle (hcLanguage (cCfg c))) "endnote" "endnote-" "endnoteref-" endnoteText [(f, key, sp, n, xs) | (f, key, d) <- cnList (cEndnotes c), (sp, n, xs) <- documentEndnotes d]
+endnotesSection c = noteList c EndnoteChannel "endnotes" (endnotesTitle (hcLanguage (cCfg c))) "endnote" "endnote-" "endnoteref-" endnoteText [(docIndex, f, key, sp, n, xs) | (docIndex, f, key, d) <- cnList (cEndnotes c), (sp, n, xs) <- documentEndnotes d]
 
 {- | The notes of the chapter at the end of its last page, after a title
 (golem-driver ADR 0026); each links back to its mark, on whichever page.
 -}
 notesSection :: Ctx -> [Node]
-notesSection c = noteList c FootnoteChannel "notes" (notesTitle (hcLanguage (cCfg c))) "footnote" "note-" "noteref-" noteText [(f, key, sp, n, xs) | (f, key, d) <- cnList (cNotes c), (sp, n, xs) <- documentNotes d]
+notesSection c = noteList c FootnoteChannel "notes" (notesTitle (hcLanguage (cCfg c))) "footnote" "note-" "noteref-" noteText [(docIndex, f, key, sp, n, xs) | (docIndex, f, key, d) <- cnList (cNotes c), (sp, n, xs) <- documentNotes d]
 
 {- | A list of notes or endnotes: the section of its class with its title,
 an aside of its kind for each, a p for each paragraph, the link back at
 the start of the first (docs/adr/0263).
 -}
-noteList :: Ctx -> NoteChannelKind -> Text -> Text -> Text -> Text -> Text -> (Ctx -> Int -> Text) -> [(FileId, Int -> Text, SrcSpan, Int, [[Inline]])] -> [Node]
+noteList :: Ctx -> NoteChannelKind -> Text -> Text -> Text -> Text -> Text -> (Ctx -> Int -> Text) -> [(Int, FileId, Int -> Text, SrcSpan, Int, [[Inline]])] -> [Node]
 noteList _ _ _ _ _ _ _ _ [] = []
 noteList c channel cls title kind idPrefix backPrefix mark ns =
   [ el
@@ -1374,10 +1377,10 @@ noteList c channel cls title kind idPrefix backPrefix mark ns =
             [ [ Element
                   "aside"
                   [plainAttr "epub:type" kind, plainAttr "id" (idPrefix <> key n)]
-                  [el "p" [] ((if i == (0 :: Int) then [Element "a" [("href", linkTo c f (backPrefix <> key n))] [textOf (mark c n)], textOf " "] else []) <> inlines context is) | (i, (context, is)) <- zip [0 ..] (noteContexts c channel sp n ps)],
+                  [el "p" [] ((if i == (0 :: Int) then [Element "a" [("href", linkTo c f (backPrefix <> key n))] [textOf (mark c n)], textOf " "] else []) <> inlines context is) | (i, (context, is)) <- zip [0 ..] (noteContexts (c {cDocumentIndex = docIndex}) channel sp n ps)],
                 nl
               ]
-            | (f, key, sp, n, ps) <- ns
+            | (docIndex, f, key, sp, n, ps) <- ns
             ]
       ),
     nl
@@ -2202,4 +2205,4 @@ arrayContexts c arrays = case cNoteCitationContext c of
 noteContexts :: Ctx -> NoteChannelKind -> SrcSpan -> Int -> [[Inline]] -> [(Ctx, [Inline])]
 noteContexts c channel sp n = arrayContexts context
   where
-    context = c {cNoteCitationContext = if Map.null (bookNoteCitationPieces (cBook c)) then Nothing else Just (NoteCitationContext sp channel n 0)}
+    context = c {cNoteCitationContext = if Map.null (bookNoteCitationPieces (cBook c)) then Nothing else Just (NoteCitationContextInDocument sp channel n 0 (cDocumentIndex c))}

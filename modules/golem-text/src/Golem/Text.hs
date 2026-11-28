@@ -8,6 +8,7 @@ module Golem.Text
   )
 where
 
+import Data.List (mapAccumL)
 import Data.List.NonEmpty (NonEmpty)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
@@ -59,7 +60,8 @@ data Ctx = Ctx
     cDepth :: Int,
     -- | whether the captions of tables are after them, [tables] caption-position (docs/adr/0262)
     cTableCaptionBelow :: Bool,
-    cNoteCitationContext :: !(Maybe NoteCitationContext)
+    cNoteCitationContext :: !(Maybe NoteCitationContext),
+    cDocumentIndex :: Int
   }
 
 {- | The markers of [lists] (golem-driver ADR 0013): the bullets and the
@@ -81,12 +83,13 @@ tables after them (docs/adr/0262).
 -}
 renderText :: Text -> Text -> Bool -> (FileId -> Maybe Text -> (Int, Int)) -> TextLists -> Bool -> Map Text [EntryPart] -> TextVariant -> FileTable -> Book -> [(FilePath, Text)]
 renderText lang numberDefault dev firstLine lists captionBelow bib variant ft book =
-  [ (replaceExtension (fromMaybe "unknown" (lookupPath fid ft)) "txt", file (ctxOf fid) d (if isLast then chapter else []))
-  | chapter <- bookChapters book,
-    (isLast, d@(Document fid _)) <- zip (map (== length chapter) [1 ..]) chapter
+  [ (replaceExtension (fromMaybe "unknown" (lookupPath fid ft)) "txt", file (ctxOf docIndex fid) d (if isLast then chapter else []))
+  | chapter <- indexedChapters,
+    (isLast, (docIndex, d@(Document fid _))) <- zip (map (== length chapter) [1 ..]) chapter
   ]
   where
-    ctxOf fid = Ctx variant lang numberDefault book dev (firstLine fid) False lists bib 0 captionBelow Nothing
+    indexedChapters = snd (mapAccumL (\k ds -> (k + length ds, zip [k ..] ds)) 0 (bookChapters book))
+    ctxOf docIndex fid = Ctx variant lang numberDefault book dev (firstLine fid) False lists bib 0 captionBelow Nothing docIndex
 
 {- | The blocks of a file, an empty line between two; blank lines add
 their empty lines between two blocks, and nothing before the first
@@ -123,15 +126,15 @@ topText c = T.concat . go False Nothing Nothing
        in if T.null t then go written blanks after rest else sep : t : go True (Just 0) Nothing rest
 
 -- | A file and, after it, the notes of the documents of its chapter.
-file :: Ctx -> Document -> [Document] -> Text
+file :: Ctx -> Document -> [(Int, Document)] -> Text
 file c (Document _ bs) chapter =
   let body = topText c bs
-      notes = [(sp, n, paragraphs) | d <- chapter, (sp, n, paragraphs) <- documentNotes d]
+      notes = [(docIndex, sp, n, paragraphs) | (docIndex, d) <- chapter, (sp, n, paragraphs) <- documentNotes d]
       noteMark n = (if cVariant c == Vertical then "※" else "*") <> T.pack (show n)
       -- the first paragraph after the mark, each other on a line of its own (docs/adr/0263)
-      listText channel title ns = T.intercalate "\n" (title : [noteMark n <> " " <> T.intercalate "\n" [inlines context xs | (context, xs) <- noteContexts c channel sp n ps] | (sp, n, ps) <- ns])
+      listText channel title ns = T.intercalate "\n" (title : [noteMark n <> " " <> T.intercalate "\n" [inlines context xs | (context, xs) <- noteContexts (c {cDocumentIndex = docIndex}) channel sp n ps] | (docIndex, sp, n, ps) <- ns])
       -- the endnotes after the notes, under a title of their own (root ADR 0412)
-      endnotes = [(sp, n, paragraphs) | d <- chapter, (sp, n, paragraphs) <- documentEndnotes d]
+      endnotes = [(docIndex, sp, n, paragraphs) | (docIndex, d) <- chapter, (sp, n, paragraphs) <- documentEndnotes d]
       lists = [listText FootnoteChannel (notesTitle (cLanguage c)) notes | not (null notes)] <> [listText EndnoteChannel (endnotesTitle (cLanguage c)) endnotes | not (null endnotes)]
       noteText = T.intercalate "\n\n" lists
       full
@@ -303,4 +306,4 @@ arrayContexts c arrays = case cNoteCitationContext c of
 noteContexts :: Ctx -> NoteChannelKind -> SrcSpan -> Int -> [[Inline]] -> [(Ctx, [Inline])]
 noteContexts c channel sp n = arrayContexts context
   where
-    context = c {cNoteCitationContext = if Map.null (bookNoteCitationPieces (cBook c)) then Nothing else Just (NoteCitationContext sp channel n 0)}
+    context = c {cNoteCitationContext = if Map.null (bookNoteCitationPieces (cBook c)) then Nothing else Just (NoteCitationContextInDocument sp channel n 0 (cDocumentIndex c))}

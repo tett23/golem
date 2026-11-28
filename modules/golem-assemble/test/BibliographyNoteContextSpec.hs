@@ -2,8 +2,10 @@ module BibliographyNoteContextSpec (tests) where
 
 import Control.Monad (forM_)
 import Data.Map.Strict qualified as Map
-import Golem.Assemble (AssembleConfig (..), NoteChannelKind (..), NoteNumbering (..), assemble, bookDocs)
+import Data.Set qualified as Set
+import Golem.Assemble (AssembleConfig (..), Book (..), NoteChannelKind (..), NoteNumbering (..), assemble, resolvedNoteCitationPieces)
 import Golem.Assemble.BibliographyNoteContext
+import Golem.Doc.Citation (CitePiece (..))
 import Golem.Doc.IR
 import Golem.Syntax
 import Test.Tasty
@@ -36,7 +38,23 @@ tests :: TestTree
 tests =
   testGroup
     "S1 note citation context"
-    [ testCase "root ADR 0470 I5: real S1 numbering distinguishes shared spans and per-file resets" $ do
+    [ testCase "root ADR 0470 I5: repeated source documents retain separate reset note contexts" $ do
+        let config = AssembleConfig Map.empty "{n}" Map.empty NumberPerChapter [0, 1] "{n}" "{n}" Map.empty 16 NumberPerChapter
+            (book, diagnostics) = assemble config (\_ _ _ -> Right "") (notes [note FootnoteChannel 0 [citation]] <> notes [note FootnoteChannel 0 [citation]])
+            occurrences = bibliographyNoteCitations (bookDocs book)
+        diagnostics @?= []
+        map (nccNumber . ncoContext) occurrences @?= [1, 1]
+        Set.size (Set.fromList (map ncoContext occurrences)) @?= 2
+        map ncoContext occurrences @?= [NoteCitationContextInDocument sp FootnoteChannel 1 0 0, NoteCitationContextInDocument sp FootnoteChannel 1 0 1],
+      testCase "root ADR 0470 I5: document-scoped lookups retain legacy keys without bypassing an exact mismatched payload" $ do
+        let config = AssembleConfig Map.empty "{n}" Map.empty NumberPerChapter [] "{n}" "{n}" Map.empty 16 NumberPerChapter
+            (book, _) = assemble config (\_ _ _ -> Right "") (notes [note FootnoteChannel 1 [citation]])
+            legacy = NoteCitationContext sp FootnoteChannel 1 0
+            scoped = NoteCitationContextInDocument sp FootnoteChannel 1 0 2
+            table = Map.singleton legacy (sp, [item], [CiteText "LEGACY"])
+        resolvedNoteCitationPieces book {bookNoteCitationPieces = table} scoped sp [item] @?= Just [CiteText "LEGACY"]
+        resolvedNoteCitationPieces book {bookNoteCitationPieces = Map.insert scoped (sp, [citeItem "different"], [CiteText "WRONG"]) table} scoped sp [item] @?= Nothing,
+      testCase "root ADR 0470 I5: real S1 numbering distinguishes shared spans and per-file resets" $ do
         let cfg = AssembleConfig Map.empty "{n}" Map.empty NumberPerFile [] "{n}" "{n}" Map.empty 16 NumberPerChapter
             other = mkSpan (FileId 2) 10 20
             documents = notes [note FootnoteChannel 0 [citation], note FootnoteChannel 0 [citation]] <> [Document (FileId 2) [paragraph [Note other 0 Nothing (noteBody other [Cite other [item]])]]]

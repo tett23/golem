@@ -305,6 +305,26 @@ bibliographyFormatTests =
           resolved <- layoutPdf input {piBook = book} geom fonts >>= either (assertFailure . show) pure
           forM_ ["C1", "C2", "C3"] $ \token -> T.count token (allText resolved) @?= 1
         either (assertFailure . show) pure result,
+    testCase "root ADR 0470 I5: PDF keeps repeated document note contexts separate" $
+      forM_ [(FootnoteChannel, False), (FootnoteChannel, True), (EndnoteChannel, False), (SidenoteChannel, False)] $ \(channel, chapterEnd) -> do
+        let style = horizontalStyle <> "\n[notes]\nplacement='" <> (if chapterEnd then "chapter-end" else "page-foot") <> "'\n" <> if channel == SidenoteChannel then "\n[sidenotes]\nwidth='6zw'\ngap='1zw'\n" else ""
+        result <- withMiniInput fakeProvider miniManifest style "seed" [] $ \input geom fonts -> do
+          let original = piBook input
+              fid = case bookDocs original of Document file _ : _ -> file; _ -> FileId 0
+              target = mkSpan fid 0 1
+              citation = mkSpan fid 2 3
+              items = [citeItem "a"]
+              mark = Cite citation items
+              para xs = Block target Nothing Nothing (Paragraph Nothing xs)
+              note = case channel of FootnoteChannel -> Note; SidenoteChannel -> Sidenote; EndnoteChannel -> Endnote
+              document = Document fid [para [Text target "X", note target 1 Nothing [para [mark]]]]
+              table = Map.fromList [(NoteCitationContextInDocument target channel 1 0 k, (citation, items, [CiteText text])) | (k, text) <- [(0, "DOCZERO"), (1, "DOCONE")]]
+              book = original {bookDocs = [document, document], bookChapterOf = [0, 1], bookNoteCitationPieces = table}
+              allLines layout = concat [slLine sl : concatMap snd (slNotes sl) | sl <- Map.elems (plLines layout)] <> [ptLine part | placed <- concat (Map.elems (plSidenotes layout)), part <- psLines placed]
+              allText layout = T.concat [bcText box | line <- allLines layout, Box _ box <- lineItems line]
+          resolved <- layoutPdf input {piBook = book} geom fonts >>= either (assertFailure . show) pure
+          forM_ ["DOCZERO", "DOCONE"] $ \token -> assertEqual (show (channel, chapterEnd, token)) 1 (T.count token (allText resolved))
+        either (assertFailure . show) pure result,
     testGroup
       "PDF note occurrence consumers"
       [ testCase ("root ADR 0470 I5: PDF structural note ordinals in " <> name <> if vertical then " vertically" else " horizontally") $ do

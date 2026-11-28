@@ -152,12 +152,20 @@ data NoteTarget = NoteTarget
   deriving stock (Eq, Show)
 
 -- | A citation occurrence in an already numbered S1 note (root ADR 0470).
-data NoteCitationContext = NoteCitationContext
-  { nccNoteSpan :: !SrcSpan,
-    nccChannel :: !NoteChannelKind,
-    nccNumber :: !Int,
-    nccOccurrence :: !Int
-  }
+data NoteCitationContext
+  = NoteCitationContext
+      { nccNoteSpan :: !SrcSpan,
+        nccChannel :: !NoteChannelKind,
+        nccNumber :: !Int,
+        nccOccurrence :: !Int
+      }
+  | NoteCitationContextInDocument
+      { nccNoteSpan :: !SrcSpan,
+        nccChannel :: !NoteChannelKind,
+        nccNumber :: !Int,
+        nccOccurrence :: !Int,
+        nccDocumentIndex :: !Int
+      }
   deriving stock (Eq, Ord, Show)
 
 data TocEntry = TocEntry
@@ -295,12 +303,17 @@ citationPiecesInNoteFor :: Book -> Maybe NoteCitationContext -> SrcSpan -> [(Cit
 citationPiecesInNoteFor book context sp items =
   fromMaybe (citationPiecesFor book sp items) (context >>= \at -> resolvedNoteCitationPieces book at sp (map fst items))
 
--- | Exact source and item matching, without applying a legacy fallback.
+-- | A document-scoped key precedes an old key; either must match source and items.
 resolvedNoteCitationPieces :: Book -> NoteCitationContext -> SrcSpan -> [CiteItem r] -> Maybe [CitePiece]
 resolvedNoteCitationPieces book context sp items =
-  case Map.lookup context (bookNoteCitationPieces book) of
+  case Map.lookup context table <|> legacy of
     Just (at, expected, pieces) | at == sp && expected == map void items -> Just pieces
     _ -> Nothing
+  where
+    table = bookNoteCitationPieces book
+    legacy = case context of
+      NoteCitationContextInDocument {} -> Map.lookup (NoteCitationContext (nccNoteSpan context) (nccChannel context) (nccNumber context) (nccOccurrence context)) table
+      NoteCitationContext {} -> Nothing
 
 -- | A label and its separating space, with the legacy number as fallback.
 bibliographyLabelFor :: Book -> Maybe ListAt -> Text -> Int -> Text

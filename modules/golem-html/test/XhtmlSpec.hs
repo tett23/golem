@@ -230,6 +230,16 @@ citeLinkTests =
         let mark = Block (mkSpan fidA 0 1) Nothing Nothing (Paragraph Nothing [Cite (mkSpan fidA 0 1) [CiteItem "k" (Just (Locator LocatorPage (LocRange 5 7))) [] []]])
         bodyA cfg0 (assembled [[mark], [bib fidB 0]])
           @?= "<p><span class=\"cite\">[<a href=\"b.xhtml#cite-k\">1</a>, pp.\xA0\&5\x2013\&7]</span></p>\n",
+      testCase "root ADR 0470 I5: HTML and XHTML keep document occurrence for repeated reset note sources" $
+        forM_ [FootnoteChannel, SidenoteChannel, EndnoteChannel] $ \channel -> do
+          let constructor = case channel of FootnoteChannel -> Note; SidenoteChannel -> Sidenote; EndnoteChannel -> Endnote
+              items = [citeItem "a"]
+              one = assembled [[para 0 [constructor (at 1) 1 Nothing (noteBody (at 1) [Cite (at 3) items])]]]
+              base = one {bookDocs = bookDocs one <> bookDocs one, bookChapterOf = [0, 1]}
+              scoped = Map.fromList [(NoteCitationContextInDocument (at 1) channel 1 0 docIndex, (at 3, items, [CiteText text])) | (docIndex, text) <- [(0, "DOC0"), (1, "DOC1")]]
+          forM_ [renderHtml, renderXhtml] $ \renderer -> do
+            let output = [bodyOf page | (name, page) <- sitePages (renderer cfg0 ft base {bookNoteCitationPieces = scoped}), name == "a.html" || name == "a.xhtml"]
+            map (\text -> (T.count "DOC0" text, T.count "DOC1" text)) output @?= [(1, 0), (0, 1)],
       testCase "root ADR 0470 I5: first-note pieces keep preformatted text and ordinary escaping" $ do
         let mark = para 0 [Cite (at 1) [citeItem "k"]]
             body given = bodyA cfg0 (assembled [[mark], [bib fidB 0]]) {bookCitationPieces = Map.singleton (at 1) [([citeItem "k"], [CiteNoteNumber (at 5) 12 (Just "kanji") given])]}

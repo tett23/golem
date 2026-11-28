@@ -13,7 +13,9 @@ module Golem.Assemble.BibliographyNoteContext
 where
 
 import Control.Monad (void)
+import Data.Map.Strict qualified as Map
 import Data.Maybe (fromMaybe)
+import Data.Set qualified as Set
 import Golem.Assemble (NoteChannelKind (..), NoteCitationContext (..))
 import Golem.Doc.Citation (citationCount, citationOffsets)
 import Golem.Doc.IR
@@ -29,8 +31,16 @@ data NoteCitationOccurrence = NoteCitationOccurrence
 -- | Read already numbered S1 documents, preserving document order.
 bibliographyNoteCitations :: [Document] -> [NoteCitationOccurrence]
 bibliographyNoteCitations documents =
-  concat [concatMap notesInlines (blockLists blocks) | Document _ blocks <- documents]
+  [ if Set.size (Map.findWithDefault Set.empty (identity context) documentIndices) > 1
+      then entry {ncoContext = NoteCitationContextInDocument (nccNoteSpan context) (nccChannel context) (nccNumber context) (nccOccurrence context) documentIndex}
+      else entry
+  | (documentIndex, entry) <- entries,
+    let context = ncoContext entry
+  ]
   where
+    entries = [(documentIndex, entry) | (documentIndex, Document _ blocks) <- zip [0 ..] documents, entry <- concatMap notesInlines (blockLists blocks)]
+    identity context = (nccNoteSpan context, nccChannel context, nccNumber context)
+    documentIndices = Map.fromListWith Set.union [(identity (ncoContext entry), Set.singleton documentIndex) | (documentIndex, entry) <- entries]
     notesInlines :: [InlineF r] -> [NoteCitationOccurrence]
     notesInlines = concatMap noteInline
     noteInline :: InlineF r -> [NoteCitationOccurrence]

@@ -2648,7 +2648,9 @@ data Unit = Unit
     -- | the box of a paragraph at the top of the document of a style with one (docs/adr/0271)
     uBox :: Maybe UnitBox,
     -- | Explicit S1 note context of a chapter-note paragraph, when prepared.
-    uNoteCitationContext :: Maybe NoteCitationContext
+    uNoteCitationContext :: Maybe NoteCitationContext,
+    -- | The immutable occurrence of the source document in the book.
+    uDocumentIndex :: Int
   }
   -- the units of two rounds of S2 are compared (docs/adr ADR 0251)
   deriving stock (Eq)
@@ -2996,8 +2998,8 @@ unitsOf lang book geom indexSet styleOf pageOf bib sections = concat (snd (mapAc
       let style = styleOf fid
           -- a text frame takes no room in the flow: the blocks around it are set as without it (root ADR 0438 I3)
           bs = withoutFrames bs0
-          start = [Unit (USection k st) Nothing [] (mkSpan fid 0 0) (bodyLook style fs) style [] Nothing Nothing (Nothing, Nothing) Nothing SourceGrid [] 0 Nothing Nothing Nothing | Just st <- [Map.lookup k sections]]
-       in (start <>) <$> blocks style [] True n bs
+          start = [Unit (USection k st) Nothing [] (mkSpan fid 0 0) (bodyLook style fs) style [] Nothing Nothing (Nothing, Nothing) Nothing SourceGrid [] 0 Nothing Nothing Nothing 0 | Just st <- [Map.lookup k sections]]
+       in map (\u -> u {uDocumentIndex = k}) . (start <>) <$> blocks style [] True n bs
     {- the documents of a chapter of the manifest; at the end of the chapter,
     before the breaks that end its last file, its notes when they are set
     there (golem-driver ADR 0026) -}
@@ -3007,9 +3009,9 @@ unitsOf lang book geom indexSet styleOf pageOf bib sections = concat (snd (mapAc
           us = concat uss
        in (n',) $ case reverse docs of
             (Document fid _ : _)
-              | let notes = [notesList ChannelNote (notesTitle lang) (noteStyleFor PlaceChapterEnd (styleOf fid)) (concatMap documentNotes docs) | stNotesPlacement (styleOf fid) == PlaceChapterEnd]
+              | let notes = [notesList ChannelNote (notesTitle lang) (noteStyleFor PlaceChapterEnd (styleOf fid)) [(k, sp, number, paragraphs) | (k, d) <- idocs, (sp, number, paragraphs) <- documentNotes d] | stNotesPlacement (styleOf fid) == PlaceChapterEnd]
                     -- the endnotes after the notes, always (root ADR 0412)
-                    endnotes = notesList ChannelEndnote (endnotesTitle lang) (endnoteStyle (styleOf fid)) (concatMap documentEndnotes docs),
+                    endnotes = notesList ChannelEndnote (endnotesTitle lang) (endnoteStyle (styleOf fid)) [(k, sp, number, paragraphs) | (k, d) <- idocs, (sp, number, paragraphs) <- documentEndnotes d],
                 not (all null notes) || not (null endnotes) ->
                   let (breaks, body) = span isBreakUnit (reverse us)
                    in reverse body <> concat notes <> endnotes <> reverse breaks
@@ -3025,23 +3027,23 @@ unitsOf lang book geom indexSet styleOf pageOf bib sections = concat (snd (mapAc
     notesList ch title style notes =
       case notes of
         [] -> []
-        ns@((sp, _, _) : _) ->
+        ns@((documentIndex, sp, _, _) : _) ->
           let -- the paragraph styles of [notes] heading-style and body-style (docs/adr/0366)
               (titleLook, titleSource) = notesTitleLook lang style geom
               bodyStyle = stNotesBodyStyle style
               look = noteBodyLook style geom
               source = noteBodySource style
-           in Unit (UNotesTitle title) Nothing [Text sp title] sp titleLook style [] Nothing (stNotesHeadingStyle style) (Nothing, Nothing) Nothing titleSource [] 0 Nothing Nothing Nothing
+           in Unit (UNotesTitle title) Nothing [Text sp title] sp titleLook style [] Nothing (stNotesHeadingStyle style) (Nothing, Nothing) Nothing titleSource [] 0 Nothing Nothing Nothing documentIndex
                 -- the first paragraph after the mark, the others without one and without space between (docs/adr/0263)
                 : concat
-                  [ Unit (UPara noIndent) Nothing (withNoteMark style (pgVertical geom) nsp n para0) nsp look style [] Nothing bodyStyle (Nothing, Nothing) Nothing source [frame 0 (FEndNote ch nsp (noteMarkCount style (pgVertical geom) nsp n) n)] 0 Nothing Nothing (noteContext nsp n 0)
-                      : [Unit (UPara noIndent) Nothing more nsp look style [] Nothing bodyStyle (Nothing, Nothing) Nothing source [frame 0 (FEndNoteMore nsp)] 0 Nothing Nothing (noteContext nsp n offset) | (offset, more) <- zip (drop 1 (scanl (\count paragraph -> count + citationCount paragraph) 0 (para0 : rest))) rest]
-                  | (nsp, n, para0 : rest) <- ns
+                  [ Unit (UPara noIndent) Nothing (withNoteMark style (pgVertical geom) nsp n para0) nsp look style [] Nothing bodyStyle (Nothing, Nothing) Nothing source [frame 0 (FEndNote ch nsp (noteMarkCount style (pgVertical geom) nsp n) n)] 0 Nothing Nothing (noteContext k nsp n 0) k
+                      : [Unit (UPara noIndent) Nothing more nsp look style [] Nothing bodyStyle (Nothing, Nothing) Nothing source [frame 0 (FEndNoteMore nsp)] 0 Nothing Nothing (noteContext k nsp n offset) k | (offset, more) <- zip (drop 1 (scanl (\count paragraph -> count + citationCount paragraph) 0 (para0 : rest))) rest]
+                  | (k, nsp, n, para0 : rest) <- ns
                   ]
           where
-            noteContext targetSpan n offset
+            noteContext k targetSpan n offset
               | Map.null (bookNoteCitationPieces book) = Nothing
-              | otherwise = Just (NoteCitationContext targetSpan (case ch of ChannelNote -> FootnoteChannel; ChannelSidenote -> SidenoteChannel; ChannelEndnote -> EndnoteChannel) n offset)
+              | otherwise = Just (NoteCitationContextInDocument targetSpan (case ch of ChannelNote -> FootnoteChannel; ChannelSidenote -> SidenoteChannel; ChannelEndnote -> EndnoteChannel) n offset k)
     {- a list of blocks inside the lists @ctx@, from the list number @n@,
     with the spaces before and after of paragraphs when @spaced@ (not in a
     definition list): in a list item, paragraphs are not indented by their
@@ -3136,7 +3138,7 @@ unitsOf lang book geom indexSet styleOf pageOf bib sections = concat (snd (mapAc
       Just (Block _ _ _ a)
         | g <- gapLines style ctx spaced a b,
           g > 0 ->
-            [Unit (UGap g) Nothing [] sp (bodyLook style fs) style ctx Nothing Nothing (Nothing, Nothing) Nothing SourceGrid [] 0 Nothing Nothing Nothing]
+            [Unit (UGap g) Nothing [] sp (bodyLook style fs) style ctx Nothing Nothing (Nothing, Nothing) Nothing SourceGrid [] 0 Nothing Nothing Nothing 0]
       _ -> []
     {- the grid lines between two blocks (docs/adr/0189): only the blank
     lines across them; none before a forced break or a control of page
@@ -3167,7 +3169,7 @@ unitsOf lang book geom indexSet styleOf pageOf bib sections = concat (snd (mapAc
     -- a block with a language: the language of its characters and the /Lang of its element (docs/adr ADR 0187)
     block style ctx n b = withBlockLang (blockLang b) <$> blockUnits style ctx n b
     blockUnits style ctx n (Block sp lbl blang body) =
-      let unit kind l is face src = Unit kind l is sp face style ctx Nothing Nothing (Nothing, Nothing) Nothing src [] 0 Nothing Nothing Nothing
+      let unit kind l is face src = Unit kind l is sp face style ctx Nothing Nothing (Nothing, Nothing) Nothing src [] 0 Nothing Nothing Nothing 0
           -- the body role at the size of the grid (golem-cli ADR 0008)
           plainUnit kind l is = unit kind l is (bodyLook style fs) SourceGrid
        in case body of
@@ -3219,7 +3221,7 @@ unitsOf lang book geom indexSet styleOf pageOf bib sections = concat (snd (mapAc
                         (face, ind) = paraLook style geom st
                      in (unit (UTocEntry (teLevel e) (teSpan e) ind 0) Nothing (bookNumberedTitle book (Just (teLevel e)) lang (teSpan e) (teNumber e) (teTitle e)) face {lkLink = Just (LinkTo (DestHeading (teSpan e)))} SourceGrid) {uParaStyle = st, uRules = paraRules style st}
                   spaceOf key dimKey st = paragraphSpace style st key dimKey
-                  gapUnit g = [Unit (UGap g) Nothing [] sp (bodyLook style fs) style ctx Nothing Nothing (Nothing, Nothing) Nothing SourceGrid [] 0 Nothing Nothing Nothing | g > 0]
+                  gapUnit g = [Unit (UGap g) Nothing [] sp (bodyLook style fs) style ctx Nothing Nothing (Nothing, Nothing) Nothing SourceGrid [] 0 Nothing Nothing Nothing 0 | g > 0]
                   -- the spaces before the first entry, between the entries and after the last (docs/adr/0264)
                   between a b
                     | styleOf' a == styleOf' b = spaceOf psSpaceBetween psSpaceBetweenDim (styleOf' b)
@@ -3402,7 +3404,8 @@ data FlowEnv = FlowEnv
     -- | where the characters of a text are in the sources (docs/adr ADR 0195)
     feSourceAt :: SrcSpan -> Text -> Int -> Int,
     -- | with notes numbered per page, how many notes and sidenotes the book has (docs/adr/0383)
-    feMarkReserve :: Maybe (Int, Int)
+    feMarkReserve :: Maybe (Int, Int),
+    feDocumentIndex :: Int
   }
 
 flowEnv :: PdfInput -> PageGeometry -> LoadedFonts -> Assumed -> FlowEnv
@@ -3423,16 +3426,20 @@ flowEnv inp geom fonts assumed = fe
           feBodyEnv = body,
           feTocReserve = fst (tocMetrics body) + 2 * fs,
           feSourceAt = sourceAt (Map.map (TE.encodeUtf8 . sfText) (projectSources (piProject inp))),
-          feMarkReserve = if stNotesNumbering style == NumberPerPage then Just (noteCounts (piBook inp)) else Nothing
+          feMarkReserve = if stNotesNumbering style == NumberPerPage then Just (noteCounts (piBook inp)) else Nothing,
+          feDocumentIndex = 0
         }
 
 -- | Attach one prepared S1 note's immutable structural occurrence lookup.
 noteCitationEnv :: FlowEnv -> NoteCitationContext -> ComposeEnv -> ComposeEnv
 noteCitationEnv fe context env
   | Map.null (bookNoteCitationPieces book) = env
-  | otherwise = env {ceCiteOrdinal = nccOccurrence context, ceCitePiecesAt = Just (\ordinal -> resolvedNoteCitationPieces book context {nccOccurrence = ordinal})}
+  | otherwise = env {ceCiteOrdinal = nccOccurrence context, ceCitePiecesAt = Just (\ordinal -> resolvedNoteCitationPieces book scoped {nccOccurrence = ordinal})}
   where
     book = piBook (feInput fe)
+    scoped = case context of
+      NoteCitationContext sp channel number occurrence -> NoteCitationContextInDocument sp channel number occurrence (feDocumentIndex fe)
+      NoteCitationContextInDocument {} -> context
 
 -- | The composition of a look; citations show their numbers (golem-driver ADR 0007).
 lookEnv :: FlowEnv -> Look -> ComposeEnv
@@ -3513,7 +3520,7 @@ withDocStyle st e = e {ceRestyle = restyle st, ceRubyReading = styledReading st,
 
 -- | The composition of the text of a unit: its look, its document's style and the aki set of its paragraph style.
 unitEnv :: FlowEnv -> Unit -> ComposeEnv
-unitEnv fe u = (maybe id (noteCitationEnv fe) (uNoteCitationContext u) (exceptionsOf (withDocStyle (uStyle u) (lookEnv fe (uLook u))))) {ceAkiSet = akiSetOf (uStyle u) (case uKind u of UHeading {} -> Nothing; _ -> uParaStyle u), ceLabelInlines = unitLabelInlines u, ceLabelLink = unitLabelLink u}
+unitEnv fe u = (maybe id (noteCitationEnv fe {feDocumentIndex = uDocumentIndex u}) (uNoteCitationContext u) (exceptionsOf (withDocStyle (uStyle u) (lookEnv fe (uLook u))))) {ceAkiSet = akiSetOf (uStyle u) (case uKind u of UHeading {} -> Nothing; _ -> uParaStyle u), ceLabelInlines = unitLabelInlines u, ceLabelLink = unitLabelLink u}
   where
     exceptionsOf = if madeByGolem u then id else withFileExceptions fe (spanFile (uSpan u))
 
@@ -3945,7 +3952,7 @@ notesTitleLook lang st geom = case stNotesHeadingStyle st of
 -- | The footnotes of a unit, each a paragraph of its own; none when the notes are at the end of the chapter (golem-driver ADR 0026).
 unitNotes :: FlowEnv -> Unit -> [Golem.Layout.Japanese.Anchor] -> [(NoteId, [Line])]
 unitNotes fe u anchors =
-  [ (k, footnoteLines fe (withFileExceptions fe (spanFile (noteIdSpan k)) (noteEnv fe (uStyle u))) (uStyle u) k n nbody)
+  [ (k, footnoteLines fe {feDocumentIndex = uDocumentIndex u} (withFileExceptions fe (spanFile (noteIdSpan k)) (noteEnv fe (uStyle u))) (uStyle u) k n nbody)
   | not (feNotesAtEnd fe),
     (_, k, n, nbody) <- noteAnchors anchors
   ]
@@ -3971,7 +3978,7 @@ footnoteLines fe env st0 k n ps =
 
 -- | The sidenotes of a unit: the item index of the marker after the list marker, the span and the lines.
 unitSidenotes :: FlowEnv -> Unit -> Int -> [Golem.Layout.Japanese.Anchor] -> [(Int, SrcSpan, [PartLine])]
-unitSidenotes fe u shift anchors = [(i + shift, sp, sidenoteLines fe (uStyle u) sp n (concat snBody)) | AnchorSidenote i n sp snBody <- anchors]
+unitSidenotes fe u shift anchors = [(i + shift, sp, sidenoteLines fe {feDocumentIndex = uDocumentIndex u} (uStyle u) sp n (concat snBody)) | AnchorSidenote i n sp snBody <- anchors]
 
 -- | The index marks of a unit, those of its notes and sidenotes with the item of their marker.
 unitMarks :: FlowEnv -> Unit -> Int -> [Golem.Layout.Japanese.Anchor] -> [(Int, SrcSpan)]
@@ -4343,7 +4350,7 @@ forceTable r = evaluate (either refusal (table . fst) r) >> pure r
 order, for the tests of 'forceTable' (docs/adr ADR 0299).
 -}
 composedTables :: PdfInput -> PageGeometry -> LoadedFonts -> [Either TableRefusal (SetTable, [[([(NoteId, [Line])], [(SrcSpan, [PartLine])], [SrcSpan])]])]
-composedTables inp geom fonts = [composeTable fe i (spanFile (uSpan u)) (uStyle u) (lkLang (uLook u)) t | (i, u@Unit {uKind = UTable t}) <- fst (flowUnits fe)]
+composedTables inp geom fonts = [composeTable fe {feDocumentIndex = uDocumentIndex u} i (spanFile (uSpan u)) (uStyle u) (lkLang (uLook u)) t | (i, u@Unit {uKind = UTable t}) <- fst (flowUnits fe)]
   where
     fe = flowEnv inp geom fonts (Assumed Map.empty Map.empty Map.empty Map.empty)
 
@@ -5006,12 +5013,12 @@ buildFlow inp geom fonts images prev assumed = do
       isTable u = case uKind u of
         UTable {} -> True
         _ -> False
-      tableUnits = [(i, spanFile (uSpan u), uStyle u, lkLang (uLook u), t) | (i, u@Unit {uKind = UTable t}) <- units]
+      tableUnits = [(i, uDocumentIndex u, spanFile (uSpan u), uStyle u, lkLang (uLook u), t) | (i, u@Unit {uKind = UTable t}) <- units]
   _ <- mapper (\(_, (pf, _, _, _)) -> evaluate (length (show (map (lineRatio . ptLine) (pfCaption pf))))) (Map.toList figures)
   -- the lines under the frames of wrap around are shorter by their cuts (root ADR 0438)
   let cutWidth i k = maybe 0 (uncurry (+)) (Map.lookup i (asCuts assumed) >>= Map.lookup k)
   singles <- Map.fromList . zip (map fst rest) <$> mapper (\(i, u) -> maybe (forceComposed (composeUnit fe widths (\k -> unitLineWidth fe (uKind u) k - cutWidth i k) u)) pure (reused cuSingles i)) rest
-  tables <- Map.fromList <$> mapper (\(i, fid, st, l, t) -> maybe (let r = composeTable fe i fid st l t in forceTable r >> pure (i, r)) (pure . (i,)) (reused cuTables i)) tableUnits
+  tables <- Map.fromList <$> mapper (\(i, documentIndex, fid, st, l, t) -> maybe (let r = composeTable fe {feDocumentIndex = documentIndex} i fid st l t in forceTable r >> pure (i, r)) (pure . (i,)) (reused cuTables i)) tableUnits
   -- Numbering is pure and can be repeated for an uncommitted physical
   -- paragraph trial without reshaping its source or changing a snapshot.
   let ownedControls =
