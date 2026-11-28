@@ -392,3 +392,27 @@ node --test experiments/parser-fmt-proof/arguments/raw-cst.test.mjs
 文字単位のモデルと UTF-8 の byte offset の一般的な対応、通常の node の隙間に補う Text token、原稿全体の CST の生成は未証明である。
 公理、前提と残る範囲は [依存関係の記録](../../../docs/research/0351-cst-wrapper-proof-dependencies.md) にある。
 [root ADR 0351](../../../docs/adr/0351-prove-parser-formatter-round-trips.md) の未実装の状態を保つ。
+
+## CST の種類を変換してキーワードの値へ接続する段階
+
+TokenLowering.lean は、認識と CST wrapper が返す Word と StringLit から、種類を保った Lean のモデルの値を得ることを示す。
+実際の Golem.Parser.AST との一致は下の九例で照合し、一般的な対応は未証明である。
+Word は原綴りを保ち、StringLit は引用符とエスケープを除く。
+等号を認識しても値にはしない。
+子の認識の成功や結果の一致を仮定せず、既存の認識と復号の一般定理から導く。
+
+構築したキーワードの node から名前、種類と値が戻ること、任意個並べても同名の繰り返しと順を保つことも示す。
+この部分は、原稿を解析してすべての node を生成する一般証明とは区別する。
+モデルの arguments はキーワードだけの射影であり、位置引数や展開を混ぜた入力の lowering 全体ではない。
+
+九つの共通の原稿の十六の引数出現を、実際の parseAst と通常の golem fmt の前後で照合する。
+八つの個別の値に加え、それらすべてを同じ原稿に並べた例を含む。
+二回目の整形でバイト列が変わらないことも確かめる。
+上の CLI のビルドの後、同じ Cabal plan で次を実行する。
+
+```sh
+node --test experiments/parser-fmt-proof/arguments/token-values.test.mjs
+```
+
+公理、前提と残る範囲は [依存関係の記録](../../../docs/research/0351-token-ast-proof-dependencies.md) にある。
+[root ADR 0351](../../../docs/adr/0351-prove-parser-formatter-round-trips.md) の未実装の状態を保つ。

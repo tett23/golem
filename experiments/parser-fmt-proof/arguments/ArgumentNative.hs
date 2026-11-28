@@ -24,4 +24,5 @@ main = do
   if null diagnostics then pure () else error (show diagnostics)
   case blocks of
     [A.Located _ (A.BlockCommand (A.Located _ "inspect") args [])] -> B.putStrLn (J.encode (map argument args))
+    [A.Located _ (A.Paragraph [A.Located _ (A.Command (A.Located _ "inspect") args [])])] -> B.putStrLn (J.encode (map argument args))
     _ -> error (show blocks)
