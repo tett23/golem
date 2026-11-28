@@ -78,14 +78,15 @@ Lean は 4.7.0 を使った。
 環境の宣言を調べ、新しいモジュールの定理 2 件、明示定義 3 件、公理 0 件を確認した。
 `rows` などは `noncomputable` とし、コンパイラが生成する `List.mapTR` の特殊化の公理も残していない。
 `sorry` と `admit` はない。
-二つの証明項が直接参照する定理は `of_decide_eq_true` と `Eq.refl` であり、互いを参照しない。
+二つの証明項が直接参照する定理は `of_decide_eq_true` であり、互いを参照しない。
+等式のコンストラクター `Eq.refl` も現れる。
 
 ```mermaid
 flowchart TD
   public_contract[ForcedPrefix.public_contract] --> of_decide_eq_true
   caller_consumes[ForcedPrefix.caller_consumes] --> of_decide_eq_true
-  public_contract --> Eq.refl
-  caller_consumes --> Eq.refl
+  public_contract --> refl[Eq.refl コンストラクター]
+  caller_consumes --> refl
 ```
 
 ```mermaid
