@@ -216,7 +216,37 @@ jaRefsJson = TE.encodeUtf8 "[{\"id\": \"jisx4061\", \"title\": \"JIS X 4061:1996
 
 bibliographyFormatTests :: [TestTree]
 bibliographyFormatTests =
-  [ testCase "EPUB navigation and the HTML index page follow the depth of @toc (golem-epub ADR 0002)" $ do
+  [ testCase "root ADR 0482 I1, I2: non-PDF sidenote bodies in ruby captions and cells occur once" $
+      withBibProject "" "# 章\n\n本文[sidenote: 注一]。\n\n[ruby: 字[sidenote: 注二]|じ]。\n\n@caption 表[sidenote: 注三]\n| A[sidenote: 注四] |\n| --- |\n| B[sidenote: 注五] |\n\n@caption コード[sidenote: 注六]\n```text\ncode\n```\n" [] $ \tmp -> do
+        TIO.appendFile (tmp </> "manifest.toml") "[targets.text]\n[targets.epub]\n"
+        result <- build (defaultOptions tmp) {optTargets = Just [TargetHtml, TargetText, TargetEpub]}
+        assertEqual "no errors" [] (filter isError (brDiagnostics result))
+        text <- TIO.readFile (tmp </> "build/text/horizontal/a.txt")
+        html <- TIO.readFile (tmp </> "build/html/a.html")
+        archive <- toArchive <$> BL.readFile (tmp </> "build/epub/book.epub")
+        let xhtml = maybe "" (TE.decodeUtf8 . BL.toStrict . fromEntry) (findEntryByPath "OEBPS/a.xhtml" archive)
+        forM_ [text, html, xhtml] $ \output ->
+          forM_ ["注一", "注二", "注三", "注四", "注五", "注六"] $ \body -> assertEqual (T.unpack body <> " in " <> T.unpack output) 1 (T.count body output)
+        forM_ [1 :: Int .. 6] $ \n -> do
+          let number = T.pack (show n)
+          assertEqual "text mark and body" 2 (T.count ("※" <> number) text)
+          forM_ [html, xhtml] $ \output ->
+            assertEqual "one HTML/XHTML callmark per sidenote" 1 (T.count ("<sup class=\"sidenote-ref\">" <> number <> "</sup>") output),
+    testCase "root ADR 0482 I1, I2, I3: writer notes in captions and ruby retain bodies and PDF destinations" $
+      withBibProject "" "# 章\n\n本文[note: 注一]。\n\n[ruby: 字[note: 注二]|じ]。\n\n@caption 表[note: 注三]\n| A[note: 注四] |\n| --- |\n| B[note: 注五] |\n\n@caption コード[note: 注六]\n```text\ncode\n```\n" [] $ \tmp -> do
+        createDirectoryIfMissing True (tmp </> "fonts")
+        BS.writeFile (tmp </> "fonts/b.otf") "fake font selected by fakeProvider"
+        BS.appendFile (tmp </> "style.toml") fakeBody
+        TIO.appendFile (tmp </> "manifest.toml") "[targets.text]\n[targets.epub]\n"
+        result <- build (defaultOptions tmp) {optTargets = Just [TargetPdf, TargetHtml, TargetText, TargetEpub], optFonts = fakeProvider}
+        assertEqual "every PDF note destination exists" [] (filter isError (brDiagnostics result))
+        text <- TIO.readFile (tmp </> "build/text/horizontal/a.txt")
+        html <- TIO.readFile (tmp </> "build/html/a.html")
+        archive <- toArchive <$> BL.readFile (tmp </> "build/epub/book.epub")
+        let xhtml = maybe "" (TE.decodeUtf8 . BL.toStrict . fromEntry) (findEntryByPath "OEBPS/a.xhtml" archive)
+        forM_ [text, html, xhtml] $ \output ->
+          assertBool (T.unpack output) (all (`T.isInfixOf` output) ["注一", "注二", "注三", "注四", "注五", "注六"]),
+    testCase "EPUB navigation and the HTML index page follow the depth of @toc (golem-epub ADR 0002)" $ do
       (nav, index) <- tocProject True
       assertBool (T.unpack nav) (not (any (`T.isInfixOf` nav) ["節一", "項一"]))
       assertBool (T.unpack nav) ("第一章" `T.isInfixOf` nav)

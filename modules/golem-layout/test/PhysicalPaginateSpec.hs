@@ -280,6 +280,18 @@ physicalPaginateTests =
       testCase "root ADR 0397 I8: a table repeats its header on the next column" $
         slots (paginatePhysical settings [FTable 10 0 [line 0] [[line 1], [line 2]] [] False])
           @?= Right [[(0, SLine 0), (16, SLine 1)], [(0, SLine 0), (16, SLine 2)]],
+      testCase "root ADR 0482 I3, I4: a code caption and first row reserve and retain their footnote" $ do
+        let geometry = codeGeometry 10 16 10 0
+            cfg = settings {physicalCapacity = 64, physicalMaxCapacity = 64, physicalSeparator = 16}
+        forM_ [1, 3] $ \count -> do
+          pages <- either (assertFailure . show) pure (paginatePhysical cfg [FCode geometry 16 1 False [(line 0) {lbNotes = [NoteBody (NoteId span0 0) count]}]])
+          sum [n | page <- pages, (_, _, n) <- poFootnotes page] @?= count
+          [(ident, first, n) | page <- take 1 pages, (ident, first, n) <- poFootnotes page] @?= [(NoteId span0 0, 0, 1)]
+          [slot | page <- pages, (_, slot) <- poSlots page] @?= [SCode 0 1 1],
+      testCase "root ADR 0482 I4: an empty column too short for code caption first row separator and one note line fails" $ do
+        let geometry = codeGeometry 10 16 10 0
+            cfg = settings {physicalCapacity = 48, physicalMaxCapacity = 48, physicalSeparator = 16}
+        paginatePhysical cfg [FCode geometry 16 1 False [noteLine 0]] @?= Left (PhysicalFootnoteTooTall (NoteId span0 0)),
       testCase "root ADR 0397 I8: a code block splits by rows" $
         let geometry = codeGeometry 10 16 10 0
          in slots (paginatePhysical settings [FCode geometry 0 1 False [line 0, line 1, line 2]])
