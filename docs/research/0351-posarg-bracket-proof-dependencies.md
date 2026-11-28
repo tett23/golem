@@ -2,6 +2,9 @@
 
 ## 対象と範囲
 
+この記録のソース表、依存件数と全体検証は、checkpoint `6106bd11c3fb2680e4861126b6dcfadfb3fd210d` の値である。
+入力末尾の語を加える変更後の検証は、[入力末尾の記録](0351-posarg-eof-proof-dependencies.md) で分けて扱う。
+
 この増分は、[区切りを持つ語の位置引数](0351-posarg-delimited-proof-dependencies.md) で除外していた左角括弧 `[` の一部を対象にする。
 基準は `deccf1262aaf410ae71868c6cf94f4c71fe40a42` と、この変更の証明ソースである。
 空でなく、各文字が Word の許可文字であり、先頭が `%%` でない語を扱う。
