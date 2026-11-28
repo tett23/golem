@@ -1,6 +1,6 @@
 # ADR 0352: 改ページの規則と終了を Lean 4 で証明する
 
-Status: accepted-pending
+Status: superseded-pending [{"part":"再試行の停止反例と是正","by":["docs/adr/0483-finish-forced-paragraph-placement-without-repeating-the-retry.md"],"kind":"supplement"}]
 
 ## 文脈
 
